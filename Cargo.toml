@@ -1,0 +1,18 @@
+[package]
+name = "rotonda-store"
+version = "0.1.0"
+authors = [ "The NLnet Labs RPKI team <rpki-team@nlnetlabs.nl>" ]
+edition = "2018"
+description = "A library for storing and retrieving IP Prefixes"
+documentation = "https://docs.rs/rotonda/"
+homepage = "https://nlnetlabs.nl/projects/routing/rotonda/"
+repository = "https://github.com/NLnetLabs/rotonda-store/"
+keywords = ["routing", "bgp"]
+categories = ["network-programming"]
+license = "BSD-3-Clause"
+
+[dependencies]
+num = "^0.3"
+csv = "^1.1"
+ansi_term = "^0.12"
+rustyline = "8.0.0"
