@@ -478,20 +478,21 @@ impl Stride for Stride8 {
 }
 
 #[derive(Debug)]
-pub enum SizedStrideNode<AF: AddressFamily> {
-    Stride3(TreeBitMapNode<AF, Stride3>),
-    Stride4(TreeBitMapNode<AF, Stride4>),
-    Stride5(TreeBitMapNode<AF, Stride5>),
-    Stride6(TreeBitMapNode<AF, Stride6>),
-    Stride7(TreeBitMapNode<AF, Stride7>),
-    Stride8(TreeBitMapNode<AF, Stride8>),
+pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId> {
+    Stride3(TreeBitMapNode<AF, Stride3, NodeId>),
+    Stride4(TreeBitMapNode<AF, Stride4, NodeId>),
+    Stride5(TreeBitMapNode<AF, Stride5, NodeId>),
+    Stride6(TreeBitMapNode<AF, Stride6, NodeId>),
+    Stride7(TreeBitMapNode<AF, Stride7, NodeId>),
+    Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
-pub struct TreeBitMapNode<AF, S>
+pub struct TreeBitMapNode<AF, S, NodeId>
 where
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     AF: AddressFamily,
+    NodeId: SortableNodeId,
 {
     ptrbitarr: <S as Stride>::PtrSize,
     pfxbitarr: S,
@@ -504,12 +505,13 @@ where
     // node, referenced by (ptrbitarr_index, global vec index)
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
-    ptr_vec: Vec<(u16, u32)>,
+    ptr_vec: Vec<NodeId>,
 }
 
-impl<AF> Default for SizedStrideNode<AF>
+impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
 where
     AF: AddressFamily,
+    NodeId: SortableNodeId,
 {
     fn default() -> Self {
         SizedStrideNode::Stride3(TreeBitMapNode {
@@ -521,11 +523,12 @@ where
     }
 }
 
-impl<AF, S> Debug for TreeBitMapNode<AF, S>
+impl<AF, S, NodeId> Debug for TreeBitMapNode<AF, S, NodeId>
 where
     AF: AddressFamily,
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
+    NodeId: SortableNodeId,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeBitMapNode")
@@ -536,18 +539,50 @@ where
     }
 }
 
-enum NewNodeOrIndex<AF: AddressFamily> {
-    NewNode(SizedStrideNode<AF>, u16), // New Node and bit_id of the new node
+pub trait SortableNodeId<S = u16, P = u32>
+where
+    Self: std::cmp::Ord + std::fmt::Debug,
+{
+    fn sort(self: &Self, other: &Self) -> std::cmp::Ordering;
+    fn new(sort: u16, part: u32) -> Self;
+    fn get_sort(self: &Self) -> S;
+    fn get_part(self: &Self) -> P;
+}
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub struct InMemNodeId<S, P>(S, P);
+
+impl SortableNodeId for InMemNodeId<u16, u32> {
+    fn sort(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+
+    fn new(sort: u16, part: u32) -> InMemNodeId<u16, u32> {
+        InMemNodeId(sort, part)
+    }
+
+    fn get_sort(&self) -> u16 {
+        self.0
+    }
+
+    fn get_part(&self) -> u32 {
+        self.1
+    }
+}
+
+enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId> {
+    NewNode(SizedStrideNode<AF, NodeId>, u16), // New Node and bit_id of the new node
     ExistingNode(u32),
     NewPrefix,
     ExistingPrefix,
 }
 
-impl<AF, S> TreeBitMapNode<AF, S>
+impl<AF, S, NodeId> TreeBitMapNode<AF, S, NodeId>
 where
     AF: AddressFamily,
     S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S>,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
+    NodeId: SortableNodeId,
 {
     // Inspects the stride (nibble, nibble_len) to see it there's
     // already a child node (if not at the last stride) or a prefix
@@ -564,9 +599,9 @@ where
         nibble_len: u8,
         next_stride: Option<&u8>,
         is_last_stride: bool,
-    ) -> NewNodeOrIndex<AF> {
+    ) -> NewNodeOrIndex<AF, NodeId> {
         let bit_pos = S::get_bit_pos(nibble, nibble_len);
-        let new_node: SizedStrideNode<AF>;
+        let new_node: SizedStrideNode<AF, NodeId>;
 
         // println!("n {:b} nl {}", nibble, nibble_len);
 
@@ -698,7 +733,7 @@ where
         // println!("nib: {:?}", nibble);
         // println!("index: {:?}", S::get_ptr_index(self.ptrbitarr, nibble));
         // println!("{:#?}", self);
-        NewNodeOrIndex::ExistingNode(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].1)
+        NewNodeOrIndex::ExistingNode(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].get_part())
     }
 
     fn search_stride_at<'b>(
@@ -760,7 +795,7 @@ where
             return None;
         }
 
-        Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].1)
+        Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].get_part())
     }
 
     fn search_stride_at_lmp_only<'b>(
@@ -797,28 +832,30 @@ where
         }
 
         (
-            Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].1),
+            Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].get_part()),
             found_pfx,
         )
     }
 }
-pub struct TreeBitMap<AF, T>
+pub struct TreeBitMap<AF, T, NodeId>
 where
     T: Debug,
     AF: AddressFamily + Debug,
+    NodeId: SortableNodeId,
 {
     pub strides: Vec<u8>,
     pub stats: Vec<StrideStats>,
-    pub nodes: Vec<SizedStrideNode<AF>>,
+    pub nodes: Vec<SizedStrideNode<AF, NodeId>>,
     pub prefixes: Vec<Prefix<AF, T>>,
 }
 
-impl<'a, AF, T> TreeBitMap<AF, T>
+impl<'a, AF, T, NodeId> TreeBitMap<AF, T, NodeId>
 where
     T: Debug,
     AF: AddressFamily + Debug,
+    NodeId: SortableNodeId,
 {
-    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<AF, T> {
+    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<AF, T, NodeId> {
         // Check if the strides division makes sense
         let mut strides = vec![];
         let mut strides_sum = 0;
@@ -840,7 +877,7 @@ where
             StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
-        let node: SizedStrideNode<AF>;
+        let node: SizedStrideNode<AF, NodeId>;
 
         match strides[0] {
             3 => {
@@ -978,7 +1015,7 @@ where
                     NewNodeOrIndex::NewNode(n, bit_id) => {
                         self.stats[0].inc(level);
                         let i = self.store_node(n);
-                        current_node.ptr_vec.push((bit_id, i));
+                        current_node.ptr_vec.push(NodeId::new(bit_id, i));
                         current_node.ptr_vec.sort();
                         (Some(i), SizedStrideNode::Stride3(current_node))
                     }
@@ -1021,7 +1058,7 @@ where
                     NewNodeOrIndex::NewNode(n, bit_id) => {
                         self.stats[1].inc(level);
                         let i = self.store_node(n);
-                        current_node.ptr_vec.push((bit_id, i));
+                        current_node.ptr_vec.push(NodeId::new(bit_id, i));
                         current_node.ptr_vec.sort();
                         (Some(i), SizedStrideNode::Stride4(current_node))
                     }
@@ -1049,16 +1086,12 @@ where
                     }
                 },
                 SizedStrideNode::Stride5(mut current_node) => match current_node
-                    .eval_node_or_prefix_at(
-                        nibble,
-                        nibble_len,
-                        next_stride,
-                        pfx_len <= stride_end,
-                    ) {
+                    .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
+                {
                     NewNodeOrIndex::NewNode(n, bit_id) => {
                         self.stats[2].inc(level);
                         let i = self.store_node(n);
-                        current_node.ptr_vec.push((bit_id, i));
+                        current_node.ptr_vec.push(NodeId::new(bit_id, i));
                         current_node.ptr_vec.sort();
                         (Some(i), SizedStrideNode::Stride5(current_node))
                     }
@@ -1086,16 +1119,12 @@ where
                     }
                 },
                 SizedStrideNode::Stride6(mut current_node) => match current_node
-                    .eval_node_or_prefix_at(
-                        nibble,
-                        nibble_len,
-                        next_stride,
-                        pfx_len <= stride_end,
-                    ) {
+                    .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
+                {
                     NewNodeOrIndex::NewNode(n, bit_id) => {
                         self.stats[3].inc(level);
                         let i = self.store_node(n);
-                        current_node.ptr_vec.push((bit_id, i));
+                        current_node.ptr_vec.push(NodeId::new(bit_id, i));
                         current_node.ptr_vec.sort();
                         (Some(i), SizedStrideNode::Stride6(current_node))
                     }
@@ -1123,16 +1152,12 @@ where
                     }
                 },
                 SizedStrideNode::Stride7(mut current_node) => match current_node
-                    .eval_node_or_prefix_at(
-                        nibble,
-                        nibble_len,
-                        next_stride,
-                        pfx_len <= stride_end,
-                    ) {
+                    .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
+                {
                     NewNodeOrIndex::NewNode(n, bit_id) => {
                         self.stats[4].inc(level);
                         let i = self.store_node(n);
-                        current_node.ptr_vec.push((bit_id, i));
+                        current_node.ptr_vec.push(NodeId::new(bit_id, i));
                         current_node.ptr_vec.sort();
                         (Some(i), SizedStrideNode::Stride7(current_node))
                     }
@@ -1159,16 +1184,12 @@ where
                     }
                 },
                 SizedStrideNode::Stride8(mut current_node) => match current_node
-                    .eval_node_or_prefix_at(
-                        nibble,
-                        nibble_len,
-                        next_stride,
-                        pfx_len <= stride_end,
-                    ) {
+                    .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
+                {
                     NewNodeOrIndex::NewNode(n, bit_id) => {
                         self.stats[5].inc(level);
                         let i = self.store_node(n);
-                        current_node.ptr_vec.push((bit_id, i));
+                        current_node.ptr_vec.push(NodeId::new(bit_id, i));
                         current_node.ptr_vec.sort();
 
                         (Some(i), SizedStrideNode::Stride8(current_node))
@@ -1210,19 +1231,19 @@ where
         }
     }
 
-    pub fn store_node(&mut self, next_node: SizedStrideNode<AF>) -> u32 {
+    pub fn store_node(&mut self, next_node: SizedStrideNode<AF, NodeId>) -> u32 {
         let id = self.nodes.len() as u32;
         self.nodes.push(next_node);
         id
     }
 
     #[inline]
-    pub fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<AF>> {
+    pub fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<AF, NodeId>> {
         self.nodes.get(index as usize)
     }
 
     #[inline]
-    pub fn retrieve_node_mut(&mut self, index: u32) -> Option<&mut SizedStrideNode<AF>> {
+    pub fn retrieve_node_mut(&mut self, index: u32) -> Option<&mut SizedStrideNode<AF, NodeId>> {
         self.nodes.get_mut(index as usize)
     }
 

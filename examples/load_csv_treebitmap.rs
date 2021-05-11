@@ -1,5 +1,5 @@
 use ansi_term::Colour;
-use rotonda_store::{TreeBitMap, SizedStrideNode};
+use rotonda_store::{InMemNodeId, SizedStrideNode, TreeBitMap};
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
 use std::error::Error;
 use std::ffi::OsString;
@@ -43,8 +43,9 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
 }
 
 fn main() {
+    type NodeType = InMemNodeId<u16, u32>;
     let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-    let mut tree_bitmap: TreeBitMap<u32, PrefixAs> = TreeBitMap::new(vec![4]);
+    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -75,11 +76,11 @@ fn main() {
     println!("{:?} nodes created", total_nodes);
     println!(
         "size of node: {} bytes",
-        std::mem::size_of::<SizedStrideNode<u32>>()
+        std::mem::size_of::<SizedStrideNode<u32, NodeType>>()
     );
     println!(
         "memory used by nodes: {}kb",
-        total_nodes * std::mem::size_of::<SizedStrideNode<u32>>() / 1024
+        total_nodes * std::mem::size_of::<SizedStrideNode<u32, NodeType>>() / 1024
     );
     println!(
         "size of prefix: {} bytes",

@@ -1,7 +1,7 @@
 mod test {
 
     use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-    use rotonda_store::TreeBitMap;
+    use rotonda_store::{TreeBitMap, InMemNodeId};
     use std::error::Error;
     use std::fs::File;
     use std::process;
@@ -38,11 +38,12 @@ mod test {
             vec![6, 6, 6, 6, 4, 4],
             vec![3, 4, 4, 6, 7, 8],
         ];
+        type NodeType = InMemNodeId<u16, u32>;
         for strides in strides_vec.iter().enumerate() {
             println!("[");
             for n in 1..6 {
                 let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-                let mut tree_bitmap: TreeBitMap<u32, PrefixAs> =
+                let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> =
                     TreeBitMap::new(strides.1.to_owned());
 
                 if let Err(err) = load_prefixes(&mut pfxs) {

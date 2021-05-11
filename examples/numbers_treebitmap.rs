@@ -4,7 +4,7 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::process;
 use rotonda_store::common::{Prefix, PrefixAs};
-use rotonda_store::{TreeBitMap, SizedStrideNode};
+use rotonda_store::{TreeBitMap, SizedStrideNode, InMemNodeId};
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -46,10 +46,12 @@ fn main() {
         vec![3, 4, 4, 6, 7, 8],
     ];
 
+    type NodeType = InMemNodeId<u16, u32>;
+
     println!("[");
     for strides in strides_vec.iter().enumerate() {
         let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-        let mut tree_bitmap: TreeBitMap<u32, PrefixAs> = TreeBitMap::new(strides.1.to_owned());
+        let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(strides.1.to_owned());
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);
@@ -72,11 +74,11 @@ fn main() {
         println!("\"total_nodes\": {},", total_nodes);
         println!(
             "\"node_size_b\": {},",
-            std::mem::size_of::<SizedStrideNode<u32>>()
+            std::mem::size_of::<SizedStrideNode<u32, NodeType>>()
         );
         println!(
             "\"nodes_mem_kb\": {},",
-            (total_nodes * std::mem::size_of::<SizedStrideNode<u32>>()
+            (total_nodes * std::mem::size_of::<SizedStrideNode<u32, NodeType>>()
                 + tree_bitmap.prefixes.len() * 5
                 + total_nodes * 5)
                 / 1024 // 5 is the size of a (u32, u8)

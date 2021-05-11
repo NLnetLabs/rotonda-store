@@ -1,10 +1,11 @@
 use rotonda_store::common::{Prefix, PrefixAs, NoMeta};
-use rotonda_store::TreeBitMap;
+use rotonda_store::{TreeBitMap, InMemNodeId};
 
 type Prefix4<'a> = Prefix<u32, NoMeta>;
 
 fn main() {
-    let mut tree_bitmap: TreeBitMap<u32, PrefixAs> = TreeBitMap::new(vec![4]);
+    type NodeType = InMemNodeId<u16, u32>;
+    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
     let pfxs = vec![
         Prefix::<u32, PrefixAs>::new(0b0000_0000_0000_0000_0000_0000_0000_0000_u32, 0),
         Prefix::<u32, PrefixAs>::new(0b1111_1111_1111_1111_1111_1111_1111_1111_u32, 32),
