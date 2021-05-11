@@ -1,21 +1,6 @@
 use crate::common::{AddressFamily, NoMeta, Prefix};
-use std::cmp::Ordering;
+use crate::synth_int::{U256, U512};
 use std::fmt::{Binary, Debug};
-
-#[derive(Copy, Clone)]
-pub struct U256(u128, u128);
-
-impl Debug for U256 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_fmt(format_args!(
-            "{:0128b}\n             {:0128b}",
-            self.0, self.1
-        ))
-    }
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct U512(u128, u128, u128, u128);
 
 type Stride3 = u16;
 type Stride4 = u32;
@@ -23,39 +8,6 @@ type Stride5 = u64;
 type Stride6 = u128;
 type Stride7 = U256;
 type Stride8 = U512;
-
-impl PartialOrd for U256 {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self.0, &other.0) {
-            (a, b) if &a > b => Some(self.0.cmp(&other.0)),
-            _ => Some(self.1.cmp(&other.1)),
-        }
-    }
-}
-
-impl Ord for U256 {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match (self.0, &other.0) {
-            (a, b) if &a > b => self.0.cmp(&other.0),
-            _ => self.1.cmp(&other.1),
-        }
-    }
-}
-
-impl PartialOrd for U512 {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self.0, &other.0) {
-            (a, b) if &a > b => Some(self.0.cmp(&other.0)),
-            _ => match (self.1, &other.1) {
-                (a, b) if &a > b => Some(self.1.cmp(&other.1)),
-                _ => match (self.2, &other.2) {
-                    (a, b) if &a > b => Some(self.2.cmp(&other.2)),
-                    _ => Some(self.3.cmp(&other.3)),
-                },
-            },
-        }
-    }
-}
 
 pub trait Stride: Sized + Debug + Binary + Eq + PartialOrd + PartialEq + Copy {
     type PtrSize;
@@ -402,37 +354,6 @@ impl Stride for Stride7 {
     }
 }
 
-impl PartialEq for Stride7 {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 && self.1 == other.1
-    }
-}
-
-impl Eq for Stride7 {}
-
-impl Binary for Stride7 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Binary::fmt(&self, f)
-    }
-}
-
-impl std::ops::BitOr<Self> for Stride7 {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(self.0 | rhs.0, self.1 | rhs.1)
-    }
-}
-
-impl std::ops::BitAnd<Self> for Stride7 {
-    type Output = Self;
-    fn bitand(self, rhs: Self) -> Self::Output
-    where
-        Self: Eq,
-    {
-        Self(self.0 & rhs.0, self.1 & rhs.1)
-    }
-}
-
 impl Stride for Stride8 {
     type PtrSize = U256;
     const BITS: u8 = 255; // bogus
@@ -553,47 +474,6 @@ impl Stride for Stride8 {
             }
         }
         lz
-    }
-}
-
-impl PartialEq for Stride8 {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 && self.1 == other.1 && self.2 == other.2 && self.3 == other.3
-    }
-}
-
-impl Eq for Stride8 {}
-
-impl Binary for Stride8 {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        std::fmt::Binary::fmt(&self, f)
-    }
-}
-
-impl std::ops::BitOr<Self> for Stride8 {
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> Self::Output {
-        Self(
-            self.0 | rhs.0,
-            self.1 | rhs.1,
-            self.2 | rhs.2,
-            self.3 | rhs.3,
-        )
-    }
-}
-
-impl std::ops::BitAnd<Self> for Stride8 {
-    type Output = Self;
-    fn bitand(self, rhs: Self) -> Self::Output
-    where
-        Self: Eq,
-    {
-        Self(
-            self.0 & rhs.0,
-            self.1 & rhs.1,
-            self.2 & rhs.2,
-            self.3 & rhs.3,
-        )
     }
 }
 
