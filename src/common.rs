@@ -7,11 +7,24 @@ use std::ops::BitOr;
 #[derive(Debug)]
 pub struct PrefixAs(pub u32);
 
+impl MergeUpdate for PrefixAs {
+    fn merge_update(self: &mut Self, update_record: PrefixAs) -> Result<(), Box<dyn std::error::Error>> {
+        self.0 = update_record.0;
+        Ok(())
+    }
+}
+
 pub struct NoMeta;
 
 impl fmt::Debug for NoMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("")
+    }
+}
+
+impl MergeUpdate for NoMeta {
+    fn merge_update(self: &mut Self, _: NoMeta) -> Result<(), Box<dyn std::error::Error>> {
+        Ok(())
     }
 }
 
@@ -27,6 +40,9 @@ where
             meta: meta,
         }
     }
+}
+pub trait MergeUpdate {
+    fn merge_update(self: &mut Self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub trait AddressFamily: PrimInt + Debug {
@@ -179,6 +195,10 @@ pub struct TrieLevelStats {
 
 impl fmt::Debug for TrieLevelStats {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{\"level\":{},\"nodes_num\":{},\"prefixes_num\":{}}}", self.level, self.nodes_num, self.prefixes_num)
+        write!(
+            f,
+            "{{\"level\":{},\"nodes_num\":{},\"prefixes_num\":{}}}",
+            self.level, self.nodes_num, self.prefixes_num
+        )
     }
 }

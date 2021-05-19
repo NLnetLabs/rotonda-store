@@ -1,4 +1,4 @@
-use crate::common::{AddressFamily, NoMeta, Prefix};
+use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
 use crate::synth_int::{U256, U512};
 use std::fmt::{Binary, Debug};
 
@@ -547,6 +547,7 @@ where
     fn new(sort: u16, part: u32) -> Self;
     fn get_sort(self: &Self) -> S;
     fn get_part(self: &Self) -> P;
+    // fn update_ptr_vec(self: &Self, current_node: Self);
 }
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug)]
@@ -574,7 +575,7 @@ enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId> {
     NewNode(SizedStrideNode<AF, NodeId>, u16), // New Node and bit_id of the new node
     ExistingNode(u32),
     NewPrefix,
-    ExistingPrefix,
+    ExistingPrefix(u32),
 }
 
 impl<AF, S, NodeId> TreeBitMapNode<AF, S, NodeId>
@@ -709,7 +710,9 @@ where
                 // );
                 return NewNodeOrIndex::NewPrefix;
             }
-            return NewNodeOrIndex::ExistingPrefix;
+            return NewNodeOrIndex::ExistingPrefix(
+                self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)].1,
+            );
         }
 
         // println!("__bit_pos__: {:?}", bit_pos);
@@ -733,7 +736,9 @@ where
         // println!("nib: {:?}", nibble);
         // println!("index: {:?}", S::get_ptr_index(self.ptrbitarr, nibble));
         // println!("{:#?}", self);
-        NewNodeOrIndex::ExistingNode(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].get_part())
+        NewNodeOrIndex::ExistingNode(
+            self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].get_part(),
+        )
     }
 
     fn search_stride_at<'b>(
@@ -851,7 +856,7 @@ where
 
 impl<'a, AF, T, NodeId> TreeBitMap<AF, T, NodeId>
 where
-    T: Debug,
+    T: Debug + MergeUpdate,
     AF: AddressFamily + Debug,
     NodeId: SortableNodeId,
 {
@@ -978,7 +983,7 @@ where
     // 5 - 5 - 5 - 4 - 4 - [4] - 5
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
-    pub fn insert(&mut self, pfx: Prefix<AF, T>) {
+    pub fn insert(&mut self, pfx: Prefix<AF, T>) -> Result<(), Box<dyn std::error::Error>> {
         // println!("");
         // println!("{:?}", pfx);
         // println!("             0   4   8   12  16  20  24  28  32  36  40  44  48  52  56  60  64  68  72  76  80  84  88  92  96 100 104 108 112 116 120 124 128");
@@ -1033,13 +1038,19 @@ where
                             self.retrieve_node_mut(cur_i).unwrap(),
                             SizedStrideNode::Stride3(current_node),
                         );
-                        return;
+                        return Ok(());
                     }
-                    NewNodeOrIndex::ExistingPrefix => {
-                        // print!(". {:?}", pfx);
-                        // println!("existing {:?}", pfx);
-
-                        (None, SizedStrideNode::Stride3(current_node))
+                    NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                        // ExitingPrefix is guaranteed to only happen at the last stride,
+                        // so we can return from here.
+                        // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+                        // since the compiler can't figure out that it will happen only once.
+                        self.update_prefix_meta(pfx_idx, pfx.meta)?;
+                        let _default_val = std::mem::replace(
+                            self.retrieve_node_mut(cur_i).unwrap(),
+                            SizedStrideNode::Stride3(current_node),
+                        );
+                        return Ok(());
                     }
                 },
                 SizedStrideNode::Stride4(mut current_node) => match current_node
@@ -1076,13 +1087,19 @@ where
                             self.retrieve_node_mut(cur_i).unwrap(),
                             SizedStrideNode::Stride4(current_node),
                         );
-                        return;
+                        return Ok(());
                     }
-                    NewNodeOrIndex::ExistingPrefix => {
-                        // print!(". {:?}", pfx);
-                        // println!("existing {:?}", pfx);
-
-                        (None, SizedStrideNode::Stride4(current_node))
+                    NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                        // ExitingPrefix is guaranteed to only happen at the last stride,
+                        // so we can return from here.
+                        // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+                        // since the compiler can't figure out that it will happen only once.
+                        self.update_prefix_meta(pfx_idx, pfx.meta)?;
+                        let _default_val = std::mem::replace(
+                            self.retrieve_node_mut(cur_i).unwrap(),
+                            SizedStrideNode::Stride4(current_node),
+                        );
+                        return Ok(());
                     }
                 },
                 SizedStrideNode::Stride5(mut current_node) => match current_node
@@ -1109,13 +1126,19 @@ where
                             self.retrieve_node_mut(cur_i).unwrap(),
                             SizedStrideNode::Stride5(current_node),
                         );
-                        return;
+                        return Ok(());
                     }
-                    NewNodeOrIndex::ExistingPrefix => {
-                        // print!(". {:?}", pfx);
-                        // println!("existing {:?}", pfx);
-
-                        (None, SizedStrideNode::Stride5(current_node))
+                    NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                        // ExitingPrefix is guaranteed to only happen at the last stride,
+                        // so we can return from here.
+                        // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+                        // since the compiler can't figure out that it will happen only once.
+                        self.update_prefix_meta(pfx_idx, pfx.meta)?;
+                        let _default_val = std::mem::replace(
+                            self.retrieve_node_mut(cur_i).unwrap(),
+                            SizedStrideNode::Stride5(current_node),
+                        );
+                        return Ok(());
                     }
                 },
                 SizedStrideNode::Stride6(mut current_node) => match current_node
@@ -1142,13 +1165,19 @@ where
                             self.retrieve_node_mut(cur_i).unwrap(),
                             SizedStrideNode::Stride6(current_node),
                         );
-                        return;
+                        return Ok(());
                     }
-                    NewNodeOrIndex::ExistingPrefix => {
-                        // print!(". {:?}", pfx);
-                        // println!("existing {:?}", pfx);
-
-                        (None, SizedStrideNode::Stride6(current_node))
+                    NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                        // ExitingPrefix is guaranteed to only happen at the last stride,
+                        // so we can return from here.
+                        // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+                        // since the compiler can't figure out that it will happen only once.
+                        self.update_prefix_meta(pfx_idx, pfx.meta)?;
+                        let _default_val = std::mem::replace(
+                            self.retrieve_node_mut(cur_i).unwrap(),
+                            SizedStrideNode::Stride6(current_node),
+                        );
+                        return Ok(());
                     }
                 },
                 SizedStrideNode::Stride7(mut current_node) => match current_node
@@ -1175,12 +1204,19 @@ where
                             self.retrieve_node_mut(cur_i).unwrap(),
                             SizedStrideNode::Stride7(current_node),
                         );
-                        return;
+                        return Ok(());
                     }
-                    NewNodeOrIndex::ExistingPrefix => {
-                        // println!("existing {:?}", pfx);
-                        // print!(". {:?}", pfx);
-                        (None, SizedStrideNode::Stride7(current_node))
+                    NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                        // ExitingPrefix is guaranteed to only happen at the last stride,
+                        // so we can return from here.
+                        // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+                        // since the compiler can't figure out that it will happen only once.
+                        self.update_prefix_meta(pfx_idx, pfx.meta)?;
+                        let _default_val = std::mem::replace(
+                            self.retrieve_node_mut(cur_i).unwrap(),
+                            SizedStrideNode::Stride7(current_node),
+                        );
+                        return Ok(());
                     }
                 },
                 SizedStrideNode::Stride8(mut current_node) => match current_node
@@ -1197,11 +1233,17 @@ where
                     NewNodeOrIndex::ExistingNode(i) => {
                         (Some(i), SizedStrideNode::Stride8(current_node))
                     }
-                    NewNodeOrIndex::ExistingPrefix => {
-                        // print!(". {:?}", pfx);
-                        // println!("existing {:?}", pfx);
-
-                        (None, SizedStrideNode::Stride8(current_node))
+                    NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                        // ExitingPrefix is guaranteed to only happen at the last stride,
+                        // so we can return from here.
+                        // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+                        // since the compiler can't figure out that it will happen only once.
+                        self.update_prefix_meta(pfx_idx, pfx.meta)?;
+                        let _default_val = std::mem::replace(
+                            self.retrieve_node_mut(cur_i).unwrap(),
+                            SizedStrideNode::Stride8(current_node),
+                        );
+                        return Ok(());
                     }
                     NewNodeOrIndex::NewPrefix => {
                         let i = self.store_prefix(pfx);
@@ -1214,7 +1256,7 @@ where
                             self.retrieve_node_mut(cur_i).unwrap(),
                             SizedStrideNode::Stride8(current_node),
                         );
-                        return;
+                        return Ok(());
                     }
                 },
             };
@@ -1226,7 +1268,7 @@ where
                 cur_i = i;
                 level += 1;
             } else {
-                return;
+                return Ok(());
             }
         }
     }
@@ -1251,6 +1293,16 @@ where
         let id = self.prefixes.len() as u32;
         self.prefixes.push(next_node);
         id
+    }
+
+    pub fn update_prefix_meta(
+        &mut self,
+        update_node_idx: u32,
+        meta: Option<T>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let update_pfx = self.prefixes.get_mut(update_node_idx as usize).unwrap();
+        let new_meta = <T>::merge_update(update_pfx.meta.as_mut().unwrap(), meta.unwrap());
+        new_meta
     }
 
     #[inline]
