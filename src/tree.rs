@@ -115,11 +115,9 @@ impl Stride for Stride7 {
     fn get_bit_pos(nibble: u32, len: u8) -> Self {
         match 256 - ((1 << len) - 1) as u16 - nibble as u16 - 1 {
             n if n < 128 => {
-                // println!("n {}", n);
                 U256(0, 1 << n)
             }
             n => {
-                // println!("nn {}", n);
                 U256(1 << (n as u16 - 128), 0)
             }
         }
@@ -190,12 +188,10 @@ impl Stride for Stride8 {
     fn get_bit_pos(nibble: u32, len: u8) -> Self {
         match 512 - ((1 << len) - 1) as u16 - nibble as u16 - 1 {
             n if n < 128 => {
-                // println!("n {}", n);
                 U512(0, 0, 0, 1 << n)
             }
             n if n < 256 => U512(0, 0, 1 << (n as u16 - 128), 0),
             n if n < 384 => {
-                // println!("nn {}", n);
                 U512(0, 1 << (n as u16 - 256), 0, 0)
             }
             n => U512(1 << (n as u16 - 384), 0, 0, 0),
