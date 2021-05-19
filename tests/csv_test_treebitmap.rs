@@ -1,7 +1,7 @@
 mod test {
 
     use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-    use rotonda_store::{TreeBitMap, InMemNodeId};
+    use rotonda_store::{InMemNodeId, TreeBitMap};
     use std::error::Error;
     use std::fs::File;
     use std::process;
@@ -10,7 +10,7 @@ mod test {
     // use std::io::prelude::*;
 
     #[test]
-    fn test_csv() {
+    fn test_csv() -> Result<(), Box<dyn Error>> {
         const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
 
         fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Error>> {
@@ -55,7 +55,7 @@ mod test {
 
                 let inserts_num = pfxs.len();
                 for pfx in pfxs.into_iter() {
-                    tree_bitmap.insert(pfx);
+                    tree_bitmap.insert(pfx)?;
                 }
                 let ready = std::time::Instant::now();
                 let dur_insert_nanos = ready.checked_duration_since(start).unwrap().as_nanos();
@@ -134,5 +134,6 @@ mod test {
             );
         }
         println!("]");
+        Ok(())
     }
 }

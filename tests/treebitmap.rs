@@ -1,30 +1,31 @@
 #[cfg(test)]
 mod test {
-    use rotonda_store::{InMemNodeId, common::{Prefix, PrefixAs, NoMeta}};
-    use rotonda_store::TreeBitMap;
+    use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
+    use rotonda_store::{InMemNodeId, TreeBitMap};
 
     #[test]
-    fn test_insert_extremes_ipv4() {
+    fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         type NodeType = InMemNodeId<u16, u32>;
         let trie = &mut TreeBitMap::<u32, NoMeta, NodeType>::new(vec![4]);
         let min_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
 
-        trie.insert(min_pfx);
+        trie.insert(min_pfx)?;
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
         let res = trie.match_longest_prefix(&expect_pfx);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0], &expect_pfx);
 
         let max_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
-        trie.insert(max_pfx);
+        trie.insert(max_pfx)?;
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
         let res = trie.match_longest_prefix(&expect_pfx);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0], &expect_pfx);
+        Ok(())
     }
 
     #[test]
-    fn test_tree_ipv4() {
+    fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         type NodeType = InMemNodeId<u16, u32>;
         let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
         let pfxs = vec![
@@ -87,7 +88,7 @@ mod test {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(pfx);
+            tree_bitmap.insert(pfx)?;
         }
 
         for pfx in tree_bitmap.prefixes.iter() {
@@ -113,10 +114,11 @@ mod test {
             res[0],
             &Prefix::<u32, PrefixAs>::new(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 4)
         );
+        Ok(())
     }
 
     #[test]
-    fn test_ranges_ipv4() {
+    fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         type NodeType = InMemNodeId<u16, u32>;
         for i_net in 0..255 {
             let mut tree_bitmap: TreeBitMap<u32, NoMeta, NodeType> = TreeBitMap::new(vec![4]);
@@ -135,7 +137,7 @@ mod test {
             let mut i_len_s = 0;
             for pfx in pfx_vec {
                 i_len_s += 1;
-                tree_bitmap.insert(pfx);
+                tree_bitmap.insert(pfx)?;
 
                 let res_pfx = Prefix::<u32, NoMeta>::new(
                     std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
@@ -154,5 +156,6 @@ mod test {
                 }
             }
         }
+        Ok(())
     }
 }

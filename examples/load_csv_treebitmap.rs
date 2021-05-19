@@ -42,7 +42,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     type NodeType = InMemNodeId<u16, u32>;
     let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
     let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
@@ -55,7 +55,7 @@ fn main() {
     let start = std::time::Instant::now();
 
     for pfx in pfxs.into_iter() {
-        tree_bitmap.insert(pfx);
+        tree_bitmap.insert(pfx)?;
     }
     let ready = std::time::Instant::now();
     // println!("{:#?}", trie);
@@ -206,4 +206,5 @@ fn main() {
         }
     }
     rl.save_history("/tmp/rotonda-store-history.txt").unwrap();
+    Ok(())
 }

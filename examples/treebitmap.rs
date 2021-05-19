@@ -3,7 +3,7 @@ use rotonda_store::{TreeBitMap, InMemNodeId};
 
 type Prefix4<'a> = Prefix<u32, NoMeta>;
 
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     type NodeType = InMemNodeId<u16, u32>;
     let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
     let pfxs = vec![
@@ -63,7 +63,7 @@ fn main() {
 
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
-        tree_bitmap.insert(pfx);
+        tree_bitmap.insert(pfx)?;
     }
     println!("------ end of inserts\n");
     println!("{:#?}", tree_bitmap.prefixes);
@@ -111,4 +111,5 @@ fn main() {
         println!("lmp: {:?}", s_spfx);
         println!("-----------");
     }
+    Ok(())
 }

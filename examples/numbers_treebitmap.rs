@@ -38,7 +38,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
     Ok(())
 }
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     let strides_vec = [
         vec![8],
         vec![4],
@@ -59,7 +59,7 @@ fn main() {
         }
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(pfx);
+            tree_bitmap.insert(pfx)?;
         }
 
         let total_nodes = tree_bitmap.stats.iter().fold(0, |mut acc, c| {
@@ -146,4 +146,5 @@ fn main() {
         );
     }
     println!("]");
+    Ok(())
 }
