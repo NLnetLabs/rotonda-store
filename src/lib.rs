@@ -4,3 +4,6 @@ pub use tree::{TreeBitMap,SizedStrideNode, InMemNodeId};
 pub mod common;
 mod tree;
 mod synth_int;
+
+#[macro_use]
+mod macros;
