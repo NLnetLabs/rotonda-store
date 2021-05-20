@@ -54,27 +54,28 @@ macro_rules! impl_primitive_stride {
     };
 }
 
+// This macro expands into a match node {}
+// with match arms for all SizedStrideNode::Stride[3-8]
+// for use in insert()
+
 #[macro_export]
-macro_rules! stride_branch_for {
-    ( 
-        // $node: ident;
-        // $stride: expr; //
-        // $next_stride: expr; //
-        // $stride_end: expr;
+macro_rules! match_node_for_strides {
+    (
+        $self: ident;
         $nibble_len: expr;
         $nibble: expr;
-        $is_last_stride: expr; //
+        $is_last_stride: expr;
         $pfx: ident;
-        // $pfx_net: expr; //
-        // $pfx_len: expr; //
         $cur_i: expr;
         $level: expr;
-        $self: ident;
-        $enum: ident;
-        $( $variant: ident; $len: expr ), *
+        // $enum: ident;
+        // The strides to generate match arms for,
+        // $variant is the name of the enum varian (Stride[3..8]) and
+        // $len is the index of the stats level, so 0..5
+        $( $variant: ident; $stats_level: expr ), *
     ) => {
         match std::mem::take($self.retrieve_node_mut($cur_i).unwrap()) {
-            $( $enum::$variant(mut current_node) =>
+            $( SizedStrideNode::$variant(mut current_node) =>
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
@@ -82,37 +83,46 @@ macro_rules! stride_branch_for {
                 $is_last_stride,
             ) {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
-                    $self.stats[$len].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
+                    $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     let i = $self.store_node(n);
                     current_node.ptr_vec.push(NodeId::new(bit_id, i));
                     current_node.ptr_vec.sort();
-                    (Some(i), $enum::$variant(current_node))
+                    let _default_val = std::mem::replace(
+                        $self.retrieve_node_mut($cur_i).unwrap(), 
+                        SizedStrideNode::$variant(current_node));
+                    Some(i)
                 }
-                NewNodeOrIndex::ExistingNode(i) => (Some(i), $enum::$variant(current_node)),
+                NewNodeOrIndex::ExistingNode(i) => {
+                    let _default_val = std::mem::replace(
+                        $self.retrieve_node_mut($cur_i).unwrap(), 
+                        SizedStrideNode::$variant(current_node));
+                    Some(i)
+                },
                 NewNodeOrIndex::NewPrefix => {
                     let pfx_len = $pfx.len.clone();
                     let pfx_net = $pfx.net.clone();
                     let i = $self.store_prefix($pfx);
-                    $self.stats[$len].inc_prefix_count($level);
+                    $self.stats[$stats_level].inc_prefix_count($level);
                     current_node
                         .pfx_vec
                         .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
                     current_node.pfx_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(),
-                        $enum::$variant(current_node),
+                        SizedStrideNode::$variant(current_node),
                     );
                     return Ok(());
                 }
                 NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-                    // ExitingPrefix is guaranteed to only happen at the last stride,
+                    // ExistingPrefix is guaranteed to only happen at the last stride,
                     // so we can return from here.
                     // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
                     // since the compiler can't figure out that it will happen only once.
                     if let Some(meta) = $pfx.meta { $self.update_prefix_meta(pfx_idx, meta)? };
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(),
-                        $enum::$variant(current_node),
+                        // expands into SizedStrideNode::Stride[3-8](current_node)
+                        SizedStrideNode::$variant(current_node),
                     );
                     return Ok(());
                 }
@@ -120,3 +130,63 @@ macro_rules! stride_branch_for {
         }
     };
 }
+
+//     example expansion for Stride4:
+
+//     SizedStrideNode::Stride4(mut current_node) => match current_node
+//         .eval_node_or_prefix_at(
+//             nibble,
+//             nibble_len,
+//             // No, next_stride.is_none does *not* mean that it's the last stride
+//             // There may very well be a Some(next_stride), next_stride goes all the
+//             // way to the end of the length of the network address space (like 32 bits for IPv4 etc),
+//             // whereas the last stride stops at the end of the prefix length.
+//             // `is_last_stride` is an indicator for the upsert function to write the prefix in the
+//             // node's vec.
+//             next_stride,
+//             pfx_len <= stride_end,
+//         ) {
+//         NewNodeOrIndex::NewNode(n, bit_id) => {
+//             self.stats[1].inc(level); // [1] here corresponds to stats for Stride4
+//             let i = self.store_node(n);
+//             current_node.ptr_vec.push(NodeId::new(bit_id, i));
+//             current_node.ptr_vec.sort();
+//              let _default_val = std::mem::replace(
+//                 self.retrieve_node_mut(cur_i).unwrap(),
+//                 SizedStrideNode::Stride4(current_node),
+//             );
+//             Some(i)
+//         }
+//         NewNodeOrIndex::ExistingNode(i) => {
+//              let _default_val = std::mem::replace(
+//                 self.retrieve_node_mut(cur_i).unwrap(),
+//                 SizedStrideNode::Stride4(current_node),
+//             );
+//             Some(i)
+//         }
+//         NewNodeOrIndex::NewPrefix => {
+//             let i = self.store_prefix(pfx);
+//             self.stats[1].inc_prefix_count(level);
+//             current_node
+//                 .pfx_vec
+//                 .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
+//             current_node.pfx_vec.sort();
+//             let _default_val = std::mem::replace(
+//                 self.retrieve_node_mut(cur_i).unwrap(),
+//                 SizedStrideNode::Stride4(current_node),
+//             );
+//             return Ok(());
+//         }
+//         NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+//             // ExitingPrefix is guaranteed to only happen at the last stride,
+//             // so we can return from here.
+//             // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
+//             // since the compiler can't figure out that it will happen only once.
+//             self.update_prefix_meta(pfx_idx, pfx.meta)?;
+//             let _default_val = std::mem::replace(
+//                 self.retrieve_node_mut(cur_i).unwrap(),
+//                 SizedStrideNode::Stride4(current_node),
+//             );
+//             return Ok(());
+//         }
+//     },

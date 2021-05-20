@@ -1,6 +1,6 @@
 use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
 use crate::impl_primitive_stride;
-use crate::stride_branch_for;
+use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
 use std::fmt::{Binary, Debug};
 
@@ -741,18 +741,11 @@ where
     pub fn insert(&mut self, pfx: Prefix<AF, T>) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = 0;
-        // let mut node = std::mem::take(self.retrieve_node_mut(cur_i).unwrap());
-
         let mut level: u8 = 0;
-        // let pfx_len = pfx.len.clone();
-        // let pfx_net = pfx.net.clone();
 
         loop {
             let stride = self.strides[level as usize];
-            // let next_stride = self.strides.get((level + 1) as usize);
-
             stride_end += stride;
-
             let nibble_len = if pfx.len < stride_end {
                 stride + pfx.len - stride_end
             } else {
@@ -760,246 +753,27 @@ where
             };
 
             let nibble = AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
-
             let is_last_stride = pfx.len <= stride_end;
 
-            let (next_node_idx, cur_node) = 
-                    stride_branch_for![
-                        // node;
-                        // stride;
-                        // next_stride;
-                        // stride_end;
-                        nibble_len;
-                        nibble;
-                        is_last_stride;
-                        pfx;
-                        // pfx_net;
-                        // pfx_len;
-                        cur_i;
-                        level;
-                        self;
-                        SizedStrideNode;
-                        Stride3; 0,
-                        Stride4; 1,
-                        Stride5; 2,
-                        Stride6; 3,
-                        Stride7; 4,
-                        Stride8; 5
-                    ];
-        
-
-            //     SizedStrideNode::Stride4(mut current_node) => match current_node
-            //         .eval_node_or_prefix_at(
-            //             nibble,
-            //             nibble_len,
-            //             // No, next_stride.is_none does *not* mean that it's the last stride
-            //             // There may very well be a Some(next_stride), next_stride goes all the
-            //             // way to the end of the length of the network address space (like 32 bits for IPv4 etc),
-            //             // whereas the last stride stops at the end of the prefix length.
-            //             // `is_last_stride` is an indicator for the upsert function to write the prefix in the
-            //             // node's vec.
-            //             next_stride,
-            //             pfx_len <= stride_end,
-            //         ) {
-            //         NewNodeOrIndex::NewNode(n, bit_id) => {
-            //             self.stats[1].inc(level);
-            //             let i = self.store_node(n);
-            //             current_node.ptr_vec.push(NodeId::new(bit_id, i));
-            //             current_node.ptr_vec.sort();
-            //             (Some(i), SizedStrideNode::Stride4(current_node))
-            //         }
-            //         NewNodeOrIndex::ExistingNode(i) => {
-            //             (Some(i), SizedStrideNode::Stride4(current_node))
-            //         }
-            //         NewNodeOrIndex::NewPrefix => {
-            //             let i = self.store_prefix(pfx);
-            //             self.stats[1].inc_prefix_count(level);
-            //             current_node
-            //                 .pfx_vec
-            //                 .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
-            //             current_node.pfx_vec.sort();
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride4(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //         NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-            //             // ExitingPrefix is guaranteed to only happen at the last stride,
-            //             // so we can return from here.
-            //             // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
-            //             // since the compiler can't figure out that it will happen only once.
-            //             self.update_prefix_meta(pfx_idx, pfx.meta)?;
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride4(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //     },
-            //     SizedStrideNode::Stride5(mut current_node) => match current_node
-            //         .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
-            //     {
-            //         NewNodeOrIndex::NewNode(n, bit_id) => {
-            //             self.stats[2].inc(level);
-            //             let i = self.store_node(n);
-            //             current_node.ptr_vec.push(NodeId::new(bit_id, i));
-            //             current_node.ptr_vec.sort();
-            //             (Some(i), SizedStrideNode::Stride5(current_node))
-            //         }
-            //         NewNodeOrIndex::ExistingNode(i) => {
-            //             (Some(i), SizedStrideNode::Stride5(current_node))
-            //         }
-            //         NewNodeOrIndex::NewPrefix => {
-            //             let i = self.store_prefix(pfx);
-            //             self.stats[2].inc_prefix_count(level);
-            //             current_node
-            //                 .pfx_vec
-            //                 .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
-            //             current_node.pfx_vec.sort();
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride5(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //         NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-            //             // ExitingPrefix is guaranteed to only happen at the last stride,
-            //             // so we can return from here.
-            //             // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
-            //             // since the compiler can't figure out that it will happen only once.
-            //             self.update_prefix_meta(pfx_idx, pfx.meta)?;
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride5(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //     },
-            //     SizedStrideNode::Stride6(mut current_node) => match current_node
-            //         .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
-            //     {
-            //         NewNodeOrIndex::NewNode(n, bit_id) => {
-            //             self.stats[3].inc(level);
-            //             let i = self.store_node(n);
-            //             current_node.ptr_vec.push(NodeId::new(bit_id, i));
-            //             current_node.ptr_vec.sort();
-            //             (Some(i), SizedStrideNode::Stride6(current_node))
-            //         }
-            //         NewNodeOrIndex::ExistingNode(i) => {
-            //             (Some(i), SizedStrideNode::Stride6(current_node))
-            //         }
-            //         NewNodeOrIndex::NewPrefix => {
-            //             let i = self.store_prefix(pfx);
-            //             self.stats[3].inc_prefix_count(level);
-            //             current_node
-            //                 .pfx_vec
-            //                 .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
-            //             current_node.pfx_vec.sort_unstable();
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride6(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //         NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-            //             // ExitingPrefix is guaranteed to only happen at the last stride,
-            //             // so we can return from here.
-            //             // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
-            //             // since the compiler can't figure out that it will happen only once.
-            //             self.update_prefix_meta(pfx_idx, pfx.meta)?;
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride6(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //     },
-            //     SizedStrideNode::Stride7(mut current_node) => match current_node
-            //         .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
-            //     {
-            //         NewNodeOrIndex::NewNode(n, bit_id) => {
-            //             self.stats[4].inc(level);
-            //             let i = self.store_node(n);
-            //             current_node.ptr_vec.push(NodeId::new(bit_id, i));
-            //             current_node.ptr_vec.sort();
-            //             (Some(i), SizedStrideNode::Stride7(current_node))
-            //         }
-            //         NewNodeOrIndex::ExistingNode(i) => {
-            //             (Some(i), SizedStrideNode::Stride7(current_node))
-            //         }
-            //         NewNodeOrIndex::NewPrefix => {
-            //             let i = self.store_prefix(pfx);
-            //             self.stats[4].inc_prefix_count(level);
-            //             current_node
-            //                 .pfx_vec
-            //                 .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
-            //             current_node.pfx_vec.sort();
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride7(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //         NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-            //             // ExitingPrefix is guaranteed to only happen at the last stride,
-            //             // so we can return from here.
-            //             // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
-            //             // since the compiler can't figure out that it will happen only once.
-            //             self.update_prefix_meta(pfx_idx, pfx.meta)?;
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride7(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //     },
-            //     SizedStrideNode::Stride8(mut current_node) => match current_node
-            //         .eval_node_or_prefix_at(nibble, nibble_len, next_stride, pfx_len <= stride_end)
-            //     {
-            //         NewNodeOrIndex::NewNode(n, bit_id) => {
-            //             self.stats[5].inc(level);
-            //             let i = self.store_node(n);
-            //             current_node.ptr_vec.push(NodeId::new(bit_id, i));
-            //             current_node.ptr_vec.sort();
-
-            //             (Some(i), SizedStrideNode::Stride8(current_node))
-            //         }
-            //         NewNodeOrIndex::ExistingNode(i) => {
-            //             (Some(i), SizedStrideNode::Stride8(current_node))
-            //         }
-            //         NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-            //             // ExitingPrefix is guaranteed to only happen at the last stride,
-            //             // so we can return from here.
-            //             // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
-            //             // since the compiler can't figure out that it will happen only once.
-            //             self.update_prefix_meta(pfx_idx, pfx.meta)?;
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride8(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //         NewNodeOrIndex::NewPrefix => {
-            //             let i = self.store_prefix(pfx);
-            //             self.stats[5].inc_prefix_count(level);
-            //             current_node
-            //                 .pfx_vec
-            //                 .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
-            //             current_node.pfx_vec.sort();
-            //             let _default_val = std::mem::replace(
-            //                 self.retrieve_node_mut(cur_i).unwrap(),
-            //                 SizedStrideNode::Stride8(current_node),
-            //             );
-            //             return Ok(());
-            //         }
-            //     },
-            // };
-
-            let _default_val = std::mem::replace(self.retrieve_node_mut(cur_i).unwrap(), cur_node);
+            let next_node_idx = match_node_for_strides![
+                // applicable to the whole outer match in the marco
+                self;
+                nibble_len;
+                nibble;
+                is_last_stride;
+                pfx;
+                cur_i;
+                level;
+                // Strides to create match arm for; stats level
+                Stride3; 0,
+                Stride4; 1,
+                Stride5; 2,
+                Stride6; 3,
+                Stride7; 4,
+                Stride8; 5
+            ];
 
             if let Some(i) = next_node_idx {
-                // node = std::mem::take(self.retrieve_node_mut(i).unwrap());
                 cur_i = i;
                 level += 1;
             } else {
