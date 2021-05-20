@@ -802,7 +802,7 @@ where
         id
     }
 
-    pub fn update_prefix_meta(
+    fn update_prefix_meta(
         &mut self,
         update_node_idx: u32,
         meta: T,
