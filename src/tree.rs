@@ -538,8 +538,6 @@ where
             // Check it there's an prefix matching in this bitmap for this nibble
             if self.pfxbitarr & bit_pos > S::zero() {
                 found_pfx.push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, n_l)]);
-                // println!("vec: {:?}", self.pfx_vec);
-                // println!("found: {:?}", found_pfx);
             }
         }
 
@@ -984,7 +982,6 @@ where
             };
         }
 
-        println!("=");
         found_pfx_idxs
             .iter()
             .map(|i| self.retrieve_prefix(i.1).unwrap())
