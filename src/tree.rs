@@ -1033,11 +1033,20 @@ where
     pub fn update_prefix_meta(
         &mut self,
         update_node_idx: u32,
-        meta: Option<T>,
+        meta: T,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let update_pfx = self.prefixes.get_mut(update_node_idx as usize).unwrap();
-        let new_meta = <T>::merge_update(update_pfx.meta.as_mut().unwrap(), meta.unwrap());
-        new_meta
+        match self.prefixes.get_mut(update_node_idx as usize) {
+            Some(update_pfx) => match update_pfx.meta.as_mut() {
+                Some(exist_meta) => <T>::merge_update(exist_meta, meta),
+                None => {
+                    update_pfx.meta = Some(meta);
+                    Ok(())
+                }
+            },
+            // TODO
+            // Use/create proper error types
+            None => Err("Prefix not found".into()),
+        }
     }
 
     #[inline]

@@ -109,7 +109,7 @@ macro_rules! stride_branch_for {
                     // so we can return from here.
                     // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
                     // since the compiler can't figure out that it will happen only once.
-                    $self.update_prefix_meta(pfx_idx, $pfx.meta)?;
+                    if let Some(meta) = $pfx.meta { $self.update_prefix_meta(pfx_idx, meta)? };
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(),
                         $enum::$variant(current_node),
