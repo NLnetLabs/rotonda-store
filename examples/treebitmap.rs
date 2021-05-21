@@ -5,7 +5,7 @@ type Prefix4<'a> = Prefix<u32, NoMeta>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     type StoreType = InMemStorage<u32, PrefixAs>;
-    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> = TreeBitMap::new(vec![4]);
+    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![4]);
     let pfxs = vec![
         Prefix::<u32, PrefixAs>::new(0b0000_0000_0000_0000_0000_0000_0000_0000_u32, 0),
         Prefix::<u32, PrefixAs>::new(0b1111_1111_1111_1111_1111_1111_1111_1111_u32, 32),

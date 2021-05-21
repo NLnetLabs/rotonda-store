@@ -105,7 +105,7 @@ macro_rules! match_node_for_strides {
                     $self.stats[$stats_level].inc_prefix_count($level);
                     current_node
                         .pfx_vec
-                        .push(((pfx_net >> (AF::BITS - pfx_len) as usize), i));
+                        .push(((pfx_net >> (Store::AF::BITS - pfx_len) as usize), i));
                     current_node.pfx_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(),

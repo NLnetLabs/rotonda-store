@@ -45,7 +45,7 @@ mod test {
         type StoreType = InMemStorage<u32, PrefixAs>;
         for strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-            let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> =
+            let mut tree_bitmap: TreeBitMap<StoreType> =
                 TreeBitMap::new(strides.1.to_owned());
 
             if let Err(err) = load_prefixes(&mut pfxs) {

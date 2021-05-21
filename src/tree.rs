@@ -3,7 +3,7 @@ use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
 use rpki::repository::resources::Addr;
-use std::{fmt::{Binary, Debug}, marker::PhantomData};
+use std::fmt::{Binary, Debug};
 
 type Stride3 = u16;
 type Stride4 = u32;
@@ -449,9 +449,9 @@ where
     Self::NodeType: SortableNodeId,
    
 {
-    type NodeType; // SizedStrideNode<AF, NodeId>;
+    type NodeType;
     type AF: AddressFamily;
-    type Meta: Debug;
+    type Meta: Debug + MergeUpdate;
 
     fn init(start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>) -> Self;
     fn store_node(&mut self, next_node: SizedStrideNode<Self::AF, Self::NodeType>) -> u32;
@@ -471,7 +471,7 @@ pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
         Vec<Prefix<AF, Meta>>,
 }
 
-impl<AF: AddressFamily, Meta: Debug> StorageBackend for InMemStorage<AF, Meta> {
+impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
     type NodeType = InMemNodeId<u16, u32>;
     type AF = AF;
     type Meta = Meta;
@@ -732,47 +732,32 @@ where
         )
     }
 }
-pub struct TreeBitMap<AF, T, Store>
+pub struct TreeBitMap<Store>
 where
     Store: StorageBackend,
-    T: Debug,
-    AF: AddressFamily + Debug,
 {
     pub strides: Vec<u8>,
     pub stats: Vec<StrideStats>,
     pub store: Store,
-    phantom: PhantomData<(AF, T)>,
 }
 
-// pub struct TreeBitMapNode<AF, S, NodeId>
-// where
-//     S: Stride,
-//     <S as Stride>::PtrSize: Debug + Binary + Copy,
-//     AF: AddressFamily,
-//     NodeId: SortableNodeId,
-
-impl<'a, AF, T, Store> TreeBitMap<AF, T, Store>
+impl<'a, Store> TreeBitMap<Store>
 where
-    T: Debug + MergeUpdate,
-    AF: AddressFamily + Debug,
-    Store::AF: AddressFamily + Debug,
+  
     Store: StorageBackend,
-    Store::NodeType: SortableNodeId,
-    Store::Meta: Debug + MergeUpdate,
-    <Store as StorageBackend>::AF: AddressFamily + Debug, // <Store as StorageBackend>::NodeType: SortableNodeId,
 {
-    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<AF, T, Store> {
+    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<Store> {
         // Check if the strides division makes sense
         let mut strides = vec![];
         let mut strides_sum = 0;
         for s in _strides_vec.iter().cycle() {
             strides.push(*s);
             strides_sum += s;
-            if strides_sum >= AF::BITS - 1 {
+            if strides_sum >= Store::AF::BITS - 1 {
                 break;
             }
         }
-        assert_eq!(strides.iter().fold(0, |acc, s| { acc + s }), AF::BITS);
+        assert_eq!(strides.iter().fold(0, |acc, s| { acc + s }), Store::AF::BITS);
 
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
@@ -852,7 +837,6 @@ where
             strides,
             stats: stride_stats,
             store: Store::init(Some(node)),
-            phantom: PhantomData,
         }
     }
 

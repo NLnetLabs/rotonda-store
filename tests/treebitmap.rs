@@ -6,7 +6,7 @@ mod test {
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         type StoreType = InMemStorage<u32, NoMeta>;
-        let trie = &mut TreeBitMap::<u32, NoMeta, StoreType>::new(vec![4]);
+        let trie = &mut TreeBitMap::<StoreType>::new(vec![4]);
         let min_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
 
         trie.insert(min_pfx)?;
@@ -27,7 +27,7 @@ mod test {
     #[test]
     fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         type StoreType = InMemStorage<u32, PrefixAs>;
-        let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> = TreeBitMap::new(vec![4]);
+        let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![4]);
         let pfxs = vec![
             // Prefix::<u32, PrefixAs>::new(0b0000_0000_0000_0000_0000_0000_0000_0000_u32, 0),
             // Prefix::<u32, PrefixAs>::new(0b1111_1111_1111_1111_1111_1111_1111_1111_u32, 32),
@@ -122,7 +122,7 @@ mod test {
         type StoreType = InMemStorage<u32, NoMeta>;
 
         for i_net in 0..255 {
-            let mut tree_bitmap: TreeBitMap<u32, NoMeta, StoreType> = TreeBitMap::new(vec![4]);
+            let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![4]);
 
             let pfx_vec: Vec<Prefix<u32, NoMeta>> = (1..32)
                 .collect::<Vec<u8>>()
