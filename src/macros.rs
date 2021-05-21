@@ -85,7 +85,7 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     let i = $self.store_node(n);
-                    current_node.ptr_vec.push(NodeId::new(bit_id, i));
+                    current_node.ptr_vec.push(Store::NodeType::new(bit_id, i));
                     current_node.ptr_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(), 
@@ -101,7 +101,7 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewPrefix => {
                     let pfx_len = $pfx.len.clone();
                     let pfx_net = $pfx.net.clone();
-                    let i = $self.store_prefix($pfx);
+                    let i = $self.store.store_prefix($pfx);
                     $self.stats[$stats_level].inc_prefix_count($level);
                     current_node
                         .pfx_vec

@@ -1,11 +1,11 @@
 #[cfg(test)]
 mod test {
 
-    use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-    use rotonda_store::{InMemNodeId, TreeBitMap};
+    use rotonda_store::{InMemStorage, common::{NoMeta, Prefix, PrefixAs}};
+    use rotonda_store::{TreeBitMap};
     use std::fs::File;
     use std::process;
-    use std::{error::Error, u16};
+    use std::{error::Error};
 
     #[test]
     fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
@@ -42,10 +42,10 @@ mod test {
             vec![6, 6, 6, 6, 4, 4],
             vec![3, 4, 4, 6, 7, 8],
         ];
-        type NodeType = InMemNodeId<u16, u32>;
+        type StoreType = InMemStorage<u32, PrefixAs>;
         for strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-            let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> =
+            let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> =
                 TreeBitMap::new(strides.1.to_owned());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
@@ -83,7 +83,7 @@ mod test {
 
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
-            assert_eq!(tree_bitmap.prefixes.len(), GLOBAL_PREFIXES_VEC_SIZE);
+            assert_eq!(tree_bitmap.store.prefixes.len(), GLOBAL_PREFIXES_VEC_SIZE);
             assert_eq!(found_counter, FOUND_PREFIXES);
         }
         Ok(())

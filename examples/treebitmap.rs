@@ -1,11 +1,11 @@
-use rotonda_store::common::{Prefix, PrefixAs, NoMeta};
-use rotonda_store::{TreeBitMap, InMemNodeId};
+use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
+use rotonda_store::{InMemStorage, TreeBitMap};
 
 type Prefix4<'a> = Prefix<u32, NoMeta>;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    type NodeType = InMemNodeId<u16, u32>;
-    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
+    type StoreType = InMemStorage<u32, PrefixAs>;
+    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> = TreeBitMap::new(vec![4]);
     let pfxs = vec![
         Prefix::<u32, PrefixAs>::new(0b0000_0000_0000_0000_0000_0000_0000_0000_u32, 0),
         Prefix::<u32, PrefixAs>::new(0b1111_1111_1111_1111_1111_1111_1111_1111_u32, 32),
@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(pfx)?;
     }
     println!("------ end of inserts\n");
-    println!("{:#?}", tree_bitmap.prefixes);
+    println!("{:#?}", tree_bitmap.store.prefixes);
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 
@@ -104,7 +104,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32),
         Prefix::new(std::net::Ipv4Addr::new(1, 0, 0, 0).into(), 24),
         Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
-
     ] {
         println!("search for: {:?}", spfx);
         let s_spfx = tree_bitmap.match_longest_prefix(&spfx);

@@ -2,7 +2,8 @@ use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
 use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
-use std::fmt::{Binary, Debug};
+use rpki::repository::resources::Addr;
+use std::{fmt::{Binary, Debug}, marker::PhantomData};
 
 type Stride3 = u16;
 type Stride4 = u32;
@@ -354,10 +355,10 @@ where
 
 pub trait SortableNodeId<S = u16, P = u32>
 where
-    Self: std::cmp::Ord + std::fmt::Debug,
+    Self: std::cmp::Ord + std::fmt::Debug + Sized,
 {
     fn sort(self: &Self, other: &Self) -> std::cmp::Ordering;
-    fn new(sort: u16, part: u32) -> Self;
+    fn new(sort: S, part: P) -> Self;
     fn get_sort(self: &Self) -> S;
     fn get_part(self: &Self) -> P;
 }
@@ -380,6 +381,143 @@ impl SortableNodeId for InMemNodeId<u16, u32> {
 
     fn get_part(&self) -> u32 {
         self.1
+    }
+}
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug)]
+pub struct DynamoDbNodeId(u16, (Addr, u8));
+
+impl SortableNodeId<u16, (Addr, u8)> for DynamoDbNodeId {
+    fn sort(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.cmp(&other.0)
+    }
+
+    fn new(sort: u16, part: (Addr, u8)) -> DynamoDbNodeId {
+        DynamoDbNodeId(sort, part)
+    }
+
+    fn get_sort(&self) -> u16 {
+        self.0
+    }
+
+    fn get_part(&self) -> (Addr, u8) {
+        self.1
+    }
+}
+
+impl DynamoDbNodeId {
+    fn part_as_bytes(&self) -> [u8; 17] {
+        let b = self.1 .0.to_bytes();
+        [
+            b[0],
+            b[1],
+            b[2],
+            b[3],
+            b[4],
+            b[5],
+            b[6],
+            b[7],
+            b[8],
+            b[9],
+            b[10],
+            b[11],
+            b[12],
+            b[13],
+            b[14],
+            b[15],
+            self.1 .1.to_ne_bytes()[0],
+        ]
+    }
+
+    fn to_aws_part_key(&self) -> String {
+        base64::encode(&self.part_as_bytes())
+    }
+
+    fn from_aws_part_key(aws_part_key: String) -> (Addr, u8) {
+        let b = base64::decode(aws_part_key).unwrap();
+        (
+            Addr::from_bits(u128::from_ne_bytes([
+                b[0], b[1], b[2], b[3], b[4], b[5], b[6], b[7], b[8], b[9], b[10], b[11], b[12],
+                b[13], b[14], b[15],
+            ])),
+            b[16],
+        )
+    }
+}
+
+pub trait StorageBackend
+where
+    Self::NodeType: SortableNodeId,
+   
+{
+    type NodeType; // SizedStrideNode<AF, NodeId>;
+    type AF: AddressFamily;
+    type Meta: Debug;
+
+    fn init(start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>) -> Self;
+    fn store_node(&mut self, next_node: SizedStrideNode<Self::AF, Self::NodeType>) -> u32;
+    fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn retrieve_node_mut(
+        &mut self,
+        index: u32,
+    ) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn store_prefix(&mut self, next_node: Prefix<Self::AF, Self::Meta>) -> u32;
+    fn retrieve_prefix(&self, index: u32) -> Option<&Prefix<Self::AF, Self::Meta>>;
+    fn retrieve_prefix_mut(&mut self, index: u32) -> Option<&mut Prefix<Self::AF, Self::Meta>>;
+}
+
+pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
+    pub nodes: Vec<SizedStrideNode<AF, InMemNodeId<u16, u32>>>,
+    pub prefixes:
+        Vec<Prefix<AF, Meta>>,
+}
+
+impl<AF: AddressFamily, Meta: Debug> StorageBackend for InMemStorage<AF, Meta> {
+    type NodeType = InMemNodeId<u16, u32>;
+    type AF = AF;
+    type Meta = Meta;
+
+    fn init(
+        start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>,
+    ) -> InMemStorage<AF, Meta> {
+        let mut nodes = vec![];
+        if let Some(n) = start_node {
+            nodes = vec![n];
+        }
+        InMemStorage {
+            nodes,
+            prefixes: vec![],
+        }
+    }
+
+    fn store_node(&mut self, next_node: SizedStrideNode<Self::AF, Self::NodeType>) -> u32 {
+        let id = self.nodes.len() as u32;
+        self.nodes.push(next_node);
+        id
+    }
+
+    fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>> {
+        self.nodes.get(index as usize)
+    }
+
+    fn retrieve_node_mut(
+        &mut self,
+        index: u32,
+    ) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
+        self.nodes.get_mut(index as usize)
+    }
+
+    fn store_prefix(&mut self, next_node: Prefix<Self::AF, Self::Meta>) -> u32 {
+        let id = self.prefixes.len() as u32;
+        self.prefixes.push(next_node);
+        id
+    }
+
+    fn retrieve_prefix(&self, index: u32) -> Option<&Prefix<Self::AF, Self::Meta>> {
+        self.prefixes.get(index as usize)
+    }
+
+    fn retrieve_prefix_mut(&mut self, index: u32) -> Option<&mut Prefix<Self::AF, Self::Meta>> {
+        self.prefixes.get_mut(index as usize)
     }
 }
 
@@ -437,7 +575,6 @@ where
                 match next_stride.unwrap() {
                     3_u8 => {
                         new_node = SizedStrideNode::Stride3(TreeBitMapNode {
-                            // bit_id: bit_pos.leading_zeros() as u16,
                             ptrbitarr: <Stride3 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride3::zero(),
                             pfx_vec: vec![],
@@ -595,25 +732,36 @@ where
         )
     }
 }
-pub struct TreeBitMap<AF, T, NodeId>
+pub struct TreeBitMap<AF, T, Store>
 where
+    Store: StorageBackend,
     T: Debug,
     AF: AddressFamily + Debug,
-    NodeId: SortableNodeId,
 {
     pub strides: Vec<u8>,
     pub stats: Vec<StrideStats>,
-    pub nodes: Vec<SizedStrideNode<AF, NodeId>>,
-    pub prefixes: Vec<Prefix<AF, T>>,
+    pub store: Store,
+    phantom: PhantomData<(AF, T)>,
 }
 
-impl<'a, AF, T, NodeId> TreeBitMap<AF, T, NodeId>
+// pub struct TreeBitMapNode<AF, S, NodeId>
+// where
+//     S: Stride,
+//     <S as Stride>::PtrSize: Debug + Binary + Copy,
+//     AF: AddressFamily,
+//     NodeId: SortableNodeId,
+
+impl<'a, AF, T, Store> TreeBitMap<AF, T, Store>
 where
     T: Debug + MergeUpdate,
     AF: AddressFamily + Debug,
-    NodeId: SortableNodeId,
+    Store::AF: AddressFamily + Debug,
+    Store: StorageBackend,
+    Store::NodeType: SortableNodeId,
+    Store::Meta: Debug + MergeUpdate,
+    <Store as StorageBackend>::AF: AddressFamily + Debug, // <Store as StorageBackend>::NodeType: SortableNodeId,
 {
-    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<AF, T, NodeId> {
+    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<AF, T, Store> {
         // Check if the strides division makes sense
         let mut strides = vec![];
         let mut strides_sum = 0;
@@ -635,7 +783,10 @@ where
             StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
-        let node: SizedStrideNode<AF, NodeId>;
+        let node: SizedStrideNode<
+            <Store as StorageBackend>::AF,
+            <Store as StorageBackend>::NodeType,
+        >;
 
         match strides[0] {
             3 => {
@@ -700,8 +851,8 @@ where
         TreeBitMap {
             strides,
             stats: stride_stats,
-            nodes: vec![node],
-            prefixes: vec![],
+            store: Store::init(Some(node)),
+            phantom: PhantomData,
         }
     }
 
@@ -736,7 +887,10 @@ where
     // 5 - 5 - 5 - 4 - 4 - [4] - 5
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
-    pub fn insert(&mut self, pfx: Prefix<AF, T>) -> Result<(), Box<dyn std::error::Error>> {
+    pub fn insert(
+        &mut self,
+        pfx: Prefix<Store::AF, Store::Meta>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = 0;
         let mut level: u8 = 0;
@@ -750,7 +904,7 @@ where
                 stride
             };
 
-            let nibble = AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
+            let nibble = Store::AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
 
             let next_node_idx = match_node_for_strides![
@@ -780,36 +934,40 @@ where
         }
     }
 
-    pub fn store_node(&mut self, next_node: SizedStrideNode<AF, NodeId>) -> u32 {
-        let id = self.nodes.len() as u32;
-        self.nodes.push(next_node);
-        id
+    pub fn store_node(&mut self, next_node: SizedStrideNode<Store::AF, Store::NodeType>) -> u32 {
+        self.store.store_node(next_node)
     }
 
     #[inline]
-    pub fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<AF, NodeId>> {
-        self.nodes.get(index as usize)
+    pub fn retrieve_node(
+        &self,
+        index: u32,
+    ) -> Option<&SizedStrideNode<Store::AF, Store::NodeType>> {
+        self.store.retrieve_node(index)
     }
 
     #[inline]
-    pub fn retrieve_node_mut(&mut self, index: u32) -> Option<&mut SizedStrideNode<AF, NodeId>> {
-        self.nodes.get_mut(index as usize)
+    pub fn retrieve_node_mut(
+        &mut self,
+        index: u32,
+    ) -> Option<&mut SizedStrideNode<Store::AF, Store::NodeType>> {
+        self.store.retrieve_node_mut(index)
     }
 
-    pub fn store_prefix(&mut self, next_node: Prefix<AF, T>) -> u32 {
-        let id = self.prefixes.len() as u32;
-        self.prefixes.push(next_node);
-        id
+    pub fn store_prefix(&mut self, next_node: Prefix<Store::AF, Store::Meta>) -> u32 {
+        // let id = self.prefixes.len() as u32;
+        self.store.store_prefix(next_node)
+        // id
     }
 
     fn update_prefix_meta(
         &mut self,
         update_node_idx: u32,
-        meta: T,
+        meta: Store::Meta,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        match self.prefixes.get_mut(update_node_idx as usize) {
+        match self.store.retrieve_prefix_mut(update_node_idx) {
             Some(update_pfx) => match update_pfx.meta.as_mut() {
-                Some(exist_meta) => <T>::merge_update(exist_meta, meta),
+                Some(exist_meta) => <Store::Meta>::merge_update(exist_meta, meta),
                 None => {
                     update_pfx.meta = Some(meta);
                     Ok(())
@@ -822,21 +980,24 @@ where
     }
 
     #[inline]
-    pub fn retrieve_prefix(&'a self, index: u32) -> Option<&'a Prefix<AF, T>> {
-        self.prefixes.get(index as usize)
+    pub fn retrieve_prefix(&'a self, index: u32) -> Option<&'a Prefix<Store::AF, Store::Meta>> {
+        self.store.retrieve_prefix(index)
     }
 
     #[inline]
-    pub fn retrieve_prefix_mut(&mut self, index: u32) -> Option<&mut Prefix<AF, T>> {
-        self.prefixes.get_mut(index as usize)
+    pub fn retrieve_prefix_mut(
+        &mut self,
+        index: u32,
+    ) -> Option<&mut Prefix<Store::AF, Store::Meta>> {
+        self.store.retrieve_prefix_mut(index)
     }
 
     pub fn match_longest_prefix(
         &'a self,
-        search_pfx: &Prefix<AF, NoMeta>,
-    ) -> Vec<&'a Prefix<AF, T>> {
+        search_pfx: &Prefix<Store::AF, NoMeta>,
+    ) -> Vec<&'a Prefix<Store::AF, Store::Meta>> {
         let mut stride_end = 0;
-        let mut found_pfx_idxs: Vec<(AF, u32)> = vec![];
+        let mut found_pfx_idxs: Vec<(Store::AF, u32)> = vec![];
         let mut node = self.retrieve_node(0).unwrap();
 
         for stride in self.strides.iter() {
@@ -990,8 +1151,8 @@ where
 
     pub fn match_longest_prefix_only(
         &'a self,
-        search_pfx: &Prefix<AF, NoMeta>,
-    ) -> Option<&'a Prefix<AF, T>> {
+        search_pfx: &Prefix<Store::AF, NoMeta>,
+    ) -> Option<&'a Prefix<Store::AF, Store::Meta>> {
         let mut stride_end = 0;
         let mut found_pfx_idx: Option<u32> = None;
         let mut node = self.retrieve_node(0).unwrap();

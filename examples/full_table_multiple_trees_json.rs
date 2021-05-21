@@ -1,5 +1,5 @@
-use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-use rotonda_store::{InMemNodeId, TreeBitMap};
+use rotonda_store::{InMemStorage, common::{NoMeta, Prefix, PrefixAs}};
+use rotonda_store::{TreeBitMap};
 use std::error::Error;
 use std::fs::File;
 use std::process;
@@ -32,12 +32,12 @@ fn main() -> Result<(), Box<dyn Error>> {
         vec![6, 6, 6, 6, 4, 4],
         vec![3, 4, 4, 6, 7, 8],
     ];
-    type NodeType = InMemNodeId<u16, u32>;
+    type StoreType = InMemStorage<u32, PrefixAs>;
     for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-            let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> =
+            let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> =
                 TreeBitMap::new(strides.1.to_owned());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
@@ -81,9 +81,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
             println!(
                 "\"global_prefix_vec_size\": {},",
-                tree_bitmap.prefixes.len()
+                tree_bitmap.store.prefixes.len()
             );
-            println!("\"global_node_vec_size\": {},", tree_bitmap.nodes.len());
+            println!("\"global_node_vec_size\": {},", tree_bitmap.store.nodes.len());
             println!(
                 "\"insert_time_nanos\": {},",
                 dur_insert_nanos as f32 / inserts_num as f32

@@ -1,5 +1,5 @@
 use ansi_term::Colour;
-use rotonda_store::{InMemNodeId, SizedStrideNode, TreeBitMap};
+use rotonda_store::{InMemNodeId, InMemStorage, SizedStrideNode, TreeBitMap};
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
 use std::error::Error;
 use std::ffi::OsString;
@@ -43,9 +43,9 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    type NodeType = InMemNodeId<u16, u32>;
+    type StoreType = InMemStorage<u32, PrefixAs>;
     let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, NodeType> = TreeBitMap::new(vec![4]);
+    let mut tree_bitmap: TreeBitMap<u32, PrefixAs, StoreType> = TreeBitMap::new(vec![4]);
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -71,16 +71,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         acc
     });
-    println!("prefix vec size {}", tree_bitmap.prefixes.len());
+    println!("prefix vec size {}", tree_bitmap.store.prefixes.len());
     println!("finished building tree...");
     println!("{:?} nodes created", total_nodes);
     println!(
         "size of node: {} bytes",
-        std::mem::size_of::<SizedStrideNode<u32, NodeType>>()
+        std::mem::size_of::<SizedStrideNode<u32, InMemNodeId<u16,u32>>>()
     );
     println!(
         "memory used by nodes: {}kb",
-        total_nodes * std::mem::size_of::<SizedStrideNode<u32, NodeType>>() / 1024
+        total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId<u16,u32>>>() / 1024
     );
     println!(
         "size of prefix: {} bytes",
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "memory used by prefixes: {}kb",
-        tree_bitmap.prefixes.len() * std::mem::size_of::<Prefix<u32, NoMeta>>() / 1024
+        tree_bitmap.store.prefixes.len() * std::mem::size_of::<Prefix<u32, NoMeta>>() / 1024
     );
     println!("stride division  {:?}", tree_bitmap.strides);
 
