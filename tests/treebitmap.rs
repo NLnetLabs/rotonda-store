@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-    use rotonda_store::{InMemStorage, TreeBitMap};
+    use rotonda_store::{InMemStorage, TreeBitMap, StorageBackend};
 
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
@@ -91,7 +91,7 @@ mod test {
             tree_bitmap.insert(pfx)?;
         }
 
-        for pfx in tree_bitmap.store.prefixes.iter() {
+        for pfx in tree_bitmap.store.prefixes_iter() {
             let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_longest_prefix_only(&pfx_nm);
             println!("{:?}", pfx);

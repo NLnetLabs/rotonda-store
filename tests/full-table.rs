@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
 
-    use rotonda_store::{InMemStorage, common::{NoMeta, Prefix, PrefixAs}};
+    use rotonda_store::{InMemStorage, StorageBackend, common::{NoMeta, Prefix, PrefixAs}};
     use rotonda_store::{TreeBitMap};
     use std::fs::File;
     use std::process;
@@ -83,7 +83,7 @@ mod test {
 
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
-            assert_eq!(tree_bitmap.store.prefixes.len(), GLOBAL_PREFIXES_VEC_SIZE);
+            assert_eq!(tree_bitmap.store.get_prefixes_len(), GLOBAL_PREFIXES_VEC_SIZE);
             assert_eq!(found_counter, FOUND_PREFIXES);
         }
         Ok(())
