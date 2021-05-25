@@ -66,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(pfx)?;
     }
     println!("------ end of inserts\n");
-    println!("{:#?}", tree_bitmap.store.prefixes);
+    // println!("{:#?}", tree_bitmap.store.prefixes);
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 
