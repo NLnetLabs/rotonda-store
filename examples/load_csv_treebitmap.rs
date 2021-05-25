@@ -1,5 +1,5 @@
 use ansi_term::Colour;
-use rotonda_store::{InMemNodeId, InMemStorage, SizedStrideNode, TreeBitMap};
+use rotonda_store::{InMemNodeId, InMemStorage, StorageBackend, SizedStrideNode, TreeBitMap};
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
 use std::error::Error;
 use std::ffi::OsString;
@@ -71,16 +71,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
         acc
     });
-    println!("prefix vec size {}", tree_bitmap.store.prefixes.len());
+    println!("prefix vec size {}", tree_bitmap.store.get_prefixes_len());
     println!("finished building tree...");
     println!("{:?} nodes created", total_nodes);
     println!(
         "size of node: {} bytes",
-        std::mem::size_of::<SizedStrideNode<u32, InMemNodeId<u16,u32>>>()
+        std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
     );
     println!(
         "memory used by nodes: {}kb",
-        total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId<u16,u32>>>() / 1024
+        total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>() / 1024
     );
     println!(
         "size of prefix: {} bytes",
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
     println!(
         "memory used by prefixes: {}kb",
-        tree_bitmap.store.prefixes.len() * std::mem::size_of::<Prefix<u32, NoMeta>>() / 1024
+        tree_bitmap.store.get_prefixes_len() * std::mem::size_of::<Prefix<u32, NoMeta>>() / 1024
     );
     println!("stride division  {:?}", tree_bitmap.strides);
 

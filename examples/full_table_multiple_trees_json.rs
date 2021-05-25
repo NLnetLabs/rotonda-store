@@ -1,5 +1,5 @@
-use rotonda_store::{InMemStorage, common::{NoMeta, Prefix, PrefixAs}};
-use rotonda_store::{TreeBitMap};
+use rotonda_store::{InMemStorage, StorageBackend, common::{NoMeta, Prefix, PrefixAs}};
+use rotonda_store::TreeBitMap;
 use std::error::Error;
 use std::fs::File;
 use std::process;
@@ -81,9 +81,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
             println!(
                 "\"global_prefix_vec_size\": {},",
-                tree_bitmap.store.prefixes.len()
+                tree_bitmap.store.get_prefixes_len()
             );
-            println!("\"global_node_vec_size\": {},", tree_bitmap.store.nodes.len());
+            println!("\"global_node_vec_size\": {},", tree_bitmap.store.get_nodes_len());
             println!(
                 "\"insert_time_nanos\": {},",
                 dur_insert_nanos as f32 / inserts_num as f32

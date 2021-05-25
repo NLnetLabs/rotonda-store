@@ -3,7 +3,7 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fs::File;
 use std::process;
-use rotonda_store::{InMemStorage, InMemNodeId, common::{Prefix, PrefixAs}};
+use rotonda_store::{InMemStorage, InMemNodeId, StorageBackend, common::{Prefix, PrefixAs}};
 use rotonda_store::{TreeBitMap, SizedStrideNode};
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
@@ -75,23 +75,23 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("\"total_nodes\": {},", total_nodes);
         println!(
             "\"node_size_b\": {},",
-            std::mem::size_of::<SizedStrideNode<u32, InMemNodeId<u16,u32>>>()
+            std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
         );
         println!(
             "\"nodes_mem_kb\": {},",
-            (total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId<u16,u32>>>()
-                + tree_bitmap.store.prefixes.len() * 5
+            (total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
+                + tree_bitmap.store.get_prefixes_len() * 5
                 + total_nodes * 5)
                 / 1024 // 5 is the size of a (u32, u8)
         );
-        println!("\"total_prefixes\": {:?},", tree_bitmap.store.prefixes.len());
+        println!("\"total_prefixes\": {:?},", tree_bitmap.store.get_prefixes_len());
         println!(
             "\"prefixes_mem_kb\": {:?},",
-            tree_bitmap.store.prefixes.len() * std::mem::size_of::<Prefix<u32, PrefixAs>>() / 1024
+            tree_bitmap.store.get_prefixes_len() * std::mem::size_of::<Prefix<u32, PrefixAs>>() / 1024
         );
         println!(
             "\"prefixes_per_node\": {},",
-            tree_bitmap.store.prefixes.len() as f64 / total_nodes as f64
+            tree_bitmap.store.get_prefixes_len() as f64 / total_nodes as f64
         );
         println!("\"strides\": {:?},", tree_bitmap.strides);
 
