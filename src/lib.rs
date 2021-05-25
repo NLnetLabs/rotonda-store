@@ -1,5 +1,4 @@
-// pub use common::{AddressFamily, NoMeta, Prefix, PrefixAs};
-pub use tree::{InMemStorage, InMemNodeId, SizedStrideNode, TreeBitMap};
+pub use tree::{InMemStorage, InMemNodeId, SizedStrideNode, TreeBitMap, SortableNodeId, StorageBackend, Stride};
 
 pub mod common;
 mod synth_int;
