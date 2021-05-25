@@ -85,7 +85,7 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     let i = $self.store_node(n);
-                    current_node.ptr_vec.push(Store::NodeType::new(bit_id, i));
+                    current_node.ptr_vec.push(Store::NodeType::new(bit_id, i.into()));
                     current_node.ptr_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(), 
