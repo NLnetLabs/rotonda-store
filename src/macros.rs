@@ -74,7 +74,7 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match std::mem::take($self.retrieve_node_mut($cur_i).unwrap()) {
+        match std::mem::take($self.retrieve_node_mut($cur_i)?) {
             $( SizedStrideNode::$variant(mut current_node) =>
             match current_node.eval_node_or_prefix_at(
                 $nibble,
@@ -83,9 +83,12 @@ macro_rules! match_node_for_strides {
                 $is_last_stride,
             ) {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
+                    println!("NEWNODE, CUR_NODE {:?} nibble {:?} nibble_len {:?}", $cur_i, $nibble, $nibble_len);
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    let i = $self.store_node(n);
-                    current_node.ptr_vec.push(Store::NodeType::new(bit_id, i.into()));
+                    let new_id = Store::NodeType::new(&0_u16.into(),&0_u16.into());
+                    let i = $self.store_node(Some($cur_i), n).unwrap();
+                    println!("NEWNODE STORED {:?}", i);
+                    current_node.ptr_vec.push(Store::NodeType::new(&bit_id, &i.into()));
                     current_node.ptr_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(), 
@@ -93,27 +96,37 @@ macro_rules! match_node_for_strides {
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
+                    println!("EXISTINGNODE");
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(), 
                         SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix => {
+                    println!("NEWPREFIX");
+
                     let pfx_len = $pfx.len.clone();
                     let pfx_net = $pfx.net.clone();
-                    let i = $self.store.store_prefix($pfx);
+                    let i = $self.store.store_prefix($pfx)?;
                     $self.stats[$stats_level].inc_prefix_count($level);
+                    // Construct the SortKey by default from the nibble and
+                    // nibble_len, so that nibble_len determines the base
+                    // position (2^nibble_len) and then nibble is the offset
+                    // from the base position.
                     current_node
                         .pfx_vec
-                        .push(((pfx_net >> (Store::AF::BITS - pfx_len) as usize), i));
-                    current_node.pfx_vec.sort();
+                        .push((((1 << $nibble_len) + $nibble) as u32, i));
+                        current_node.pfx_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(),
                         SizedStrideNode::$variant(current_node),
                     );
+                    println!("done with new prefix");
                     return Ok(());
                 }
                 NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
+                    println!("EXISTINGPREFIX");
+
                     // ExistingPrefix is guaranteed to only happen at the last stride,
                     // so we can return from here.
                     // If we don't then we cannot move pfx.meta into the update_prefix_meta function,

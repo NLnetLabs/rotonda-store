@@ -3,6 +3,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 use std::ops::BitOr;
+use rpki::repository::resources::Addr;
 
 #[derive(Debug)]
 pub struct PrefixAs(pub u32);
@@ -52,6 +53,8 @@ pub trait AddressFamily: PrimInt + Debug {
     // returns the specified nibble from `start_bit` to (and
     // including) `start_bit + len` and shifted to the right.
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
+    fn from_addr(net: Addr) -> Self;
+    fn into_addr(self) -> Addr;
 }
 
 impl AddressFamily for u32 {
@@ -65,6 +68,14 @@ impl AddressFamily for u32 {
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32 {
         (net << start_bit) >> ((32 - len) % 32)
     }
+
+    fn from_addr(net: Addr) -> u32 {
+        (net.to_bits() >> 96) as u32
+    }
+
+    fn into_addr(self) -> Addr {
+        Addr::from_bits(self as u128)
+    }
 }
 
 impl AddressFamily for u128 {
@@ -76,6 +87,14 @@ impl AddressFamily for u128 {
 
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32 {
         ((net << start_bit) >> ((128 - len) % 128)) as u32
+    }
+
+    fn from_addr(net: Addr) -> u128 {
+        net.to_bits()
+    }
+
+    fn into_addr(self) -> Addr {
+        Addr::from_bits(self)
     }
 }
 

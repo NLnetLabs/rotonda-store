@@ -91,7 +91,7 @@ mod test {
             tree_bitmap.insert(pfx)?;
         }
 
-        for pfx in tree_bitmap.store.prefixes_iter() {
+        for pfx in tree_bitmap.store.prefixes_iter()? {
             let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_longest_prefix_only(&pfx_nm);
             println!("{:?}", pfx);

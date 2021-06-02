@@ -1,8 +1,11 @@
-pub use tree::{InMemStorage, InMemNodeId, SizedStrideNode, TreeBitMap, SortableNodeId, StorageBackend, Stride};
+pub use tree::{
+    InMemNodeId, InMemStorage, SizedStrideNode, SortableNodeId, StorageBackend, Stride, TreeBitMap,
+    TreeBitMapNode,
+};
 
 pub mod common;
-mod synth_int;
-mod tree;
+pub mod synth_int;
+pub mod tree;
 
 #[macro_use]
 mod macros;
