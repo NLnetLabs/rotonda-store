@@ -2,8 +2,11 @@ use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
 use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
-use std::fmt::{Binary, Debug};
 use std::io::{Error, ErrorKind};
+use std::{
+    fmt::{Binary, Debug},
+    marker::PhantomData,
+};
 
 type Stride3 = u16;
 type Stride4 = u32;
@@ -292,7 +295,7 @@ impl Stride for Stride8 {
 }
 
 #[derive(Debug)]
-pub enum SizedStrideNode<NodeId: SortableNodeId> {
+pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride3(TreeBitMapNode<AF, Stride3, NodeId>),
     Stride4(TreeBitMapNode<AF, Stride4, NodeId>),
     Stride5(TreeBitMapNode<AF, Stride5, NodeId>),
@@ -301,12 +304,12 @@ pub enum SizedStrideNode<NodeId: SortableNodeId> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
-pub struct TreeBitMapNode<S, NodeId>
+pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
 where
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     AF: AddressFamily,
-    NodeId: SortableNodeId,
+    NodeId: SortableNodeId + Copy,
 {
     pub ptrbitarr: <S as Stride>::PtrSize,
     pub pfxbitarr: S,
@@ -320,12 +323,13 @@ where
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
     pub ptr_vec: Vec<NodeId>,
+    _af: PhantomData<AF>,
 }
 
 impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
 where
     AF: AddressFamily,
-    NodeId: SortableNodeId,
+    NodeId: SortableNodeId + Copy,
 {
     fn default() -> Self {
         SizedStrideNode::Stride3(TreeBitMapNode {
@@ -333,6 +337,7 @@ where
             pfxbitarr: 0,
             pfx_vec: vec![],
             ptr_vec: vec![],
+            _af: PhantomData,
         })
     }
 }
@@ -342,8 +347,8 @@ where
     AF: AddressFamily,
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
-    NodeId: SortableNodeId,
-    <NodeId as SortableNodeId>::Part: Debug
+    NodeId: SortableNodeId + Copy,
+    // <NodeId as SortableNodeId>::Part: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeBitMapNode")
@@ -369,7 +374,7 @@ where
     fn get_part(self: &Self) -> Self::Part;
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug)]
+#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
 pub struct InMemNodeId(u16, u32);
 
 // This works for both IPv4 and IPv6 up to a certain point.
@@ -402,7 +407,7 @@ impl SortableNodeId for InMemNodeId {
 
 pub trait StorageBackend
 where
-    Self::NodeType: SortableNodeId,
+    Self::NodeType: SortableNodeId + Copy,
 {
     type NodeType;
     type AF: AddressFamily;
@@ -416,22 +421,25 @@ where
     // record, e.g., dynamodb
     fn store_node(
         &mut self,
-        id: Option<<<Self as StorageBackend>::NodeType as SortableNodeId>::Part>,
+        id: Option<Self::NodeType>,
         next_node: SizedStrideNode<Self::AF, Self::NodeType>,
-    ) -> Option<<<Self as StorageBackend>::NodeType as SortableNodeId>::Part>;
+    ) -> Option<Self::NodeType>;
     fn retrieve_node(
         &self,
         index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>>;
     fn retrieve_node_mut(
         &mut self,
-        index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
+        index: Self::NodeType,
     ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>>;
     fn get_nodes_len(&self) -> usize;
     fn store_prefix(
         &mut self,
         next_node: Prefix<Self::AF, Self::Meta>,
-    ) -> Result<<<Self as StorageBackend>::NodeType as SortableNodeId>::Part, Box<dyn std::error::Error>>;
+    ) -> Result<
+        <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
+        Box<dyn std::error::Error>,
+    >;
     fn retrieve_prefix(
         &self,
         index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
@@ -474,12 +482,14 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
 
     fn store_node(
         &mut self,
-        _id: Option<<<Self as StorageBackend>::NodeType as SortableNodeId>::Part>,
+        _id: Option<Self::NodeType>,
         next_node: SizedStrideNode<Self::AF, Self::NodeType>,
-    ) -> Option<u32> {
+    ) -> Option<Self::NodeType> {
         let id = self.nodes.len() as u32;
         self.nodes.push(next_node);
-        Some(id)
+        //Store::NodeType::new(&bit_id, &i.into())
+        //Store::NodeType::new(&((1 << $nibble_len) + $nibble as u16).into(), &i)
+        Some(InMemNodeId::new(&0, &id))
     }
 
     fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>> {
@@ -488,16 +498,24 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
 
     fn retrieve_node_mut(
         &mut self,
-        index: u32,
+        index: Self::NodeType,
     ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>> {
-        self.nodes.get_mut(index as usize).ok_or(Box::new(Error::new(ErrorKind::Other, "Retrieve Node Error")))
+        self.nodes
+            .get_mut(index.get_part() as usize)
+            .ok_or(Box::new(Error::new(
+                ErrorKind::Other,
+                "Retrieve Node Error",
+            )))
     }
 
     fn get_nodes_len(&self) -> usize {
         self.nodes.len()
     }
 
-    fn store_prefix(&mut self, next_node: Prefix<Self::AF, Self::Meta>) -> Result<u32, Box<dyn std::error::Error>> {
+    fn store_prefix(
+        &mut self,
+        next_node: Prefix<Self::AF, Self::Meta>,
+    ) -> Result<u32, Box<dyn std::error::Error>> {
         let id = self.prefixes.len() as u32;
         self.prefixes.push(next_node);
         Ok(id)
@@ -515,7 +533,9 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         self.prefixes.len()
     }
 
-    fn prefixes_iter(&self) -> Result<std::slice::Iter<'_, Prefix<AF, Meta>>, Box<dyn std::error::Error>> {
+    fn prefixes_iter(
+        &self,
+    ) -> Result<std::slice::Iter<'_, Prefix<AF, Meta>>, Box<dyn std::error::Error>> {
         Ok(self.prefixes.iter())
     }
 
@@ -526,9 +546,9 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
     }
 }
 
-enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId> {
+enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), // New Node and bit_id of the new node
-    ExistingNode(NodeId::Part),
+    ExistingNode(NodeId),
     NewPrefix,
     ExistingPrefix(NodeId::Part),
 }
@@ -538,7 +558,7 @@ where
     AF: AddressFamily,
     S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S>,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
-    NodeId: SortableNodeId,
+    NodeId: SortableNodeId + Copy,
 {
     // Inspects the stride (nibble, nibble_len) to see it there's
     // already a child node (if not at the last stride) or a prefix
@@ -584,6 +604,7 @@ where
                             pfxbitarr: Stride3::zero(),
                             pfx_vec: vec![],
                             ptr_vec: vec![],
+                            _af: PhantomData,
                         });
                     }
                     4_u8 => {
@@ -592,6 +613,7 @@ where
                             pfxbitarr: Stride4::zero(),
                             pfx_vec: vec![],
                             ptr_vec: vec![],
+                            _af: PhantomData,
                         });
                     }
                     5_u8 => {
@@ -600,6 +622,7 @@ where
                             pfxbitarr: Stride5::zero(),
                             pfx_vec: vec![],
                             ptr_vec: vec![],
+                            _af: PhantomData,
                         });
                     }
                     6_u8 => {
@@ -608,6 +631,7 @@ where
                             pfxbitarr: Stride6::zero(),
                             pfx_vec: vec![],
                             ptr_vec: vec![],
+                            _af: PhantomData,
                         });
                     }
                     7_u8 => {
@@ -616,6 +640,7 @@ where
                             pfxbitarr: U256(0_u128, 0_u128),
                             pfx_vec: vec![],
                             ptr_vec: vec![],
+                            _af: PhantomData,
                         });
                     }
                     8_u8 => {
@@ -624,6 +649,7 @@ where
                             pfxbitarr: U512(0_u128, 0_u128, 0_u128, 0_u128),
                             pfx_vec: vec![],
                             ptr_vec: vec![],
+                            _af: PhantomData,
                         });
                     }
                     _ => {
@@ -649,14 +675,12 @@ where
                 return NewNodeOrIndex::NewPrefix;
             }
             return NewNodeOrIndex::ExistingPrefix(
-                self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)].1,
+                self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)].get_part(),
             );
         }
 
         NewNodeOrIndex::ExistingNode(
             self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]
-                .get_part()
-                .into(),
         )
     }
 
@@ -666,7 +690,7 @@ where
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
-        found_pfx: &'b mut Vec<NodeId>
+        found_pfx: &'b mut Vec<NodeId>,
     ) -> Option<<NodeId as SortableNodeId>::Part> {
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
 
@@ -793,6 +817,8 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
+                    _af: PhantomData
+
                 });
                 stride_stats[0].inc(0);
             }
@@ -802,6 +828,8 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
+                    _af: PhantomData
+
                 });
                 stride_stats[1].inc(0);
             }
@@ -811,6 +839,8 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
+                    _af: PhantomData
+
                 });
                 stride_stats[2].inc(0);
             }
@@ -820,6 +850,8 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
+                    _af: PhantomData
+
                 });
                 stride_stats[3].inc(0);
             }
@@ -829,6 +861,8 @@ where
                     pfxbitarr: U256(0, 0),
                     ptr_vec: vec![],
                     pfx_vec: vec![],
+                    _af: PhantomData
+
                 });
                 stride_stats[4].inc(0);
             }
@@ -838,6 +872,8 @@ where
                     pfxbitarr: U512(0, 0, 0, 0),
                     ptr_vec: vec![],
                     pfx_vec: vec![],
+                    _af: PhantomData
+
                 });
                 stride_stats[5].inc(0);
             }
@@ -889,7 +925,7 @@ where
         pfx: Prefix<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
-        let mut cur_i: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part = 0_u16.into();
+        let mut cur_i: Store::NodeType = Store::NodeType::new(&0_u16.into(), &0_u16.into());
         let mut level: u8 = 0;
 
         loop {
@@ -933,9 +969,9 @@ where
 
     pub fn store_node(
         &mut self,
-        id: Option<<<Store as StorageBackend>::NodeType as SortableNodeId>::Part>,
+        id: Option<Store::NodeType>,
         next_node: SizedStrideNode<Store::AF, Store::NodeType>,
-    ) -> Option<<<Store as StorageBackend>::NodeType as SortableNodeId>::Part> {
+    ) -> Option<Store::NodeType> {
         self.store.store_node(id, next_node)
     }
 
@@ -950,7 +986,7 @@ where
     #[inline]
     pub fn retrieve_node_mut(
         &mut self,
-        index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
+        index: Store::NodeType,
     ) -> Result<&mut SizedStrideNode<Store::AF, Store::NodeType>, Box<dyn std::error::Error>> {
         self.store.retrieve_node_mut(index)
     }
@@ -958,7 +994,10 @@ where
     pub fn store_prefix(
         &mut self,
         next_node: Prefix<Store::AF, Store::Meta>,
-    ) -> Result<<<Store as StorageBackend>::NodeType as SortableNodeId>::Part, Box<dyn std::error::Error>> {
+    ) -> Result<
+        <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
+        Box<dyn std::error::Error>,
+    > {
         // let id = self.prefixes.len() as u32;
         self.store.store_prefix(next_node)
         // id
@@ -1004,10 +1043,7 @@ where
         search_pfx: &Prefix<Store::AF, NoMeta>,
     ) -> Vec<&'a Prefix<Store::AF, Store::Meta>> {
         let mut stride_end = 0;
-        let mut found_pfx_idxs: Vec<(
-            Store::AF,
-            <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-        )> = vec![];
+        let mut found_pfx_idxs: Vec<Store::NodeType> = vec![];
         let mut node = self.retrieve_node(0_u16.into()).unwrap();
 
         for stride in self.strides.iter() {
@@ -1050,7 +1086,7 @@ where
                         None => {
                             return found_pfx_idxs
                                 .into_iter()
-                                .map(|i| self.retrieve_prefix(i.1).unwrap())
+                                .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
                                 .collect();
                         }
                     }
@@ -1069,7 +1105,7 @@ where
                         None => {
                             return found_pfx_idxs
                                 .iter()
-                                .map(|i| self.retrieve_prefix(i.1).unwrap())
+                                .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
                                 .collect();
                         }
                     }
@@ -1088,7 +1124,7 @@ where
                         None => {
                             return found_pfx_idxs
                                 .iter()
-                                .map(|i| self.retrieve_prefix(i.1).unwrap())
+                                .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
                                 .collect();
                         }
                     }
@@ -1107,7 +1143,7 @@ where
                         None => {
                             return found_pfx_idxs
                                 .iter()
-                                .map(|i| self.retrieve_prefix(i.1).unwrap())
+                                .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
                                 .collect();
                         }
                     }
@@ -1126,7 +1162,7 @@ where
                         None => {
                             return found_pfx_idxs
                                 .iter()
-                                .map(|i| self.retrieve_prefix(i.1).unwrap())
+                                .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
                                 .collect();
                         }
                     }
@@ -1145,7 +1181,7 @@ where
                         None => {
                             return found_pfx_idxs
                                 .iter()
-                                .map(|i| self.retrieve_prefix(i.1).unwrap())
+                                .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
                                 .collect();
                         }
                     }
@@ -1155,7 +1191,7 @@ where
 
         found_pfx_idxs
             .iter()
-            .map(|i| self.retrieve_prefix(i.1).unwrap())
+            .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
             .collect()
     }
 
@@ -1207,14 +1243,14 @@ where
                         stride_end - stride,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.1);
+                            found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
                         }
                         (None, Some(pfx_idx)) => {
-                            return Some(self.retrieve_prefix(pfx_idx.1).unwrap())
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
                         }
                         (None, None) => {
                             break;
@@ -1229,14 +1265,14 @@ where
                         stride_end - stride,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.1);
+                            found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
                         }
                         (None, Some(pfx_idx)) => {
-                            return Some(self.retrieve_prefix(pfx_idx.1).unwrap())
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
                         }
                         (None, None) => {
                             break;
@@ -1251,14 +1287,14 @@ where
                         stride_end - stride,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.1);
+                            found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
                         }
                         (None, Some(pfx_idx)) => {
-                            return Some(self.retrieve_prefix(pfx_idx.1).unwrap())
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
                         }
                         (None, None) => {
                             break;
@@ -1273,14 +1309,14 @@ where
                         stride_end - stride,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.1);
+                            found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
                         }
                         (None, Some(pfx_idx)) => {
-                            return Some(self.retrieve_prefix(pfx_idx.1).unwrap())
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
                         }
                         (None, None) => {
                             break;
@@ -1295,14 +1331,14 @@ where
                         stride_end - stride,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.1);
+                            found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
                         }
                         (None, Some(pfx_idx)) => {
-                            return Some(self.retrieve_prefix(pfx_idx.1).unwrap())
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
                         }
                         (None, None) => {
                             break;
@@ -1317,14 +1353,14 @@ where
                         stride_end - stride,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.1);
+                            found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
                         }
                         (None, Some(pfx_idx)) => {
-                            return Some(self.retrieve_prefix(pfx_idx.1).unwrap())
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
                         }
                         (None, None) => {
                             break;

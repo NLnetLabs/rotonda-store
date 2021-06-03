@@ -85,20 +85,21 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
                     println!("NEWNODE, CUR_NODE {:?} nibble {:?} nibble_len {:?}", $cur_i, $nibble, $nibble_len);
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    let new_id = Store::NodeType::new(&0_u16.into(),&0_u16.into());
-                    let i = $self.store_node(Some($cur_i), n).unwrap();
+                    let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
+                    // stupid work around won't work, but at least doesn't throw
+                    let i = $self.store_node(Some(new_id), n).unwrap();
                     println!("NEWNODE STORED {:?}", i);
-                    current_node.ptr_vec.push(Store::NodeType::new(&bit_id, &i.into()));
+                    current_node.ptr_vec.push(Store::NodeType::new(&bit_id, &i.get_part()));
                     current_node.ptr_vec.sort();
                     let _default_val = std::mem::replace(
-                        $self.retrieve_node_mut($cur_i).unwrap(), 
+                        $self.retrieve_node_mut($cur_i).unwrap(),
                         SizedStrideNode::$variant(current_node));
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
                     println!("EXISTINGNODE");
                     let _default_val = std::mem::replace(
-                        $self.retrieve_node_mut($cur_i).unwrap(), 
+                        $self.retrieve_node_mut($cur_i).unwrap(),
                         SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
@@ -115,7 +116,7 @@ macro_rules! match_node_for_strides {
                     // from the base position.
                     current_node
                         .pfx_vec
-                        .push((((1 << $nibble_len) + $nibble) as u32, i));
+                        .push(Store::NodeType::new(&((1 << $nibble_len) + $nibble as u16).into(), &i));
                         current_node.pfx_vec.sort();
                     let _default_val = std::mem::replace(
                         $self.retrieve_node_mut($cur_i).unwrap(),
