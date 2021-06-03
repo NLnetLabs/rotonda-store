@@ -323,7 +323,7 @@ where
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
     pub ptr_vec: Vec<NodeId>,
-    _af: PhantomData<AF>,
+    pub _af: PhantomData<AF>,
 }
 
 impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
