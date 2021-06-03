@@ -426,12 +426,14 @@ where
     ) -> Option<Self::NodeType>;
     fn retrieve_node(
         &self,
-        index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
+        index: Self::NodeType,
     ) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>>;
     fn retrieve_node_mut(
         &mut self,
         index: Self::NodeType,
     ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>>;
+    fn get_root_node(&self) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
     fn store_prefix(
         &mut self,
@@ -459,7 +461,7 @@ where
 
 pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
     nodes: Vec<SizedStrideNode<AF, InMemNodeId<Sort = u16, Part = u32>>>,
-    prefixes: Vec<Prefix<AF, Meta>>,
+    pub prefixes: Vec<Prefix<AF, Meta>>,
 }
 
 impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
@@ -492,8 +494,11 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         Some(InMemNodeId::new(&0, &id))
     }
 
-    fn retrieve_node(&self, index: u32) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>> {
-        self.nodes.get(index as usize)
+    fn retrieve_node(
+        &self,
+        id: Self::NodeType,
+    ) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>> {
+        self.nodes.get(id.get_part() as usize)
     }
 
     fn retrieve_node_mut(
@@ -506,6 +511,14 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
                 ErrorKind::Other,
                 "Retrieve Node Error",
             )))
+    }
+
+    fn get_root_node(&self) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>> {
+        self.nodes.get(0)
+    }
+
+    fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
+        Some(&mut self.nodes[0])
     }
 
     fn get_nodes_len(&self) -> usize {
@@ -679,9 +692,7 @@ where
             );
         }
 
-        NewNodeOrIndex::ExistingNode(
-            self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]
-        )
+        NewNodeOrIndex::ExistingNode(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)])
     }
 
     fn search_stride_at<'b>(
@@ -691,7 +702,7 @@ where
         nibble_len: u8,
         start_bit: u8,
         found_pfx: &'b mut Vec<NodeId>,
-    ) -> Option<<NodeId as SortableNodeId>::Part> {
+    ) -> Option<NodeId> {
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
 
         for n_l in 1..(nibble_len + 1) {
@@ -721,11 +732,7 @@ where
             return None;
         }
 
-        Some(
-            self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]
-                .get_part()
-                .into(),
-        )
+        Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)])
     }
 
     fn search_stride_at_lmp_only<'b>(
@@ -734,7 +741,7 @@ where
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
-    ) -> (Option<NodeId::Part>, Option<NodeId>) {
+    ) -> (Option<NodeId>, Option<NodeId>) {
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
         let mut found_pfx = None;
 
@@ -762,7 +769,7 @@ where
         }
 
         (
-            Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)].get_part()),
+            Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]),
             found_pfx,
         )
     }
@@ -817,8 +824,7 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
-                    _af: PhantomData
-
+                    _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
             }
@@ -828,8 +834,7 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
-                    _af: PhantomData
-
+                    _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
             }
@@ -839,8 +844,7 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
-                    _af: PhantomData
-
+                    _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
             }
@@ -850,8 +854,7 @@ where
                     pfxbitarr: 0,
                     ptr_vec: vec![],
                     pfx_vec: vec![],
-                    _af: PhantomData
-
+                    _af: PhantomData,
                 });
                 stride_stats[3].inc(0);
             }
@@ -861,8 +864,7 @@ where
                     pfxbitarr: U256(0, 0),
                     ptr_vec: vec![],
                     pfx_vec: vec![],
-                    _af: PhantomData
-
+                    _af: PhantomData,
                 });
                 stride_stats[4].inc(0);
             }
@@ -872,8 +874,7 @@ where
                     pfxbitarr: U512(0, 0, 0, 0),
                     ptr_vec: vec![],
                     pfx_vec: vec![],
-                    _af: PhantomData
-
+                    _af: PhantomData,
                 });
                 stride_stats[5].inc(0);
             }
@@ -978,9 +979,15 @@ where
     #[inline]
     pub fn retrieve_node(
         &self,
-        index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
+        id: Store::NodeType,
     ) -> Option<&SizedStrideNode<Store::AF, Store::NodeType>> {
-        self.store.retrieve_node(index)
+        self.store.retrieve_node(id)
+    }
+
+    pub fn get_root_node(
+        &self
+    ) -> &SizedStrideNode<Store::AF, Store::NodeType> {
+        self.store.get_root_node().unwrap()
     }
 
     #[inline]
@@ -1044,7 +1051,7 @@ where
     ) -> Vec<&'a Prefix<Store::AF, Store::Meta>> {
         let mut stride_end = 0;
         let mut found_pfx_idxs: Vec<Store::NodeType> = vec![];
-        let mut node = self.retrieve_node(0_u16.into()).unwrap();
+        let mut node = self.get_root_node();
 
         for stride in self.strides.iter() {
             stride_end += stride;
@@ -1203,7 +1210,7 @@ where
         let mut found_pfx_idx: Option<
             <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         > = None;
-        let mut node = self.retrieve_node(0_u16.into()).unwrap();
+        let mut node = self.get_root_node();
 
         for stride in self.strides.iter() {
             stride_end += stride;

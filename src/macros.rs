@@ -106,8 +106,8 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewPrefix => {
                     println!("NEWPREFIX");
 
-                    let pfx_len = $pfx.len.clone();
-                    let pfx_net = $pfx.net.clone();
+                    // let pfx_len = $pfx.len.clone();
+                    // let pfx_net = $pfx.net.clone();
                     let i = $self.store.store_prefix($pfx)?;
                     $self.stats[$stats_level].inc_prefix_count($level);
                     // Construct the SortKey by default from the nibble and
