@@ -3,6 +3,7 @@ use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
 use std::io::{Error, ErrorKind};
+use std::ops::Deref;
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
@@ -432,7 +433,7 @@ where
         &mut self,
         index: Self::NodeType,
     ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>>;
-    fn get_root_node(&self) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn get_root_node_id(&self) -> Self::NodeType;
     fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
     fn store_prefix(
@@ -513,8 +514,8 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
             )))
     }
 
-    fn get_root_node(&self) -> Option<&SizedStrideNode<Self::AF, Self::NodeType>> {
-        self.nodes.get(0)
+    fn get_root_node_id(&self) -> Self::NodeType {
+        InMemNodeId(0, 0)
     }
 
     fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
@@ -984,10 +985,8 @@ where
         self.store.retrieve_node(id)
     }
 
-    pub fn get_root_node(
-        &self
-    ) -> &SizedStrideNode<Store::AF, Store::NodeType> {
-        self.store.get_root_node().unwrap()
+    pub fn get_root_node_id(&self) -> Store::NodeType {
+        self.store.get_root_node_id()
     }
 
     #[inline]
@@ -1051,7 +1050,7 @@ where
     ) -> Vec<&'a Prefix<Store::AF, Store::Meta>> {
         let mut stride_end = 0;
         let mut found_pfx_idxs: Vec<Store::NodeType> = vec![];
-        let mut node = self.get_root_node();
+        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
 
         for stride in self.strides.iter() {
             stride_end += stride;
@@ -1210,7 +1209,7 @@ where
         let mut found_pfx_idx: Option<
             <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         > = None;
-        let mut node = self.get_root_node();
+        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
 
         for stride in self.strides.iter() {
             stride_end += stride;
