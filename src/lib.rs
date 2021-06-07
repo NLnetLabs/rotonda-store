@@ -1,6 +1,6 @@
 pub use tree::{
     InMemNodeId, InMemStorage, SizedStrideNode, SortableNodeId, StorageBackend, Stride, TreeBitMap,
-    TreeBitMapNode,
+    TreeBitMapNode, CacheGuard, PrefixCacheGuard
 };
 
 pub mod common;
