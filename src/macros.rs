@@ -85,22 +85,27 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
                     println!("NEWNODE, CUR_NODE {:?} nibble {:?} nibble_len {:?}", $cur_i, $nibble, $nibble_len);
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
-                    // stupid work around won't work, but at least doesn't throw
-                    let i = $self.store_node(Some(new_id), n).unwrap();
-                    println!("NEWNODE STORED {:?}", i);
-                    current_node.ptr_vec.push(Store::NodeType::new(&bit_id, &i.get_part()));
+                    // let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
+                    let new_id = $self.store.acquire_new_node_id(bit_id, $cur_i.get_part());
+                    println!("NEWNODE STORED {:?}", new_id);
+                    current_node.ptr_vec.push(new_id);
                     current_node.ptr_vec.sort();
-                    let _default_val = std::mem::replace(
-                        $self.retrieve_node_mut($cur_i).unwrap(),
-                        SizedStrideNode::$variant(current_node));
+                    let i = $self.store_node(Some(new_id), n).unwrap();
+
+                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+
+                    // let _default_val = std::mem::replace(
+                    //     $self.retrieve_node_mut($cur_i).unwrap(),
+                    //     SizedStrideNode::$variant(current_node));
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
                     println!("EXISTINGNODE");
-                    let _default_val = std::mem::replace(
-                        $self.retrieve_node_mut($cur_i).unwrap(),
-                        SizedStrideNode::$variant(current_node));
+                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+
+                    // let _default_val = std::mem::replace(
+                    //     $self.retrieve_node_mut($cur_i).unwrap(),
+                    //     SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix => {
@@ -108,20 +113,26 @@ macro_rules! match_node_for_strides {
 
                     // let pfx_len = $pfx.len.clone();
                     // let pfx_net = $pfx.net.clone();
-                    let i = $self.store.store_prefix($pfx)?;
-                    $self.stats[$stats_level].inc_prefix_count($level);
+                    // let i = $self.store_prefix($pfx)?;
                     // Construct the SortKey by default from the nibble and
                     // nibble_len, so that nibble_len determines the base
                     // position (2^nibble_len) and then nibble is the offset
                     // from the base position.
+                    let new_id = $self.store.acquire_new_prefix_id(&((1 << $nibble_len) + $nibble as u16).into(), &$pfx);
+                    $self.stats[$stats_level].inc_prefix_count($level);
+
                     current_node
                         .pfx_vec
-                        .push(Store::NodeType::new(&((1 << $nibble_len) + $nibble as u16).into(), &i));
+                        .push(new_id);
                         current_node.pfx_vec.sort();
-                    let _default_val = std::mem::replace(
-                        $self.retrieve_node_mut($cur_i).unwrap(),
-                        SizedStrideNode::$variant(current_node),
-                    );
+
+                    $self.store_prefix($pfx)?;
+                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+
+                    // let _default_val = std::mem::replace(
+                    //     $self.retrieve_node_mut($cur_i).unwrap(),
+                    //     SizedStrideNode::$variant(current_node),
+                    // );
                     println!("done with new prefix");
                     return Ok(());
                 }
@@ -133,11 +144,13 @@ macro_rules! match_node_for_strides {
                     // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
                     // since the compiler can't figure out that it will happen only once.
                     if let Some(meta) = $pfx.meta { $self.update_prefix_meta(pfx_idx, meta)? };
-                    let _default_val = std::mem::replace(
-                        $self.retrieve_node_mut($cur_i).unwrap(),
-                        // expands into SizedStrideNode::Stride[3-8](current_node)
-                        SizedStrideNode::$variant(current_node),
-                    );
+                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+
+                    // let _default_val = std::mem::replace(
+                    //     $self.retrieve_node_mut($cur_i).unwrap(),
+                    //     // expands into SizedStrideNode::Stride[3-8](current_node)
+                    //     SizedStrideNode::$variant(current_node),
+                    // );
                     return Ok(());
                 }
             } )*,
