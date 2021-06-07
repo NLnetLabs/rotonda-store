@@ -5,7 +5,7 @@ use std::fmt::Debug;
 use std::ops::BitOr;
 use rpki::repository::resources::Addr;
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
@@ -108,7 +108,7 @@ impl BitOr for IPv4 {
     }
 }
 
-// #[derive(Debug)]
+#[derive(Copy, Clone)]
 pub struct Prefix<AF, T>
 where
     T: Meta<AF>,
