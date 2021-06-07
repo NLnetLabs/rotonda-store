@@ -3,7 +3,6 @@ use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
 use std::io::{Error, ErrorKind};
-use std::ops::Deref;
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
@@ -443,6 +442,10 @@ where
         &mut self,
         index: Self::NodeType,
     ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>>;
+    fn retrieve_node_with_guard(
+        &self,
+        index: Self::NodeType,
+    ) -> CacheGuard<Self::AF, Self::NodeType>;
     fn get_root_node_id(&self) -> Self::NodeType;
     fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
@@ -466,6 +469,10 @@ where
         &mut self,
         index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> Option<&mut Prefix<Self::AF, Self::Meta>>;
+    fn retrieve_prefix_with_guard(
+        &self,
+        index: Self::NodeType,
+    ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(
         &self,
@@ -478,6 +485,7 @@ where
 pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
     nodes: Vec<SizedStrideNode<AF, InMemNodeId<Sort = u16, Part = u32>>>,
     pub prefixes: Vec<Prefix<AF, Meta>>,
+    _node_with_guard: std::cell::RefCell<SizedStrideNode<AF, InMemNodeId<Sort = u16, Part = u32>>>,
 }
 
 impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
@@ -495,6 +503,13 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         InMemStorage {
             nodes,
             prefixes: vec![],
+            _node_with_guard: std::cell::RefCell::new(SizedStrideNode::Stride8(TreeBitMapNode {
+                ptrbitarr: U256(0, 0),
+                pfxbitarr: U512(0, 0, 0, 0),
+                pfx_vec: vec![],
+                ptr_vec: vec![],
+                _af: PhantomData,
+            })),
         }
     }
 
@@ -550,6 +565,15 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
             )))
     }
 
+    // Don't use this function, this is just a placeholder and a really
+    // inefficient implementation.
+    fn retrieve_node_with_guard(
+        &self,
+        _id: Self::NodeType,
+    ) -> CacheGuard<Self::AF, Self::NodeType> {
+        panic!("Not Implemented for InMeMStorage");
+    }
+
     fn get_root_node_id(&self) -> Self::NodeType {
         InMemNodeId(0, 0)
     }
@@ -589,6 +613,13 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         self.prefixes.get_mut(index as usize)
     }
 
+    fn retrieve_prefix_with_guard(
+        &self,
+        _index: Self::NodeType,
+    ) -> PrefixCacheGuard<Self::AF, Self::Meta> {
+        panic!("nOt ImPlEmEnTed for InMemNode");
+    }
+
     fn get_prefixes_len(&self) -> usize {
         self.prefixes.len()
     }
@@ -603,6 +634,34 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         &mut self,
     ) -> Result<std::slice::IterMut<'_, Prefix<AF, Meta>>, Box<dyn std::error::Error>> {
         Ok(self.prefixes.iter_mut())
+    }
+}
+
+pub struct CacheGuard<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> {
+    pub guard: std::cell::Ref<'a, SizedStrideNode<AF, NodeId>>,
+}
+
+impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::Deref
+    for CacheGuard<'a, AF, NodeId>
+{
+    type Target = SizedStrideNode<AF, NodeId>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
+    }
+}
+
+pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: Debug> {
+    pub guard: std::cell::Ref<'a, Prefix<AF, Meta>>,
+}
+
+impl<'a, AF: 'static + AddressFamily, Meta: Debug> std::ops::Deref
+    for PrefixCacheGuard<'a, AF, Meta>
+{
+    type Target = Prefix<AF, Meta>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.guard
     }
 }
 
@@ -1031,6 +1090,14 @@ where
         self.store.retrieve_node(id)
     }
 
+    #[inline]
+    pub fn retrieve_node_with_guard(
+        &self,
+        id: Store::NodeType,
+    ) -> CacheGuard<Store::AF, Store::NodeType> {
+        self.store.retrieve_node_with_guard(id)
+    }
+
     pub fn get_root_node_id(&self) -> Store::NodeType {
         self.store.get_root_node_id()
     }
@@ -1076,9 +1143,9 @@ where
 
     #[inline]
     pub fn retrieve_prefix(
-        &'a self,
+        &self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&'a Prefix<Store::AF, Store::Meta>> {
+    ) -> Option<&Prefix<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
     }
 
@@ -1245,6 +1312,210 @@ where
             .iter()
             .map(|i| self.retrieve_prefix(i.get_part()).unwrap())
             .collect()
+    }
+
+    pub fn match_longest_prefix_with_guard(
+        &'a self,
+        search_pfx: &Prefix<Store::AF, NoMeta>,
+    ) -> Vec<Prefix<Store::AF, Store::Meta>>
+    where
+        <Store as StorageBackend>::AF: AddressFamily + 'static,
+        <Store as StorageBackend>::Meta: Copy,
+    {
+        let mut stride_end = 0;
+        let mut found_pfx_idxs: Vec<Store::NodeType> = vec![];
+        let mut node_g = self.retrieve_node_with_guard(self.get_root_node_id());
+        let mut node: &SizedStrideNode<Store::AF, Store::NodeType> = &node_g;
+
+        for stride in self.strides.iter() {
+            stride_end += stride;
+
+            let nibble_len = if search_pfx.len < stride_end {
+                stride + search_pfx.len - stride_end
+            } else {
+                *stride
+            };
+
+            // Shift left and right to set the bits to zero that are not
+            // in the nibble we're handling here.
+            let nibble = AddressFamily::get_nibble(search_pfx.net, stride_end - stride, nibble_len);
+
+            // In a LMP search we have to go over all the nibble lengths in the stride up
+            // until the value of the actual nibble length were looking for (until we reach
+            // stride length for all strides that aren't the last) and see if the
+            // prefix bit in that posision is set.
+            // Note that this does not search for prefixes with length 0 (which would always
+            // match).
+            // So for matching a nibble 1010, we have to search for 1, 10, 101 and 1010 on
+            // resp. position 1, 5, 12 and 25:
+            //                       ↓          ↓                         ↓                                                              ↓
+            // pfx bit arr (u32)   0 1 2  3  4  5  6   7   8   9  10  11  12  13  14   15   16   17   18   19   20   21   22   23   24   25   26   27   28   29   30   31
+            // nibble              * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1110 1111    x
+            // nibble len offset   0 1    2            3                                4
+            match node {
+                SizedStrideNode::Stride3(current_node) => {
+                    match current_node.search_stride_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut found_pfx_idxs,
+                    ) {
+                        Some(n) => {
+                            drop(node_g);
+                            node_g = self.retrieve_node_with_guard(n);
+                            node = &node_g;
+                        }
+                        None => {
+                            return found_pfx_idxs
+                                .into_iter()
+                                .map(move |i| {
+                                    let pfx: &Prefix<Store::AF, Store::Meta> =
+                                        &self.store.retrieve_prefix_with_guard(i);
+                                    *pfx
+                                })
+                                .collect::<Vec<Prefix<Store::AF, Store::Meta>>>();
+                        }
+                    }
+                }
+                SizedStrideNode::Stride4(current_node) => {
+                    match current_node.search_stride_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut found_pfx_idxs,
+                    ) {
+                        Some(n) => {
+                            drop(node_g);
+                            node_g = self.retrieve_node_with_guard(n);
+                            node = &node_g;
+                        }
+                        None => {
+                            return found_pfx_idxs
+                                .into_iter()
+                                .map(move |i| {
+                                    let pfx: &Prefix<Store::AF, Store::Meta> =
+                                        &self.store.retrieve_prefix_with_guard(i);
+                                    *pfx
+                                })
+                                .collect::<Vec<Prefix<Store::AF, Store::Meta>>>();
+                        }
+                    }
+                }
+                SizedStrideNode::Stride5(current_node) => {
+                    match current_node.search_stride_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut found_pfx_idxs,
+                    ) {
+                        Some(n) => {
+                            drop(node_g);
+                            node_g = self.retrieve_node_with_guard(n);
+                            node = &node_g;
+                        }
+                        None => {
+                            return found_pfx_idxs
+                                .into_iter()
+                                .map(move |i| {
+                                    let pfx: &Prefix<Store::AF, Store::Meta> =
+                                        &self.store.retrieve_prefix_with_guard(i);
+                                    *pfx
+                                })
+                                .collect::<Vec<Prefix<Store::AF, Store::Meta>>>();
+                        }
+                    }
+                }
+                SizedStrideNode::Stride6(current_node) => {
+                    match current_node.search_stride_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut found_pfx_idxs,
+                    ) {
+                        Some(n) => {
+                            drop(node_g);
+                            node_g = self.retrieve_node_with_guard(n);
+                            node = &node_g;
+                        }
+                        None => {
+                            return found_pfx_idxs
+                                .into_iter()
+                                .map(move |i| {
+                                    let pfx: &Prefix<Store::AF, Store::Meta> =
+                                        &self.store.retrieve_prefix_with_guard(i);
+                                    *pfx
+                                })
+                                .collect::<Vec<Prefix<Store::AF, Store::Meta>>>();
+                        }
+                    }
+                }
+                SizedStrideNode::Stride7(current_node) => {
+                    match current_node.search_stride_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut found_pfx_idxs,
+                    ) {
+                        Some(n) => {
+                            drop(node_g);
+                            node_g = self.retrieve_node_with_guard(n);
+                            node = &node_g;
+                        }
+                        None => {
+                            return found_pfx_idxs
+                                .into_iter()
+                                .map(move |i| {
+                                    let pfx: &Prefix<Store::AF, Store::Meta> =
+                                        &self.store.retrieve_prefix_with_guard(i);
+                                    *pfx
+                                })
+                                .collect::<Vec<Prefix<Store::AF, Store::Meta>>>();
+                        }
+                    }
+                }
+                SizedStrideNode::Stride8(current_node) => {
+                    match current_node.search_stride_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut found_pfx_idxs,
+                    ) {
+                        Some(n) => {
+                            drop(node_g);
+                            node_g = self.store.retrieve_node_with_guard(n);
+                            node = &node_g;
+                        }
+                        None => {
+                            println!("collect prefixes from ids");
+                            println!("{:?}", found_pfx_idxs);
+                            return found_pfx_idxs
+                                .into_iter()
+                                .map(move |i| {
+                                    let pfx: &Prefix<Store::AF, Store::Meta> =
+                                        &self.store.retrieve_prefix_with_guard(i);
+                                    *pfx
+                                })
+                                .collect::<Vec<Prefix<Store::AF, Store::Meta>>>();
+                        }
+                    }
+                }
+            };
+        }
+
+        found_pfx_idxs
+            .into_iter()
+            .map(move |i| {
+                let pfx: &Prefix<Store::AF, Store::Meta> =
+                    &self.store.retrieve_prefix_with_guard(i);
+                *pfx
+            })
+            .collect::<Vec<Prefix<Store::AF, Store::Meta>>>()
     }
 
     pub fn match_longest_prefix_only(
