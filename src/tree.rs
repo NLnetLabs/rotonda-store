@@ -415,6 +415,11 @@ where
     type Meta: Debug + MergeUpdate;
 
     fn init(start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>) -> Self;
+    fn acquire_new_node_id(
+        &self,
+        sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
+        part: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
+    ) -> <Self as StorageBackend>::NodeType;
     // store_node should return an index with the associated type `Part` of the associated type
     // of this trait.
     // `id` is optional, since a vec uses the indexes as the ids of the nodes,
@@ -425,6 +430,11 @@ where
         id: Option<Self::NodeType>,
         next_node: SizedStrideNode<Self::AF, Self::NodeType>,
     ) -> Option<Self::NodeType>;
+    fn update_node(
+        &mut self,
+        current_node_id: Self::NodeType,
+        updated_node: SizedStrideNode<Self::AF, Self::NodeType>,
+    );
     fn retrieve_node(
         &self,
         index: Self::NodeType,
@@ -436,6 +446,11 @@ where
     fn get_root_node_id(&self) -> Self::NodeType;
     fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
+    fn acquire_new_prefix_id(
+        &self,
+        sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
+        part: &Prefix<Self::AF, Self::Meta>,
+    ) -> <Self as StorageBackend>::NodeType;
     fn store_prefix(
         &mut self,
         next_node: Prefix<Self::AF, Self::Meta>,
@@ -483,6 +498,16 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         }
     }
 
+    fn acquire_new_node_id(
+        &self,
+        sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
+        _part: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
+    ) -> <Self as StorageBackend>::NodeType {
+        // We're ignoring the part parameter here, because we want to store
+        // the index into the global self.nodes vec in the local vec.
+        InMemNodeId(sort, self.nodes.len() as u32)
+    }
+
     fn store_node(
         &mut self,
         _id: Option<Self::NodeType>,
@@ -493,6 +518,17 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         //Store::NodeType::new(&bit_id, &i.into())
         //Store::NodeType::new(&((1 << $nibble_len) + $nibble as u16).into(), &i)
         Some(InMemNodeId::new(&0, &id))
+    }
+
+    fn update_node(
+        &mut self,
+        current_node_id: Self::NodeType,
+        updated_node: SizedStrideNode<Self::AF, Self::NodeType>,
+    ) {
+        let _default_val = std::mem::replace(
+            self.retrieve_node_mut(current_node_id).unwrap(),
+            updated_node,
+        );
     }
 
     fn retrieve_node(
@@ -524,6 +560,16 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
 
     fn get_nodes_len(&self) -> usize {
         self.nodes.len()
+    }
+
+    fn acquire_new_prefix_id(
+        &self,
+        sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
+        _part: &Prefix<<Self as StorageBackend>::AF, <Self as StorageBackend>::Meta>,
+    ) -> <Self as StorageBackend>::NodeType {
+        // We're ignoring the part parameter here, because we want to store
+        // the index into the global self.prefixes vec in the local vec.
+        InMemNodeId(*sort, self.prefixes.len() as u32)
     }
 
     fn store_prefix(
