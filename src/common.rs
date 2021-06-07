@@ -70,7 +70,7 @@ impl AddressFamily for u32 {
     }
 
     fn from_addr(net: Addr) -> u32 {
-        (net.to_bits() >> 96) as u32
+        net.to_bits() as u32
     }
 
     fn into_addr(self) -> Addr {
