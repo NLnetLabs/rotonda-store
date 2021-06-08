@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(pfx)?;
     }
     let ready = std::time::Instant::now();
-    // println!("{:#?}", trie);
+    // println!("{:#?}", tree_bitmap.store.prefixes);
     println!(
         "finished building tree in {} msecs...",
         ready.checked_duration_since(start).unwrap().as_millis()

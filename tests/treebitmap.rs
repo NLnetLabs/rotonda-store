@@ -29,8 +29,8 @@ mod test {
         type StoreType = InMemStorage<u32, PrefixAs>;
         let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![4]);
         let pfxs = vec![
-            // Prefix::<u32, PrefixAs>::new(0b0000_0000_0000_0000_0000_0000_0000_0000_u32, 0),
-            // Prefix::<u32, PrefixAs>::new(0b1111_1111_1111_1111_1111_1111_1111_1111_u32, 32),
+            // Prefix::<u32, PrefixAs>::new(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32, 0),
+            Prefix::<u32, PrefixAs>::new(0b1111_1111_1111_1111_1111_1111_1111_1111_u32, 32),
             Prefix::new(0b0000_0000_0000_0000_0000_0000_0000_0000_u32, 4),
             Prefix::new(0b0001_0000_0000_0000_0000_0000_0000_0000_u32, 4),
             Prefix::new(0b0010_0000_0000_0000_0000_0000_0000_0000_u32, 4),
