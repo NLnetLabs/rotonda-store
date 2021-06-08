@@ -1032,7 +1032,7 @@ where
         pfx: Prefix<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
-        let mut cur_i: Store::NodeType = Store::NodeType::new(&0_u16.into(), &0_u16.into());
+        let mut cur_i = self.store.get_root_node_id();
         let mut level: u8 = 0;
 
         loop {
