@@ -83,11 +83,9 @@ macro_rules! match_node_for_strides {
                 $is_last_stride,
             ) {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
-                    println!("NEWNODE, CUR_NODE {:?} nibble {:?} nibble_len {:?}", $cur_i, $nibble, $nibble_len);
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     // let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
                     let new_id = $self.store.acquire_new_node_id(bit_id, $cur_i.get_part());
-                    println!("NEWNODE STORED {:?}", new_id);
                     current_node.ptr_vec.push(new_id);
                     current_node.ptr_vec.sort();
                     let i = $self.store_node(Some(new_id), n).unwrap();
@@ -100,7 +98,6 @@ macro_rules! match_node_for_strides {
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
-                    println!("EXISTINGNODE");
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     // let _default_val = std::mem::replace(
@@ -109,7 +106,6 @@ macro_rules! match_node_for_strides {
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix => {
-                    println!("NEWPREFIX");
 
                     // let pfx_len = $pfx.len.clone();
                     // let pfx_net = $pfx.net.clone();
@@ -133,12 +129,9 @@ macro_rules! match_node_for_strides {
                     //     $self.retrieve_node_mut($cur_i).unwrap(),
                     //     SizedStrideNode::$variant(current_node),
                     // );
-                    println!("done with new prefix");
                     return Ok(());
                 }
                 NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-                    println!("EXISTINGPREFIX");
-
                     // ExistingPrefix is guaranteed to only happen at the last stride,
                     // so we can return from here.
                     // If we don't then we cannot move pfx.meta into the update_prefix_meta function,

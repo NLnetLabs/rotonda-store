@@ -1492,8 +1492,6 @@ where
                             node = &node_g;
                         }
                         None => {
-                            println!("collect prefixes from ids");
-                            println!("{:?}", found_pfx_idxs);
                             return found_pfx_idxs
                                 .into_iter()
                                 .map(move |i| {
