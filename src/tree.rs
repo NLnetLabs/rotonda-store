@@ -483,13 +483,13 @@ where
 }
 
 pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
-    nodes: Vec<SizedStrideNode<AF, InMemNodeId<Sort = u16, Part = u32>>>,
+    nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     pub prefixes: Vec<Prefix<AF, Meta>>,
-    _node_with_guard: std::cell::RefCell<SizedStrideNode<AF, InMemNodeId<Sort = u16, Part = u32>>>,
+    _node_with_guard: std::cell::RefCell<SizedStrideNode<AF, InMemNodeId>>,
 }
 
 impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
-    type NodeType = InMemNodeId<Sort = u16, Part = u32>;
+    type NodeType = InMemNodeId;
     type AF = AF;
     type Meta = Meta;
 
