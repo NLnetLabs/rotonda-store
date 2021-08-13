@@ -1,9 +1,10 @@
 use num::PrimInt;
+#[cfg(feature = "dynamodb")]
+use rpki::repository::resources::Addr;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 use std::ops::BitOr;
-use rpki::repository::resources::Addr;
 
 #[derive(Debug, Copy, Clone)]
 pub struct PrefixAs(pub u32);
@@ -35,11 +36,7 @@ where
     AF: AddressFamily + PrimInt + Debug,
 {
     fn with_meta(net: AF, len: u8, meta: Option<Self>) -> Prefix<AF, Self> {
-        Prefix {
-            net,
-            len,
-            meta,
-        }
+        Prefix { net, len, meta }
     }
 }
 pub trait MergeUpdate {
@@ -53,7 +50,9 @@ pub trait AddressFamily: PrimInt + Debug {
     // returns the specified nibble from `start_bit` to (and
     // including) `start_bit + len` and shifted to the right.
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
+    #[cfg(feature = "dynamodb")]
     fn from_addr(net: Addr) -> Self;
+    #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr;
 }
 
@@ -69,10 +68,12 @@ impl AddressFamily for u32 {
         (net << start_bit) >> ((32 - len) % 32)
     }
 
+    #[cfg(feature = "dynamodb")]
     fn from_addr(net: Addr) -> u32 {
         net.to_bits() as u32
     }
 
+    #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr {
         Addr::from_bits(self as u128)
     }
@@ -89,10 +90,12 @@ impl AddressFamily for u128 {
         ((net << start_bit) >> ((128 - len) % 128)) as u32
     }
 
+    #[cfg(feature = "dynamodb")]
     fn from_addr(net: Addr) -> u128 {
         net.to_bits()
     }
 
+    #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr {
         Addr::from_bits(self)
     }

@@ -1,13 +1,17 @@
+#[cfg(feature = "cli")]
 use ansi_term::Colour;
-use rotonda_store::{InMemNodeId, InMemStorage, StorageBackend, SizedStrideNode, TreeBitMap};
+
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
+use rotonda_store::{InMemNodeId, InMemStorage, SizedStrideNode, StorageBackend, TreeBitMap};
+use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs::File;
 use std::process;
-use std::env;
 
+#[cfg(feature = "cli")]
 use rustyline::error::ReadlineError;
+#[cfg(feature = "cli")]
 use rustyline::Editor;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
@@ -169,7 +173,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let s_pref: Vec<&str> = line.split('/').collect();
 
                 if s_pref.len() < 2 {
-                    println!("Error: can't parse prefix {:?}. Maybe add a /<LEN> part?", s_pref);
+                    println!(
+                        "Error: can't parse prefix {:?}. Maybe add a /<LEN> part?",
+                        s_pref
+                    );
                     continue;
                 }
 
@@ -189,7 +196,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("Error: Can't parse address part. {:?}: {}", s_pref[0], err);
                     }
                 };
-                
             }
             Err(ReadlineError::Interrupted) => {
                 println!("CTRL-C");

@@ -1,15 +1,18 @@
 #[cfg(test)]
+#[cfg(feature = "csv")]
 mod test {
 
-    use rotonda_store::{InMemStorage, StorageBackend, common::{NoMeta, Prefix, PrefixAs}};
-    use rotonda_store::{TreeBitMap};
+    use rotonda_store::TreeBitMap;
+    use rotonda_store::{
+        common::{NoMeta, Prefix, PrefixAs},
+        InMemStorage, StorageBackend,
+    };
+    use std::error::Error;
     use std::fs::File;
     use std::process;
-    use std::{error::Error};
 
     #[test]
     fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
-
         // These constants are all contingent on the exact csv file,
         // being loaded!
         const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
@@ -20,6 +23,7 @@ mod test {
 
         fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
+
             let mut rdr = csv::Reader::from_reader(file);
             for result in rdr.records() {
                 let record = result?;
@@ -45,8 +49,7 @@ mod test {
         type StoreType = InMemStorage<u32, PrefixAs>;
         for strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-            let mut tree_bitmap: TreeBitMap<StoreType> =
-                TreeBitMap::new(strides.1.to_owned());
+            let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(strides.1.to_owned());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -83,7 +86,10 @@ mod test {
 
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
-            assert_eq!(tree_bitmap.store.get_prefixes_len(), GLOBAL_PREFIXES_VEC_SIZE);
+            assert_eq!(
+                tree_bitmap.store.get_prefixes_len(),
+                GLOBAL_PREFIXES_VEC_SIZE
+            );
             assert_eq!(found_counter, FOUND_PREFIXES);
         }
         Ok(())
