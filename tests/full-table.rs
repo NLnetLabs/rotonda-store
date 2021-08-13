@@ -24,7 +24,7 @@ mod test {
             for result in rdr.records() {
                 let record = result?;
                 let ip: Vec<_> = record[0]
-                    .split(".")
+                    .split('.')
                     .map(|o| -> u8 { o.parse().unwrap() })
                     .collect();
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);

@@ -172,12 +172,11 @@ impl Stride for Stride7 {
     #[inline]
     fn leading_zeros(self) -> u32 {
         let lz = self.0.leading_zeros();
-        let r = if lz == 128 {
+        if lz == 128 {
             lz + self.1.leading_zeros()
         } else {
             lz
-        };
-        r
+        }
     }
 }
 
@@ -368,10 +367,10 @@ where
 {
     type Part;
     type Sort;
-    fn sort(self: &Self, other: &Self) -> std::cmp::Ordering;
+    fn sort(&self, other: &Self) -> std::cmp::Ordering;
     fn new(sort: &Self::Sort, part: &Self::Part) -> Self;
-    fn get_sort(self: &Self) -> Self::Sort;
-    fn get_part(self: &Self) -> Self::Part;
+    fn get_sort(&self) -> Self::Sort;
+    fn get_part(&self) -> Self::Part;
 }
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
@@ -559,10 +558,7 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
     ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>> {
         self.nodes
             .get_mut(index.get_part() as usize)
-            .ok_or(Box::new(Error::new(
-                ErrorKind::Other,
-                "Retrieve Node Error",
-            )))
+            .ok_or_else(|| Box::new(Error::new(ErrorKind::Other, "Retrieve Node Error")).into())
     }
 
     // Don't use this function, this is just a placeholder and a really
@@ -689,7 +685,7 @@ where
     // - A newly created Prefix
     // - The index of the existing prefix in the global `prefixes` vec
     fn eval_node_or_prefix_at(
-        self: &mut Self,
+        &mut self,
         nibble: u32,
         nibble_len: u8,
         next_stride: Option<&u8>,
@@ -802,7 +798,7 @@ where
     }
 
     fn search_stride_at<'b>(
-        self: &Self,
+        &self,
         search_pfx: &Prefix<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
@@ -841,8 +837,8 @@ where
         Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)])
     }
 
-    fn search_stride_at_lmp_only<'b>(
-        self: &Self,
+    fn search_stride_at_lmp_only(
+        &self,
         search_pfx: &Prefix<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
@@ -904,10 +900,7 @@ where
                 break;
             }
         }
-        assert_eq!(
-            strides.iter().fold(0, |acc, s| { acc + s }),
-            Store::AF::BITS
-        );
+        assert_eq!(strides.iter().sum::<u8>(), Store::AF::BITS);
 
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0

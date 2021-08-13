@@ -28,7 +28,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
         let record = result?;
         // let pfx = Prefix::<u32, PrefixAs>::new_with_meta(net, len, asn);
         let ip: Vec<_> = record[0]
-            .split(".")
+            .split('.')
             .map(|o| -> u8 { o.parse().unwrap() })
             .collect();
         let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
@@ -166,7 +166,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let readline = rl.readline("(rotonda-store)> ");
         match readline {
             Ok(line) => {
-                let s_pref: Vec<&str> = line.split("/").collect();
+                let s_pref: Vec<&str> = line.split('/').collect();
 
                 if s_pref.len() < 2 {
                     println!("Error: can't parse prefix {:?}. Maybe add a /<LEN> part?", s_pref);

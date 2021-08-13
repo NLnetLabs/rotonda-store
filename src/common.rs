@@ -9,7 +9,7 @@ use rpki::repository::resources::Addr;
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
-    fn merge_update(self: &mut Self, update_record: PrefixAs) -> Result<(), Box<dyn std::error::Error>> {
+    fn merge_update(&mut self, update_record: PrefixAs) -> Result<(), Box<dyn std::error::Error>> {
         self.0 = update_record.0;
         Ok(())
     }
@@ -24,7 +24,7 @@ impl fmt::Debug for NoMeta {
 }
 
 impl MergeUpdate for NoMeta {
-    fn merge_update(self: &mut Self, _: NoMeta) -> Result<(), Box<dyn std::error::Error>> {
+    fn merge_update(&mut self, _: NoMeta) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
 }
@@ -36,14 +36,14 @@ where
 {
     fn with_meta(net: AF, len: u8, meta: Option<Self>) -> Prefix<AF, Self> {
         Prefix {
-            net: net,
-            len: len,
-            meta: meta,
+            net,
+            len,
+            meta,
         }
     }
 }
 pub trait MergeUpdate {
-    fn merge_update(self: &mut Self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
+    fn merge_update(&mut self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
 }
 
 pub trait AddressFamily: PrimInt + Debug {
@@ -130,7 +130,7 @@ where
     pub fn new_with_meta(net: AF, len: u8, meta: T) -> Prefix<AF, T> {
         T::with_meta(net, len, Some(meta))
     }
-    pub fn strip_meta(self: &Self) -> Prefix<AF, NoMeta> {
+    pub fn strip_meta(&self) -> Prefix<AF, NoMeta> {
         Prefix::<AF, NoMeta> {
             net: self.net,
             len: self.len,

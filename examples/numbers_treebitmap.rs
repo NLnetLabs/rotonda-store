@@ -24,7 +24,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
         let record = result?;
         // let pfx = Prefix::<u32, PrefixAs>::new_with_meta(net, len, asn);
         let ip: Vec<_> = record[0]
-            .split(".")
+            .split('.')
             .map(|o| -> u8 { o.parse().unwrap() })
             .collect();
         let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
