@@ -16,10 +16,6 @@ macro_rules! impl_primitive_stride {
                         1 << (<Self as Stride>::BITS - ((1 << len) - 1) as u8 - nibble as u8 - 1)
                     }
 
-                    fn get_bit_pos_shr(nibble: u32, len: u8) -> $ptrsize {
-                        1 << ((<Self as Stride>::BITS >> 1) - ((1 << len) - 1) as u8 - nibble as u8 - 1)
-                    }
-
                     fn get_pfx_index(bitmap: $pfxsize, nibble: u32, len: u8) -> usize {
                         (bitmap >> ((<Self as Stride>::BITS - ((1 << len) - 1) as u8 - nibble as u8 - 1) as usize))
                             .count_ones() as usize
@@ -29,10 +25,6 @@ macro_rules! impl_primitive_stride {
                         (bitmap >> ((<Self as Stride>::BITS >> 1) - nibble as u8 - 1) as usize).count_ones()
                             as usize
                             - 1
-                    }
-
-                    fn get_ptr_index_by_bit_pos(bitmap: $ptrsize, bit_pos: $ptrsize) -> usize {
-                        (bitmap >> bit_pos.trailing_zeros()).count_ones() as usize - 1
                     }
                     
                     fn into_stride_size(bitmap: $ptrsize) -> $pfxsize {

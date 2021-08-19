@@ -127,24 +127,6 @@ impl std::ops::BitAnd<Self> for U256 {
     }
 }
 
-impl std::ops::Shr<u32> for U256 {
-    type Output = Self;
-
-    fn shr(self, rhs: u32) -> Self::Output {
-        let Self(fb,sb) = self;
-        Self(fb >> rhs, sb >> rhs)
-    }
-}
-
-// impl Shr<Scalar> for Scalar {
-//     type Output = Self;
-
-//     fn shr(self, Self(rhs): Self) -> Self::Output {
-//         let Self(lhs) = self;
-//         Self(lhs >> rhs)
-//     }
-// }
-
 impl PartialOrd for U512 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self.0, &other.0) {
