@@ -50,8 +50,10 @@ pub trait AddressFamily: PrimInt + Debug {
     // returns the specified nibble from `start_bit` to (and
     // including) `start_bit + len` and shifted to the right.
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
+
     #[cfg(feature = "dynamodb")]
     fn from_addr(net: Addr) -> Self;
+
     #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr;
 }

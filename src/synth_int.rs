@@ -80,6 +80,12 @@ impl PartialEq for U256 {
 
 impl Eq for U256 {}
 
+impl crate::tree::Zero for U256 {
+    fn zero() -> Self {
+        U256(0_u128, 0_u128)
+    }
+}
+
 impl Binary for U256 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         std::fmt::Binary::fmt(&self, f)
@@ -121,6 +127,24 @@ impl std::ops::BitAnd<Self> for U256 {
     }
 }
 
+impl std::ops::Shr<u32> for U256 {
+    type Output = Self;
+
+    fn shr(self, rhs: u32) -> Self::Output {
+        let Self(fb,sb) = self;
+        Self(fb >> rhs, sb >> rhs)
+    }
+}
+
+// impl Shr<Scalar> for Scalar {
+//     type Output = Self;
+
+//     fn shr(self, Self(rhs): Self) -> Self::Output {
+//         let Self(lhs) = self;
+//         Self(lhs >> rhs)
+//     }
+// }
+
 impl PartialOrd for U512 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         match (self.0, &other.0) {
@@ -143,6 +167,12 @@ impl PartialEq for U512 {
 }
 
 impl Eq for U512 {}
+
+impl crate::tree::Zero for U512 {
+    fn zero() -> Self {
+        U512(0_u128, 0_u128, 0_u128, 0_u128)
+    }
+}
 
 impl Binary for U512 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
