@@ -867,7 +867,44 @@ where
             || (S::into_stride_size(self.ptrbitarr) & bit_pos)
                 == <S as std::ops::BitAnd>::Output::zero()
         {
-            return (None, found_pfx);
+
+    fn search_stride_for_exact_match_at(
+        &self,
+        search_pfx: &Prefix<AF, NoMeta>,
+        nibble: u32,
+        nibble_len: u8,
+        start_bit: u8,
+    ) -> (Option<NodeId>, Option<NodeId>) {
+        // This is an exact match, so we're only considering the position of the full nibble.
+        let bit_pos = S::get_bit_pos(nibble, nibble_len);
+        let mut found_pfx = None;
+        let mut found_child = None;
+
+        // Is this the last nibble?
+        // Otherwise we're not looking for a prefix (exact matching only lives at last nibble)
+        match search_pfx.len <= start_bit + nibble_len {
+            // We're at the last nibble.
+            true => {
+                // Check for an actual prefix at the right position, i.e. consider the complete nibble
+                if self.pfxbitarr & bit_pos > S::zero() {
+                    found_pfx =
+                        Some(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)]);
+                }
+            }
+            // We're not at the last nibble.
+            false => {
+                // Check for a child node at the right position, i.e. consider the complete nibble.
+                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
+                    found_child = Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
+                }
+            }
+        }
+
+        (
+            found_child, /* The node that has children the next stride, if any */
+            found_pfx,   /* The exactly matching prefix, if any */
+        )
+    }
         }
 
         (
@@ -1682,6 +1719,67 @@ where
                     }
                 }
             };
+        }
+
+        if let Some(pfx_idx) = found_pfx_idx {
+            Some(self.retrieve_prefix(pfx_idx).unwrap())
+        } else {
+            None
+        }
+    }
+
+    pub fn match_exact_prefix(
+        &'a self,
+        search_pfx: &Prefix<Store::AF, NoMeta>,
+    ) -> Option<&'a Prefix<Store::AF, Store::Meta>> {
+        let mut stride_end = 0;
+        let mut found_pfx_idx: Option<
+            <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
+        > = None;
+        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
+
+        for stride in self.strides.iter() {
+            stride_end += stride;
+
+            let nibble_len = if search_pfx.len < stride_end {
+                stride + search_pfx.len - stride_end
+            } else {
+                *stride
+            };
+
+            // Shift left and right to set the bits to zero that are not
+            // in the nibble we're handling here.
+            let nibble = AddressFamily::get_nibble(search_pfx.net, stride_end - stride, nibble_len);
+
+            match node {
+                SizedStrideNode::Stride4(current_node) => {
+                    match current_node.search_stride_for_exact_match_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride3(_) => todo!(),
+                SizedStrideNode::Stride5(_) => todo!(),
+                SizedStrideNode::Stride6(_) => todo!(),
+                SizedStrideNode::Stride7(_) => todo!(),
+                SizedStrideNode::Stride8(_) => todo!(),
+            }
         }
 
         if let Some(pfx_idx) = found_pfx_idx {
