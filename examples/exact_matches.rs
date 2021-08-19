@@ -116,6 +116,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 23),
         Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 25),
         Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 26),
+        Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 192).into(), 26),
         // Prefix::new(std::net::Ipv4Addr::new(193, 0, 3, 0).into(), 23),
         // Prefix::new(std::net::Ipv4Addr::new(193, 0, 10, 0).into(), 23),
         // Prefix::new(0b0111_0111_1000_0000_0000_0000_0000_0000_u32, 14),
