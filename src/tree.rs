@@ -1041,20 +1041,20 @@ where
                 // move the nibble left with the amount of bits we're going to loop over.
                 // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
                 // then it will iterate over ...1100,...1101,...1110,...1111
-                let nibble2 = (nibble << (o_l - nibble_len)) + n_l as u32;
-                bit_pos = S::get_bit_pos(nibble2, o_l);
+                nibble = (nibble << (o_l - nibble_len)) + n_l as u32;
+                bit_pos = S::get_bit_pos(nibble, o_l);
 
-                println!("nibble:    {:032b}", nibble2);
+                println!("nibble:    {:032b}", nibble);
                 println!("ptrbitarr: {:032b}", self.ptrbitarr);
                 println!("bitpos:    {:032b}", bit_pos);
 
                 if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
                     println!(
                         "push {:?}",
-                        self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble2)]
+                        self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]
                     );
                     found_children_with_more_specifics
-                        .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble2)]);
+                        .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
                 } else {
                     println!("no child added");
                 }
@@ -1063,7 +1063,7 @@ where
                     println!("m-s prefix at {}", n_l + nibble_len2 + 1);
                     println!("pfx_vec {:?}", self.pfx_vec);
                     found_more_specifics_vec
-                        .push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble2, o_l)]);
+                        .push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, o_l)]);
                 }
             }
         }
