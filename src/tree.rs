@@ -964,10 +964,6 @@ where
     ) {
         let mut found_children_with_more_specifics = vec![];
         let mut found_more_specifics_vec: Vec<NodeId> = vec![];
-        // let mut found_child = false;
-
-        // let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
-        // let mut found_pfx: Option<NodeId> = None;
 
         // This is an exact match, so we're only considering the position of the full nibble.
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -1024,51 +1020,38 @@ where
         println!("start nibble: {:032b}", nibble);
         println!("extra bit: {}", (S::STRIDE_LEN - nibble_len));
 
-        for o_l in nibble_len + 1..S::STRIDE_LEN + 1 {
-            let nibble_len2 = o_l;
+        // We're expanding the search for more-specifics bit-by-bit.
+        // `ms_nibble_len` is the number of bits in the original nibble we're considering,
+        // e.g. if our prefix has a length of 25 and we've all strides sized 4,
+        // We would end up with a last nibble_len of 1.
+        // `ms_nibble_len` will expand then from 2 up and till 4.
+        for ms_nibble_len in nibble_len + 1..S::STRIDE_LEN + 1 {
 
-            for n_l in 0..(1 << (o_l - nibble_len)) {
-                // Move the bit in the right position.
-                println!(
-                    "nibble_len2 {} stride_len {} start_bit {} o_l + n_l {} o_l {}",
-                    nibble_len2,
-                    S::STRIDE_LEN,
-                    start_bit,
-                    n_l,
-                    o_l
-                );
-
+            // iterate over all the possible values for this `ms_nibble_len`,
+            // e.g. two bits can have 4 different values.
+            for n_l in 0..(1 << (ms_nibble_len - nibble_len)) {
                 // move the nibble left with the amount of bits we're going to loop over.
                 // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
-                // then it will iterate over ...1100,...1101,...1110,...1111
-                nibble = (nibble << (o_l - nibble_len)) + n_l as u32;
-                bit_pos = S::get_bit_pos(nibble, o_l);
+                // and `ms_nibble_len` is 2, then it will iterate over ...1100,...1101,...1110,...1111
+                nibble = (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
+                bit_pos = S::get_bit_pos(nibble, ms_nibble_len);
 
                 println!("nibble:    {:032b}", nibble);
                 println!("ptrbitarr: {:032b}", self.ptrbitarr);
                 println!("bitpos:    {:032b}", bit_pos);
 
                 if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-                    println!(
-                        "push {:?}",
-                        self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]
-                    );
                     found_children_with_more_specifics
                         .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
-                } else {
-                    println!("no child added");
                 }
 
                 if self.pfxbitarr & bit_pos > S::zero() {
-                    println!("m-s prefix at {}", n_l + nibble_len2 + 1);
                     println!("pfx_vec {:?}", self.pfx_vec);
                     found_more_specifics_vec
-                        .push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, o_l)]);
+                        .push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, ms_nibble_len)]);
                 }
             }
         }
-        println!("child_vec {:?}", found_children_with_more_specifics);
-        println!("prefix vec {:?}", found_more_specifics_vec);
 
         (
             // We're done here, the caller should now go over all nodes in found_childre_with_more_specifics vec and add
