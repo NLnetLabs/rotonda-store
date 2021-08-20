@@ -28,16 +28,9 @@ name = "cli"
 required-features = ["cli"]
 
 [[example]]
-name = "load_csv_treebitmap"
-required-features = ["cli"]
-
-[[example]]
 name = "full_table_multiple_trees_json"
 required-features = ["csv"]
 
 [[example]]
 name = "numbers_treebitmap"
-required-features = ["csv"]
-
-[[tests]]
 required-features = ["csv"]
