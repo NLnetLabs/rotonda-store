@@ -1016,9 +1016,9 @@ where
             found_children_with_more_specifics.push(child);
         }
 
-        println!("{}..{}", nibble_len + start_bit, S::STRIDE_LEN + start_bit);
-        println!("start nibble: {:032b}", nibble);
-        println!("extra bit: {}", (S::STRIDE_LEN - nibble_len));
+        // println!("{}..{}", nibble_len + start_bit, S::STRIDE_LEN + start_bit);
+        // println!("start nibble: {:032b}", nibble);
+        // println!("extra bit: {}", (S::STRIDE_LEN - nibble_len));
 
         // We're expanding the search for more-specifics bit-by-bit.
         // `ms_nibble_len` is the number of bits in the original nibble we're considering,
@@ -1036,9 +1036,9 @@ where
                 nibble = (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
                 bit_pos = S::get_bit_pos(nibble, ms_nibble_len);
 
-                println!("nibble:    {:032b}", nibble);
-                println!("ptrbitarr: {:032b}", self.ptrbitarr);
-                println!("bitpos:    {:032b}", bit_pos);
+                // println!("nibble:    {:032b}", nibble);
+                // println!("ptrbitarr: {:032b}", self.ptrbitarr);
+                // println!("bitpos:    {:032b}", bit_pos);
 
                 if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
                     found_children_with_more_specifics
@@ -1046,7 +1046,7 @@ where
                 }
 
                 if self.pfxbitarr & bit_pos > S::zero() {
-                    println!("pfx_vec {:?}", self.pfx_vec);
+                    // println!("pfx_vec {:?}", self.pfx_vec);
                     found_more_specifics_vec
                         .push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, ms_nibble_len)]);
                 }
@@ -1979,26 +1979,17 @@ where
                         (Some(n), Some(pfx_idx), cnvec, msvec) => {
                             child_nodes_vec.extend(cnvec);
                             more_specifics_vec.extend(msvec);
-                            println!("{:?} {:?} yo1!", pfx_idx, n);
-
                             found_pfx_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
                         }
                         (Some(n), None, cnvec, msvec) => {
                             child_nodes_vec.extend(cnvec);
                             more_specifics_vec.extend(msvec);
-                            println!("{:?} yo2!", n);
-
                             node = self.retrieve_node(n).unwrap();
-                            // println!("x cnvec {:?}", child_nodes_vec);
-                            // println!("x msvec {:?}", more_specifics_vec);
                         }
                         (None, Some(pfx_idx), cnvec, msvec) => {
                             child_nodes_vec.extend(cnvec);
                             more_specifics_vec.extend(msvec);
-                            println!("{:?} yo3", pfx_idx);
-                            println!("cnvec {:?}", child_nodes_vec);
-                            println!("{:?}", more_specifics_vec);
 
                             for child_node in child_nodes_vec.iter() {
                                 self.get_all_more_specifics_for_node(
@@ -2016,11 +2007,8 @@ where
                             );
                         }
                         (None, None, cnvec, msvec) => {
-                            println!("yo4");
                             child_nodes_vec.extend(cnvec);
                             more_specifics_vec.extend(msvec);
-                            // println!("cnvec {:?}", child_nodes_vec);
-                            // println!("{:?}", more_specifics_vec);
                             break;
                         }
                     }
@@ -2032,11 +2020,6 @@ where
                 SizedStrideNode::Stride7(_) => todo!(),
             }
         }
-
-        println!("yo end");
-        println!("{:?}", node);
-        println!("cnvec {:?}", child_nodes_vec);
-        println!("msvec {:?}", more_specifics_vec);
 
         for child_node in child_nodes_vec.iter() {
             self.get_all_more_specifics_for_node(
