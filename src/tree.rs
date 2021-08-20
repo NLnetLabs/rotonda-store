@@ -174,7 +174,7 @@ impl Stride for Stride7 {
     fn get_ptr_index(bitmap: Self::PtrSize, nibble: u32) -> usize {
         (bitmap >> ((256 >> 1) - nibble as u16 - 1) as usize).count_ones() as usize - 1
     }
-    
+
     fn into_stride_size(bitmap: Self::PtrSize) -> Self {
         // One bit needs to move into the self.0 u128,
         // since the last bit of the *whole* bitmap isn't used.
@@ -953,7 +953,7 @@ where
     fn search_stride_for_more_specifics_at(
         &self,
         search_pfx: &Prefix<AF, NoMeta>,
-        mut nibble: u32,
+        nibble: u32,
         nibble_len: u8,
         start_bit: u8,
     ) -> (
@@ -1021,10 +1021,17 @@ where
         // println!("extra bit: {}", (S::STRIDE_LEN - nibble_len));
 
         // We're expanding the search for more-specifics bit-by-bit.
-        // `ms_nibble_len` is the number of bits in the original nibble we're considering,
+        // `ms_nibble_len` is the number of bits including the original nibble we're considering,
         // e.g. if our prefix has a length of 25 and we've all strides sized 4,
         // We would end up with a last nibble_len of 1.
         // `ms_nibble_len` will expand then from 2 up and till 4.
+        // ex.:
+        // nibble: 1 , (nibble_len: 1)
+        // Iteration:
+        // ms_nibble_len=1,n_l=0: 10, n_l=1: 11
+        // ms_nibble_len=2,n_l=0: 100, n_l=1: 101, n_l=2: 110, n_l=3: 111
+        // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ..., n_l=7: 1111
+
         for ms_nibble_len in nibble_len + 1..S::STRIDE_LEN + 1 {
 
             // iterate over all the possible values for this `ms_nibble_len`,
@@ -1032,23 +1039,30 @@ where
             for n_l in 0..(1 << (ms_nibble_len - nibble_len)) {
                 // move the nibble left with the amount of bits we're going to loop over.
                 // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
-                // and `ms_nibble_len` is 2, then it will iterate over ...1100,...1101,...1110,...1111
-                nibble = (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
-                bit_pos = S::get_bit_pos(nibble, ms_nibble_len);
+                // then it will iterate over ...1100,...1101,...1110,...1111
+                let ms_nibble = (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
+                bit_pos = S::get_bit_pos(ms_nibble, ms_nibble_len);
 
-                // println!("nibble:    {:032b}", nibble);
+                // println!("nibble:    {:032b}", ms_nibble);
                 // println!("ptrbitarr: {:032b}", self.ptrbitarr);
                 // println!("bitpos:    {:032b}", bit_pos);
 
                 if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
+                    println!(
+                        "push {:?}",
+                        self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]
+                    );
                     found_children_with_more_specifics
-                        .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
+                        .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]);
+                } else {
+                    println!("no child added");
                 }
 
                 if self.pfxbitarr & bit_pos > S::zero() {
                     // println!("pfx_vec {:?}", self.pfx_vec);
-                    found_more_specifics_vec
-                        .push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, ms_nibble_len)]);
+                    found_more_specifics_vec.push(
+                        self.pfx_vec[S::get_pfx_index(self.pfxbitarr, ms_nibble, ms_nibble_len)],
+                    );
                 }
             }
         }
