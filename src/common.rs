@@ -4,7 +4,6 @@ use rpki::repository::resources::Addr;
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
-use std::ops::BitOr;
 
 #[derive(Debug, Copy, Clone)]
 pub struct PrefixAs(pub u32);
@@ -100,16 +99,6 @@ impl AddressFamily for u128 {
     #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr {
         Addr::from_bits(self)
-    }
-}
-
-pub struct IPv4(u32);
-
-impl BitOr for IPv4 {
-    // rhs is the "right-hand side" of the expression `a | b`
-    type Output = Self;
-    fn bitor(self, rhs: Self) -> IPv4 {
-        Self(self.0 | rhs.0)
     }
 }
 
