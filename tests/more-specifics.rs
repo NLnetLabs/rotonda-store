@@ -94,7 +94,7 @@ mod test {
             ),
         ] {
             println!("search for: {:?}", spfx.0);
-            let found_result = tree_bitmap.match_longest_prefix_with_more_specifics(spfx.0);
+            let found_result = tree_bitmap.match_exact_prefix_with_more_specifics(spfx.0);
             println!("em/m-s: {:#?}", found_result);
 
             assert_eq!(found_result.0, spfx.1);

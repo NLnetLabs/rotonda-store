@@ -128,7 +128,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
-        let s_spfx = tree_bitmap.match_longest_prefix_with_more_specifics(spfx);
+        let s_spfx = tree_bitmap.match_exact_prefix_with_more_specifics(spfx);
         println!("em/m-s: {:?}", s_spfx);
         println!("-----------");
     }

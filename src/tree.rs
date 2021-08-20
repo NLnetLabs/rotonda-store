@@ -2051,7 +2051,7 @@ where
         }
     }
 
-    pub fn match_longest_prefix_with_more_specifics(
+    pub fn match_exact_prefix_with_more_specifics(
         &'a self,
         search_pfx: &Prefix<Store::AF, NoMeta>,
     ) -> (
