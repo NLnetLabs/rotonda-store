@@ -129,7 +129,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         println!("search for: {:?}", spfx);
         let s_spfx = tree_bitmap.match_longest_prefix_with_more_specifics(spfx);
-        println!("lmp: {:?}", s_spfx);
+        println!("em/m-s: {:?}", s_spfx);
         println!("-----------");
     }
     Ok(())
