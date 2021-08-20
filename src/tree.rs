@@ -1047,18 +1047,13 @@ where
                 // println!("bitpos:    {:032b}", bit_pos);
 
                 if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-                    println!(
-                        "push {:?}",
-                        self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]
-                    );
                     found_children_with_more_specifics
                         .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]);
                 }
 
                 if self.pfxbitarr & bit_pos > S::zero() {
-                    // println!("pfx_vec {:?}", self.pfx_vec);
                     found_more_specifics_vec.push(
-                        self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, ms_nibble_len)],
+                        self.pfx_vec[S::get_pfx_index(self.pfxbitarr, ms_nibble, ms_nibble_len)],
                     );
                 }
             }
