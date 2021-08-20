@@ -5,6 +5,9 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 
+
+//------------ Metadata Types --------------------------------------------------------
+
 #[derive(Debug, Copy, Clone)]
 pub struct PrefixAs(pub u32);
 
@@ -41,6 +44,8 @@ where
 pub trait MergeUpdate {
     fn merge_update(&mut self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
 }
+
+//------------ Address Family (trait) --------------------------------------------------------
 
 pub trait AddressFamily: PrimInt + Debug {
     const BITMASK: Self;
@@ -101,6 +106,8 @@ impl AddressFamily for u128 {
         Addr::from_bits(self)
     }
 }
+
+//------------ Prefix --------------------------------------------------------
 
 #[derive(Copy, Clone)]
 pub struct Prefix<AF, T>
@@ -199,6 +206,8 @@ where
         ))
     }
 }
+
+//------------ TrieLevelStats --------------------------------------------------------
 
 pub struct TrieLevelStats {
     pub level: u8,
