@@ -1033,7 +1033,6 @@ where
         // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ..., n_l=7: 1111
 
         for ms_nibble_len in nibble_len + 1..S::STRIDE_LEN + 1 {
-
             // iterate over all the possible values for this `ms_nibble_len`,
             // e.g. two bits can have 4 different values.
             for n_l in 0..(1 << (ms_nibble_len - nibble_len)) {
@@ -1054,14 +1053,12 @@ where
                     );
                     found_children_with_more_specifics
                         .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]);
-                } else {
-                    println!("no child added");
                 }
 
                 if self.pfxbitarr & bit_pos > S::zero() {
                     // println!("pfx_vec {:?}", self.pfx_vec);
                     found_more_specifics_vec.push(
-                        self.pfx_vec[S::get_pfx_index(self.pfxbitarr, ms_nibble, ms_nibble_len)],
+                        self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, ms_nibble_len)],
                     );
                 }
             }
@@ -1917,6 +1914,28 @@ where
             let nibble = AddressFamily::get_nibble(search_pfx.net, stride_end - stride, nibble_len);
 
             match node {
+                SizedStrideNode::Stride3(current_node) => {
+                    match current_node.search_stride_for_exact_match_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
                 SizedStrideNode::Stride4(current_node) => {
                     match current_node.search_stride_for_exact_match_at(
                         search_pfx,
@@ -1939,11 +1958,94 @@ where
                         }
                     }
                 }
-                SizedStrideNode::Stride3(_) => todo!(),
-                SizedStrideNode::Stride5(_) => todo!(),
-                SizedStrideNode::Stride6(_) => todo!(),
-                SizedStrideNode::Stride7(_) => todo!(),
-                SizedStrideNode::Stride8(_) => todo!(),
+                SizedStrideNode::Stride5(current_node) => {
+                    match current_node.search_stride_for_exact_match_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride6(current_node) => {
+                    match current_node.search_stride_for_exact_match_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride7(current_node) => {
+                    match current_node.search_stride_for_exact_match_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride8(current_node) => {
+                    match current_node.search_stride_for_exact_match_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            return Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap())
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -1983,6 +2085,50 @@ where
             let nibble = AddressFamily::get_nibble(search_pfx.net, stride_end - stride, nibble_len);
 
             match node {
+                SizedStrideNode::Stride3(current_node) => {
+                    match current_node.search_stride_for_more_specifics_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+
+                            for child_node in child_nodes_vec.iter() {
+                                self.get_all_more_specifics_for_node(
+                                    self.retrieve_node(*child_node).unwrap(),
+                                    &mut more_specifics_vec,
+                                );
+                            }
+
+                            return (
+                                Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap()),
+                                more_specifics_vec
+                                    .iter()
+                                    .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                    .collect(),
+                            );
+                        }
+                        (None, None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            break;
+                        }
+                    }
+                }
                 SizedStrideNode::Stride4(current_node) => {
                     match current_node.search_stride_for_more_specifics_at(
                         search_pfx,
@@ -2027,11 +2173,182 @@ where
                         }
                     }
                 }
-                SizedStrideNode::Stride3(_) => todo!(),
-                SizedStrideNode::Stride8(_) => todo!(),
-                SizedStrideNode::Stride5(_) => todo!(),
-                SizedStrideNode::Stride6(_) => todo!(),
-                SizedStrideNode::Stride7(_) => todo!(),
+                SizedStrideNode::Stride5(current_node) => {
+                    match current_node.search_stride_for_more_specifics_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+
+                            for child_node in child_nodes_vec.iter() {
+                                self.get_all_more_specifics_for_node(
+                                    self.retrieve_node(*child_node).unwrap(),
+                                    &mut more_specifics_vec,
+                                );
+                            }
+
+                            return (
+                                Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap()),
+                                more_specifics_vec
+                                    .iter()
+                                    .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                    .collect(),
+                            );
+                        }
+                        (None, None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride6(current_node) => {
+                    match current_node.search_stride_for_more_specifics_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+
+                            for child_node in child_nodes_vec.iter() {
+                                self.get_all_more_specifics_for_node(
+                                    self.retrieve_node(*child_node).unwrap(),
+                                    &mut more_specifics_vec,
+                                );
+                            }
+
+                            return (
+                                Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap()),
+                                more_specifics_vec
+                                    .iter()
+                                    .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                    .collect(),
+                            );
+                        }
+                        (None, None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride7(current_node) => {
+                    match current_node.search_stride_for_more_specifics_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+
+                            for child_node in child_nodes_vec.iter() {
+                                self.get_all_more_specifics_for_node(
+                                    self.retrieve_node(*child_node).unwrap(),
+                                    &mut more_specifics_vec,
+                                );
+                            }
+
+                            return (
+                                Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap()),
+                                more_specifics_vec
+                                    .iter()
+                                    .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                    .collect(),
+                            );
+                        }
+                        (None, None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride8(current_node) => {
+                    match current_node.search_stride_for_more_specifics_at(
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                    ) {
+                        (Some(n), Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx), cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+
+                            for child_node in child_nodes_vec.iter() {
+                                self.get_all_more_specifics_for_node(
+                                    self.retrieve_node(*child_node).unwrap(),
+                                    &mut more_specifics_vec,
+                                );
+                            }
+
+                            return (
+                                Some(self.retrieve_prefix(pfx_idx.get_part()).unwrap()),
+                                more_specifics_vec
+                                    .iter()
+                                    .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                    .collect(),
+                            );
+                        }
+                        (None, None, cnvec, msvec) => {
+                            child_nodes_vec.extend(cnvec);
+                            more_specifics_vec.extend(msvec);
+                            break;
+                        }
+                    }
+                }
             }
         }
 
@@ -2067,6 +2384,16 @@ where
         found_pfx_vec: &mut Vec<Store::NodeType>,
     ) {
         match start_node {
+            SizedStrideNode::Stride3(n) => {
+                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+
+                for nn in n.ptr_vec.iter() {
+                    self.get_all_more_specifics_for_node(
+                        self.retrieve_node(*nn).unwrap(),
+                        found_pfx_vec,
+                    );
+                }
+            }
             SizedStrideNode::Stride4(n) => {
                 found_pfx_vec.extend_from_slice(&n.pfx_vec);
 
@@ -2077,11 +2404,46 @@ where
                     );
                 }
             }
-            SizedStrideNode::Stride3(_) => todo!(),
-            SizedStrideNode::Stride5(_) => todo!(),
-            SizedStrideNode::Stride6(_) => todo!(),
-            SizedStrideNode::Stride7(_) => todo!(),
-            SizedStrideNode::Stride8(_) => todo!(),
+            SizedStrideNode::Stride5(n) => {
+                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+
+                for nn in n.ptr_vec.iter() {
+                    self.get_all_more_specifics_for_node(
+                        self.retrieve_node(*nn).unwrap(),
+                        found_pfx_vec,
+                    );
+                }
+            }
+            SizedStrideNode::Stride6(n) => {
+                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+
+                for nn in n.ptr_vec.iter() {
+                    self.get_all_more_specifics_for_node(
+                        self.retrieve_node(*nn).unwrap(),
+                        found_pfx_vec,
+                    );
+                }
+            }
+            SizedStrideNode::Stride7(n) => {
+                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+
+                for nn in n.ptr_vec.iter() {
+                    self.get_all_more_specifics_for_node(
+                        self.retrieve_node(*nn).unwrap(),
+                        found_pfx_vec,
+                    );
+                }
+            }
+            SizedStrideNode::Stride8(n) => {
+                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+
+                for nn in n.ptr_vec.iter() {
+                    self.get_all_more_specifics_for_node(
+                        self.retrieve_node(*nn).unwrap(),
+                        found_pfx_vec,
+                    );
+                }
+            }
         }
     }
 }
