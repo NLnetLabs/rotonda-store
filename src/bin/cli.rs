@@ -30,7 +30,6 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
         let record = result?;
-        // let pfx = Prefix::<u32, PrefixAs>::new_with_meta(net, len, asn);
         let ip: Vec<_> = record[0]
             .split('.')
             .map(|o| -> u8 { o.parse().unwrap() })
@@ -40,8 +39,6 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
         let asn: u32 = record[2].parse().unwrap();
         let pfx = Prefix::<u32, PrefixAs>::new_with_meta(net.into(), len, PrefixAs(asn));
         pfxs.push(pfx);
-        // trie.insert(&pfx);
-        // println!("{:?}", pfx);
     }
     Ok(())
 }
