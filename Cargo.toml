@@ -23,6 +23,10 @@ cli = ["csv", "ansi_term", "rustyline"]
 default = []
 dynamodb = ["rpki"]
 
+[[bin]]
+name = "cli"
+required-features = ["cli"]
+
 [[example]]
 name = "load_csv_treebitmap"
 required-features = ["cli"]
