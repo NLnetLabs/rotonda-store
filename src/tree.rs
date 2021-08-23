@@ -1344,7 +1344,7 @@ where
         self.store.retrieve_prefix_mut(index)
     }
 
-    pub fn match_longest_prefix(
+    pub fn match_longest_prefix_with_less_specifics(
         &'a self,
         search_pfx: &Prefix<Store::AF, NoMeta>,
     ) -> Vec<&'a Prefix<Store::AF, Store::Meta>> {
@@ -1703,7 +1703,7 @@ where
             .collect::<Vec<Prefix<Store::AF, Store::Meta>>>()
     }
 
-    pub fn match_longest_prefix_only(
+    pub fn match_longest_prefix(
         &'a self,
         search_pfx: &Prefix<Store::AF, NoMeta>,
     ) -> Option<&'a Prefix<Store::AF, Store::Meta>> {

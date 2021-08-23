@@ -11,14 +11,14 @@ mod test {
 
         trie.insert(min_pfx)?;
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
-        let res = trie.match_longest_prefix(&expect_pfx);
+        let res = trie.match_longest_prefix_with_less_specifics(&expect_pfx);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0], &expect_pfx);
 
         let max_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
         trie.insert(max_pfx)?;
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
-        let res = trie.match_longest_prefix(&expect_pfx);
+        let res = trie.match_longest_prefix_with_less_specifics(&expect_pfx);
         assert_eq!(res.len(), 1);
         assert_eq!(res[0], &expect_pfx);
         Ok(())
@@ -93,12 +93,12 @@ mod test {
 
         for pfx in tree_bitmap.store.prefixes_iter()? {
             let pfx_nm = pfx.strip_meta();
-            let res = tree_bitmap.match_longest_prefix_only(&pfx_nm);
+            let res = tree_bitmap.match_longest_prefix(&pfx_nm);
             println!("{:?}", pfx);
             assert_eq!(res.unwrap(), pfx);
         }
 
-        let res = tree_bitmap.match_longest_prefix(&Prefix::<u32, NoMeta>::new(
+        let res = tree_bitmap.match_longest_prefix_with_less_specifics(&Prefix::<u32, NoMeta>::new(
             std::net::Ipv4Addr::new(192, 0, 1, 0).into(),
             24,
         ));
@@ -150,7 +150,7 @@ mod test {
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
                         s_len,
                     );
-                    let res = tree_bitmap.match_longest_prefix_only(&pfx);
+                    let res = tree_bitmap.match_longest_prefix(&pfx);
                     println!("{:?}", pfx);
 
                     assert_eq!(res.unwrap(), &res_pfx);

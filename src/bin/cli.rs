@@ -187,7 +187,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("Searching for prefix: {}/{}", ip, len);
 
                         pfx = Prefix::<u32, NoMeta>::new(ip.into(), len);
-                        println!("{:?}", tree_bitmap.match_longest_prefix(&pfx));
+                        println!("{:?}", tree_bitmap.match_longest_prefix_with_less_specifics(&pfx));
                     }
                     Err(err) => {
                         println!("Error: Can't parse address part. {:?}: {}", s_pref[0], err);

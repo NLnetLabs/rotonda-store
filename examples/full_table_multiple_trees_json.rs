@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0).into(),
                             s_len,
                         );
-                        tree_bitmap.match_longest_prefix_only(&pfx);
+                        tree_bitmap.match_longest_prefix(&pfx);
                     }
                 }
             }
