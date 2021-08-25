@@ -41,10 +41,10 @@ mod test {
         }
 
         let strides_vec = [
-            // vec![8],
+            vec![8],
             vec![4],
-            // vec![6, 6, 6, 6, 4, 4],
-            // vec![3, 4, 4, 6, 7, 8],
+            vec![6, 6, 6, 6, 4, 4],
+            vec![3, 4, 4, 6, 7, 8],
         ];
         type StoreType = InMemStorage<u32, PrefixAs>;
         for strides in strides_vec.iter().enumerate() {
