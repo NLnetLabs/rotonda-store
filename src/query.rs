@@ -774,17 +774,8 @@ where
         //     u8,
         //     Option<&mut Vec<Store::NodeType>>,
         // ) -> (Option<Store::NodeType>, Option<Store::NodeType>);
+        
 
-        let search_fn = match options.match_type {
-            MatchType::ExactMatch => {
-                if options.include_less_specifics {
-                    TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                } else {
-                    TreeBitMapNode::search_stride_for_exact_match_at
-                }
-            }
-            MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
-        };
 
         let mut less_specifics_vec = if options.include_less_specifics {
             Some(Vec::<Store::NodeType>::new())
@@ -807,9 +798,17 @@ where
 
             match node {
                 SizedStrideNode::Stride3(current_node) => {
-                    todo!();
-                }
-                SizedStrideNode::Stride4(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
                     match search_fn(
                         current_node,
                         search_pfx,
@@ -864,10 +863,336 @@ where
                         }
                     }
                 }
-                SizedStrideNode::Stride5(_) => todo!(),
-                SizedStrideNode::Stride6(_) => todo!(),
-                SizedStrideNode::Stride7(_) => todo!(),
-                SizedStrideNode::Stride8(_) => todo!(),
+                SizedStrideNode::Stride4(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                let (cnvec, msvec) =
+                                    current_node.add_more_specifics_at(nibble, nibble_len);
+                                child_nodes_vec.extend(cnvec);
+                                more_specifics_vec.extend(msvec);
+
+                                for child_node in child_nodes_vec.iter() {
+                                    self.get_all_more_specifics_for_node(
+                                        self.retrieve_node(*child_node).unwrap(),
+                                        &mut more_specifics_vec,
+                                    );
+                                }
+                            }
+                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
+                            return QueryResult {
+                                prefix: pfx,
+                                // match_type: match pfx {
+                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
+                                //     _ => MatchType::LongestMatch,
+                                // },
+                                more_specifics: Some(
+                                    more_specifics_vec
+                                        .iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect(),
+                                ),
+                                less_specifics: less_specifics_vec.map(|vec| {
+                                    vec.iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect()
+                                }),
+                            };
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride5(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                let (cnvec, msvec) =
+                                    current_node.add_more_specifics_at(nibble, nibble_len);
+                                child_nodes_vec.extend(cnvec);
+                                more_specifics_vec.extend(msvec);
+
+                                for child_node in child_nodes_vec.iter() {
+                                    self.get_all_more_specifics_for_node(
+                                        self.retrieve_node(*child_node).unwrap(),
+                                        &mut more_specifics_vec,
+                                    );
+                                }
+                            }
+                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
+                            return QueryResult {
+                                prefix: pfx,
+                                // match_type: match pfx {
+                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
+                                //     _ => MatchType::LongestMatch,
+                                // },
+                                more_specifics: Some(
+                                    more_specifics_vec
+                                        .iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect(),
+                                ),
+                                less_specifics: less_specifics_vec.map(|vec| {
+                                    vec.iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect()
+                                }),
+                            };
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride6(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                let (cnvec, msvec) =
+                                    current_node.add_more_specifics_at(nibble, nibble_len);
+                                child_nodes_vec.extend(cnvec);
+                                more_specifics_vec.extend(msvec);
+
+                                for child_node in child_nodes_vec.iter() {
+                                    self.get_all_more_specifics_for_node(
+                                        self.retrieve_node(*child_node).unwrap(),
+                                        &mut more_specifics_vec,
+                                    );
+                                }
+                            }
+                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
+                            return QueryResult {
+                                prefix: pfx,
+                                // match_type: match pfx {
+                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
+                                //     _ => MatchType::LongestMatch,
+                                // },
+                                more_specifics: Some(
+                                    more_specifics_vec
+                                        .iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect(),
+                                ),
+                                less_specifics: less_specifics_vec.map(|vec| {
+                                    vec.iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect()
+                                }),
+                            };
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride7(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                let (cnvec, msvec) =
+                                    current_node.add_more_specifics_at(nibble, nibble_len);
+                                child_nodes_vec.extend(cnvec);
+                                more_specifics_vec.extend(msvec);
+
+                                for child_node in child_nodes_vec.iter() {
+                                    self.get_all_more_specifics_for_node(
+                                        self.retrieve_node(*child_node).unwrap(),
+                                        &mut more_specifics_vec,
+                                    );
+                                }
+                            }
+                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
+                            return QueryResult {
+                                prefix: pfx,
+                                // match_type: match pfx {
+                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
+                                //     _ => MatchType::LongestMatch,
+                                // },
+                                more_specifics: Some(
+                                    more_specifics_vec
+                                        .iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect(),
+                                ),
+                                less_specifics: less_specifics_vec.map(|vec| {
+                                    vec.iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect()
+                                }),
+                            };
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride8(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+                    
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        (Some(n), Some(pfx_idx)) => {
+                            found_pfx_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                        }
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                let (cnvec, msvec) =
+                                    current_node.add_more_specifics_at(nibble, nibble_len);
+                                child_nodes_vec.extend(cnvec);
+                                more_specifics_vec.extend(msvec);
+
+                                for child_node in child_nodes_vec.iter() {
+                                    self.get_all_more_specifics_for_node(
+                                        self.retrieve_node(*child_node).unwrap(),
+                                        &mut more_specifics_vec,
+                                    );
+                                }
+                            }
+                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
+                            return QueryResult {
+                                prefix: pfx,
+                                // match_type: match pfx {
+                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
+                                //     _ => MatchType::LongestMatch,
+                                // },
+                                more_specifics: Some(
+                                    more_specifics_vec
+                                        .iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect(),
+                                ),
+                                less_specifics: less_specifics_vec.map(|vec| {
+                                    vec.iter()
+                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                                        .collect()
+                                }),
+                            };
+                        }
+                        (None, None) => {
+                            break;
+                        }
+                    }
+                }
             }
         }
 
