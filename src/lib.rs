@@ -5,6 +5,8 @@ pub use tree::{
     StorageBackend, Stride, TreeBitMap, TreeBitMapNode,
 };
 
+pub use query::{ MatchOptions, MatchType, QueryResult};
+
 pub mod common;
 mod query;
 pub mod synth_int;

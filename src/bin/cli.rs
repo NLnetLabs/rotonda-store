@@ -2,7 +2,9 @@
 use ansi_term::Colour;
 
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-use rotonda_store::{InMemNodeId, InMemStorage, SizedStrideNode, StorageBackend, TreeBitMap};
+use rotonda_store::{
+    InMemNodeId, InMemStorage, MatchOptions, MatchType, SizedStrideNode, StorageBackend, TreeBitMap,
+};
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
@@ -187,7 +189,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         println!("Searching for prefix: {}/{}", ip, len);
 
                         pfx = Prefix::<u32, NoMeta>::new(ip.into(), len);
-                        println!("{:?}", tree_bitmap.match_longest_prefix_with_less_specifics(&pfx));
+                        println!(
+                            "{:#?}",
+                            tree_bitmap.match_prefix(
+                                &pfx,
+                                MatchOptions {
+                                    match_type: MatchType::LongestMatch,
+                                    include_less_specifics: true,
+                                    include_more_specifics: true
+                                }
+                            )
+                        );
                     }
                     Err(err) => {
                         println!("Error: Can't parse address part. {:?}: {}", s_pref[0], err);

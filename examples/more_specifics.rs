@@ -1,5 +1,5 @@
 use rotonda_store::common::{Prefix, PrefixAs};
-use rotonda_store::{InMemStorage, TreeBitMap};
+use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
 
 type Prefix4<'a> = Prefix<u32, PrefixAs>;
 
@@ -82,8 +82,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(pfx)?;
     }
     println!("------ end of inserts\n");
-    println!("{:#?}", tree_bitmap.store.prefixes.iter().enumerate().collect::<Vec<(usize, _)>>());
-    println!("{:#?}", tree_bitmap.store.nodes.iter().enumerate().collect::<Vec<(usize, _)>>());
+    println!(
+        "{:#?}",
+        tree_bitmap
+            .store
+            .prefixes
+            .iter()
+            .enumerate()
+            .collect::<Vec<(usize, _)>>()
+    );
+    println!(
+        "{:#?}",
+        tree_bitmap
+            .store
+            .nodes
+            .iter()
+            .enumerate()
+            .collect::<Vec<(usize, _)>>()
+    );
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 
@@ -128,8 +144,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
-        let s_spfx = tree_bitmap.match_exact_prefix_with_more_specifics(spfx);
-        println!("em/m-s: {:?}", s_spfx);
+        let s_spfx = tree_bitmap.match_prefix(
+            spfx,
+            MatchOptions {
+                match_type: MatchType::ExactMatch,
+                include_less_specifics: true,
+                include_more_specifics: true,
+            },
+        );
+        println!("em/m-s: {:#?}", s_spfx);
         println!("-----------");
     }
     Ok(())

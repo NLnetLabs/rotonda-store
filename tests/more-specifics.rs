@@ -1,7 +1,7 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod test {
     use rotonda_store::common::{Prefix, PrefixAs};
-    use rotonda_store::{InMemStorage, TreeBitMap};
+    use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
 
     use std::error::Error;
 
@@ -94,15 +94,24 @@ mod test {
             ),
         ] {
             println!("search for: {:?}", spfx.0);
-            let found_result = tree_bitmap.match_exact_prefix_with_more_specifics(spfx.0);
+            let found_result = tree_bitmap.match_prefix(
+                spfx.0,
+                MatchOptions {
+                    match_type: MatchType::ExactMatch,
+                    include_less_specifics: false,
+                    include_more_specifics: true,
+                },
+            );
             println!("em/m-s: {:#?}", found_result);
 
-            assert_eq!(found_result.0, spfx.1);
-            assert_eq!(found_result.1.len(), spfx.2.len());
+            let more_specifics = found_result.more_specifics.unwrap();
+            assert_eq!(found_result.prefix, spfx.1);
+            assert_eq!(&more_specifics.len(), &spfx.2.len());
 
             for i in spfx.2.iter() {
                 print!("{} ", i);
-                let result_pfx = found_result.1.iter().find(|pfx| pfx == &&&pfxs[*i]);
+
+                let result_pfx = more_specifics.iter().find(|pfx| pfx == &&&pfxs[*i]);
                 assert!(result_pfx.is_some());
             }
             println!("-----------");

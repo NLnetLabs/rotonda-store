@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-    use rotonda_store::{InMemStorage, TreeBitMap, StorageBackend};
+    use rotonda_store::{InMemStorage, MatchOptions, MatchType, StorageBackend, TreeBitMap};
 
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
@@ -11,16 +11,32 @@ mod test {
 
         trie.insert(min_pfx)?;
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
-        let res = trie.match_longest_prefix_with_less_specifics(&expect_pfx);
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0], &expect_pfx);
+        let res = trie.match_prefix(
+            &expect_pfx,
+            MatchOptions {
+                match_type: MatchType::LongestMatch,
+                include_less_specifics: true,
+                include_more_specifics: false,
+            },
+        );
+        println!("prefix: {:?}", &expect_pfx);
+        println!("result: {:#?}", &res);
+        assert!(res.prefix.is_some());
+        assert_eq!(res.prefix, Some(&expect_pfx));
 
         let max_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
         trie.insert(max_pfx)?;
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
-        let res = trie.match_longest_prefix_with_less_specifics(&expect_pfx);
-        assert_eq!(res.len(), 1);
-        assert_eq!(res[0], &expect_pfx);
+        let res = trie.match_prefix(
+            &expect_pfx,
+            MatchOptions {
+                match_type: MatchType::ExactMatch,
+                include_less_specifics: true,
+                include_more_specifics: false,
+            },
+        );
+        assert!(res.prefix.is_some());
+        assert_eq!(res.prefix, Some(&expect_pfx));
         Ok(())
     }
 
@@ -93,25 +109,41 @@ mod test {
 
         for pfx in tree_bitmap.store.prefixes_iter()? {
             let pfx_nm = pfx.strip_meta();
-            let res = tree_bitmap.match_longest_prefix(&pfx_nm);
+            let res = tree_bitmap.match_prefix(
+                &pfx_nm,
+                MatchOptions {
+                    match_type: MatchType::LongestMatch,
+                    include_less_specifics: false,
+                    include_more_specifics: false,
+                },
+            );
             println!("{:?}", pfx);
-            assert_eq!(res.unwrap(), pfx);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
-        let res = tree_bitmap.match_longest_prefix_with_less_specifics(&Prefix::<u32, NoMeta>::new(
-            std::net::Ipv4Addr::new(192, 0, 1, 0).into(),
-            24,
-        ));
+        let res = tree_bitmap.match_prefix(
+            &Prefix::<u32, NoMeta>::new(std::net::Ipv4Addr::new(192, 0, 1, 0).into(), 24),
+            MatchOptions {
+                match_type: MatchType::LongestMatch,
+                include_less_specifics: true,
+                include_more_specifics: false,
+            },
+        );
+        println!("res: {:#?}", &res);
+
         assert_eq!(
-            res[2],
+            res.prefix.unwrap(),
             &Prefix::<u32, PrefixAs>::new(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 23)
         );
+
+        let less_specifics = res.less_specifics.unwrap();
+
         assert_eq!(
-            res[1],
+            less_specifics[1],
             &Prefix::<u32, PrefixAs>::new(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 16)
         );
         assert_eq!(
-            res[0],
+            less_specifics[0],
             &Prefix::<u32, PrefixAs>::new(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 4)
         );
         Ok(())
@@ -150,10 +182,17 @@ mod test {
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
                         s_len,
                     );
-                    let res = tree_bitmap.match_longest_prefix(&pfx);
+                    let res = tree_bitmap.match_prefix(
+                        &pfx,
+                        MatchOptions {
+                            match_type: MatchType::LongestMatch,
+                            include_less_specifics: false,
+                            include_more_specifics: false,
+                        },
+                    );
                     println!("{:?}", pfx);
 
-                    assert_eq!(res.unwrap(), &res_pfx);
+                    assert_eq!(res.prefix.unwrap(), &res_pfx);
                 }
             }
         }

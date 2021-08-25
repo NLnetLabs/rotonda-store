@@ -5,7 +5,7 @@ mod test {
     use rotonda_store::TreeBitMap;
     use rotonda_store::{
         common::{NoMeta, Prefix, PrefixAs},
-        InMemStorage, StorageBackend,
+        InMemStorage, MatchOptions, MatchType, StorageBackend,
     };
     use std::error::Error;
     use std::fs::File;
@@ -41,10 +41,10 @@ mod test {
         }
 
         let strides_vec = [
-            vec![8],
+            // vec![8],
             vec![4],
-            vec![6, 6, 6, 6, 4, 4],
-            vec![3, 4, 4, 6, 7, 8],
+            // vec![6, 6, 6, 6, 4, 4],
+            // vec![3, 4, 4, 6, 7, 8],
         ];
         type StoreType = InMemStorage<u32, PrefixAs>;
         for strides in strides_vec.iter().enumerate() {
@@ -72,7 +72,18 @@ mod test {
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0).into(),
                             s_len,
                         );
-                        if let Some(_pfx) = tree_bitmap.match_longest_prefix_only(&pfx) {
+                        let res = tree_bitmap.match_prefix(
+                            &pfx,
+                            MatchOptions {
+                                match_type: MatchType::LongestMatch,
+                                include_less_specifics: false,
+                                include_more_specifics: false,
+                            },
+                        );
+                        if let Some(_pfx) = res.prefix {
+                            println!("_pfx {:?}", _pfx);
+                            println!("pfx {:?}", pfx);
+                            println!("{:#?}", res);
                             assert!(_pfx.len <= pfx.len);
                             assert!(_pfx.net <= pfx.net);
                             found_counter += 1;

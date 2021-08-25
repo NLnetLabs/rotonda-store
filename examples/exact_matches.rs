@@ -1,5 +1,5 @@
 use rotonda_store::common::{Prefix, PrefixAs};
-use rotonda_store::{InMemStorage, TreeBitMap};
+use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
 
 type Prefix4<'a> = Prefix<u32, PrefixAs>;
 
@@ -127,7 +127,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
-        let s_spfx = tree_bitmap.match_exact_prefix(spfx);
+        let s_spfx = tree_bitmap.match_prefix(spfx, MatchOptions {
+            match_type: MatchType::ExactMatch,
+            include_less_specifics: false,
+            include_more_specifics: false,
+        });
         println!("exact match: {:?}", s_spfx);
         println!("-----------");
     }
