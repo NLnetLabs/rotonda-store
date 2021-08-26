@@ -63,6 +63,8 @@ pub trait AddressFamily: PrimInt + Debug {
 
     #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr;
+
+    fn into_ipaddr(self) -> std::net::IpAddr;
 }
 
 impl AddressFamily for u32 {
@@ -86,6 +88,10 @@ impl AddressFamily for u32 {
     fn into_addr(self) -> Addr {
         Addr::from_bits(self as u128)
     }
+
+    fn into_ipaddr(self) -> std::net::IpAddr {
+        std::net::IpAddr::V4(std::net::Ipv4Addr::from(self))
+    }
 }
 
 impl AddressFamily for u128 {
@@ -107,6 +113,10 @@ impl AddressFamily for u128 {
     #[cfg(feature = "dynamodb")]
     fn into_addr(self) -> Addr {
         Addr::from_bits(self)
+    }
+
+    fn into_ipaddr(self) -> std::net::IpAddr {
+        std::net::IpAddr::V6(std::net::Ipv6Addr::from(self))
     }
 }
 
@@ -147,7 +157,11 @@ impl<T> Meta for T
 where
     T: Debug,
 {
-    fn with_meta<AF: AddressFamily + PrimInt + Debug>(net: AF, len: u8, meta: Option<T>) -> Prefix<AF, T> {
+    fn with_meta<AF: AddressFamily + PrimInt + Debug>(
+        net: AF,
+        len: u8,
+        meta: Option<T>,
+    ) -> Prefix<AF, T> {
         Prefix::<AF, T> { net, len, meta }
     }
 }
