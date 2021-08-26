@@ -32,12 +32,15 @@ impl MergeUpdate for NoMeta {
     }
 }
 
-pub trait Meta<AF>
+pub trait Meta
 where
     Self: fmt::Debug + Sized,
-    AF: AddressFamily + PrimInt + Debug,
 {
-    fn with_meta(net: AF, len: u8, meta: Option<Self>) -> Prefix<AF, Self> {
+    fn with_meta<AF: AddressFamily + PrimInt + Debug>(
+        net: AF,
+        len: u8,
+        meta: Option<Self>,
+    ) -> Prefix<AF, Self> {
         Prefix { net, len, meta }
     }
 }
@@ -112,7 +115,7 @@ impl AddressFamily for u128 {
 #[derive(Copy, Clone)]
 pub struct Prefix<AF, T>
 where
-    T: Meta<AF>,
+    T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
     pub net: AF,
@@ -122,7 +125,7 @@ where
 
 impl<T, AF> Prefix<AF, T>
 where
-    T: Meta<AF>,
+    T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
     pub fn new(net: AF, len: u8) -> Prefix<AF, T> {
@@ -140,12 +143,11 @@ where
     }
 }
 
-impl<T, AF> Meta<AF> for T
+impl<T> Meta for T
 where
     T: Debug,
-    AF: AddressFamily + PrimInt + Debug,
 {
-    fn with_meta(net: AF, len: u8, meta: Option<T>) -> Prefix<AF, T> {
+    fn with_meta<AF: AddressFamily + PrimInt + Debug>(net: AF, len: u8, meta: Option<T>) -> Prefix<AF, T> {
         Prefix::<AF, T> { net, len, meta }
     }
 }
@@ -195,7 +197,7 @@ where
 impl<T, AF> Debug for Prefix<AF, T>
 where
     AF: AddressFamily + PrimInt + Debug,
-    T: Debug + Meta<AF>,
+    T: Debug + Meta,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
