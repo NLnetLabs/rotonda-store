@@ -826,45 +826,13 @@ where
         NewNodeOrIndex::ExistingNode(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)])
     }
 
-    // pub fn search_stride_for_less_specifics_at<'b>(
-    //     &self,
-    //     search_pfx: &Prefix<AF, NoMeta>,
-    //     mut nibble: u32,
-    //     nibble_len: u8,
-    //     start_bit: u8,
-    //     found_pfx: &'b mut Vec<NodeId>,
-    // ) -> Option<NodeId> {
-    //     let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
+    //-------------------- Search nibble functions -------------------------------
 
-    //     for n_l in 1..(nibble_len + 1) {
-    //         // Move the bit in the right position.
-    //         nibble = AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
-    //         bit_pos = S::get_bit_pos(nibble, n_l);
-
-    //         // Check it there's a prefix matching in this bitmap for this nibble and add
-    //         // it to the found prefixes.
-    //         if self.pfxbitarr & bit_pos > S::zero() {
-    //             found_pfx.push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, n_l)]);
-    //         }
-    //     }
-
-    //     // If we are at the end of the prefix length or if there are no more
-    //     // children we're returning what we found so far.
-
-    //     // Check if this the last stride, or if they're no more children to go to,
-    //     // if so return what we found up until now.
-    //     if search_pfx.len < start_bit
-    //         || (S::into_stride_size(self.ptrbitarr) & bit_pos)
-    //             == <S as std::ops::BitAnd>::Output::zero()
-    //     // No more nodes with children or at the end of the prefix length.
-    //     {
-    //         return None;
-    //     }
-
-    //     // The node with children in the next stride.
-    //     Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)])
-    // }
-
+    // This function looks for the longest marching prefix in the provided nibble,
+    // by iterating over all the bits in it and comparing that with the appriopriate
+    // bytes from the requested prefix.
+    // It mutates the `less_specifics_vec` that was passed in to hold all the prefixes
+    // found along the way.
     pub fn search_stride_for_longest_match_at(
         &self,
         search_pfx: &Prefix<AF, NoMeta>,
@@ -891,7 +859,8 @@ where
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
                 if let Some(ls_vec) = less_specifics_vec {
-                    if !(search_pfx.len <= start_bit + nibble_len || (S::into_stride_size(self.ptrbitarr)
+                    if !(search_pfx.len <= start_bit + nibble_len
+                        || (S::into_stride_size(self.ptrbitarr)
                             & S::get_bit_pos(nibble, nibble_len))
                             == S::zero())
                     {
@@ -922,6 +891,54 @@ where
         )
     }
 
+    // This function looks for the exactly matching prefix in the provided nibble.
+    // It doesn't needd to iterate over anything it just compares the complete nibble, with
+    // the appropriate bits in the requested prefix.
+    // Although this is rather efficient, there's no way to collect less-specific prefixes from
+    // the search prefix.
+    pub fn search_stride_for_exact_match_at(
+        &self,
+        search_pfx: &Prefix<AF, NoMeta>,
+        nibble: u32,
+        nibble_len: u8,
+        start_bit: u8,
+        _: &mut Option<Vec<NodeId>>,
+    ) -> (Option<NodeId>, Option<NodeId>) {
+        // This is an exact match, so we're only considering the position of the full nibble.
+        let bit_pos = S::get_bit_pos(nibble, nibble_len);
+        let mut found_pfx = None;
+        let mut found_child = None;
+
+        // Is this the last nibble?
+        // Otherwise we're not looking for a prefix (exact matching only lives at last nibble)
+        match search_pfx.len <= start_bit + nibble_len {
+            // We're at the last nibble.
+            true => {
+                // Check for an actual prefix at the right position, i.e. consider the complete nibble
+                if self.pfxbitarr & bit_pos > S::zero() {
+                    found_pfx =
+                        Some(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)]);
+                }
+            }
+            // We're not at the last nibble.
+            false => {
+                // Check for a child node at the right position, i.e. consider the complete nibble.
+                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
+                    found_child = Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
+                }
+            }
+        }
+
+        (
+            found_child, /* The node that has children in the next stride, if any */
+            found_pfx,   /* The exactly matching prefix, if any */
+        )
+    }
+
+    // This function looks for the exactly matching prefix in the provided nibble,
+    // just like the one above, but this *does* iterate over all the bytes in the nibble to collect
+    // the less-specific prefixes of the the search prefix.
+    // This is of course slower, so it should only be used when the user explicitly requests less-specifics.
     pub fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
         search_pfx: &Prefix<AF, NoMeta>,
@@ -968,7 +985,7 @@ where
 
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
-        match search_pfx.len <= start_bit + nibble_len 
+        match search_pfx.len <= start_bit + nibble_len
             || (S::into_stride_size(self.ptrbitarr) & bit_pos)
                 == <S as std::ops::BitAnd>::Output::zero()
         {
@@ -985,167 +1002,6 @@ where
             ),
         }
     }
-
-    pub fn search_stride_for_exact_match_at(
-        &self,
-        search_pfx: &Prefix<AF, NoMeta>,
-        nibble: u32,
-        nibble_len: u8,
-        start_bit: u8,
-        _: &mut Option<Vec<NodeId>>,
-    ) -> (Option<NodeId>, Option<NodeId>) {
-        // This is an exact match, so we're only considering the position of the full nibble.
-        let bit_pos = S::get_bit_pos(nibble, nibble_len);
-        let mut found_pfx = None;
-        let mut found_child = None;
-
-        // Is this the last nibble?
-        // Otherwise we're not looking for a prefix (exact matching only lives at last nibble)
-        match search_pfx.len <= start_bit + nibble_len {
-            // We're at the last nibble.
-            true => {
-                // Check for an actual prefix at the right position, i.e. consider the complete nibble
-                if self.pfxbitarr & bit_pos > S::zero() {
-                    found_pfx =
-                        Some(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)]);
-                }
-            }
-            // We're not at the last nibble.
-            false => {
-                // Check for a child node at the right position, i.e. consider the complete nibble.
-                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-                    found_child = Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
-                }
-            }
-        }
-
-        (
-            found_child, /* The node that has children in the next stride, if any */
-            found_pfx,   /* The exactly matching prefix, if any */
-        )
-    }
-
-    // // Search a stride for more-specific prefixes and child nodes containing
-    // // more specifics for `search_prefix`.
-    // pub fn search_stride_for_more_specifics_at(
-    //     &self,
-    //     search_pfx: &Prefix<AF, NoMeta>,
-    //     nibble: u32,
-    //     nibble_len: u8,
-    //     start_bit: u8,
-    // ) -> (
-    //     Option<NodeId>, /* the node with children in the next stride  */
-    //     Option<NodeId>, /* the actual LMP */
-    //     Vec<NodeId>,    /* child nodes with more more-specifics in this stride */
-    //     Vec<NodeId>,    /* more-specific prefixes in this stride */
-    // ) {
-    //     let mut found_children_with_more_specifics = vec![];
-    //     let mut found_more_specifics_vec: Vec<NodeId> = vec![];
-
-    //     // This is an exact match, so we're only considering the position of the full nibble.
-    //     let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
-    //     let mut found_pfx = None;
-    //     let mut found_child = None;
-
-    //     // Is this the last nibble?
-    //     // Otherwise we're not looking for a prefix (exact matching only lives at last nibble)
-    //     match search_pfx.len <= start_bit + nibble_len {
-    //         // We're at the last nibble.
-    //         true => {
-    //             // Check for an actual prefix at the right position, i.e. consider the complete nibble
-    //             if self.pfxbitarr & bit_pos > S::zero() {
-    //                 found_pfx =
-    //                     Some(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)]);
-    //             }
-
-    //             // Is there also a child node here?
-    //             // Note that even without a child node, there may be more specifics further up in this
-    //             // pfxbitarr or children in this ptrbitarr.
-    //             if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-    //                 found_child = Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
-    //             }
-
-    //             // Pfff, we've found NOTHING, searching stops here.
-    //             if found_pfx.is_none() && found_child.is_none() {
-    //                 return (None, None, vec![], vec![]);
-    //             }
-    //         }
-    //         // We're not at the last nibble.
-    //         false => {
-    //             // Check for a child node at the right position, i.e. consider the complete nibble.
-    //             // If so we're returning without caring for the other return values, because
-    //             // we only want to more-specifics for the exact matching prefix.
-    //             if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-    //                 return (
-    //                     Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]),
-    //                     None,
-    //                     vec![],
-    //                     vec![],
-    //                 );
-    //             }
-    //         }
-    //     }
-
-    //     // From here on we have to deal with the found prefix and/or the found child node.
-    //     assert!(found_pfx.is_some() || found_child.is_some());
-
-    //     if let Some(child) = found_child {
-    //         found_children_with_more_specifics.push(child);
-    //     }
-
-    //     // println!("{}..{}", nibble_len + start_bit, S::STRIDE_LEN + start_bit);
-    //     // println!("start nibble: {:032b}", nibble);
-    //     // println!("extra bit: {}", (S::STRIDE_LEN - nibble_len));
-
-    //     // We're expanding the search for more-specifics bit-by-bit.
-    //     // `ms_nibble_len` is the number of bits including the original nibble we're considering,
-    //     // e.g. if our prefix has a length of 25 and we've all strides sized 4,
-    //     // We would end up with a last nibble_len of 1.
-    //     // `ms_nibble_len` will expand then from 2 up and till 4.
-    //     // ex.:
-    //     // nibble: 1 , (nibble_len: 1)
-    //     // Iteration:
-    //     // ms_nibble_len=1,n_l=0: 10, n_l=1: 11
-    //     // ms_nibble_len=2,n_l=0: 100, n_l=1: 101, n_l=2: 110, n_l=3: 111
-    //     // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ..., n_l=7: 1111
-
-    //     for ms_nibble_len in nibble_len + 1..S::STRIDE_LEN + 1 {
-    //         // iterate over all the possible values for this `ms_nibble_len`,
-    //         // e.g. two bits can have 4 different values.
-    //         for n_l in 0..(1 << (ms_nibble_len - nibble_len)) {
-    //             // move the nibble left with the amount of bits we're going to loop over.
-    //             // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
-    //             // then it will iterate over ...1100,...1101,...1110,...1111
-    //             let ms_nibble = (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
-    //             bit_pos = S::get_bit_pos(ms_nibble, ms_nibble_len);
-
-    //             // println!("nibble:    {:032b}", ms_nibble);
-    //             // println!("ptrbitarr: {:032b}", self.ptrbitarr);
-    //             // println!("bitpos:    {:032b}", bit_pos);
-
-    //             if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-    //                 found_children_with_more_specifics
-    //                     .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]);
-    //             }
-
-    //             if self.pfxbitarr & bit_pos > S::zero() {
-    //                 found_more_specifics_vec.push(
-    //                     self.pfx_vec[S::get_pfx_index(self.pfxbitarr, ms_nibble, ms_nibble_len)],
-    //                 );
-    //             }
-    //         }
-    //     }
-
-    //     (
-    //         // We're done here, the caller should now go over all nodes in found_childre_with_more_specifics vec and add
-    //         // ALL prefixes found in there. That's why we're returning found_child node `None`, although
-    //         // technically untrue: we added the found_child_node to the found_children_with_more_specifics vec.
-    //         None,
-    //         found_pfx,
-    //         found_children_with_more_specifics,
-    //         found_more_specifics_vec,
-    //     )
-    // }
 
     // Search a stride for more-specific prefixes and child nodes containing
     // more specifics for `search_prefix`.
