@@ -13,7 +13,7 @@ mod test {
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
         let res = trie.match_prefix(
             &expect_pfx,
-            MatchOptions {
+            &MatchOptions {
                 match_type: MatchType::LongestMatch,
                 include_less_specifics: true,
                 include_more_specifics: false,
@@ -29,7 +29,7 @@ mod test {
         let expect_pfx = Prefix::new(std::net::Ipv4Addr::new(255, 255, 255, 255).into(), 32);
         let res = trie.match_prefix(
             &expect_pfx,
-            MatchOptions {
+            &MatchOptions {
                 match_type: MatchType::ExactMatch,
                 include_less_specifics: true,
                 include_more_specifics: false,
@@ -111,7 +111,7 @@ mod test {
             let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx_nm,
-                MatchOptions {
+                &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_less_specifics: false,
                     include_more_specifics: false,
@@ -123,7 +123,7 @@ mod test {
 
         let res = tree_bitmap.match_prefix(
             &Prefix::<u32, NoMeta>::new(std::net::Ipv4Addr::new(192, 0, 1, 0).into(), 24),
-            MatchOptions {
+            &MatchOptions {
                 match_type: MatchType::LongestMatch,
                 include_less_specifics: true,
                 include_more_specifics: false,
@@ -184,7 +184,7 @@ mod test {
                     );
                     let res = tree_bitmap.match_prefix(
                         &pfx,
-                        MatchOptions {
+                        &MatchOptions {
                             match_type: MatchType::LongestMatch,
                             include_less_specifics: false,
                             include_more_specifics: false,

@@ -108,7 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("search for: {:?}", spfx);
         let s_spfx = tree_bitmap.match_prefix(
             spfx,
-            MatchOptions {
+            &MatchOptions {
                 match_type: MatchType::LongestMatch,
                 include_less_specifics: true,
                 include_more_specifics: false,

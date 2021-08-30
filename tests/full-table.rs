@@ -74,7 +74,7 @@ mod test {
                         );
                         let res = tree_bitmap.match_prefix(
                             &pfx,
-                            MatchOptions {
+                            &MatchOptions {
                                 match_type: MatchType::LongestMatch,
                                 include_less_specifics: false,
                                 include_more_specifics: false,

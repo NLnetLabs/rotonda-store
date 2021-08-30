@@ -96,7 +96,7 @@ mod test {
             println!("search for: {:?}", spfx.0);
             let found_result = tree_bitmap.match_prefix(
                 spfx.0,
-                MatchOptions {
+                &MatchOptions {
                     match_type: MatchType::ExactMatch,
                     include_less_specifics: false,
                     include_more_specifics: true,

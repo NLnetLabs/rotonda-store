@@ -755,7 +755,7 @@ where
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix<Store::AF, NoMeta>,
-        options: MatchOptions,
+        options: &MatchOptions,
     ) -> QueryResult<'a, Store> {
         let mut stride_end = 0;
         let mut found_pfx_idx: Option<
