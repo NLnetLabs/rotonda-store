@@ -905,7 +905,7 @@ where
 
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
-        if search_pfx.len < start_bit
+        if search_pfx.len <= start_bit + nibble_len
             || (S::into_stride_size(self.ptrbitarr) & bit_pos) == S::zero()
         // No children or at the end, return the definitive LMP we found.
         {
@@ -968,7 +968,7 @@ where
 
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
-        match search_pfx.len < start_bit
+        match search_pfx.len <= start_bit + nibble_len 
             || (S::into_stride_size(self.ptrbitarr) & bit_pos)
                 == <S as std::ops::BitAnd>::Output::zero()
         {
@@ -978,7 +978,7 @@ where
                 found_pfx, /* The definitive LMP if any */
             ),
             // There's another child, we won't return the found_pfx, since we're not
-            // at the last nibble and we an exact match only.
+            // at the last nibble and we want an exact match only.
             false => (
                 Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]), /* The node that has children the next stride */
                 None,
