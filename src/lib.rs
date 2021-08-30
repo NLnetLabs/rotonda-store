@@ -8,7 +8,7 @@ pub use tree::{
 pub use query::{ MatchOptions, MatchType, QueryResult};
 
 pub mod common;
-mod query;
+pub mod query;
 pub mod synth_int;
 pub mod tree;
 
