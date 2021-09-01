@@ -12,6 +12,7 @@ pub struct MatchOptions {
 pub enum MatchType {
     ExactMatch,
     LongestMatch,
+    EmptyMatch,
 }
 
 #[derive(Debug)]
@@ -20,7 +21,7 @@ where
     Store: StorageBackend,
 {
     pub prefix: Option<&'a Prefix<Store::AF, Store::Meta>>,
-    // pub match_type: MatchType,
+    pub match_type: MatchType,
     pub less_specifics: Option<Vec<&'a Prefix<Store::AF, Store::Meta>>>,
     pub more_specifics: Option<Vec<&'a Prefix<Store::AF, Store::Meta>>>,
 }
@@ -50,16 +51,28 @@ where
         options: &MatchOptions,
     ) -> QueryResult<'a, Store> {
         let mut stride_end = 0;
-        let mut found_pfx_idx: Option<
+
+        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
+        // let mut last_child_node = None;
+        let mut nibble;
+        let mut nibble_len;
+
+        // ------------  result values ---------------------
+
+        // The final prefix
+        let mut match_prefix_idx: Option<
             <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         > = None;
-        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
-        let mut more_specifics_vec: Vec<Store::NodeType> = vec![];
-        let mut last_child_node = None;
-        let mut nibble = 0;
-        let mut nibble_len = 0;
 
+        // The indexes of the less-specifics
         let mut less_specifics_vec = if options.include_less_specifics {
+            Some(Vec::<Store::NodeType>::new())
+        } else {
+            None
+        };
+
+        // The indexes of the more-specifics.
+        let mut more_specifics_vec = if options.include_more_specifics {
             Some(Vec::<Store::NodeType>::new())
         } else {
             None
@@ -67,8 +80,9 @@ where
 
         for stride in self.strides.iter() {
             stride_end += stride;
+            let last_stride = search_pfx.len < stride_end;
 
-            nibble_len = if search_pfx.len < stride_end {
+            nibble_len = if last_stride {
                 stride + search_pfx.len - stride_end
             } else {
                 *stride
@@ -79,83 +93,8 @@ where
             nibble = AddressFamily::get_nibble(search_pfx.net, stride_end - stride, nibble_len);
 
             match node {
-                SizedStrideNode::Stride3(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-
-                    // This whole match assumes that:
-                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
-                    //   searching by following the node contained in the value.
-                    // - The second value in the tuple holds the prefix that was found.
-                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
-                    // cases where `include_less_specifics` was requested by the user.
-                    match search_fn(
-                        current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        // This and the next match will handle intermediary nodes.
-                        (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        // This handles exact matches.
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                let (cnvec, msvec) =
-                                    current_node.add_more_specifics_at(nibble, nibble_len);
-                                more_specifics_vec.extend(msvec);
-
-                                for child_node in cnvec.iter() {
-                                    self.get_all_more_specifics_for_node(
-                                        self.retrieve_node(*child_node).unwrap(),
-                                        &mut more_specifics_vec,
-                                    );
-                                }
-                            }
-                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
-                            return QueryResult {
-                                prefix: pfx,
-                                // match_type: match pfx {
-                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
-                                //     _ => MatchType::LongestMatch,
-                                // },
-                                more_specifics: Some(
-                                    more_specifics_vec
-                                        .iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect(),
-                                ),
-                                less_specifics: less_specifics_vec.map(|vec| {
-                                    vec.iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect()
-                                }),
-                            };
-                        }
-                        // This handles cases where there's no prefix, either exact or longest matching.
-                        (None, None) => {
-                            break;
-                        }
-                    }
+                SizedStrideNode::Stride3(_) => {
+                    todo!()
                 }
                 SizedStrideNode::Stride4(current_node) => {
                     let search_fn = match options.match_type {
@@ -169,6 +108,7 @@ where
                         MatchType::LongestMatch => {
                             TreeBitMapNode::search_stride_for_longest_match_at
                         }
+                        MatchType::EmptyMatch => TreeBitMapNode::search_stride_for_longest_match_at,
                     };
 
                     // This whole match assumes that:
@@ -185,441 +125,139 @@ where
                         stride_end - stride,
                         &mut less_specifics_vec,
                     ) {
-                        // This and the next match will handle intermediary nodes.
+                        // This and the next match will handle all intermediary nodes, but they might also handle
+                        // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx.get_part());
                             node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    let (cnvec, mut msvec) =
+                                        current_node.add_more_specifics_at(nibble, nibble_len);
+
+                                    for child_node in cnvec.iter() {
+                                        self.get_all_more_specifics_for_node(
+                                            self.retrieve_node(*child_node).unwrap(),
+                                            &mut msvec,
+                                        );
+                                    }
+                                    more_specifics_vec = Some(msvec);
+                                }
+                                break;
+                            }
                         }
                         (Some(n), None) => {
                             node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    let (cnvec, mut msvec) =
+                                        current_node.add_more_specifics_at(nibble, nibble_len);
+
+                                    for child_node in cnvec.iter() {
+                                        self.get_all_more_specifics_for_node(
+                                            self.retrieve_node(*child_node).unwrap(),
+                                            &mut msvec,
+                                        );
+                                    }
+                                    more_specifics_vec = Some(msvec);
+                                }
+                                break;
+                            }
                         }
-                        // This handles exact matches.
+                        // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
-                                let (cnvec, msvec) =
+                                let (cnvec, mut msvec) =
                                     current_node.add_more_specifics_at(nibble, nibble_len);
-                                more_specifics_vec.extend(msvec);
 
                                 for child_node in cnvec.iter() {
                                     self.get_all_more_specifics_for_node(
                                         self.retrieve_node(*child_node).unwrap(),
-                                        &mut more_specifics_vec,
+                                        &mut msvec,
                                     );
                                 }
+
+                                more_specifics_vec = Some(msvec);
                             }
-                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
-                            return QueryResult {
-                                prefix: pfx,
-                                // match_type: match pfx {
-                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
-                                //     _ => MatchType::LongestMatch,
-                                // },
-                                more_specifics: Some(
-                                    more_specifics_vec
-                                        .iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect(),
-                                ),
-                                less_specifics: less_specifics_vec.map(|vec| {
-                                    vec.iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect()
-                                }),
-                            };
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            break;
                         }
-                        // This handles cases where there's no prefix, either exact or longest matching.
+                        // This handles cases where there's no prefix (and no child) for exact match or longest match,
+                        // the empty match - which doesn't care about actually finding a prefix - just continues
+                        // in search of more-specifics.
                         (None, None) => {
+                            match options.match_type {
+                                MatchType::EmptyMatch => {
+                                    // To make sure we don't process this match arm more then once, we
+                                    // return early here.
+                                    let (cnvec, mut msvec) =
+                                        current_node.add_more_specifics_at(nibble, nibble_len);
+
+                                    for child_node in cnvec.iter() {
+                                        self.get_all_more_specifics_for_node(
+                                            self.retrieve_node(*child_node).unwrap(),
+                                            &mut msvec,
+                                        );
+                                    }
+                                    more_specifics_vec = Some(msvec);
+
+                                    match_prefix_idx = None;
+                                    break;
+                                }
+                                MatchType::LongestMatch => {}
+                                MatchType::ExactMatch => {
+                                    match_prefix_idx = None;
+                                }
+                            }
                             break;
                         }
                     }
                 }
-                SizedStrideNode::Stride5(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-
-                    // This whole match assumes that:
-                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
-                    //   searching by following the node contained in the value.
-                    // - The second value in the tuple holds the prefix that was found.
-                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
-                    // cases where `include_less_specifics` was requested by the user.
-                    match search_fn(
-                        current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        // This and the next match will handle intermediary nodes.
-                        (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        // This handles exact matches.
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                let (cnvec, msvec) =
-                                    current_node.add_more_specifics_at(nibble, nibble_len);
-                                more_specifics_vec.extend(msvec);
-
-                                for child_node in cnvec.iter() {
-                                    self.get_all_more_specifics_for_node(
-                                        self.retrieve_node(*child_node).unwrap(),
-                                        &mut more_specifics_vec,
-                                    );
-                                }
-                            }
-                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
-                            return QueryResult {
-                                prefix: pfx,
-                                // match_type: match pfx {
-                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
-                                //     _ => MatchType::LongestMatch,
-                                // },
-                                more_specifics: Some(
-                                    more_specifics_vec
-                                        .iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect(),
-                                ),
-                                less_specifics: less_specifics_vec.map(|vec| {
-                                    vec.iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect()
-                                }),
-                            };
-                        }
-                        // This handles cases where there's no prefix, either exact or longest matching.
-                        (None, None) => {
-                            break;
-                        }
-                    }
-                }
-                SizedStrideNode::Stride6(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-
-                    // This whole match assumes that:
-                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
-                    //   searching by following the node contained in the value.
-                    // - The second value in the tuple holds the prefix that was found.
-                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
-                    // cases where `include_less_specifics` was requested by the user.
-                    match search_fn(
-                        current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        // This and the next match will handle intermediary nodes.
-                        (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        // This handles exact matches.
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                let (cnvec, msvec) =
-                                    current_node.add_more_specifics_at(nibble, nibble_len);
-                                more_specifics_vec.extend(msvec);
-
-                                for child_node in cnvec.iter() {
-                                    self.get_all_more_specifics_for_node(
-                                        self.retrieve_node(*child_node).unwrap(),
-                                        &mut more_specifics_vec,
-                                    );
-                                }
-                            }
-                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
-                            return QueryResult {
-                                prefix: pfx,
-                                // match_type: match pfx {
-                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
-                                //     _ => MatchType::LongestMatch,
-                                // },
-                                more_specifics: Some(
-                                    more_specifics_vec
-                                        .iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect(),
-                                ),
-                                less_specifics: less_specifics_vec.map(|vec| {
-                                    vec.iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect()
-                                }),
-                            };
-                        }
-                        // This handles cases where there's no prefix, either exact or longest matching.
-                        (None, None) => {
-                            break;
-                        }
-                    }
-                }
-                SizedStrideNode::Stride7(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-
-                    // This whole match assumes that:
-                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
-                    //   searching by following the node contained in the value.
-                    // - The second value in the tuple holds the prefix that was found.
-                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
-                    // cases where `include_less_specifics` was requested by the user.
-                    match search_fn(
-                        current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        // This and the next match will handle intermediary nodes.
-                        (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        // This handles exact matches.
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                let (cnvec, msvec) =
-                                    current_node.add_more_specifics_at(nibble, nibble_len);
-                                more_specifics_vec.extend(msvec);
-
-                                for child_node in cnvec.iter() {
-                                    self.get_all_more_specifics_for_node(
-                                        self.retrieve_node(*child_node).unwrap(),
-                                        &mut more_specifics_vec,
-                                    );
-                                }
-                            }
-                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
-                            return QueryResult {
-                                prefix: pfx,
-                                // match_type: match pfx {
-                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
-                                //     _ => MatchType::LongestMatch,
-                                // },
-                                more_specifics: Some(
-                                    more_specifics_vec
-                                        .iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect(),
-                                ),
-                                less_specifics: less_specifics_vec.map(|vec| {
-                                    vec.iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect()
-                                }),
-                            };
-                        }
-                        // This handles cases where there's no prefix, either exact or longest matching.
-                        (None, None) => {
-                            break;
-                        }
-                    }
-                }
-                SizedStrideNode::Stride8(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-
-                    // This whole match assumes that:
-                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
-                    //   searching by following the node contained in the value.
-                    // - The second value in the tuple holds the prefix that was found.
-                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
-                    // cases where `include_less_specifics` was requested by the user.
-                    match search_fn(
-                        current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        // This and the next match will handle intermediary nodes.
-                        (Some(n), Some(pfx_idx)) => {
-                            found_pfx_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            last_child_node = Some(n);
-                        }
-                        // This handles exact matches.
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                let (cnvec, msvec) =
-                                    current_node.add_more_specifics_at(nibble, nibble_len);
-                                more_specifics_vec.extend(msvec);
-
-                                for child_node in cnvec.iter() {
-                                    self.get_all_more_specifics_for_node(
-                                        self.retrieve_node(*child_node).unwrap(),
-                                        &mut more_specifics_vec,
-                                    );
-                                }
-                            }
-                            let pfx = self.retrieve_prefix(pfx_idx.get_part());
-                            return QueryResult {
-                                prefix: pfx,
-                                // match_type: match pfx {
-                                //     Some(pfx) if pfx.len == search_pfx.len => MatchType::ExactMatch,
-                                //     _ => MatchType::LongestMatch,
-                                // },
-                                more_specifics: Some(
-                                    more_specifics_vec
-                                        .iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect(),
-                                ),
-                                less_specifics: less_specifics_vec.map(|vec| {
-                                    vec.iter()
-                                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                                        .collect()
-                                }),
-                            };
-                        }
-                        // This handles cases where there's no prefix, either exact or longest matching.
-                        (None, None) => {
-                            break;
-                        }
-                    }
-                }
+                SizedStrideNode::Stride5(_) => todo!(),
+                SizedStrideNode::Stride6(_) => todo!(),
+                SizedStrideNode::Stride7(_) => todo!(),
+                SizedStrideNode::Stride8(_) => todo!(),
             }
         }
 
-        // This looks up more-specifics for longest-matching prefixes,
-        // exact matches will never come here (they already returned in the above match).
-        // Note that a MatchType::LongestMatch (the intent of the user) may or may not come here,
-        // since it can also match exactly, i.e. longest match == exact match.
-        if let MatchType::LongestMatch = options.match_type {
-            if options.include_more_specifics {
-                if let Some(child_node) = last_child_node {
-                    let (cnvec, msvec) = match self.retrieve_node(child_node) {
-                        Some(SizedStrideNode::Stride3(n)) => {
-                            n.add_more_specifics_at(nibble, nibble_len)
-                        }
-                        Some(SizedStrideNode::Stride4(n)) => {
-                            n.add_more_specifics_at(nibble, nibble_len)
-                        }
-                        Some(SizedStrideNode::Stride5(n)) => {
-                            n.add_more_specifics_at(nibble, nibble_len)
-                        }
-                        Some(SizedStrideNode::Stride6(n)) => {
-                            n.add_more_specifics_at(nibble, nibble_len)
-                        }
-                        Some(SizedStrideNode::Stride7(n)) => {
-                            n.add_more_specifics_at(nibble, nibble_len)
-                        }
-                        Some(SizedStrideNode::Stride8(n)) => {
-                            n.add_more_specifics_at(nibble, nibble_len)
-                        }
-                        None => (vec![], vec![]),
-                    };
-                    more_specifics_vec.extend(msvec);
+        //------------------ post-processing --------------------------------
 
-                    for child_node in cnvec.iter() {
-                        self.get_all_more_specifics_for_node(
-                            self.retrieve_node(*child_node).unwrap(),
-                            &mut more_specifics_vec,
-                        );
-                    }
-                };
+        // If the above loop finishes (so not hitting an early return) we have processed all strides and have found a child node and maybe a prefix.
+        // Now we will look up more-specifics for longest-matching prefixes that were found in the last stride only,
+        // Note that still any of the match_types (as specified by the user, not the return type) may end up here.
+        
+        let mut match_type: MatchType = MatchType::EmptyMatch;
+        let mut prefix = None;
+        if let Some(pfx_idx) = match_prefix_idx {
+            prefix = self.retrieve_prefix(pfx_idx);
+            match_type = if prefix.unwrap().len == search_pfx.len {
+                MatchType::ExactMatch
+            } else {
+                MatchType::LongestMatch
             }
-        }
+        };
 
-        if let Some(pfx_idx) = found_pfx_idx {
-            QueryResult {
-                prefix: self.retrieve_prefix(pfx_idx),
-                more_specifics: Some(
-                    more_specifics_vec
-                        .iter()
-                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                        .collect(),
-                ),
-                less_specifics: less_specifics_vec.map(|vec| {
+        QueryResult {
+            prefix,
+            match_type,
+            less_specifics: if options.include_less_specifics {
+                less_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
                         .collect()
-                }),
-            }
-        } else {
-            QueryResult {
-                prefix: None,
-                more_specifics: Some(
-                    more_specifics_vec
-                        .iter()
-                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                        .collect(),
-                ),
-                less_specifics: less_specifics_vec.map(|vec| {
+                })
+            } else {
+                None
+            },
+            more_specifics: if options.include_more_specifics {
+                more_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
                         .collect()
-                }),
-            }
+                })
+            } else {
+                None
+            },
         }
     }
 }
