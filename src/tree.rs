@@ -1077,9 +1077,7 @@ where
 
         (
             // We're done here, the caller should now go over all nodes in found_children_with_more_specifics vec and add
-            // ALL prefixes found in there. That's why we're returning found_child node `None`, although
-            // technically untrue: we added the found_child_node to the found_children_with_more_specifics vec.
-            // None,
+            // ALL prefixes found in there.
             found_children_with_more_specifics,
             found_more_specifics_vec,
         )
