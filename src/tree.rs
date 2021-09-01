@@ -1425,6 +1425,62 @@ where
             }
         }
     }
+
+    pub fn recurse_experimental(
+        &'a self,
+        current_node: &SizedStrideNode<Store::AF, Store::NodeType>,
+        nibble: u32,
+        nibble_len: u8,
+    ) -> Option<Vec<Store::NodeType>> {
+        struct Recursor<'s, S: StorageBackend> {
+            f: &'s dyn Fn(
+                &Recursor<S>,
+                &SizedStrideNode<S::AF, S::NodeType>,
+                &mut Vec<S::NodeType>,
+            ),
+        }
+
+        let recursor: Recursor<Store> = Recursor {
+            f: &|recursor: &Recursor<Store>,
+                 node: &SizedStrideNode<Store::AF, Store::NodeType>,
+                 msvec: &mut Vec<Store::NodeType>| {
+                match node {
+                    SizedStrideNode::Stride4(n) => {
+                        msvec.extend_from_slice(&n.pfx_vec);
+
+                        for nn in n.ptr_vec.iter() {
+                            (recursor.f)(recursor, self.retrieve_node(*nn).unwrap(), msvec);
+                        }
+                    }
+                    SizedStrideNode::Stride3(_) => todo!(),
+                    SizedStrideNode::Stride5(_) => todo!(),
+                    SizedStrideNode::Stride6(_) => todo!(),
+                    SizedStrideNode::Stride7(_) => todo!(),
+                    SizedStrideNode::Stride8(_) => todo!(),
+                }
+            },
+        };
+
+        match current_node {
+            SizedStrideNode::Stride4(n) => {
+                let (cnvec, mut msvec) = n.add_more_specifics_at(nibble, nibble_len);
+
+                for child_node in cnvec.iter() {
+                    (recursor.f)(
+                        &recursor,
+                        self.retrieve_node(*child_node).unwrap(),
+                        &mut msvec,
+                    );
+                }
+                Some(msvec)
+            }
+            SizedStrideNode::Stride3(_) => todo!(),
+            SizedStrideNode::Stride5(_) => todo!(),
+            SizedStrideNode::Stride6(_) => todo!(),
+            SizedStrideNode::Stride7(_) => todo!(),
+            SizedStrideNode::Stride8(_) => todo!(),
+        }
+    }
 }
 
 #[derive(Debug, Copy, Clone)]
