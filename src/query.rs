@@ -53,11 +53,14 @@ where
         let mut stride_end = 0;
 
         let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
-        // let mut last_child_node = None;
         let mut nibble;
         let mut nibble_len;
 
-        // ------------  result values ---------------------
+        //-------------  result values -----------------------------------------------
+
+        // These result values are kept in mutable variables, and assembled at the end into a QueryResult struct.
+        // This proved to result in the most efficient code, where we don't have to match on SizedStrideNode over and over.
+        // The `match_type` field in the QueryResult is computed at the end.
 
         // The final prefix
         let mut match_prefix_idx: Option<
@@ -77,6 +80,14 @@ where
         } else {
             None
         };
+
+        //-------------- Stride Processing --------------------------------------------
+
+        // We're going to iterate over all the strides in the treebitmap (so up to the last bit in the max prefix lentgth for that tree).
+        // When a final prefix is found or we get to the end of the strides, depending on the options.match_type (the type requested by the user)
+        // we ALWAYS break out of the loop. WE ALWAYS BREAK OUT OF THE LOOP
+        // Just before breaking some processing is done inside the loop before the break (looking up more-specifics mainly), which looks at bit repetitious, 
+        // but again it's been done like that to avoid having to match over a SizedStrideNode again in the `post-processing` section.
 
         for stride in self.strides.iter() {
             stride_end += stride;
@@ -201,10 +212,10 @@ where
 
         //------------------ post-processing --------------------------------
 
-        // If the above loop finishes (so not hitting an early return) we have processed all strides and have found a child node and maybe a prefix.
+        // If the above loop finishes (so not hitting a break) we have processed all strides and have found a child node and maybe a prefix.
         // Now we will look up more-specifics for longest-matching prefixes that were found in the last stride only,
         // Note that still any of the match_types (as specified by the user, not the return type) may end up here.
-        
+
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
