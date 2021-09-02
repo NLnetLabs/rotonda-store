@@ -194,7 +194,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             tree_bitmap.match_prefix(
                                 &pfx,
                                 &MatchOptions {
-                                    match_type: MatchType::LongestMatch,
+                                    match_type: MatchType::EmptyMatch,
                                     include_less_specifics: true,
                                     include_more_specifics: true
                                 }
