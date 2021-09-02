@@ -16,7 +16,7 @@ mod test {
         // These constants are all contingent on the exact csv file,
         // being loaded!
         const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
-        const SEARCHES_NUM: u128 = 2080800;
+        const SEARCHES_NUM: u32 = 2080800;
         const INSERTS_NUM: usize = 893943;
         const GLOBAL_PREFIXES_VEC_SIZE: usize = 886117;
         const FOUND_PREFIXES: u32 = 1322993;
@@ -65,6 +65,7 @@ mod test {
             let len_max = 32;
 
             let mut found_counter = 0_u32;
+            let mut not_found_counter = 0_u32;
             (0..inet_max).into_iter().for_each(|i_net| {
                 (0..len_max).into_iter().for_each(|s_len| {
                     (0..inet_max).into_iter().for_each(|ii_net| {
@@ -88,10 +89,14 @@ mod test {
                             assert!(_pfx.net <= pfx.net);
                             found_counter += 1;
                         }
+                        else {
+                            not_found_counter += 1;
+                        }
                     });
                 });
             });
             println!("found pfx: {}", found_counter);
+            println!("not found pfx: {}", not_found_counter);
 
             let searches_num = inet_max as u128 * inet_max as u128 * len_max as u128;
 
@@ -102,6 +107,7 @@ mod test {
                 GLOBAL_PREFIXES_VEC_SIZE
             );
             assert_eq!(found_counter, FOUND_PREFIXES);
+            assert_eq!(not_found_counter, SEARCHES_NUM - FOUND_PREFIXES);
         }
         Ok(())
     }
