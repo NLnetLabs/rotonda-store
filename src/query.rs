@@ -104,8 +104,101 @@ where
             nibble = AddressFamily::get_nibble(search_pfx.net, stride_end - stride, nibble_len);
 
             match node {
-                SizedStrideNode::Stride3(_) => {
-                    todo!()
+                SizedStrideNode::Stride3(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => {
+                            TreeBitMapNode::search_stride_for_longest_match_at
+                        }
+                        MatchType::EmptyMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    // This whole match assumes that:
+                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
+                    //   searching by following the node contained in the value.
+                    // - The second value in the tuple holds the prefix that was found.
+                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
+                    // cases where `include_less_specifics` was requested by the user.
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        // This and the next match will handle all intermediary nodes, but they might also handle
+                        // exit nodes.
+                        (Some(n), Some(pfx_idx)) => {
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                    current_node,
+                                    nibble,
+                                    nibble_len,
+                                );
+                            }
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            break;
+                        }
+                        // This handles cases where there's no prefix (and no child) for exact match or longest match,
+                        // the empty match - which doesn't care about actually finding a prefix - just continues
+                        // in search of more-specifics.
+                        (None, None) => {
+                            match options.match_type {
+                                MatchType::EmptyMatch => {
+                                    // To make sure we don't process this match arm more then once, we
+                                    // return early here.
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+
+                                    match_prefix_idx = None;
+                                    break;
+                                }
+                                MatchType::LongestMatch => {}
+                                MatchType::ExactMatch => {
+                                    match_prefix_idx = None;
+                                }
+                            }
+                            break;
+                        }
+                    }
                 }
                 SizedStrideNode::Stride4(current_node) => {
                     let search_fn = match options.match_type {
@@ -203,10 +296,390 @@ where
                         }
                     }
                 }
-                SizedStrideNode::Stride5(_) => todo!(),
-                SizedStrideNode::Stride6(_) => todo!(),
-                SizedStrideNode::Stride7(_) => todo!(),
-                SizedStrideNode::Stride8(_) => todo!(),
+                SizedStrideNode::Stride5(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => {
+                            TreeBitMapNode::search_stride_for_longest_match_at
+                        }
+                        MatchType::EmptyMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    // This whole match assumes that:
+                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
+                    //   searching by following the node contained in the value.
+                    // - The second value in the tuple holds the prefix that was found.
+                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
+                    // cases where `include_less_specifics` was requested by the user.
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        // This and the next match will handle all intermediary nodes, but they might also handle
+                        // exit nodes.
+                        (Some(n), Some(pfx_idx)) => {
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                    current_node,
+                                    nibble,
+                                    nibble_len,
+                                );
+                            }
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            break;
+                        }
+                        // This handles cases where there's no prefix (and no child) for exact match or longest match,
+                        // the empty match - which doesn't care about actually finding a prefix - just continues
+                        // in search of more-specifics.
+                        (None, None) => {
+                            match options.match_type {
+                                MatchType::EmptyMatch => {
+                                    // To make sure we don't process this match arm more then once, we
+                                    // return early here.
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+
+                                    match_prefix_idx = None;
+                                    break;
+                                }
+                                MatchType::LongestMatch => {}
+                                MatchType::ExactMatch => {
+                                    match_prefix_idx = None;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride6(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => {
+                            TreeBitMapNode::search_stride_for_longest_match_at
+                        }
+                        MatchType::EmptyMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    // This whole match assumes that:
+                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
+                    //   searching by following the node contained in the value.
+                    // - The second value in the tuple holds the prefix that was found.
+                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
+                    // cases where `include_less_specifics` was requested by the user.
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        // This and the next match will handle all intermediary nodes, but they might also handle
+                        // exit nodes.
+                        (Some(n), Some(pfx_idx)) => {
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                    current_node,
+                                    nibble,
+                                    nibble_len,
+                                );
+                            }
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            break;
+                        }
+                        // This handles cases where there's no prefix (and no child) for exact match or longest match,
+                        // the empty match - which doesn't care about actually finding a prefix - just continues
+                        // in search of more-specifics.
+                        (None, None) => {
+                            match options.match_type {
+                                MatchType::EmptyMatch => {
+                                    // To make sure we don't process this match arm more then once, we
+                                    // return early here.
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+
+                                    match_prefix_idx = None;
+                                    break;
+                                }
+                                MatchType::LongestMatch => {}
+                                MatchType::ExactMatch => {
+                                    match_prefix_idx = None;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride7(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => {
+                            TreeBitMapNode::search_stride_for_longest_match_at
+                        }
+                        MatchType::EmptyMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    // This whole match assumes that:
+                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
+                    //   searching by following the node contained in the value.
+                    // - The second value in the tuple holds the prefix that was found.
+                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
+                    // cases where `include_less_specifics` was requested by the user.
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        // This and the next match will handle all intermediary nodes, but they might also handle
+                        // exit nodes.
+                        (Some(n), Some(pfx_idx)) => {
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                    current_node,
+                                    nibble,
+                                    nibble_len,
+                                );
+                            }
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            break;
+                        }
+                        // This handles cases where there's no prefix (and no child) for exact match or longest match,
+                        // the empty match - which doesn't care about actually finding a prefix - just continues
+                        // in search of more-specifics.
+                        (None, None) => {
+                            match options.match_type {
+                                MatchType::EmptyMatch => {
+                                    // To make sure we don't process this match arm more then once, we
+                                    // return early here.
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+
+                                    match_prefix_idx = None;
+                                    break;
+                                }
+                                MatchType::LongestMatch => {}
+                                MatchType::ExactMatch => {
+                                    match_prefix_idx = None;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+                SizedStrideNode::Stride8(current_node) => {
+                    let search_fn = match options.match_type {
+                        MatchType::ExactMatch => {
+                            if options.include_less_specifics {
+                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                            } else {
+                                TreeBitMapNode::search_stride_for_exact_match_at
+                            }
+                        }
+                        MatchType::LongestMatch => {
+                            TreeBitMapNode::search_stride_for_longest_match_at
+                        }
+                        MatchType::EmptyMatch => TreeBitMapNode::search_stride_for_longest_match_at,
+                    };
+
+                    // This whole match assumes that:
+                    // - if the first value in the return tuple of `search_fn` holds a value, then we need to continue
+                    //   searching by following the node contained in the value.
+                    // - The second value in the tuple holds the prefix that was found.
+                    // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
+                    // cases where `include_less_specifics` was requested by the user.
+                    match search_fn(
+                        current_node,
+                        search_pfx,
+                        nibble,
+                        nibble_len,
+                        stride_end - stride,
+                        &mut less_specifics_vec,
+                    ) {
+                        // This and the next match will handle all intermediary nodes, but they might also handle
+                        // exit nodes.
+                        (Some(n), Some(pfx_idx)) => {
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        (Some(n), None) => {
+                            node = self.retrieve_node(n).unwrap();
+                            if last_stride {
+                                if options.include_more_specifics {
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+                                }
+                                break;
+                            }
+                        }
+                        // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
+                        (None, Some(pfx_idx)) => {
+                            if options.include_more_specifics {
+                                more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                    current_node,
+                                    nibble,
+                                    nibble_len,
+                                );
+                            }
+                            match_prefix_idx = Some(pfx_idx.get_part());
+                            break;
+                        }
+                        // This handles cases where there's no prefix (and no child) for exact match or longest match,
+                        // the empty match - which doesn't care about actually finding a prefix - just continues
+                        // in search of more-specifics.
+                        (None, None) => {
+                            match options.match_type {
+                                MatchType::EmptyMatch => {
+                                    // To make sure we don't process this match arm more then once, we
+                                    // return early here.
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
+
+                                    match_prefix_idx = None;
+                                    break;
+                                }
+                                MatchType::LongestMatch => {}
+                                MatchType::ExactMatch => {
+                                    match_prefix_idx = None;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
             }
         }
 
