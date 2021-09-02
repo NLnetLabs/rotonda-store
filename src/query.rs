@@ -132,16 +132,11 @@ where
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
-                                    let (cnvec, mut msvec) =
-                                        current_node.add_more_specifics_at(nibble, nibble_len);
-
-                                    for child_node in cnvec.iter() {
-                                        self.get_all_more_specifics_for_node(
-                                            self.retrieve_node(*child_node).unwrap(),
-                                            &mut msvec,
-                                        );
-                                    }
-                                    more_specifics_vec = Some(msvec);
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
                                 }
                                 break;
                             }
@@ -150,16 +145,11 @@ where
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
-                                    let (cnvec, mut msvec) =
-                                        current_node.add_more_specifics_at(nibble, nibble_len);
-
-                                    for child_node in cnvec.iter() {
-                                        self.get_all_more_specifics_for_node(
-                                            self.retrieve_node(*child_node).unwrap(),
-                                            &mut msvec,
-                                        );
-                                    }
-                                    more_specifics_vec = Some(msvec);
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
                                 }
                                 break;
                             }
@@ -167,17 +157,11 @@ where
                         // This handles exact and longest matches: there are no more children, but there is a prefix on this node.
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
-                                let (cnvec, mut msvec) =
-                                    current_node.add_more_specifics_at(nibble, nibble_len);
-
-                                for child_node in cnvec.iter() {
-                                    self.get_all_more_specifics_for_node(
-                                        self.retrieve_node(*child_node).unwrap(),
-                                        &mut msvec,
-                                    );
-                                }
-
-                                more_specifics_vec = Some(msvec);
+                                more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                    current_node,
+                                    nibble,
+                                    nibble_len,
+                                );
                             }
                             match_prefix_idx = Some(pfx_idx.get_part());
                             break;
@@ -190,16 +174,11 @@ where
                                 MatchType::EmptyMatch => {
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
-                                    let (cnvec, mut msvec) =
-                                        current_node.add_more_specifics_at(nibble, nibble_len);
-
-                                    for child_node in cnvec.iter() {
-                                        self.get_all_more_specifics_for_node(
-                                            self.retrieve_node(*child_node).unwrap(),
-                                            &mut msvec,
-                                        );
-                                    }
-                                    more_specifics_vec = Some(msvec);
+                                    more_specifics_vec = self.get_all_more_specifics_from_nibble(
+                                        current_node,
+                                        nibble,
+                                        nibble_len,
+                                    );
 
                                     match_prefix_idx = None;
                                     break;

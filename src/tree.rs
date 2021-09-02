@@ -1357,7 +1357,10 @@ where
         self.store.retrieve_prefix_mut(index)
     }
 
-    pub fn get_all_more_specifics_for_node(
+    // This function assembles all entries in the `pfx_vec` of all child nodes of the
+    // `start_node` into one vec, starting from iself and then recursively assembling
+    // adding all `pfx_vec`s of its children.
+    fn get_all_more_specifics_for_node(
         &self,
         start_node: &SizedStrideNode<Store::AF, Store::NodeType>,
         found_pfx_vec: &mut Vec<Store::NodeType>,
@@ -1426,60 +1429,28 @@ where
         }
     }
 
-    pub fn recurse_experimental(
-        &'a self,
-        current_node: &SizedStrideNode<Store::AF, Store::NodeType>,
+    // This function assembles the prefixes of a child node starting on a specified bit position in a ptr_vec of
+    // `current_node` into a vec, then adds all prefixes of these children recursively into a vec and returns that.
+    pub fn get_all_more_specifics_from_nibble<S: Stride>(
+        &self,
+        current_node: &TreeBitMapNode<Store::AF, S, Store::NodeType>,
         nibble: u32,
         nibble_len: u8,
-    ) -> Option<Vec<Store::NodeType>> {
-        struct Recursor<'s, S: StorageBackend> {
-            f: &'s dyn Fn(
-                &Recursor<S>,
-                &SizedStrideNode<S::AF, S::NodeType>,
-                &mut Vec<S::NodeType>,
-            ),
+    ) -> Option<Vec<Store::NodeType>>
+    where
+        S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S> + Zero,
+        <S as Stride>::PtrSize:
+            Debug + Binary + Copy + std::ops::BitAnd<Output = S::PtrSize> + PartialOrd + Zero,
+    {
+        let (cnvec, mut msvec) = current_node.add_more_specifics_at(nibble, nibble_len);
+
+        for child_node in cnvec.iter() {
+            self.get_all_more_specifics_for_node(
+                self.retrieve_node(*child_node).unwrap(),
+                &mut msvec,
+            );
         }
-
-        let recursor: Recursor<Store> = Recursor {
-            f: &|recursor: &Recursor<Store>,
-                 node: &SizedStrideNode<Store::AF, Store::NodeType>,
-                 msvec: &mut Vec<Store::NodeType>| {
-                match node {
-                    SizedStrideNode::Stride4(n) => {
-                        msvec.extend_from_slice(&n.pfx_vec);
-
-                        for nn in n.ptr_vec.iter() {
-                            (recursor.f)(recursor, self.retrieve_node(*nn).unwrap(), msvec);
-                        }
-                    }
-                    SizedStrideNode::Stride3(_) => todo!(),
-                    SizedStrideNode::Stride5(_) => todo!(),
-                    SizedStrideNode::Stride6(_) => todo!(),
-                    SizedStrideNode::Stride7(_) => todo!(),
-                    SizedStrideNode::Stride8(_) => todo!(),
-                }
-            },
-        };
-
-        match current_node {
-            SizedStrideNode::Stride4(n) => {
-                let (cnvec, mut msvec) = n.add_more_specifics_at(nibble, nibble_len);
-
-                for child_node in cnvec.iter() {
-                    (recursor.f)(
-                        &recursor,
-                        self.retrieve_node(*child_node).unwrap(),
-                        &mut msvec,
-                    );
-                }
-                Some(msvec)
-            }
-            SizedStrideNode::Stride3(_) => todo!(),
-            SizedStrideNode::Stride5(_) => todo!(),
-            SizedStrideNode::Stride6(_) => todo!(),
-            SizedStrideNode::Stride7(_) => todo!(),
-            SizedStrideNode::Stride8(_) => todo!(),
-        }
+        Some(msvec)
     }
 }
 
