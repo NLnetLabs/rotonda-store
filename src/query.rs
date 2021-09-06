@@ -8,11 +8,21 @@ pub struct MatchOptions {
     pub include_more_specifics: bool,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum MatchType {
     ExactMatch,
     LongestMatch,
     EmptyMatch,
+}
+
+impl std::fmt::Display for MatchType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            MatchType::ExactMatch => write!(f, "exact-match"),
+            MatchType::LongestMatch => write!(f, "longest-match"),
+            MatchType::EmptyMatch => write!(f, "empty-match"),
+        }
+    }   
 }
 
 #[derive(Debug)]
