@@ -122,7 +122,7 @@ impl AddressFamily for u128 {
 
 //------------ Prefix --------------------------------------------------------
 
-#[derive(Copy, Clone)]
+#[derive(Clone, Copy)]
 pub struct Prefix<AF, T>
 where
     T: Meta,

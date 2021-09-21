@@ -26,7 +26,7 @@ macro_rules! impl_primitive_stride {
                             as usize
                             - 1
                     }
-                    
+
                     fn into_stride_size(bitmap: $ptrsize) -> $pfxsize {
                         bitmap as $pfxsize << 1
                     }
@@ -86,8 +86,9 @@ macro_rules! match_node_for_strides {
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     // let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
                     let new_id = $self.store.acquire_new_node_id(bit_id, $cur_i.get_part());
-                    current_node.ptr_vec.push(new_id);
-                    current_node.ptr_vec.sort();
+                    // current_node.ptr_vec.push(new_id);
+                    current_node.ptr_vec.insert(new_id);
+                    // current_node.ptr_vec.sort();
                     let i = $self.store_node(Some(new_id), n).unwrap();
 
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
@@ -119,8 +120,8 @@ macro_rules! match_node_for_strides {
 
                     current_node
                         .pfx_vec
-                        .push(new_id);
-                        current_node.pfx_vec.sort();
+                        .insert(new_id);
+                    // current_node.pfx_vec.sort();
 
                     $self.store_prefix($pfx)?;
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));

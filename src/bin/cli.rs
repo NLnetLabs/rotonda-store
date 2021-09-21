@@ -48,7 +48,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     type StoreType = InMemStorage<u32, PrefixAs>;
     let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![4]);
+    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![8]);
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);

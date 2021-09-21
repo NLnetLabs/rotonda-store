@@ -324,16 +324,76 @@ impl Stride for Stride8 {
 
 #[derive(Debug)]
 pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
-    Stride3(TreeBitMapNode<AF, Stride3, NodeId>),
-    Stride4(TreeBitMapNode<AF, Stride4, NodeId>),
-    Stride5(TreeBitMapNode<AF, Stride5, NodeId>),
-    Stride6(TreeBitMapNode<AF, Stride6, NodeId>),
-    Stride7(TreeBitMapNode<AF, Stride7, NodeId>),
-    Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
+    Stride3(TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
+    Stride4(TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
+    Stride5(TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
+    Stride6(TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    Stride7(TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
-pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
-where
+#[derive(Debug)]
+pub struct NodeSet<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>([NodeId; ARRAYSIZE]);
+
+impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> Default for NodeSet<NodeId, ARRAYSIZE> {
+    fn default() -> NodeSet<NodeId, ARRAYSIZE> {
+        NodeSet([NodeId::default(); ARRAYSIZE])
+    }
+}
+
+impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeSet<NodeId, ARRAYSIZE> {
+    fn insert(&mut self, insert_node: NodeId) {
+        let idx = self
+            .0
+            .as_ref()
+            .binary_search_by(|n| {
+                if n > &NodeId::default() {
+                    n.cmp(&insert_node)
+                } else {
+                    std::cmp::Ordering::Greater
+                }
+            })
+            .unwrap_or_else(|x| x);
+        if idx + 1 < ARRAYSIZE {
+            self.0.copy_within(idx..ARRAYSIZE - 1, idx + 1);
+        }
+        if idx < ARRAYSIZE {
+            self.0[idx] = insert_node;
+        }
+    }
+
+    fn as_slice(&self) -> &[NodeId] {
+        let idx = self
+            .0
+            .as_ref()
+            .binary_search_by(|n| {
+                if n.is_empty() {
+                    std::cmp::Ordering::Greater
+                } else {
+                    std::cmp::Ordering::Less
+                }
+            })
+            .unwrap_or_else(|x| x);
+            &self.0[0..idx] 
+    }
+}
+
+impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> std::ops::Index<usize>
+    for NodeSet<NodeId, ARRAYSIZE>
+{
+    type Output = NodeId;
+    fn index(&self, idx: usize) -> &NodeId {
+        &self.0[idx]
+    }
+}
+
+pub struct TreeBitMapNode<
+    AF: AddressFamily,
+    S,
+    NodeId,
+    const PFXARRAYSIZE: usize,
+    const PTRARRAYSIZE: usize,
+> where
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     AF: AddressFamily,
@@ -345,12 +405,12 @@ where
     // referenced by (bit_id, global prefix index)
     // This is the exact same type as for the NodeIds,
     // so we reuse that.
-    pub pfx_vec: Vec<NodeId>,
+    pub pfx_vec: NodeSet<NodeId, PFXARRAYSIZE>,
     // The vec of child nodes hosted by this
     // node, referenced by (ptrbitarr_index, global vec index)
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
-    pub ptr_vec: Vec<NodeId>,
+    pub ptr_vec: NodeSet<NodeId, PTRARRAYSIZE>,
     pub _af: PhantomData<AF>,
 }
 
@@ -363,14 +423,15 @@ where
         SizedStrideNode::Stride3(TreeBitMapNode {
             ptrbitarr: 0,
             pfxbitarr: 0,
-            pfx_vec: vec![],
-            ptr_vec: vec![],
+            pfx_vec: NodeSet([NodeId::default(); 14]),
+            ptr_vec: NodeSet([NodeId::default(); 8]),
             _af: PhantomData,
         })
     }
 }
 
-impl<AF, S, NodeId> Debug for TreeBitMapNode<AF, S, NodeId>
+impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Debug
+    for TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
     S: Stride,
@@ -390,8 +451,8 @@ where
 
 pub trait SortableNodeId
 where
-    Self: std::cmp::Ord + std::fmt::Debug + Sized,
-    Self::Sort: std::cmp::Ord + std::convert::From<u16>,
+    Self: std::cmp::Ord + std::fmt::Debug + Sized + Default,
+    Self::Sort: std::cmp::Ord + std::convert::From<u16> + std::convert::Into<usize>,
     Self::Part: std::cmp::Ord + std::convert::From<u16> + std::marker::Copy + Debug,
 {
     type Part;
@@ -400,9 +461,12 @@ where
     fn new(sort: &Self::Sort, part: &Self::Part) -> Self;
     fn get_sort(&self) -> Self::Sort;
     fn get_part(&self) -> Self::Part;
+    fn is_empty(&self) -> bool;
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Debug, Copy, Clone)]
+// #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
+
+#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone, Default)]
 pub struct InMemNodeId(u16, u32);
 
 // This works for both IPv4 and IPv6 up to a certain point.
@@ -430,6 +494,10 @@ impl SortableNodeId for InMemNodeId {
 
     fn get_part(&self) -> Self::Part {
         self.1
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0 == 0 && self.1 == 0
     }
 }
 
@@ -535,8 +603,8 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
             _node_with_guard: std::cell::RefCell::new(SizedStrideNode::Stride8(TreeBitMapNode {
                 ptrbitarr: U256(0, 0),
                 pfxbitarr: U512(0, 0, 0, 0),
-                pfx_vec: vec![],
-                ptr_vec: vec![],
+                pfx_vec: NodeSet([InMemNodeId::default(); 510]),
+                ptr_vec: NodeSet([InMemNodeId::default(); 256]),
                 _af: PhantomData,
             })),
         }
@@ -698,7 +766,8 @@ enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     ExistingPrefix(NodeId::Part),
 }
 
-impl<AF, S, NodeId> TreeBitMapNode<AF, S, NodeId>
+impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
+    TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
     S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S> + Zero,
@@ -746,8 +815,8 @@ where
                         new_node = SizedStrideNode::Stride3(TreeBitMapNode {
                             ptrbitarr: <Stride3 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride3::zero(),
-                            pfx_vec: vec![],
-                            ptr_vec: vec![],
+                            pfx_vec: NodeSet([NodeId::default(); 14]),
+                            ptr_vec: NodeSet([NodeId::default(); 8]),
                             _af: PhantomData,
                         });
                     }
@@ -755,8 +824,8 @@ where
                         new_node = SizedStrideNode::Stride4(TreeBitMapNode {
                             ptrbitarr: <Stride4 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride4::zero(),
-                            pfx_vec: vec![],
-                            ptr_vec: vec![],
+                            pfx_vec: NodeSet([NodeId::default(); 30]),
+                            ptr_vec: NodeSet([NodeId::default(); 16]),
                             _af: PhantomData,
                         });
                     }
@@ -764,8 +833,8 @@ where
                         new_node = SizedStrideNode::Stride5(TreeBitMapNode {
                             ptrbitarr: <Stride5 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride5::zero(),
-                            pfx_vec: vec![],
-                            ptr_vec: vec![],
+                            pfx_vec: NodeSet([NodeId::default(); 62]),
+                            ptr_vec: NodeSet([NodeId::default(); 32]),
                             _af: PhantomData,
                         });
                     }
@@ -773,8 +842,8 @@ where
                         new_node = SizedStrideNode::Stride6(TreeBitMapNode {
                             ptrbitarr: <Stride6 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride6::zero(),
-                            pfx_vec: vec![],
-                            ptr_vec: vec![],
+                            pfx_vec: NodeSet([NodeId::default(); 126]),
+                            ptr_vec: NodeSet([NodeId::default(); 64]),
                             _af: PhantomData,
                         });
                     }
@@ -782,8 +851,8 @@ where
                         new_node = SizedStrideNode::Stride7(TreeBitMapNode {
                             ptrbitarr: 0_u128,
                             pfxbitarr: U256(0_u128, 0_u128),
-                            pfx_vec: vec![],
-                            ptr_vec: vec![],
+                            pfx_vec: NodeSet([NodeId::default(); 254]),
+                            ptr_vec: NodeSet([NodeId::default(); 128]),
                             _af: PhantomData,
                         });
                     }
@@ -791,8 +860,8 @@ where
                         new_node = SizedStrideNode::Stride8(TreeBitMapNode {
                             ptrbitarr: U256(0_u128, 0_u128),
                             pfxbitarr: U512(0_u128, 0_u128, 0_u128, 0_u128),
-                            pfx_vec: vec![],
-                            ptr_vec: vec![],
+                            pfx_vec: NodeSet([NodeId::default(); 510]),
+                            ptr_vec: NodeSet([NodeId::default(); 256]),
                             _af: PhantomData,
                         });
                     }
@@ -1128,8 +1197,8 @@ where
                 node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: vec![],
-                    pfx_vec: vec![],
+                    ptr_vec: NodeSet([Store::NodeType::default(); 8]),
+                    pfx_vec: NodeSet([Store::NodeType::default(); 14]),
                     _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
@@ -1138,8 +1207,8 @@ where
                 node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: vec![],
-                    pfx_vec: vec![],
+                    ptr_vec: NodeSet([Store::NodeType::default(); 16]),
+                    pfx_vec: NodeSet([Store::NodeType::default(); 30]),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
@@ -1148,8 +1217,8 @@ where
                 node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: vec![],
-                    pfx_vec: vec![],
+                    ptr_vec: NodeSet([Store::NodeType::default(); 32]),
+                    pfx_vec: NodeSet([Store::NodeType::default(); 62]),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
@@ -1158,8 +1227,8 @@ where
                 node = SizedStrideNode::Stride6(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: vec![],
-                    pfx_vec: vec![],
+                    ptr_vec: NodeSet([Store::NodeType::default(); 64]),
+                    pfx_vec: NodeSet([Store::NodeType::default(); 126]),
                     _af: PhantomData,
                 });
                 stride_stats[3].inc(0);
@@ -1168,8 +1237,8 @@ where
                 node = SizedStrideNode::Stride7(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: U256(0, 0),
-                    ptr_vec: vec![],
-                    pfx_vec: vec![],
+                    ptr_vec: NodeSet([Store::NodeType::default(); 128]),
+                    pfx_vec: NodeSet([Store::NodeType::default(); 254]),
                     _af: PhantomData,
                 });
                 stride_stats[4].inc(0);
@@ -1178,8 +1247,8 @@ where
                 node = SizedStrideNode::Stride8(TreeBitMapNode {
                     ptrbitarr: U256(0, 0),
                     pfxbitarr: U512(0, 0, 0, 0),
-                    ptr_vec: vec![],
-                    pfx_vec: vec![],
+                    ptr_vec: NodeSet([Store::NodeType::default(); 256]),
+                    pfx_vec: NodeSet([Store::NodeType::default(); 510]),
                     _af: PhantomData,
                 });
                 stride_stats[5].inc(0);
@@ -1367,9 +1436,9 @@ where
     ) {
         match start_node {
             SizedStrideNode::Stride3(n) => {
-                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.iter() {
+                for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
                         self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
@@ -1377,9 +1446,9 @@ where
                 }
             }
             SizedStrideNode::Stride4(n) => {
-                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.iter() {
+                for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
                         self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
@@ -1387,9 +1456,9 @@ where
                 }
             }
             SizedStrideNode::Stride5(n) => {
-                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.iter() {
+                for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
                         self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
@@ -1397,9 +1466,9 @@ where
                 }
             }
             SizedStrideNode::Stride6(n) => {
-                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.iter() {
+                for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
                         self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
@@ -1407,9 +1476,9 @@ where
                 }
             }
             SizedStrideNode::Stride7(n) => {
-                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.iter() {
+                for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
                         self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
@@ -1417,9 +1486,9 @@ where
                 }
             }
             SizedStrideNode::Stride8(n) => {
-                found_pfx_vec.extend_from_slice(&n.pfx_vec);
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.iter() {
+                for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
                         self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
@@ -1431,9 +1500,19 @@ where
 
     // This function assembles the prefixes of a child node starting on a specified bit position in a ptr_vec of
     // `current_node` into a vec, then adds all prefixes of these children recursively into a vec and returns that.
-    pub fn get_all_more_specifics_from_nibble<S: Stride>(
+    pub fn get_all_more_specifics_from_nibble<
+        S: Stride,
+        const PFXARRAYSIZE: usize,
+        const PTRARRAYSIZE: usize,
+    >(
         &self,
-        current_node: &TreeBitMapNode<Store::AF, S, Store::NodeType>,
+        current_node: &TreeBitMapNode<
+            Store::AF,
+            S,
+            Store::NodeType,
+            { PFXARRAYSIZE },
+            { PTRARRAYSIZE },
+        >,
         nibble: u32,
         nibble_len: u8,
     ) -> Option<Vec<Store::NodeType>>
