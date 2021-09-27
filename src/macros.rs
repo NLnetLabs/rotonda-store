@@ -35,16 +35,6 @@ macro_rules! impl_primitive_stride {
                         (bitmap >> 1) as $ptrsize
                     }
 
-                    // #[inline]
-                    // fn zero() -> Self {
-                    //     0
-                    // }
-
-                    #[inline]
-                    fn one() -> Self {
-                        1
-                    }
-
                     #[inline]
                     fn leading_zeros(self) -> u32 {
                         self.leading_zeros()
@@ -93,9 +83,6 @@ macro_rules! match_node_for_strides {
 
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
-                    // let _default_val = std::mem::replace(
-                    //     $self.retrieve_node_mut($cur_i).unwrap(),
-                    //     SizedStrideNode::$variant(current_node));
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
