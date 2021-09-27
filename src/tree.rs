@@ -393,8 +393,8 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeSet<NodeId, ARRA
         &self.0[0..idx]
     }
 
-    fn empty(stride_type: StrideType) -> Self {
-        NodeSet([NodeId::empty(stride_type); ARRAYSIZE])
+    fn empty() -> Self {
+        NodeSet([NodeId::empty(); ARRAYSIZE])
     }
 }
 
@@ -439,8 +439,8 @@ where
         SizedStrideNode::Stride3(TreeBitMapNode {
             ptrbitarr: 0,
             pfxbitarr: 0,
-            pfx_vec: NodeSet::empty(StrideType::Stride3),
-            ptr_vec: NodeSet::empty(StrideType::Stride3),
+            pfx_vec: NodeSet::empty(),
+            ptr_vec: NodeSet::empty(),
             _af: PhantomData,
         })
     }
@@ -495,7 +495,7 @@ where
     type Sort;
     // fn sort(&self, other: &Self) -> std::cmp::Ordering;
     fn new(sort: &Self::Sort, part: &Self::Part) -> Self;
-    fn empty(stride_type: StrideType) -> Self;
+    fn empty() -> Self;
     fn get_sort(&self) -> Self::Sort;
     fn get_part(&self) -> Self::Part;
     fn is_empty(&self) -> bool;
@@ -537,7 +537,7 @@ impl SortableNodeId for InMemNodeId {
         self.0 == 0 && self.1 == 0
     }
 
-    fn empty(_stride_type: StrideType) -> Self {
+    fn empty() -> Self {
         Self::new(&0, &0)
     }
 }
@@ -652,7 +652,7 @@ impl SortableNodeId for InMemStrideNodeId {
         self.0.is_none()
     }
 
-    fn empty(stride_size: StrideType) -> Self {
+    fn empty() -> Self {
         Self(None)
     }
 }
@@ -839,8 +839,8 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
             _node_with_guard: std::cell::RefCell::new(SizedStrideNode::Stride8(TreeBitMapNode {
                 ptrbitarr: U256(0, 0),
                 pfxbitarr: U512(0, 0, 0, 0),
-                pfx_vec: NodeSet::empty(StrideType::Stride8),
-                ptr_vec: NodeSet::empty(StrideType::Stride8),
+                pfx_vec: NodeSet::empty(),
+                ptr_vec: NodeSet::empty(),
                 _af: PhantomData,
             })),
         }
@@ -1255,8 +1255,8 @@ where
                         new_node = SizedStrideNode::Stride3(TreeBitMapNode {
                             ptrbitarr: <Stride3 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride3::zero(),
-                            pfx_vec: NodeSet::empty(StrideType::Stride3),
-                            ptr_vec: NodeSet::empty(StrideType::Stride3),
+                            pfx_vec: NodeSet::empty(),
+                            ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -1264,8 +1264,8 @@ where
                         new_node = SizedStrideNode::Stride4(TreeBitMapNode {
                             ptrbitarr: <Stride4 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride4::zero(),
-                            pfx_vec: NodeSet::empty(StrideType::Stride4),
-                            ptr_vec: NodeSet::empty(StrideType::Stride4),
+                            pfx_vec: NodeSet::empty(),
+                            ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -1273,8 +1273,8 @@ where
                         new_node = SizedStrideNode::Stride5(TreeBitMapNode {
                             ptrbitarr: <Stride5 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride5::zero(),
-                            pfx_vec: NodeSet::empty(StrideType::Stride5),
-                            ptr_vec: NodeSet::empty(StrideType::Stride5),
+                            pfx_vec: NodeSet::empty(),
+                            ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -1282,8 +1282,8 @@ where
                         new_node = SizedStrideNode::Stride6(TreeBitMapNode {
                             ptrbitarr: <Stride6 as Stride>::PtrSize::zero(),
                             pfxbitarr: Stride6::zero(),
-                            pfx_vec: NodeSet::empty(StrideType::Stride6),
-                            ptr_vec: NodeSet::empty(StrideType::Stride6),
+                            pfx_vec: NodeSet::empty(),
+                            ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -1291,8 +1291,8 @@ where
                         new_node = SizedStrideNode::Stride7(TreeBitMapNode {
                             ptrbitarr: 0_u128,
                             pfxbitarr: U256(0_u128, 0_u128),
-                            pfx_vec: NodeSet::empty(StrideType::Stride7),
-                            ptr_vec: NodeSet::empty(StrideType::Stride7),
+                            pfx_vec: NodeSet::empty(),
+                            ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -1300,8 +1300,8 @@ where
                         new_node = SizedStrideNode::Stride8(TreeBitMapNode {
                             ptrbitarr: U256(0_u128, 0_u128),
                             pfxbitarr: U512(0_u128, 0_u128, 0_u128, 0_u128),
-                            pfx_vec: NodeSet::empty(StrideType::Stride8),
-                            ptr_vec: NodeSet::empty(StrideType::Stride8),
+                            pfx_vec: NodeSet::empty(),
+                            ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -1637,8 +1637,8 @@ where
                 node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: NodeSet::empty(StrideType::Stride3),
-                    pfx_vec: NodeSet::empty(StrideType::Stride3),
+                    ptr_vec: NodeSet::empty(),
+                    pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
@@ -1647,8 +1647,8 @@ where
                 node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: NodeSet::empty(StrideType::Stride4),
-                    pfx_vec: NodeSet::empty(StrideType::Stride4),
+                    ptr_vec: NodeSet::empty(),
+                    pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
@@ -1657,8 +1657,8 @@ where
                 node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: NodeSet::empty(StrideType::Stride5),
-                    pfx_vec: NodeSet::empty(StrideType::Stride5),
+                    ptr_vec: NodeSet::empty(),
+                    pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
@@ -1667,8 +1667,8 @@ where
                 node = SizedStrideNode::Stride6(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: 0,
-                    ptr_vec: NodeSet::empty(StrideType::Stride6),
-                    pfx_vec: NodeSet::empty(StrideType::Stride6),
+                    ptr_vec: NodeSet::empty(),
+                    pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[3].inc(0);
@@ -1677,8 +1677,8 @@ where
                 node = SizedStrideNode::Stride7(TreeBitMapNode {
                     ptrbitarr: 0,
                     pfxbitarr: U256(0, 0),
-                    ptr_vec: NodeSet::empty(StrideType::Stride7),
-                    pfx_vec: NodeSet::empty(StrideType::Stride7),
+                    ptr_vec: NodeSet::empty(),
+                    pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[4].inc(0);
@@ -1687,8 +1687,8 @@ where
                 node = SizedStrideNode::Stride8(TreeBitMapNode {
                     ptrbitarr: U256(0, 0),
                     pfxbitarr: U512(0, 0, 0, 0),
-                    ptr_vec: NodeSet::empty(StrideType::Stride8),
-                    pfx_vec: NodeSet::empty(StrideType::Stride8),
+                    ptr_vec: NodeSet::empty(),
+                    pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[5].inc(0);
