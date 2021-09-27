@@ -9,6 +9,7 @@ use rotonda_store::{
 };
 use std::env;
 use std::error::Error;
+use std::num::ParseIntError;
 use std::ffi::OsString;
 use std::fs::File;
 use std::process;
@@ -50,7 +51,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     type StoreType = InMemStorage<u32, PrefixAs>;
     let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![8,3,3,3,3,3,3,3,3]);
+    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![8, 3, 3, 3, 3, 3, 3, 3, 3]);
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -181,10 +182,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("{:#?}", tree_bitmap.store.prefixes);
                             }
                             "n" => {
-                                println!("{} nodes", tree_bitmap.store.get_nodes_len());
-                                for n in tree_bitmap.store.nodes4.iter() {
-                                    println!("{}", n)
+                                if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
+                                    for n in tree_bitmap
+                                        .store
+                                        .get_nodes()
+                                        .iter()
+                                        .take(num.parse::<usize>()?)
+                                    {
+                                        println!("{:?}", n);
+                                    }
                                 }
+
+                                println!("{} nodes", tree_bitmap.store.get_nodes_len());
                             }
                             _ => {
                                 println!("Error: unknown command {:?}", s_pref);
@@ -234,6 +243,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("CTRL-D");
                 break;
             }
+            Err(ParseIntError) => {
+                println!("Error: Can't parse the command");
+                continue;
+            },
             Err(err) => {
                 println!("Error: {:?}", err);
                 continue;

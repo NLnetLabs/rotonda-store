@@ -332,6 +332,17 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
+// Used to create vec over all nodes.
+#[derive(Debug)]
+pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+    Stride3(&'a TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
+    Stride4(&'a TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
+    Stride5(&'a TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
+    Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct NodeSet<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>([NodeId; ARRAYSIZE]);
 
@@ -629,7 +640,6 @@ impl SortableNodeId for InMemStrideNodeId {
 
 impl std::cmp::Ord for InMemStrideNodeId {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-
         if self.0.is_none() {
             std::cmp::Ordering::Greater
         } else if let Some(sort_id) = other.0 {
@@ -702,6 +712,7 @@ where
         &self,
         index: Self::NodeType,
     ) -> CacheGuard<Self::AF, Self::NodeType>;
+    fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF, Self::NodeType>>;
     fn get_root_node_id(&self, stride_size: u8) -> Self::NodeType;
     fn get_root_node_mut(
         &mut self,
@@ -1042,6 +1053,18 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         _id: Self::NodeType,
     ) -> CacheGuard<Self::AF, Self::NodeType> {
         panic!("Not Implemented for InMeMStorage");
+    }
+
+    fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF, Self::NodeType>> {
+        self.nodes3
+            .iter()
+            .map(|n| SizedStrideRef::Stride3(n))
+            .chain(self.nodes4.iter().map(|n| SizedStrideRef::Stride4(n)))
+            .chain(self.nodes5.iter().map(|n| SizedStrideRef::Stride5(n)))
+            .chain(self.nodes6.iter().map(|n| SizedStrideRef::Stride6(n)))
+            .chain(self.nodes7.iter().map(|n| SizedStrideRef::Stride7(n)))
+            .chain(self.nodes8.iter().map(|n| SizedStrideRef::Stride8(n)))
+            .collect()
     }
 
     fn get_root_node_id(&self, first_stride_size: u8) -> Self::NodeType {

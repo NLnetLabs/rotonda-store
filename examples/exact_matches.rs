@@ -1,3 +1,4 @@
+use rotonda_store::StorageBackend;
 use rotonda_store::common::{Prefix, PrefixAs};
 use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
 
@@ -82,7 +83,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     println!("------ end of inserts\n");
     println!("{:#?}", tree_bitmap.store.prefixes.iter().enumerate().collect::<Vec<(usize, _)>>());
-    println!("{:#?}", tree_bitmap.store.nodes4.iter().enumerate().collect::<Vec<(usize, _)>>());
+    println!("{:#?}", tree_bitmap.store.get_nodes().iter().enumerate().collect::<Vec<(usize, _)>>());
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 
