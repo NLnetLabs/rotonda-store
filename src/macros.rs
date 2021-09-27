@@ -74,7 +74,7 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match std::mem::take($self.retrieve_node_mut($cur_i)?) {
+        match std::mem::take(&mut $self.retrieve_node_mut($cur_i)?) {
             $( SizedStrideNode::$variant(mut current_node) =>
             match current_node.eval_node_or_prefix_at(
                 $nibble,
@@ -85,7 +85,7 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     // let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
-                    let new_id = $self.store.acquire_new_node_id(bit_id, $cur_i.get_part());
+                    let new_id = $self.store.acquire_new_node_id(bit_id, $self.strides[($level + 1) as usize]);
                     // current_node.ptr_vec.push(new_id);
                     current_node.ptr_vec.insert(new_id);
                     // current_node.ptr_vec.sort();

@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "{:#?}",
         tree_bitmap
             .store
-            .nodes
+            .nodes4
             .iter()
             .enumerate()
             .collect::<Vec<(usize, _)>>()

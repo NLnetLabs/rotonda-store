@@ -1,7 +1,7 @@
 #![allow(clippy::type_complexity)]
 
 pub use tree::{
-    CacheGuard, InMemNodeId, InMemStorage, PrefixCacheGuard, SizedStrideNode, SortableNodeId,
+    CacheGuard, InMemNodeId, InMemStrideNodeId, InMemStorage, PrefixCacheGuard, SizedStrideNode, SortableNodeId,
     StorageBackend, Stride, TreeBitMap, TreeBitMapNode,
 };
 

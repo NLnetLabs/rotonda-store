@@ -136,7 +136,7 @@ where
                     // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
                     // cases where `include_less_specifics` was requested by the user.
                     match search_fn(
-                        current_node,
+                        &current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -147,11 +147,11 @@ where
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -164,7 +164,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -176,7 +176,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                    current_node,
+                                    &current_node,
                                     nibble,
                                     nibble_len,
                                 );
@@ -193,7 +193,7 @@ where
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -232,7 +232,7 @@ where
                     // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
                     // cases where `include_less_specifics` was requested by the user.
                     match search_fn(
-                        current_node,
+                        &current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -247,7 +247,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -260,7 +260,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -272,7 +272,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                    current_node,
+                                    &current_node,
                                     nibble,
                                     nibble_len,
                                 );
@@ -289,7 +289,7 @@ where
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -328,7 +328,7 @@ where
                     // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
                     // cases where `include_less_specifics` was requested by the user.
                     match search_fn(
-                        current_node,
+                        &current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -343,7 +343,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -356,7 +356,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -368,7 +368,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                    current_node,
+                                    &current_node,
                                     nibble,
                                     nibble_len,
                                 );
@@ -385,7 +385,7 @@ where
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -424,7 +424,7 @@ where
                     // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
                     // cases where `include_less_specifics` was requested by the user.
                     match search_fn(
-                        current_node,
+                        &current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -439,7 +439,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -452,7 +452,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -464,7 +464,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                    current_node,
+                                    &current_node,
                                     nibble,
                                     nibble_len,
                                 );
@@ -481,7 +481,7 @@ where
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -520,7 +520,7 @@ where
                     // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
                     // cases where `include_less_specifics` was requested by the user.
                     match search_fn(
-                        current_node,
+                        &current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -535,7 +535,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -548,7 +548,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -560,7 +560,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                    current_node,
+                                    &current_node,
                                     nibble,
                                     nibble_len,
                                 );
@@ -577,7 +577,7 @@ where
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -616,7 +616,7 @@ where
                     // The less_specifics_vec is mutated by `search_fn` to hold the prefixes found along the way, in the
                     // cases where `include_less_specifics` was requested by the user.
                     match search_fn(
-                        current_node,
+                        &current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -631,7 +631,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -644,7 +644,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -656,7 +656,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                    current_node,
+                                    &current_node,
                                     nibble,
                                     nibble_len,
                                 );
@@ -673,7 +673,7 @@ where
                                     // To make sure we don't process this match arm more then once, we
                                     // return early here.
                                     more_specifics_vec = self.get_all_more_specifics_from_nibble(
-                                        current_node,
+                                        &current_node,
                                         nibble,
                                         nibble_len,
                                     );
