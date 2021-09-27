@@ -335,12 +335,6 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
 #[derive(Debug, Clone, Copy)]
 pub struct NodeSet<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>([NodeId; ARRAYSIZE]);
 
-// impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> Default for NodeSet<NodeId, ARRAYSIZE> {
-//     fn default() -> NodeSet<NodeId, ARRAYSIZE> {
-//         NodeSet([NodeId::default(); ARRAYSIZE])
-//     }
-// }
-
 impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> std::fmt::Display
     for NodeSet<NodeId, ARRAYSIZE>
 {
@@ -354,27 +348,13 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeSet<NodeId, ARRA
         let idx = self
             .0
             .as_ref()
-            .binary_search_by(|n| {
-                // insert_node.sort(n)
-                // if !n.is_empty() {
-                //     n.get_sort().cmp(&insert_node.get_sort())
-                // } else {
-                //     std::cmp::Ordering::Greater
-                // }
-                // println!("{:?} {:?}", n, insert_node);
-                // println!("{:?}", n.cmp(&insert_node));
-                n.cmp(&insert_node)
-            })
-            // .binary_search(&insert_node)
+            .binary_search_by(|n| n.cmp(&insert_node))
             .unwrap_or_else(|x| x);
-        // println!("idx {} len {}", idx, self.0.len());
         if idx + 1 < ARRAYSIZE {
             self.0.copy_within(idx..ARRAYSIZE - 1, idx + 1);
         }
         if idx < ARRAYSIZE {
-            // print!(" i ");
             self.0[idx] = insert_node;
-            // print!("{:?}", self.0);
         }
     }
 
@@ -626,16 +606,6 @@ impl SortableNodeId for InMemStrideNodeId {
     type Sort = u16;
     type Part = StrideNodeId;
 
-    // fn sort(&self, other: &Self) -> std::cmp::Ordering {
-    //     if other.0.is_none() {
-    //         std::cmp::Ordering::Greater
-    //     } else if let Some(sort_id) = self.0 {
-    //         sort_id.0.cmp(&other.0.unwrap().0)
-    //     } else {
-    //         panic!("Current ID does not exist. Don't know what to do.")
-    //     }
-    // }
-
     fn new(sort: &Self::Sort, part: &Self::Part) -> InMemStrideNodeId {
         InMemStrideNodeId(Some((*sort, *part)))
     }
@@ -659,15 +629,12 @@ impl SortableNodeId for InMemStrideNodeId {
 
 impl std::cmp::Ord for InMemStrideNodeId {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // print!("c ");
 
         if self.0.is_none() {
             std::cmp::Ordering::Greater
         } else if let Some(sort_id) = other.0 {
-            // print!("e ");
             self.0.unwrap().0.cmp(&sort_id.0)
         } else {
-            // println!("o ");
             std::cmp::Ordering::Less
         }
     }
