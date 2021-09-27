@@ -6,7 +6,7 @@ mod test {
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         type StoreType = InMemStorage<u32, NoMeta>;
-        let trie = &mut TreeBitMap::<StoreType>::new(vec![4]);
+        let trie = &mut TreeBitMap::<StoreType>::new(vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4]);
         let min_pfx = Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 1);
 
         trie.insert(min_pfx)?;
