@@ -1,9 +1,11 @@
-#[cfg(feature = "cli")]
+#![cfg(feature = "cli")]
+
 use ansi_term::Colour;
 
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
 use rotonda_store::{
-    InMemNodeId, InMemStorage, MatchOptions, MatchType, SizedStrideNode, StorageBackend, TreeBitMap,
+    InMemStorage, InMemStrideNodeId, MatchOptions, MatchType, SizedStrideNode, StorageBackend,
+    TreeBitMap,
 };
 use std::env;
 use std::error::Error;
@@ -48,7 +50,7 @@ fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Er
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     type StoreType = InMemStorage<u32, PrefixAs>;
     let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![8]);
+    let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![8,3,3,3,3,3,3,3,3]);
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -79,11 +81,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:?} nodes created", total_nodes);
     println!(
         "size of node: {} bytes",
-        std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
+        std::mem::size_of::<SizedStrideNode<u32, InMemStrideNodeId>>()
     );
     println!(
         "memory used by nodes: {}kb",
-        total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>() / 1024
+        total_nodes * std::mem::size_of::<SizedStrideNode<u32, InMemStrideNodeId>>() / 1024
     );
     println!(
         "size of prefix: {} bytes",
@@ -172,10 +174,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let s_pref: Vec<&str> = line.split('/').collect();
 
                 if s_pref.len() < 2 {
-                    println!(
-                        "Error: can't parse prefix {:?}. Maybe add a /<LEN> part?",
-                        s_pref
-                    );
+                    if let Some(cmd) = line.chars().nth(0) {
+                        match cmd.to_string().as_ref() {
+                            "p" => {
+                                println!("{} prefixes", tree_bitmap.store.get_prefixes_len());
+                                println!("{:#?}", tree_bitmap.store.prefixes);
+                            }
+                            "n" => {
+                                println!("{} nodes", tree_bitmap.store.get_nodes_len());
+                                for n in tree_bitmap.store.nodes4.iter() {
+                                    println!("{}", n)
+                                }
+                            }
+                            _ => {
+                                println!("Error: unknown command {:?}", s_pref);
+                            }
+                        }
+                    } else {
+                        println!(
+                            "Error: can't parse prefix {:?}. Maybe add a /<LEN> part?",
+                            s_pref
+                        );
+                    }
                     continue;
                 }
 
