@@ -514,7 +514,6 @@ where
 pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
     pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     pub prefixes: Vec<Prefix<AF, Meta>>,
-    _node_with_guard: std::cell::RefCell<SizedStrideNode<AF, InMemNodeId>>,
 }
 
 impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
@@ -532,13 +531,6 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
         InMemStorage {
             nodes,
             prefixes: vec![],
-            _node_with_guard: std::cell::RefCell::new(SizedStrideNode::Stride8(TreeBitMapNode {
-                ptrbitarr: U256(0, 0),
-                pfxbitarr: U512(0, 0, 0, 0),
-                pfx_vec: vec![],
-                ptr_vec: vec![],
-                _af: PhantomData,
-            })),
         }
     }
 
