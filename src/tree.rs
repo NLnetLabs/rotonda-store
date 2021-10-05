@@ -569,15 +569,21 @@ impl std::convert::From<u16> for StrideNodeId {
     }
 }
 
-impl std::convert::Into<usize> for StrideNodeId {
-    fn into(self) -> usize {
-        self.1 as usize
-    }
-}
+// impl std::convert::Into<usize> for StrideNodeId {
+//     fn into(self) -> usize {
+//         self.1 as usize
+//     }
+// }
 
 impl std::fmt::Display for StrideNodeId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.0, self.1)
+    }
+}
+
+impl std::convert::From<StrideNodeId> for usize {
+    fn from(id: StrideNodeId) -> Self {
+        id.1 as usize
     }
 }
 
