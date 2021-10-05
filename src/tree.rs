@@ -94,19 +94,9 @@ pub trait Zero {
     fn zero() -> Self;
 }
 
-trait One {
-    fn one() -> Self;
-}
-
 impl Zero for u8 {
     fn zero() -> u8 {
         0
-    }
-}
-
-impl One for u8 {
-    fn one() -> u8 {
-        1
     }
 }
 
