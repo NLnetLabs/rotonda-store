@@ -741,8 +741,7 @@ pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
     pub nodes6: Vec<TreeBitMapNode<AF, Stride6, InMemStrideNodeId, 126, 64>>,
     pub nodes7: Vec<TreeBitMapNode<AF, Stride7, InMemStrideNodeId, 254, 128>>,
     pub nodes8: Vec<TreeBitMapNode<AF, Stride8, InMemStrideNodeId, 510, 256>>,
-    pub prefixes: Vec<Prefix<AF, Meta>>,
-    _node_with_guard: std::cell::RefCell<SizedStrideNode<AF, InMemNodeId>>,
+    pub prefixes: Vec<Prefix<AF, Meta>>
 }
 
 impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
@@ -791,14 +790,7 @@ impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStora
             nodes6,
             nodes7,
             nodes8,
-            prefixes: vec![],
-            _node_with_guard: std::cell::RefCell::new(SizedStrideNode::Stride8(TreeBitMapNode {
-                ptrbitarr: U256(0, 0),
-                pfxbitarr: U512(0, 0, 0, 0),
-                pfx_vec: NodeSet::empty(),
-                ptr_vec: NodeSet::empty(),
-                _af: PhantomData,
-            })),
+            prefixes: vec![]
         }
     }
 
