@@ -1,5 +1,6 @@
+#![cfg(feature = "csv")]
 #[cfg(test)]
-#[cfg(feature = "csv")]
+
 mod test {
 
     use rotonda_store::TreeBitMap;
