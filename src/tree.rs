@@ -1,4 +1,4 @@
-use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
+use crate::common::{AddressFamily, MergeUpdate, Meta, NoMeta, Prefix};
 use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
@@ -654,7 +654,7 @@ where
 {
     type NodeType;
     type AF: AddressFamily;
-    type Meta: Debug + MergeUpdate;
+    type Meta: Meta + MergeUpdate;
 
     fn init(start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>) -> Self;
     fn acquire_new_node_id(
@@ -731,7 +731,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
+pub struct InMemStorage<AF: AddressFamily, Meta: crate::common::Meta> {
     // pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     // each stride in its own vec avoids having to store SizedStrideNode, an enum, that will have
     // the size of the largest variant as its memory footprint (Stride8).
@@ -744,8 +744,11 @@ pub struct InMemStorage<AF: AddressFamily, Meta: Debug> {
     pub prefixes: Vec<Prefix<AF, Meta>>
 }
 
-impl<AF: AddressFamily, Meta: Debug + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
+impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend
+    for InMemStorage<AF, Meta>
+{
     type NodeType = InMemStrideNodeId;
+
     type AF = AF;
     type Meta = Meta;
 
@@ -1145,11 +1148,11 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::D
     }
 }
 
-pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: Debug> {
+pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: crate::common::Meta> {
     pub guard: std::cell::Ref<'a, Prefix<AF, Meta>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, Meta: Debug> std::ops::Deref
+impl<'a, AF: 'static + AddressFamily, Meta: crate::common::Meta> std::ops::Deref
     for PrefixCacheGuard<'a, AF, Meta>
 {
     type Target = Prefix<AF, Meta>;

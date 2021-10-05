@@ -179,7 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match cmd.to_string().as_ref() {
                             "p" => {
                                 println!("{} prefixes", tree_bitmap.store.get_prefixes_len());
-                                println!("{:#?}", tree_bitmap.store.prefixes);
+                                println!("{}", tree_bitmap.store.prefixes);
                             }
                             "n" => {
                                 if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
@@ -189,7 +189,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .iter()
                                         .take(num.parse::<usize>()?)
                                     {
-                                        println!("{:?}", n);
+                                        println!("{}", n);
                                     }
                                 }
 
@@ -219,7 +219,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         pfx = Prefix::<u32, NoMeta>::new(ip.into(), len);
                         println!(
-                            "{:#?}",
+                            "{}",
                             tree_bitmap.match_prefix(
                                 &pfx,
                                 &MatchOptions {

@@ -3,8 +3,7 @@ use num::PrimInt;
 use rpki::repository::resources::Addr;
 use std::cmp::Ordering;
 use std::fmt;
-use std::fmt::Debug;
-
+use std::fmt::{Debug, Display};
 
 //------------ Metadata Types --------------------------------------------------------
 
@@ -18,9 +17,21 @@ impl MergeUpdate for PrefixAs {
     }
 }
 
+impl Display for PrefixAs {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AS{}", self.0)
+    }
+}
+
 pub struct NoMeta;
 
 impl fmt::Debug for NoMeta {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("")
+    }
+}
+
+impl Display for NoMeta {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("")
     }
@@ -34,7 +45,7 @@ impl MergeUpdate for NoMeta {
 
 pub trait Meta
 where
-    Self: fmt::Debug + Sized,
+    Self: Debug + Sized + Display,
 {
     fn with_meta<AF: AddressFamily + PrimInt + Debug>(
         net: AF,
@@ -43,6 +54,8 @@ where
     ) -> Prefix<AF, Self> {
         Prefix { net, len, meta }
     }
+
+    fn summary(&self) -> String;
 }
 pub trait MergeUpdate {
     fn merge_update(&mut self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
@@ -153,9 +166,25 @@ where
     }
 }
 
+impl<T, AF> std::fmt::Display for Prefix<AF, T>
+where
+    T: Meta,
+    AF: AddressFamily + PrimInt + Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}/{} {}",
+            AddressFamily::fmt_net(self.net),
+            self.len,
+            self.meta.as_ref().unwrap().summary()
+        )
+    }
+}
+
 impl<T> Meta for T
 where
-    T: Debug,
+    T: Debug + Display,
 {
     fn with_meta<AF: AddressFamily + PrimInt + Debug>(
         net: AF,
@@ -164,11 +193,15 @@ where
     ) -> Prefix<AF, T> {
         Prefix::<AF, T> { net, len, meta }
     }
+
+    fn summary(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 impl<AF, T> Ord for Prefix<AF, T>
 where
-    T: Debug,
+    T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -179,7 +212,7 @@ where
 
 impl<AF, T> PartialEq for Prefix<AF, T>
 where
-    T: Debug,
+    T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -190,7 +223,7 @@ where
 
 impl<AF, T> PartialOrd for Prefix<AF, T>
 where
-    T: Debug,
+    T: Debug + Display,
     AF: AddressFamily + PrimInt + Debug,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -203,7 +236,7 @@ where
 
 impl<AF, T> Eq for Prefix<AF, T>
 where
-    T: Debug,
+    T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
 }
@@ -211,7 +244,7 @@ where
 impl<T, AF> Debug for Prefix<AF, T>
 where
     AF: AddressFamily + PrimInt + Debug,
-    T: Debug + Meta,
+    T: Meta,
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_fmt(format_args!(
