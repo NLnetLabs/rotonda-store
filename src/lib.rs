@@ -11,6 +11,7 @@ pub mod store;
 pub mod synth_int;
 pub mod tree;
 pub mod stride;
+pub(crate) mod node;
 
 #[macro_use]
 mod macros;
