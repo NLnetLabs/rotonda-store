@@ -8,8 +8,9 @@ use std::{
     marker::PhantomData,
 };
 
-
 //------------------- Unsized Node Enums ------------------------------------------------
+
+pub trait UnsizedNode<AF: AddressFamily, NodeId: SortableNodeId> {}
 
 #[derive(Debug, Copy, Clone)]
 pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
@@ -21,15 +22,9 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
-// Used to create vec over all nodes.
-#[derive(Debug)]
-pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> {
-    Stride3(&'a TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
-    Stride4(&'a TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
-    Stride5(&'a TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
-    Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+impl<AF: AddressFamily, NodeId: SortableNodeId + Copy> UnsizedNode<AF, NodeId>
+    for SizedStrideNode<AF, NodeId>
+{
 }
 
 impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
@@ -48,8 +43,43 @@ where
     }
 }
 
+// Used to create vec over all nodes.
+#[derive(Debug)]
+pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+    Stride3(&'a TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
+    Stride4(&'a TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
+    Stride5(&'a TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
+    Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+}
+
+impl<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> UnsizedNode<AF, NodeId>
+    for SizedStrideRef<'a, AF, NodeId>
+{
+}
+
+pub trait NodeWrapper<AF: AddressFamily, Node: SortableNodeId + Copy> {
+    type Unsized: UnsizedNode<AF, Node>;
+    type UnsizedRef: UnsizedNode<AF, Node>;
+    // type NodeCollection: NodeCollection<AF, Node>;
+}
+
 pub enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), // New Node and bit_id of the new node
+    ExistingNode(NodeId),
+    NewPrefix,
+    ExistingPrefix(NodeId::Part),
+}
+
+pub enum NewNodeOrIndex2<
+    AF: AddressFamily,
+    NodeId: SortableNodeId + Copy,
+    Node: NodeWrapper<AF, NodeId>,
+> where
+    Node::Unsized: UnsizedNode<AF, NodeId>,
+{
+    NewNode(<Node as NodeWrapper<AF, NodeId>>::Unsized, NodeId::Sort), // New Node and bit_id of the new node
     ExistingNode(NodeId),
     NewPrefix,
     ExistingPrefix(NodeId::Part),
@@ -216,6 +246,12 @@ impl std::fmt::Display for InMemStrideNodeId {
 
 //------------------------- Node Collections ---------------------------------------------------
 
+pub trait NodeCollection<NodeId: SortableNodeId + Copy> {
+    fn insert(&mut self, insert_node: NodeId);
+    fn as_slice(&self) -> &[NodeId];
+    fn empty() -> Self;
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct NodeSet<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>([NodeId; ARRAYSIZE]);
 
@@ -227,8 +263,8 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> std::fmt::Display
     }
 }
 
-impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeSet<NodeId, ARRAYSIZE> {
-    pub fn insert(&mut self, insert_node: NodeId) {
+impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeCollection<NodeId> for NodeSet<NodeId, ARRAYSIZE> {
+    fn insert(&mut self, insert_node: NodeId) {
         let idx = self
             .0
             .as_ref()
@@ -242,7 +278,7 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeSet<NodeId, ARRA
         }
     }
 
-    pub fn as_slice(&self) -> &[NodeId] {
+    fn as_slice(&self) -> &[NodeId] {
         let idx = self
             .0
             .as_ref()
@@ -257,7 +293,7 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeSet<NodeId, ARRA
         &self.0[0..idx]
     }
 
-    pub fn empty() -> Self {
+    fn empty() -> Self {
         NodeSet([NodeId::empty(); ARRAYSIZE])
     }
 }
