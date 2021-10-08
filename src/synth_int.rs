@@ -80,7 +80,7 @@ impl PartialEq for U256 {
 
 impl Eq for U256 {}
 
-impl crate::tree::Zero for U256 {
+impl Zero for U256 {
     fn zero() -> Self {
         U256(0_u128, 0_u128)
     }
@@ -150,7 +150,7 @@ impl PartialEq for U512 {
 
 impl Eq for U512 {}
 
-impl crate::tree::Zero for U512 {
+impl Zero for U512 {
     fn zero() -> Self {
         U512(0_u128, 0_u128, 0_u128, 0_u128)
     }
@@ -186,5 +186,39 @@ impl std::ops::BitAnd<Self> for U512 {
             self.2 & rhs.2,
             self.3 & rhs.3,
         )
+    }
+}
+
+pub trait Zero {
+    fn zero() -> Self;
+}
+
+impl Zero for u8 {
+    fn zero() -> u8 {
+        0
+    }
+}
+
+impl Zero for u16 {
+    fn zero() -> u16 {
+        0
+    }
+}
+
+impl Zero for u32 {
+    fn zero() -> u32 {
+        0
+    }
+}
+
+impl Zero for u64 {
+    fn zero() -> u64 {
+        0
+    }
+}
+
+impl Zero for u128 {
+    fn zero() -> u128 {
+        0
     }
 }
