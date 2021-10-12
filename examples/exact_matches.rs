@@ -1,6 +1,6 @@
-use rotonda_store::StorageBackend;
+use rotonda_store::local_array::StorageBackend;
 use rotonda_store::common::{Prefix, PrefixAs};
-use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
+use rotonda_store::local_array::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
 
 type Prefix4<'a> = Prefix<u32, PrefixAs>;
 

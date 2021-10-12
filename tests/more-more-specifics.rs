@@ -1,7 +1,9 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod test {
     use rotonda_store::common::{Prefix, PrefixAs};
-    use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
+    use rotonda_store::local_array::TreeBitMap;
+    use rotonda_store::local_array::InMemStorage;
+    use rotonda_store::local_array::{MatchOptions, MatchType};
 
     use std::error::Error;
 

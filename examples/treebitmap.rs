@@ -1,5 +1,5 @@
 use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-use rotonda_store::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
+use rotonda_store::local_array::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
 
 type Prefix4<'a> = Prefix<u32, NoMeta>;
 

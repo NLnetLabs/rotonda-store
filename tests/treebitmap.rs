@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod test {
     use rotonda_store::common::{NoMeta, Prefix, PrefixAs};
-    use rotonda_store::{InMemStorage, MatchOptions, MatchType, StorageBackend, TreeBitMap};
+    use rotonda_store::local_array::{InMemStorage, MatchOptions, MatchType, StorageBackend, TreeBitMap};
 
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {

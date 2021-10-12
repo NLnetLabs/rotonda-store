@@ -1,7 +1,8 @@
 use crate::{AddressFamily, NoMeta, Prefix};
-use crate::store::*;
+use crate::local_array::store::*;
 
-use crate::tree::{SizedStrideNode, SortableNodeId, TreeBitMap, TreeBitMapNode};
+use crate::local_array::tree::{SizedStrideNode, SortableNodeId, TreeBitMap};
+use crate::local_array::node::TreeBitMapNode;
 use std::fmt::Debug;
 
 pub struct MatchOptions {

@@ -1,5 +1,4 @@
-use crate::tree::*;
-use crate::stride::*;
+use crate::local_array::tree::*;
 
 use crate::{AddressFamily, MergeUpdate, Meta, Prefix};
 use std::fmt::Debug;

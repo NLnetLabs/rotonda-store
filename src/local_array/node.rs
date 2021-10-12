@@ -1,6 +1,6 @@
 use crate::common::{AddressFamily, Prefix, NoMeta};
 pub use crate::stride::*;
-pub use crate::tree::*;
+pub use crate::local_array::tree::*;
 use crate::synth_int::{Zero, U256, U512};
 use std::{
     fmt::{Binary, Debug},

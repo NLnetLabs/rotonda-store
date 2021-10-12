@@ -1,7 +1,8 @@
-use crate::common::{AddressFamily, MergeUpdate, Prefix, NoMeta};
+use crate::common::{AddressFamily, MergeUpdate, Prefix};
 use crate::match_node_for_strides;
-use crate::store::{CacheGuard, StorageBackend};
+use crate::local_array::store::{CacheGuard, StorageBackend};
 pub use crate::stride::*;
+pub use crate::local_array::node::TreeBitMapNode;
 use crate::synth_int::{Zero, U256, U512};
 use std::{
     fmt::{Binary, Debug},
