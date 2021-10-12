@@ -1,4 +1,6 @@
 use crate::local_array::tree::*;
+use crate::common::PrefixNodeIter;
+use crate::node_id::SortableNodeId;
 
 use crate::{AddressFamily, MergeUpdate, Meta, Prefix};
 use std::fmt::Debug;
@@ -79,10 +81,10 @@ where
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(
         &self,
-    ) -> Result<std::slice::Iter<'_, Prefix<Self::AF, Self::Meta>>, Box<dyn std::error::Error>>;
+    ) -> SizedNodeIter<'_, Self::AF, Self::Meta>;
     fn prefixes_iter_mut(
         &mut self,
-    ) -> Result<std::slice::IterMut<'_, Prefix<Self::AF, Self::Meta>>, Box<dyn std::error::Error>>;
+    ) -> PrefixNodeIter<'_, Self::AF, Self::Meta>;
 }
 
 #[derive(Debug)]

@@ -1,7 +1,8 @@
 use crate::{AddressFamily, NoMeta, Prefix};
 use crate::local_array::store::*;
 
-use crate::local_array::tree::{SizedStrideNode, SortableNodeId, TreeBitMap};
+use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
+use crate::node_id::SortableNodeId;
 use crate::local_array::node::TreeBitMapNode;
 use std::fmt::Debug;
 

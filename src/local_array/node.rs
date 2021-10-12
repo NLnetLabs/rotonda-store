@@ -1,4 +1,5 @@
 use crate::common::{AddressFamily, Prefix, NoMeta};
+use crate::node_id::SortableNodeId;
 pub use crate::stride::*;
 pub use crate::local_array::tree::*;
 use crate::synth_int::{Zero, U256, U512};
