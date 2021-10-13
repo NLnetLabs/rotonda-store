@@ -3,10 +3,11 @@
 
 mod test {
 
-    use rotonda_store::TreeBitMap;
+    use rotonda_store::local_vec::tree::TreeBitMap;
     use rotonda_store::{
         common::{NoMeta, Prefix, PrefixAs},
-        InMemStorage, MatchOptions, MatchType, StorageBackend,
+        local_vec::query::{MatchOptions, MatchType},
+        local_vec::tree::{InMemStorage, StorageBackend},
     };
     use std::error::Error;
     use std::fs::File;
@@ -89,8 +90,7 @@ mod test {
                             assert!(_pfx.len <= pfx.len);
                             assert!(_pfx.net <= pfx.net);
                             found_counter += 1;
-                        }
-                        else {
+                        } else {
                             not_found_counter += 1;
                         }
                     });
