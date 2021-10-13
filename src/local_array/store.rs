@@ -1,9 +1,13 @@
 use crate::local_array::tree::*;
-use crate::common::PrefixNodeIter;
 use crate::node_id::SortableNodeId;
 
 use crate::{AddressFamily, MergeUpdate, Meta, Prefix};
 use std::fmt::Debug;
+
+pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
+pub(crate) type SizedNodeOption<'a, AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
 
 pub trait StorageBackend
 where
@@ -38,11 +42,11 @@ where
     fn retrieve_node(
         &self,
         index: Self::NodeType,
-    ) -> Option<SizedStrideNode<Self::AF, Self::NodeType>>;
+    ) -> SizedNodeOption<Self::AF, Self::NodeType>;
     fn retrieve_node_mut(
         &mut self,
         index: Self::NodeType,
-    ) -> Result<SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>>;
+    ) -> SizedNodeResult<Self::AF, Self::NodeType>;
     fn retrieve_node_with_guard(
         &self,
         index: Self::NodeType,
@@ -78,13 +82,14 @@ where
         &self,
         index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
+    fn get_prefixes(&self) -> &Vec<Prefix<Self::AF, Self::Meta>>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(
         &self,
-    ) -> SizedNodeIter<'_, Self::AF, Self::Meta>;
+    ) -> PrefixIter<'_, Self::AF, Self::Meta>;
     fn prefixes_iter_mut(
         &mut self,
-    ) -> PrefixNodeIter<'_, Self::AF, Self::Meta>;
+    ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
 }
 
 #[derive(Debug)]
@@ -314,7 +319,7 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend
     fn retrieve_node(
         &self,
         id: Self::NodeType,
-    ) -> Option<SizedStrideNode<Self::AF, Self::NodeType>> {
+    ) -> SizedNodeOption<Self::AF, Self::NodeType> {
         match id.get_part() {
             StrideNodeId(StrideType::Stride3, part_id) => self
                 .nodes3
@@ -346,7 +351,7 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend
     fn retrieve_node_mut(
         &mut self,
         id: Self::NodeType,
-    ) -> Result<SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>> {
+    ) -> SizedNodeResult<Self::AF, Self::NodeType> {
         match id.get_part() {
             StrideNodeId(StrideType::Stride3, part_id) => Ok(SizedStrideNode::Stride3(
                 *self
@@ -474,13 +479,17 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend
         panic!("nOt ImPlEmEnTed for InMemNode");
     }
 
+    fn get_prefixes(&self) -> &Vec<Prefix<Self::AF, Self::Meta>> {
+        &self.prefixes
+    }
+    
     fn get_prefixes_len(&self) -> usize {
         self.prefixes.len()
     }
 
     fn prefixes_iter(
         &self,
-    ) -> Result<std::slice::Iter<'_, Prefix<AF, Meta>>, Box<dyn std::error::Error>> {
+    ) -> PrefixIter<Self::AF, Self::Meta> {
         Ok(self.prefixes.iter())
     }
 

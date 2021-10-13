@@ -20,6 +20,11 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
+pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
+// pub(crate) type SizedNodeOption<AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
+
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
 where
     S: Stride,
@@ -112,13 +117,14 @@ where
     fn retrieve_node_mut(
         &mut self,
         index: Self::NodeType,
-    ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>>;
+    ) -> SizedNodeResult<Self::AF, Self::NodeType>;
     fn retrieve_node_with_guard(
         &self,
         index: Self::NodeType,
     ) -> CacheGuard<Self::AF, Self::NodeType>;
     fn get_root_node_id(&self) -> Self::NodeType;
     fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
     fn acquire_new_prefix_id(
         &self,
@@ -144,20 +150,20 @@ where
         &self,
         index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
+    fn get_prefixes(&self) -> &Vec<Prefix<Self::AF, Self::Meta>>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(
         &self,
-    ) -> Result<std::slice::Iter<'_, Prefix<Self::AF, Self::Meta>>, Box<dyn std::error::Error>>;
+    ) -> PrefixIter<'_, Self::AF, Self::Meta>;
     fn prefixes_iter_mut(
         &mut self,
-    ) -> Result<std::slice::IterMut<'_, Prefix<Self::AF, Self::Meta>>, Box<dyn std::error::Error>>;
+    ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
 }
 
 #[derive(Debug)]
 pub struct InMemStorage<AF: AddressFamily, Meta: crate::common::Meta> {
     pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     pub prefixes: Vec<Prefix<AF, Meta>>,
-    _node_with_guard: std::cell::RefCell<SizedStrideNode<AF, InMemNodeId>>,
 }
 
 impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
@@ -174,14 +180,7 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend 
         }
         InMemStorage {
             nodes,
-            prefixes: vec![],
-            _node_with_guard: std::cell::RefCell::new(SizedStrideNode::Stride8(TreeBitMapNode {
-                ptrbitarr: U256(0, 0),
-                pfxbitarr: U512(0, 0, 0, 0),
-                pfx_vec: vec![],
-                ptr_vec: vec![],
-                _af: PhantomData,
-            })),
+            prefixes: vec![]
         }
     }
 
@@ -228,7 +227,7 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend 
     fn retrieve_node_mut(
         &mut self,
         index: Self::NodeType,
-    ) -> Result<&mut SizedStrideNode<Self::AF, Self::NodeType>, Box<dyn std::error::Error>> {
+    ) -> SizedNodeResult<Self::AF, Self::NodeType> {
         self.nodes
             .get_mut(index.get_part() as usize)
             .ok_or_else(|| Box::new(Error::new(ErrorKind::Other, "Retrieve Node Error")).into())
@@ -249,6 +248,10 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend 
 
     fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
         Some(&mut self.nodes[0])
+    }
+
+    fn get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>> {
+        &self.nodes
     }
 
     fn get_nodes_len(&self) -> usize {
@@ -287,6 +290,10 @@ impl<AF: AddressFamily, Meta: crate::common::Meta + MergeUpdate> StorageBackend 
         _index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta> {
         panic!("nOt ImPlEmEnTed for InMemNode");
+    }
+
+    fn get_prefixes(&self) -> &Vec<Prefix<Self::AF, Self::Meta>> {
+        &self.prefixes
     }
 
     fn get_prefixes_len(&self) -> usize {
@@ -949,7 +956,7 @@ where
     pub fn retrieve_node_mut(
         &mut self,
         index: Store::NodeType,
-    ) -> Result<&mut SizedStrideNode<Store::AF, Store::NodeType>, Box<dyn std::error::Error>> {
+    ) -> SizedNodeResult<Store::AF, Store::NodeType> {
         self.store.retrieve_node_mut(index)
     }
 

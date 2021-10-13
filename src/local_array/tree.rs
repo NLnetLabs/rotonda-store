@@ -4,6 +4,7 @@ use crate::match_node_for_strides;
 use crate::local_array::store::{CacheGuard, StorageBackend};
 pub use crate::stride::*;
 pub use crate::local_array::node::TreeBitMapNode;
+use crate::local_array::store::{SizedNodeOption, SizedNodeResult};
 use crate::synth_int::{Zero, U256, U512};
 use std::{
     fmt::{Binary, Debug},
@@ -55,8 +56,6 @@ pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
     Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
-
-pub type SizedNodeIter<'a, AF, Meta> = Result<std::slice::Iter<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
 
 impl<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> UnsizedNode<AF, NodeId>
     for SizedStrideRef<'a, AF, NodeId>
@@ -483,7 +482,7 @@ where
     pub fn retrieve_node(
         &self,
         id: Store::NodeType,
-    ) -> Option<SizedStrideNode<Store::AF, Store::NodeType>> {
+    ) -> SizedNodeOption<Store::AF, Store::NodeType> {
         self.store.retrieve_node(id)
     }
 
@@ -503,7 +502,7 @@ where
     pub fn retrieve_node_mut(
         &mut self,
         index: Store::NodeType,
-    ) -> Result<SizedStrideNode<Store::AF, Store::NodeType>, Box<dyn std::error::Error>> {
+    ) -> SizedNodeResult<Store::AF, Store::NodeType> {
         self.store.retrieve_node_mut(index)
     }
 

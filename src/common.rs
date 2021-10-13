@@ -182,9 +182,6 @@ where
     }
 }
 
-pub(crate) type PrefixNodeIter<'a, AF, Meta> =
-    Result<std::slice::IterMut<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
-
 impl<T> Meta for T
 where
     T: Debug + Display,
