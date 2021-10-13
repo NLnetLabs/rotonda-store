@@ -6,8 +6,7 @@ mod test {
     use rotonda_store::local_vec::tree::TreeBitMap;
     use rotonda_store::{
         common::{NoMeta, Prefix, PrefixAs},
-        local_vec::query::{MatchOptions, MatchType},
-        local_vec::tree::{InMemStorage, StorageBackend},
+        local_vec::{InMemStorage, MatchOptions, MatchType, StorageBackend},
     };
     use std::error::Error;
     use std::fs::File;
