@@ -1,6 +1,8 @@
 use crate::common::{AddressFamily, NoMeta, Prefix};
 use crate::node_id::SortableNodeId;
-use crate::local_vec::tree::{SizedStrideNode, StorageBackend, TreeBitMap, TreeBitMapNode};
+use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
+use crate::local_vec::node::TreeBitMapNode;
+use crate::local_vec::store::StorageBackend;
 use std::fmt::Debug;
 
 pub struct MatchOptions {
