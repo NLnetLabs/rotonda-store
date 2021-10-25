@@ -1,14 +1,14 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod test {
-    use rotonda_store::common::{Prefix, PrefixAs};
-    use rotonda_store::local_array::{InMemStorage, MatchOptions, MatchType, TreeBitMap};
+    use rotonda_store::common::PrefixAs;
+    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+    use routecore::prefix::Prefix;
 
     use std::error::Error;
 
     #[test]
     fn test_more_specifics() -> Result<(), Box<dyn Error>> {
-        type StoreType = InMemStorage<u32, PrefixAs>;
-        let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(vec![4]);
+        let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(vec![4], vec![8]);
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24), // 0
             //
@@ -44,8 +44,8 @@ mod test {
             Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 255).into(), 32), // 27
         ];
 
-        for pfx in pfxs.iter() {
-            tree_bitmap.insert(*pfx)?;
+        for pfx in pfxs.iter().flatten() {
+            tree_bitmap.insert(pfx, PrefixAs(666))?;
         }
         println!("------ end of inserts\n");
 
@@ -57,10 +57,10 @@ mod test {
             ),
             (
                 &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24),
-                Some(&Prefix::new(
+                Some(Prefix::new(
                     std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
                     24,
-                )),
+                )?),
                 // These are the indexes to pfxs.2 vec.
                 // These are all supposed to show up in the result.
                 vec![
@@ -70,32 +70,32 @@ mod test {
             ),
             (
                 &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 25),
-                Some(&Prefix::new(
+                Some(Prefix::new(
                     std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
                     25,
-                )),
+                )?),
                 vec![3, 4, 7, 8, 9, 14, 15, 16, 17, 18, 19],
             ),
             (
                 &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 26),
-                Some(&Prefix::new(
+                Some(Prefix::new(
                     std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
                     26,
-                )),
+                )?),
                 vec![7, 8, 14, 15, 16, 17],
             ),
             (
                 &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 192).into(), 26),
-                Some(&Prefix::new(
+                Some(Prefix::new(
                     std::net::Ipv4Addr::new(130, 55, 240, 192).into(),
                     26,
-                )),
+                )?),
                 vec![12, 13, 24, 25, 26, 27],
             ),
         ] {
-            println!("search for: {:?}", spfx.0);
+            println!("search for: {}", (*spfx.0)?);
             let found_result = tree_bitmap.match_prefix(
-                spfx.0,
+                &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::ExactMatch,
                     include_less_specifics: false,
@@ -106,12 +106,15 @@ mod test {
 
             let more_specifics = found_result.more_specifics.unwrap();
             assert_eq!(found_result.prefix, spfx.1);
+
             assert_eq!(&more_specifics.len(), &spfx.2.len());
 
             for i in spfx.2.iter() {
                 print!("{} ", i);
 
-                let result_pfx = more_specifics.iter().find(|pfx| pfx == &&&pfxs[*i]);
+                let result_pfx = more_specifics
+                    .iter()
+                    .find(|pfx| pfx.prefix == pfxs[*i].unwrap());
                 assert!(result_pfx.is_some());
             }
             println!("-----------");

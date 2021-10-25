@@ -2,12 +2,10 @@
 #[cfg(test)]
 
 mod test {
-
-    use rotonda_store::local_vec::tree::TreeBitMap;
-    use rotonda_store::{
-        common::{NoMeta, Prefix, PrefixAs},
-        local_vec::{InMemStorage, MatchOptions, MatchType, StorageBackend},
-    };
+    use rotonda_store::common::PrefixAs;
+    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+    use routecore::prefix::Prefix;
+    use routecore::record::{Record, SinglePrefixRoute};
     use std::error::Error;
     use std::fs::File;
     use std::process;
@@ -22,7 +20,9 @@ mod test {
         const GLOBAL_PREFIXES_VEC_SIZE: usize = 886117;
         const FOUND_PREFIXES: u32 = 1322993;
 
-        fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Error>> {
+        fn load_prefixes(
+            pfxs: &mut Vec<SinglePrefixRoute<PrefixAs>>,
+        ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
             let mut rdr = csv::Reader::from_reader(file);
@@ -35,22 +35,21 @@ mod test {
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
                 let len: u8 = record[1].parse().unwrap();
                 let asn: u32 = record[2].parse().unwrap();
-                let pfx = Prefix::<u32, PrefixAs>::new_with_meta(net.into(), len, PrefixAs(asn));
+                let pfx = SinglePrefixRoute::new_with_local_meta(Prefix::new(net.into(), len)?, PrefixAs(asn));
                 pfxs.push(pfx);
             }
             Ok(())
         }
 
         let strides_vec = [
-            vec![8],
-            vec![4],
-            vec![6, 6, 6, 6, 4, 4],
+            // vec![8],
+            // vec![4],
+            // vec![6, 6, 6, 6, 4, 4],
             vec![3, 4, 4, 6, 7, 8],
         ];
-        type StoreType = InMemStorage<u32, PrefixAs>;
         for strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-            let mut tree_bitmap: TreeBitMap<StoreType> = TreeBitMap::new(strides.1.to_owned());
+            let mut pfxs: Vec<SinglePrefixRoute<PrefixAs>> = vec![];
+            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(strides.1.to_owned(), vec![8]);
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -59,7 +58,7 @@ mod test {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                tree_bitmap.insert(pfx)?;
+                tree_bitmap.insert(&pfx.prefix, *pfx.meta)?;
             }
 
             let inet_max = 255;
@@ -70,12 +69,13 @@ mod test {
             (0..inet_max).into_iter().for_each(|i_net| {
                 (0..len_max).into_iter().for_each(|s_len| {
                     (0..inet_max).into_iter().for_each(|ii_net| {
-                        let pfx = Prefix::<u32, NoMeta>::new(
+                        let pfx = Prefix::new_relaxed(
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0).into(),
                             s_len,
                         );
+                        print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
                         let res = tree_bitmap.match_prefix(
-                            &pfx,
+                            &pfx.unwrap(),
                             &MatchOptions {
                                 match_type: MatchType::LongestMatch,
                                 include_less_specifics: false,
@@ -86,8 +86,8 @@ mod test {
                             println!("_pfx {:?}", _pfx);
                             println!("pfx {:?}", pfx);
                             println!("{:#?}", res);
-                            assert!(_pfx.len <= pfx.len);
-                            assert!(_pfx.net <= pfx.net);
+                            assert!(_pfx.len() <= pfx.unwrap().len());
+                            assert!(_pfx.addr() <= pfx.unwrap().addr());
                             found_counter += 1;
                         } else {
                             not_found_counter += 1;
@@ -103,7 +103,7 @@ mod test {
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
             assert_eq!(
-                tree_bitmap.store.get_prefixes_len(),
+                tree_bitmap.prefixes_len(),
                 GLOBAL_PREFIXES_VEC_SIZE
             );
             assert_eq!(found_counter, FOUND_PREFIXES);
