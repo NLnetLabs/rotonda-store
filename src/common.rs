@@ -1,9 +1,35 @@
 use num::PrimInt;
-#[cfg(feature = "dynamodb")]
-use rpki::repository::resources::Addr;
+
 use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::{Debug, Display};
+
+use routecore::record::{MergeUpdate, Meta, NoMeta};
+
+//------------ MatchOptions ----------------------------------------------------------
+
+pub struct MatchOptions {
+    pub match_type: MatchType,
+    pub include_less_specifics: bool,
+    pub include_more_specifics: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum MatchType {
+    ExactMatch,
+    LongestMatch,
+    EmptyMatch,
+}
+
+impl std::fmt::Display for MatchType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            MatchType::ExactMatch => write!(f, "exact-match"),
+            MatchType::LongestMatch => write!(f, "longest-match"),
+            MatchType::EmptyMatch => write!(f, "empty-match"),
+        }
+    }
+}
 
 //------------ Metadata Types --------------------------------------------------------
 
@@ -23,43 +49,43 @@ impl Display for PrefixAs {
     }
 }
 
-pub struct NoMeta;
+// pub enum NoMeta { Empty }
 
-impl fmt::Debug for NoMeta {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("")
-    }
-}
+// impl fmt::Debug for NoMeta {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.write_str("")
+//     }
+// }
 
-impl Display for NoMeta {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("")
-    }
-}
+// impl Display for NoMeta {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         f.write_str("")
+//     }
+// }
 
-impl MergeUpdate for NoMeta {
-    fn merge_update(&mut self, _: NoMeta) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
-}
+// impl MergeUpdate for NoMeta {
+//     fn merge_update(&mut self, _: NoMeta) -> Result<(), Box<dyn std::error::Error>> {
+//         Ok(())
+//     }
+// }
 
-pub trait Meta
-where
-    Self: Debug + Sized + Display,
-{
-    fn with_meta<AF: AddressFamily + PrimInt + Debug>(
-        net: AF,
-        len: u8,
-        meta: Option<Self>,
-    ) -> Prefix<AF, Self> {
-        Prefix { net, len, meta }
-    }
+// pub trait Meta
+// where
+//     Self: Debug + Sized + Display,
+// {
+//     fn with_meta<AF: AddressFamily + PrimInt + Debug>(
+//         net: AF,
+//         len: u8,
+//         meta: Option<Self>,
+//     ) -> PrefixInfoUnit<AF, Self> {
+//         PrefixInfoUnit { net, len, meta }
+//     }
 
-    fn summary(&self) -> String;
-}
-pub trait MergeUpdate {
-    fn merge_update(&mut self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
-}
+//     fn summary(&self) -> String;
+// }
+// pub trait MergeUpdate {
+//     fn merge_update(&mut self, update_meta: Self) -> Result<(), Box<dyn std::error::Error>>;
+// }
 
 //------------ Address Family (trait) --------------------------------------------------------
 
@@ -80,7 +106,9 @@ pub trait AddressFamily: PrimInt + Debug {
     fn into_ipaddr(self) -> std::net::IpAddr;
 }
 
-impl AddressFamily for u32 {
+pub(crate) type IPv4 = u32;
+
+impl AddressFamily for IPv4 {
     const BITMASK: u32 = 0x1u32.rotate_right(1);
     const BITS: u8 = 32;
 
@@ -107,7 +135,9 @@ impl AddressFamily for u32 {
     }
 }
 
-impl AddressFamily for u128 {
+pub(crate) type IPv6 = u128;
+
+impl AddressFamily for IPv6 {
     const BITMASK: u128 = 0x1u128.rotate_right(1);
     const BITS: u8 = 128;
     fn fmt_net(net: Self) -> String {
@@ -133,32 +163,117 @@ impl AddressFamily for u128 {
     }
 }
 
-//------------ Prefix --------------------------------------------------------
+//------------ Addr ----------------------------------------------------------
+
+// #[derive(Clone, Copy, Debug)]
+// pub enum Addr {
+//     V4(u32),
+//     V6(u128),
+// }
+
+// impl From<Ipv4Addr> for Addr {
+//     fn from(addr: Ipv4Addr) -> Self {
+//         Self::V4(addr.into())
+//     }
+// }
+
+// impl From<Ipv6Addr> for Addr {
+//     fn from(addr: Ipv6Addr) -> Self {
+//         Self::V6(addr.into())
+//     }
+// }
+
+// impl From<IpAddr> for Addr {
+//     fn from(addr: IpAddr) -> Self {
+//         match addr {
+//             IpAddr::V4(addr) => addr.into(),
+//             IpAddr::V6(addr) => addr.into(),
+//         }
+//     }
+// }
+
+// impl From<Addr> for IpAddr {
+//     fn from(addr: Addr) -> Self {
+//         match addr {
+//             Addr::V4(addr) => IpAddr::V4(addr.into()),
+//             Addr::V6(addr) => IpAddr::V6(addr.into()),
+//         }
+//     }
+// }
+
+// impl From<u32> for Addr {
+//     fn from(addr: u32) -> Self {
+//         addr.into()
+//     }
+// }
+
+// impl FromStr for Addr {
+//     type Err = <IpAddr as FromStr>::Err;
+
+//     fn from_str(s: &str) -> Result<Self, Self::Err> {
+//         IpAddr::from_str(s).map(Into::into)
+//     }
+// }
+
+// impl fmt::Display for Addr {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         match self {
+//             Addr::V4(addr) => write!(f, "{}", std::net::Ipv4Addr::from(*addr)),
+//             Addr::V6(addr) => write!(f, "{}", std::net::Ipv6Addr::from(*addr)),
+//         }
+//     }
+// }
+
+// impl Addr {
+//     pub fn to_bits(&self) -> u128 {
+//         match self {
+//             Addr::V4(addr) => *addr as u128,
+//             Addr::V6(addr) => *addr,
+//         }
+//     }
+
+//     pub fn to_ipaddr(&self) -> std::net::IpAddr {
+//         match self {
+//             Addr::V4(addr) => IpAddr::V4(std::net::Ipv4Addr::from(*addr)),
+//             Addr::V6(addr) => IpAddr::V6(std::net::Ipv6Addr::from(*addr)),
+//         }
+//     }
+// }
+
+//------------ PrefixInfoUnit --------------------------------------------------------
 
 #[derive(Clone, Copy)]
-pub struct Prefix<AF, T>
+pub struct PrefixInfoUnit<AF, T>
 where
     T: Meta,
-    AF: AddressFamily + PrimInt + Debug,
+    AF: AddressFamily,
 {
     pub net: AF,
     pub len: u8,
     pub meta: Option<T>,
 }
 
-impl<T, AF> Prefix<AF, T>
+impl<T, AF> PrefixInfoUnit<AF, T>
 where
-    T: Meta,
+    T: Meta + MergeUpdate,
     AF: AddressFamily + PrimInt + Debug,
 {
-    pub fn new(net: AF, len: u8) -> Prefix<AF, T> {
-        T::with_meta(net, len, None)
+    pub fn new(net: AF, len: u8) -> PrefixInfoUnit<AF, T> {
+        Self {
+            net,
+            len,
+            meta: None,
+        }
     }
-    pub fn new_with_meta(net: AF, len: u8, meta: T) -> Prefix<AF, T> {
-        T::with_meta(net, len, Some(meta))
+    pub fn new_with_meta(net: AF, len: u8, meta: T) -> PrefixInfoUnit<AF, T> {
+        Self {
+            net,
+            len,
+            meta: Some(meta),
+        }
     }
-    pub fn strip_meta(&self) -> Prefix<AF, NoMeta> {
-        Prefix::<AF, NoMeta> {
+    pub fn strip_meta(&self) -> PrefixInfoUnit<AF, NoMeta> {
+        PrefixInfoUnit::<AF, NoMeta> {
             net: self.net,
             len: self.len,
             meta: None,
@@ -166,9 +281,9 @@ where
     }
 }
 
-impl<T, AF> std::fmt::Display for Prefix<AF, T>
+impl<T, AF> std::fmt::Display for PrefixInfoUnit<AF, T>
 where
-    T: Meta,
+    T: Meta + MergeUpdate,
     AF: AddressFamily + PrimInt + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -182,24 +297,24 @@ where
     }
 }
 
-impl<T> Meta for T
-where
-    T: Debug + Display,
-{
-    fn with_meta<AF: AddressFamily + PrimInt + Debug>(
-        net: AF,
-        len: u8,
-        meta: Option<T>,
-    ) -> Prefix<AF, T> {
-        Prefix::<AF, T> { net, len, meta }
-    }
+// impl<T> Meta for T
+// where
+//     T: Debug + Display,
+// {
+//     // fn with_meta<AF: AddressFamily + PrimInt + Debug>(
+//     //     net: AF,
+//     //     len: u8,
+//     //     meta: Option<T>,
+//     // ) -> PrefixInfoUnit<AF, T> {
+//     //     PrefixInfoUnit::<AF, T> { net, len, meta }
+//     // }
 
-    fn summary(&self) -> String {
-        format!("{}", self)
-    }
-}
+//     fn summary(&self) -> String {
+//         format!("{}", self)
+//     }
+// }
 
-impl<AF, T> Ord for Prefix<AF, T>
+impl<AF, T> Ord for PrefixInfoUnit<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
@@ -210,7 +325,7 @@ where
     }
 }
 
-impl<AF, T> PartialEq for Prefix<AF, T>
+impl<AF, T> PartialEq for PrefixInfoUnit<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
@@ -221,9 +336,9 @@ where
     }
 }
 
-impl<AF, T> PartialOrd for Prefix<AF, T>
+impl<AF, T> PartialOrd for PrefixInfoUnit<AF, T>
 where
-    T: Debug + Display,
+    T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -234,14 +349,14 @@ where
     }
 }
 
-impl<AF, T> Eq for Prefix<AF, T>
+impl<AF, T> Eq for PrefixInfoUnit<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
 }
 
-impl<T, AF> Debug for Prefix<AF, T>
+impl<T, AF> Debug for PrefixInfoUnit<AF, T>
 where
     AF: AddressFamily + PrimInt + Debug,
     T: Meta,
