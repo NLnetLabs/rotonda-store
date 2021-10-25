@@ -1,6 +1,6 @@
 //---------------------- Types for Statistics -------------------------------------------------
 
-use crate::local_vec::store::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
+use crate::stride::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
 use std::fmt::Debug;
 
 #[derive(Debug, Copy, Clone)]
