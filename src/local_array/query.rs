@@ -3,24 +3,13 @@ use routecore::record::NoMeta;
 
 use crate::common::{AddressFamily, PrefixInfoUnit};
 use crate::local_array::storage_backend::*;
-use crate::local_array::store::QueryResult;
-use crate::local_array::store::RecordSet;
+use crate::store::QueryResult;
+use crate::store::RecordSet;
 
 use crate::common::{MatchOptions, MatchType};
 use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
-
-// #[derive(Debug)]
-// pub struct QueryResult<'a, Store>
-// where
-// Store: StorageBackend,
-// {
-//     pub prefix: Option<&'a PrefixInfoUnit<Store::AF, Store::Meta>>,
-//     pub match_type: MatchType,
-//     pub less_specifics: Option<Vec<&'a PrefixInfoUnit<Store::AF, Store::Meta>>>,
-//     pub more_specifics: Option<Vec<&'a PrefixInfoUnit<Store::AF, Store::Meta>>>,
-// }
 
 //------------ Longest Matching Prefix  --------------------------------------------------------
 
