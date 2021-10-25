@@ -1,42 +1,22 @@
-use crate::common::{AddressFamily, NoMeta, Prefix};
+use crate::common::{AddressFamily, PrefixInfoUnit, MatchOptions, MatchType};
 use crate::node_id::SortableNodeId;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::local_vec::node::TreeBitMapNode;
-use crate::local_vec::store::StorageBackend;
+use crate::local_vec::storage_backend::StorageBackend;
+
+use routecore::record::NoMeta;
+
 use std::fmt::Debug;
-
-pub struct MatchOptions {
-    pub match_type: MatchType,
-    pub include_less_specifics: bool,
-    pub include_more_specifics: bool,
-}
-
-#[derive(Debug, Clone)]
-pub enum MatchType {
-    ExactMatch,
-    LongestMatch,
-    EmptyMatch,
-}
-
-impl std::fmt::Display for MatchType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            MatchType::ExactMatch => write!(f, "exact-match"),
-            MatchType::LongestMatch => write!(f, "longest-match"),
-            MatchType::EmptyMatch => write!(f, "empty-match"),
-        }
-    }   
-}
 
 #[derive(Debug)]
 pub struct QueryResult<'a, Store>
 where
     Store: StorageBackend,
 {
-    pub prefix: Option<&'a Prefix<Store::AF, Store::Meta>>,
+    pub prefix: Option<&'a PrefixInfoUnit<Store::AF, Store::Meta>>,
     pub match_type: MatchType,
-    pub less_specifics: Option<Vec<&'a Prefix<Store::AF, Store::Meta>>>,
-    pub more_specifics: Option<Vec<&'a Prefix<Store::AF, Store::Meta>>>,
+    pub less_specifics: Option<Vec<&'a PrefixInfoUnit<Store::AF, Store::Meta>>>,
+    pub more_specifics: Option<Vec<&'a PrefixInfoUnit<Store::AF, Store::Meta>>>,
 }
 
 //------------ Longest Matching Prefix  --------------------------------------------------------
@@ -60,7 +40,7 @@ where
 
     pub fn match_prefix(
         &'a self,
-        search_pfx: &Prefix<Store::AF, NoMeta>,
+        search_pfx: &PrefixInfoUnit<Store::AF, NoMeta>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store> {
         let mut stride_end = 0;

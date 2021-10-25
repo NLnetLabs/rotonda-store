@@ -1,17 +1,23 @@
-use crate::common::{AddressFamily, MergeUpdate, Prefix};
+use crate::common::{AddressFamily, PrefixInfoUnit};
 use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides;
-use crate::local_array::store::{CacheGuard, StorageBackend};
+use crate::local_array::storage_backend::{CacheGuard, StorageBackend};
 pub use crate::stride::*;
 use crate::stats::{StrideStats, SizedStride};
 
 pub use crate::local_array::node::TreeBitMapNode;
-use crate::local_array::store::{SizedNodeOption, SizedNodeResult};
+use crate::local_array::storage_backend::{SizedNodeOption, SizedNodeResult};
 use crate::synth_int::{Zero, U256, U512};
+
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
 };
+
+#[cfg(feature = "cli")]
+use ansi_term::Colour;
+
+use routecore::record::MergeUpdate;
 
 //------------------- Unsized Node Enums ------------------------------------------------
 
@@ -427,7 +433,7 @@ where
 
     pub fn insert(
         &mut self,
-        pfx: Prefix<Store::AF, Store::Meta>,
+        pfx: PrefixInfoUnit<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id(self.strides[0]);
@@ -510,7 +516,7 @@ where
 
     pub fn store_prefix(
         &mut self,
-        next_node: Prefix<Store::AF, Store::Meta>,
+        next_node: PrefixInfoUnit<Store::AF, Store::Meta>,
     ) -> Result<
         <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         Box<dyn std::error::Error>,
@@ -543,7 +549,7 @@ where
     pub fn retrieve_prefix(
         &self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&Prefix<Store::AF, Store::Meta>> {
+    ) -> Option<&PrefixInfoUnit<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
     }
 
@@ -551,7 +557,7 @@ where
     pub fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&mut Prefix<Store::AF, Store::Meta>> {
+    ) -> Option<&mut PrefixInfoUnit<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix_mut(index)
     }
 
@@ -653,5 +659,93 @@ where
             );
         }
         Some(msvec)
+    }
+}
+
+
+impl<'a, Store: StorageBackend> std::fmt::Debug for TreeBitMap<Store> {
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let total_nodes = self.store.get_nodes_len();
+
+        println!("prefix vec size {}", self.store.get_prefixes_len());
+        println!("finished building tree...");
+        println!("{:?} nodes created", total_nodes);
+        println!(
+            "size of node: {} bytes",
+            std::mem::size_of::<SizedStrideNode<u32, InMemStrideNodeId>>()
+        );
+        println!(
+            "memory used by nodes: {}kb",
+            self.store.get_nodes_len() * std::mem::size_of::<SizedStrideNode<u32, InMemStrideNodeId>>()
+                / 1024
+        );
+        
+        println!("stride division {:?}", self.strides);
+        for s in &self.stats {
+            println!("{:?}", s);
+        }
+
+        println!(
+            "level\t[{}|{}] nodes occupied/max nodes percentage_max_nodes_occupied prefixes",
+            Colour::Blue.paint("nodes"),
+            Colour::Green.paint("prefixes")
+        );
+        let bars = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
+        let mut stride_bits = [0, 0];
+        const SCALE: u32 = 5500;
+
+        for stride in self.strides.iter().enumerate() {
+            // let level = stride.0;
+            stride_bits = [stride_bits[1] + 1, stride_bits[1] + stride.1];
+            let nodes_num = self
+                .stats
+                .iter()
+                .find(|s| s.stride_len == *stride.1)
+                .unwrap()
+                .created_nodes[stride.0]
+                .count as u32;
+            let prefixes_num = self
+                .stats
+                .iter()
+                .find(|s| s.stride_len == *stride.1)
+                .unwrap()
+                .prefixes_num[stride.0]
+                .count as u32;
+
+            let n = (nodes_num / SCALE) as usize;
+            let max_pfx: u64 = u64::pow(2, stride_bits[1] as u32);
+
+            print!("{}-{}\t", stride_bits[0], stride_bits[1]);
+
+            for _ in 0..n {
+                print!("{}", Colour::Blue.paint("█"));
+            }
+
+            print!(
+                "{}",
+                Colour::Blue.paint(bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]) //  = scale / 7
+            );
+
+            print!(
+                " {}/{} {:.2}%",
+                nodes_num,
+                max_pfx,
+                (nodes_num as f64 / max_pfx as f64) * 100.0
+            );
+            print!("\n\t");
+
+            let n = (prefixes_num / SCALE) as usize;
+            for _ in 0..n {
+                print!("{}", Colour::Green.paint("█"));
+            }
+
+            print!(
+                "{}",
+                Colour::Green.paint(bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]) //  = scale / 7
+            );
+
+            println!(" {}", prefixes_num);
+        }
+        Ok(())
     }
 }

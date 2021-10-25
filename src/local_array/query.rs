@@ -1,44 +1,26 @@
-use crate::{AddressFamily, NoMeta, Prefix};
-use crate::local_array::store::*;
+use routecore::prefix::Prefix;
+use routecore::record::NoMeta;
 
+use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::local_array::storage_backend::*;
+use crate::local_array::store::QueryResult;
+use crate::local_array::store::RecordSet;
+
+use crate::common::{MatchOptions, MatchType};
+use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
-use crate::local_array::node::TreeBitMapNode;
-use std::fmt::Debug;
 
-pub struct MatchOptions {
-    pub match_type: MatchType,
-    pub include_less_specifics: bool,
-    pub include_more_specifics: bool,
-}
-
-#[derive(Debug, Clone)]
-pub enum MatchType {
-    ExactMatch,
-    LongestMatch,
-    EmptyMatch,
-}
-
-impl std::fmt::Display for MatchType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            MatchType::ExactMatch => write!(f, "exact-match"),
-            MatchType::LongestMatch => write!(f, "longest-match"),
-            MatchType::EmptyMatch => write!(f, "empty-match"),
-        }
-    }   
-}
-
-#[derive(Debug)]
-pub struct QueryResult<'a, Store>
-where
-    Store: StorageBackend,
-{
-    pub prefix: Option<&'a Prefix<Store::AF, Store::Meta>>,
-    pub match_type: MatchType,
-    pub less_specifics: Option<Vec<&'a Prefix<Store::AF, Store::Meta>>>,
-    pub more_specifics: Option<Vec<&'a Prefix<Store::AF, Store::Meta>>>,
-}
+// #[derive(Debug)]
+// pub struct QueryResult<'a, Store>
+// where
+// Store: StorageBackend,
+// {
+//     pub prefix: Option<&'a PrefixInfoUnit<Store::AF, Store::Meta>>,
+//     pub match_type: MatchType,
+//     pub less_specifics: Option<Vec<&'a PrefixInfoUnit<Store::AF, Store::Meta>>>,
+//     pub more_specifics: Option<Vec<&'a PrefixInfoUnit<Store::AF, Store::Meta>>>,
+// }
 
 //------------ Longest Matching Prefix  --------------------------------------------------------
 
@@ -61,9 +43,12 @@ where
 
     pub fn match_prefix(
         &'a self,
-        search_pfx: &Prefix<Store::AF, NoMeta>,
+        search_pfx: &PrefixInfoUnit<Store::AF, NoMeta>,
         options: &MatchOptions,
-    ) -> QueryResult<'a, Store> {
+    ) -> QueryResult<'a, Store::Meta>
+    where
+        <Store as StorageBackend>::Meta: std::marker::Copy,
+    {
         let mut stride_end = 0;
 
         let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
@@ -100,7 +85,7 @@ where
         // We're going to iterate over all the strides in the treebitmap (so up to the last bit in the max prefix lentgth for that tree).
         // When a final prefix is found or we get to the end of the strides, depending on the options.match_type (the type requested by the user)
         // we ALWAYS break out of the loop. WE ALWAYS BREAK OUT OF THE LOOP
-        // Just before breaking some processing is done inside the loop before the break (looking up more-specifics mainly), which looks at bit repetitious, 
+        // Just before breaking some processing is done inside the loop before the break (looking up more-specifics mainly), which looks at bit repetitious,
         // but again it's been done like that to avoid having to match over a SizedStrideNode again in the `post-processing` section.
 
         for stride in self.strides.iter() {
@@ -715,13 +700,18 @@ where
         };
 
         QueryResult {
-            prefix,
+            prefix: if let Some(pfx) = prefix {
+                Prefix::new(pfx.net.into_ipaddr(), pfx.len).ok()
+            } else {
+                None
+            },
+            prefix_meta: if let Some(pfx) = prefix { pfx.meta.as_ref() } else { None },
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                        .collect()
+                        .collect::<RecordSet<'a, Store::Meta>>()
                 })
             } else {
                 None

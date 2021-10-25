@@ -1,4 +1,4 @@
-use crate::common::{AddressFamily, NoMeta, Prefix};
+use crate::common::{AddressFamily, PrefixInfoUnit};
 use crate::node_id::SortableNodeId;
 use crate::synth_int::{U256, U512, Zero};
 pub use crate::stride::*;
@@ -9,6 +9,8 @@ use std::{
 };
 
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
+
+use routecore::record::NoMeta;
 
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
 where
@@ -187,7 +189,7 @@ where
     // found along the way.
     pub fn search_stride_for_longest_match_at(
         &self,
-        search_pfx: &Prefix<AF, NoMeta>,
+        search_pfx: &PrefixInfoUnit<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -250,7 +252,7 @@ where
     // the search prefix.
     pub fn search_stride_for_exact_match_at(
         &self,
-        search_pfx: &Prefix<AF, NoMeta>,
+        search_pfx: &PrefixInfoUnit<AF, NoMeta>,
         nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -293,7 +295,7 @@ where
     // This is of course slower, so it should only be used when the user explicitly requests less-specifics.
     pub fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
-        search_pfx: &Prefix<AF, NoMeta>,
+        search_pfx: &PrefixInfoUnit<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
