@@ -1,12 +1,14 @@
-use crate::common::{AddressFamily, MergeUpdate, Prefix};
-use crate::node_id::{SortableNodeId};
+use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides_with_local_vec;
 use crate::synth_int::{U256, U512, Zero};
 pub use crate::stride::*;
 
 use crate::local_vec::node::{TreeBitMapNode};
-use crate::local_vec::store::{StorageBackend};
+use crate::local_vec::storage_backend::{StorageBackend};
 use crate::stats::{StrideStats, SizedStride};
+
+use routecore::record::MergeUpdate;
 
 use std::{
     fmt::{Binary, Debug},
@@ -24,8 +26,8 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
-pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
-pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, Prefix<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
 // pub(crate) type SizedNodeOption<AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
 
@@ -59,14 +61,14 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::D
     }
 }
 
-pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: crate::common::Meta> {
-    pub guard: std::cell::Ref<'a, Prefix<AF, Meta>>,
+pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> {
+    pub guard: std::cell::Ref<'a, PrefixInfoUnit<AF, Meta>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, Meta: crate::common::Meta> std::ops::Deref
+impl<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> std::ops::Deref
     for PrefixCacheGuard<'a, AF, Meta>
 {
-    type Target = Prefix<AF, Meta>;
+    type Target = PrefixInfoUnit<AF, Meta>;
 
     fn deref(&self) -> &Self::Target {
         &self.guard
@@ -226,7 +228,7 @@ where
 
     pub fn insert(
         &mut self,
-        pfx: Prefix<Store::AF, Store::Meta>,
+        pfx: PrefixInfoUnit<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id();
@@ -309,7 +311,7 @@ where
 
     pub fn store_prefix(
         &mut self,
-        next_node: Prefix<Store::AF, Store::Meta>,
+        next_node: PrefixInfoUnit<Store::AF, Store::Meta>,
     ) -> Result<
         <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         Box<dyn std::error::Error>,
@@ -342,7 +344,7 @@ where
     pub fn retrieve_prefix(
         &self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&Prefix<Store::AF, Store::Meta>> {
+    ) -> Option<&PrefixInfoUnit<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
     }
 
@@ -350,7 +352,7 @@ where
     pub fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&mut Prefix<Store::AF, Store::Meta>> {
+    ) -> Option<&mut PrefixInfoUnit<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix_mut(index)
     }
 

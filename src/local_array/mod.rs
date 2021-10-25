@@ -1,10 +1,11 @@
 pub(crate) mod node;
 pub(crate) mod query;
 pub(crate) mod tree;
-pub(crate) mod store;
+pub(crate) mod storage_backend;
 
-pub use tree::TreeBitMap;
-pub use store::{StorageBackend, InMemStorage};
-pub use query::{MatchOptions, MatchType};
+pub mod store;
+
+pub use store::Store;
+
 #[macro_use]
 mod macros;
