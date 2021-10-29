@@ -24,7 +24,7 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + MergeUpdate + Copy> Store<Meta> {
+impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix,

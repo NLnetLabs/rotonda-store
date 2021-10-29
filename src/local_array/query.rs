@@ -35,8 +35,8 @@ where
         search_pfx: &PrefixInfoUnit<Store::AF, NoMeta>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta>
-    where
-        <Store as StorageBackend>::Meta: std::marker::Copy,
+    // where
+    //     <Store as StorageBackend>::Meta: std::marker::Copy,
     {
         let mut stride_end = 0;
 

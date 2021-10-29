@@ -32,12 +32,12 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 //------------ RecordSet -----------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct RecordSet<'a, Meta: routecore::record::Meta + Copy> {
+pub struct RecordSet<'a, Meta: routecore::record::Meta> {
     pub v4: Vec<SinglePrefixRoute<'a, Meta>>,
     pub v6: Vec<SinglePrefixRoute<'a, Meta>>,
 }
 
-impl<'a, Meta: routecore::record::Meta + Copy> RecordSet<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> RecordSet<'a, Meta> {
     pub fn is_empty(&self) -> bool {
         self.v4.is_empty() && self.v6.is_empty()
     }
@@ -64,7 +64,7 @@ impl<'a, Meta: routecore::record::Meta + Copy> RecordSet<'a, Meta> {
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + Copy> fmt::Display for RecordSet<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> fmt::Display for RecordSet<'a, Meta> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let arr_str_v4 = self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
             format!("{} {}", pfx_arr, *pfx)
@@ -98,8 +98,8 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta + Copy>
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + Copy>
-    std::iter::FromIterator<&'a SinglePrefixRoute<'a, Meta>> for RecordSet<'a, Meta>
+impl<'a, Meta: routecore::record::Meta> std::iter::FromIterator<&'a SinglePrefixRoute<'a, Meta>>
+    for RecordSet<'a, Meta>
 {
     fn from_iter<I: IntoIterator<Item = &'a SinglePrefixRoute<'a, Meta>>>(iter: I) -> Self {
         let mut v4 = vec![];
@@ -119,7 +119,7 @@ impl<'a, Meta: routecore::record::Meta + Copy>
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + Copy> std::ops::Index<usize> for RecordSet<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> std::ops::Index<usize> for RecordSet<'a, Meta> {
     type Output = SinglePrefixRoute<'a, Meta>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -159,7 +159,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator for RecordSetIter<'a, Meta> {
 //------------- QueryResult ---------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<'a, Meta: routecore::record::Meta + Copy> {
+pub struct QueryResult<'a, Meta: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
     pub prefix_meta: Option<&'a Meta>,
@@ -167,7 +167,7 @@ pub struct QueryResult<'a, Meta: routecore::record::Meta + Copy> {
     pub more_specifics: Option<RecordSet<'a, Meta>>,
 }
 
-impl<'a, Meta: routecore::record::Meta + Copy> fmt::Display for QueryResult<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> fmt::Display for QueryResult<'a, Meta> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),
