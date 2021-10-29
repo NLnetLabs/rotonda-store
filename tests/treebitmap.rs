@@ -108,7 +108,7 @@ use rotonda_store::common::PrefixAs;
             tree_bitmap.insert(&pfx?, PrefixAs(666))?;
         }
 
-        for pfx in tree_bitmap.prefixes().iter() {
+        for pfx in tree_bitmap.prefixes_iter() {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,

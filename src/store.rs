@@ -1,7 +1,11 @@
 use std::{fmt, slice};
 
-use crate::{MatchType, PrefixInfoUnit, stats::StrideStats, AddressFamily};
-use routecore::{prefix::Prefix, record::{Record, SinglePrefixRoute}};
+use crate::{stats::StrideStats, AddressFamily, MatchType, PrefixInfoUnit};
+use routecore::{
+    addr::{IPv4, IPv6},
+    prefix::Prefix,
+    record::{Record, SinglePrefixRoute},
+};
 
 pub(crate) type AfStrideStats = Vec<StrideStats>;
 
@@ -77,7 +81,23 @@ impl<'a, Meta: routecore::record::Meta> fmt::Display for RecordSet<'a, Meta> {
     }
 }
 
-impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta + Copy>
+impl<'a, Meta: routecore::record::Meta>
+    From<(
+        Vec<SinglePrefixRoute<'a, Meta>>,
+        Vec<SinglePrefixRoute<'a, Meta>>,
+    )> for RecordSet<'a, Meta>
+{
+    fn from(
+        (v4, v6): (
+            Vec<SinglePrefixRoute<'a, Meta>>,
+            Vec<SinglePrefixRoute<'a, Meta>>,
+        ),
+    ) -> Self {
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     std::iter::FromIterator<&'a PrefixInfoUnit<AF, Meta>> for RecordSet<'a, Meta>
 {
     fn from_iter<I: IntoIterator<Item = &'a PrefixInfoUnit<AF, Meta>>>(iter: I) -> Self {
@@ -153,6 +173,62 @@ impl<'a, Meta: routecore::record::Meta> Iterator for RecordSetIter<'a, Meta> {
         }
         self.v4 = None;
         self.next()
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct PrefixInfoUnitIter<'a, Meta: routecore::record::Meta> {
+    pub v4: Option<slice::Iter<'a, PrefixInfoUnit<IPv4, Meta>>>,
+    pub v6: slice::Iter<'a, PrefixInfoUnit<IPv6, Meta>>,
+}
+
+impl<'a, Meta: routecore::record::Meta> Iterator
+    for PrefixInfoUnitIter<'a, Meta>
+{
+    type Item = SinglePrefixRoute<'a, Meta>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // V4 is already done.
+        if self.v4.is_none() {
+            return self.v6.next().map(|res| {
+                SinglePrefixRoute::new(
+                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                    res.meta.as_ref().unwrap(),
+                )
+            });
+        }
+
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
+            return Some(SinglePrefixRoute::new(
+                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                res.meta.as_ref().unwrap(),
+            ));
+        }
+        self.v4 = None;
+        self.next()
+    }
+}
+
+impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixInfoUnitIter<'a, Meta> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        // V4 is already done.
+        if self.v4.is_none() {
+            return self.v6.next_back().map(|res| {
+                SinglePrefixRoute::new(
+                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                    res.meta.as_ref().unwrap(),
+                )
+            });
+        }
+
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
+            return Some(SinglePrefixRoute::new(
+                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                res.meta.as_ref().unwrap(),
+            ));
+        }
+        self.v4 = None;
+        self.next_back()
     }
 }
 
