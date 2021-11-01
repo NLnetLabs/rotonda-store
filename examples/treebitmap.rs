@@ -1,5 +1,5 @@
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
-use routecore::{addr::AddressFamily, prefix::Prefix, record::NoMeta};
+use routecore::{addr::AddressFamily, addr::Prefix, record::NoMeta};
 
 type Prefix4<'a> = Prefix;
 
