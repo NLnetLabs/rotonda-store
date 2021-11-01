@@ -1,4 +1,4 @@
-use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::common::PrefixInfoUnit;
 use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides_with_local_vec;
 use crate::synth_int::{U256, U512, Zero};
@@ -9,6 +9,7 @@ use crate::local_vec::storage_backend::{StorageBackend};
 use crate::stats::{StrideStats, SizedStride};
 
 use routecore::record::MergeUpdate;
+use routecore::addr::AddressFamily;
 
 use std::{
     fmt::{Binary, Debug},

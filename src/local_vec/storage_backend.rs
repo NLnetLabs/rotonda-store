@@ -1,10 +1,12 @@
-use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::common::PrefixInfoUnit;
 use crate::node_id::{SortableNodeId, InMemNodeId};
 pub use crate::stride::*;
 
 use crate::local_vec::tree::*;
 
 use routecore::record::MergeUpdate;
+use routecore::addr::AddressFamily;
+
 use std::io::{Error, ErrorKind};
 use std::fmt::Debug;
 

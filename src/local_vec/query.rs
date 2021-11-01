@@ -1,12 +1,13 @@
-use crate::common::{AddressFamily, MatchOptions, MatchType, PrefixInfoUnit};
+use crate::common::{MatchOptions, MatchType, PrefixInfoUnit};
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
 use crate::store::{QueryResult,RecordSet};
 
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::NoMeta;
+use routecore::addr::AddressFamily;
 
 //------------ Longest Matching Prefix  --------------------------------------------------------
 

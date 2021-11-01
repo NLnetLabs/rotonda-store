@@ -3,9 +3,9 @@ use crate::node_id::SortableNodeId;
 
 use crate::PrefixInfoUnit;
 use std::fmt::Debug;
-use crate::common::AddressFamily;
 
 use routecore::record::{Meta, MergeUpdate};
+use routecore::addr::AddressFamily;
 
 pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>>;
 pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>>;

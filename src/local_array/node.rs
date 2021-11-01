@@ -1,4 +1,4 @@
-use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::common::PrefixInfoUnit;
 use crate::node_id::SortableNodeId;
 pub use crate::stride::*;
 pub use crate::local_array::tree::*;
@@ -10,6 +10,7 @@ use std::{
 };
 
 use routecore::record::NoMeta;
+use routecore::addr::AddressFamily;
 
 //---------------------- TreeBitMap Node --------------------------------------------------------
 

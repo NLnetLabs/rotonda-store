@@ -1,4 +1,6 @@
-use crate::common::{AddressFamily, PrefixInfoUnit};
+use routecore::addr::AddressFamily;
+
+use crate::common::PrefixInfoUnit;
 use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides;
 use crate::local_array::storage_backend::{CacheGuard, StorageBackend};

@@ -1,5 +1,5 @@
 use rotonda_store::{MultiThreadedStore, PrefixAs};
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::{Record, SinglePrefixRoute};
 use std::env;
 use std::error::Error;

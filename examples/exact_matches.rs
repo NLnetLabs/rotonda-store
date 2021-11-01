@@ -1,7 +1,7 @@
 use rotonda_store::MultiThreadedStorageBackend;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 use routecore::addr::AddressFamily;
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

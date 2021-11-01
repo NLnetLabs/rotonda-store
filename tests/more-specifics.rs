@@ -2,7 +2,7 @@
 mod test {
     use rotonda_store::common::PrefixAs;
     use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
-    use routecore::prefix::Prefix;
+    use routecore::addr::Prefix;
 
     use std::error::Error;
 

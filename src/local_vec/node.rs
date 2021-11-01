@@ -1,4 +1,4 @@
-use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::common::PrefixInfoUnit;
 use crate::node_id::SortableNodeId;
 use crate::synth_int::{U256, U512, Zero};
 pub use crate::stride::*;
@@ -11,6 +11,7 @@ use std::{
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
 
 use routecore::record::NoMeta;
+use routecore::addr::AddressFamily;
 
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
 where

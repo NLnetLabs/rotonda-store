@@ -1,11 +1,11 @@
-use crate::common::{IPv4, IPv6};
 use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::store::QueryResult;
 use crate::{MatchOptions, PrefixInfoUnit, Stats, Strides};
 
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
+use routecore::addr::{IPv4, IPv6};
 
 pub struct Store<Meta: routecore::record::Meta>
 where

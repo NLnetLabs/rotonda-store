@@ -1,6 +1,6 @@
 use rotonda_store::common::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::{Record, SinglePrefixRoute};
 use std::error::Error;
 use std::fs::File;

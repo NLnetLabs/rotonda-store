@@ -4,7 +4,7 @@ use ansi_term::Colour;
 use rotonda_store::common::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStorageBackend, MultiThreadedStore};
 
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::{Record, SinglePrefixRoute};
 
 use std::env;
@@ -168,7 +168,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     )
                                 );
                             }
-                            Err(routecore::prefix::PrefixError::NonZeroHost) => {
+                            Err(routecore::addr::PrefixError::NonZeroHost) => {
                                 println!("{}", Colour::Yellow.paint("Warning: Prefix has bits set to the right of the prefix length. Zeroing those out."));
                                 println!(
                                     "{}",

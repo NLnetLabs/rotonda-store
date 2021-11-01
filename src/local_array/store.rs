@@ -1,9 +1,10 @@
 use crate::local_array::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_array::tree::TreeBitMap;
-use crate::{IPv4, IPv6, MatchOptions, PrefixInfoUnit};
+use crate::{MatchOptions, PrefixInfoUnit};
 use crate::{QueryResult, Stats, Strides};
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
+use routecore::addr::{IPv4, IPv6};
 
 use std::fmt;
 

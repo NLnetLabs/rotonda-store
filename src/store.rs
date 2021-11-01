@@ -1,9 +1,8 @@
 use std::{fmt, slice};
 
-use crate::{stats::StrideStats, AddressFamily, MatchType, PrefixInfoUnit};
+use crate::{stats::StrideStats, MatchType, PrefixInfoUnit};
 use routecore::{
-    addr::{IPv4, IPv6},
-    prefix::Prefix,
+    addr::{IPv4, IPv6, AddressFamily, Prefix},
     record::{Record, SinglePrefixRoute},
 };
 

@@ -1,7 +1,8 @@
-use routecore::prefix::Prefix;
+use routecore::addr::Prefix;
 use routecore::record::NoMeta;
+use routecore::addr::AddressFamily;
 
-use crate::common::{AddressFamily, PrefixInfoUnit};
+use crate::common::PrefixInfoUnit;
 use crate::local_array::storage_backend::*;
 use crate::store::QueryResult;
 use crate::store::RecordSet;

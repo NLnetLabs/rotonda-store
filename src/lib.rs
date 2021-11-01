@@ -17,8 +17,8 @@ pub use local_array::storage_backend::StorageBackend as MultiThreadedStorageBack
 pub use local_vec::storage_backend::StorageBackend as SingleThreadedStorageBackend;
 
 // routecore re-exports
-pub use routecore::prefix::*;
 pub use routecore::record::*;
+pub use routecore::addr::*;
 
 #[macro_use]
 mod macros;
