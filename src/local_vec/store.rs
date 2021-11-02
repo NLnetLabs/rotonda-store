@@ -1,7 +1,7 @@
 use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::store::QueryResult;
-use crate::{MatchOptions, PrefixInfoUnit, Stats, Strides};
+use crate::{MatchOptions, InternalPrefixRecord, Stats, Strides};
 
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
@@ -32,11 +32,11 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     ) -> QueryResult<'a, Meta> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
-                &PrefixInfoUnit::<IPv4, NoMeta>::new(addr.into(), search_pfx.len()),
+                &InternalPrefixRecord::<IPv4, NoMeta>::new(addr.into(), search_pfx.len()),
                 options,
             ),
             std::net::IpAddr::V6(addr) => self.v6.match_prefix(
-                &PrefixInfoUnit::<IPv6, NoMeta>::new(addr.into(), search_pfx.len()),
+                &InternalPrefixRecord::<IPv6, NoMeta>::new(addr.into(), search_pfx.len()),
                 options,
             ),
         }
@@ -48,12 +48,12 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         meta: Meta,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
-            std::net::IpAddr::V4(addr) => self.v4.insert(PrefixInfoUnit::new_with_meta(
+            std::net::IpAddr::V4(addr) => self.v4.insert(InternalPrefixRecord::new_with_meta(
                 addr.into(),
                 prefix.len(),
                 meta,
             )),
-            std::net::IpAddr::V6(addr) => self.v6.insert(PrefixInfoUnit::new_with_meta(
+            std::net::IpAddr::V6(addr) => self.v6.insert(InternalPrefixRecord::new_with_meta(
                 addr.into(),
                 prefix.len(),
                 meta,
@@ -83,7 +83,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 
 
     pub fn prefixes_iter(&'a self) -> crate::PrefixInfoUnitIter<'a, Meta> {
-        let rs4: std::slice::Iter<PrefixInfoUnit<IPv4, Meta>> = self.v4.store.prefixes[..].iter();
+        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> = self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
         crate::PrefixInfoUnitIter::<'a, Meta> {

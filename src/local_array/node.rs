@@ -1,4 +1,4 @@
-use crate::common::PrefixInfoUnit;
+use crate::common::InternalPrefixRecord;
 use crate::node_id::SortableNodeId;
 pub use crate::stride::*;
 pub use crate::local_array::tree::*;
@@ -214,7 +214,7 @@ where
     // found along the way.
     pub fn search_stride_for_longest_match_at(
         &self,
-        search_pfx: &PrefixInfoUnit<AF, NoMeta>,
+        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -277,7 +277,7 @@ where
     // the search prefix.
     pub fn search_stride_for_exact_match_at(
         &self,
-        search_pfx: &PrefixInfoUnit<AF, NoMeta>,
+        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -320,7 +320,7 @@ where
     // This is of course slower, so it should only be used when the user explicitly requests less-specifics.
     pub fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
-        search_pfx: &PrefixInfoUnit<AF, NoMeta>,
+        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,

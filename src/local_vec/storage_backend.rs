@@ -1,4 +1,4 @@
-use crate::common::PrefixInfoUnit;
+use crate::common::InternalPrefixRecord;
 use crate::node_id::{SortableNodeId, InMemNodeId};
 pub use crate::stride::*;
 
@@ -58,11 +58,11 @@ where
     fn acquire_new_prefix_id(
         &self,
         sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        part: &PrefixInfoUnit<Self::AF, Self::Meta>,
+        part: &InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> <Self as StorageBackend>::NodeType;
     fn store_prefix(
         &mut self,
-        next_node: PrefixInfoUnit<Self::AF, Self::Meta>,
+        next_node: InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> Result<
         <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
         Box<dyn std::error::Error>,
@@ -70,16 +70,16 @@ where
     fn retrieve_prefix(
         &self,
         index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&PrefixInfoUnit<Self::AF, Self::Meta>>;
+    ) -> Option<&InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn retrieve_prefix_mut(
         &mut self,
         index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&mut PrefixInfoUnit<Self::AF, Self::Meta>>;
+    ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn retrieve_prefix_with_guard(
         &self,
         index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
-    fn get_prefixes(&self) -> &Vec<PrefixInfoUnit<Self::AF, Self::Meta>>;
+    fn get_prefixes(&self) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(
         &self,
@@ -92,7 +92,7 @@ where
 #[derive(Debug)]
 pub struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
     pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
-    pub prefixes: Vec<PrefixInfoUnit<AF, Meta>>,
+    pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
@@ -190,7 +190,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
     fn acquire_new_prefix_id(
         &self,
         sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        _part: &PrefixInfoUnit<<Self as StorageBackend>::AF, <Self as StorageBackend>::Meta>,
+        _part: &InternalPrefixRecord<<Self as StorageBackend>::AF, <Self as StorageBackend>::Meta>,
     ) -> <Self as StorageBackend>::NodeType {
         // We're ignoring the part parameter here, because we want to store
         // the index into the global self.prefixes vec in the local vec.
@@ -199,18 +199,18 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
 
     fn store_prefix(
         &mut self,
-        next_node: PrefixInfoUnit<Self::AF, Self::Meta>,
+        next_node: InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> Result<u32, Box<dyn std::error::Error>> {
         let id = self.prefixes.len() as u32;
         self.prefixes.push(next_node);
         Ok(id)
     }
 
-    fn retrieve_prefix(&self, index: u32) -> Option<&PrefixInfoUnit<Self::AF, Self::Meta>> {
+    fn retrieve_prefix(&self, index: u32) -> Option<&InternalPrefixRecord<Self::AF, Self::Meta>> {
         self.prefixes.get(index as usize)
     }
 
-    fn retrieve_prefix_mut(&mut self, index: u32) -> Option<&mut PrefixInfoUnit<Self::AF, Self::Meta>> {
+    fn retrieve_prefix_mut(&mut self, index: u32) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>> {
         self.prefixes.get_mut(index as usize)
     }
 
@@ -221,7 +221,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         panic!("nOt ImPlEmEnTed for InMemNode");
     }
 
-    fn get_prefixes(&self) -> &Vec<PrefixInfoUnit<Self::AF, Self::Meta>> {
+    fn get_prefixes(&self) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>> {
         &self.prefixes
     }
 
@@ -231,13 +231,13 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
 
     fn prefixes_iter(
         &self,
-    ) -> Result<std::slice::Iter<'_, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>> {
+    ) -> Result<std::slice::Iter<'_, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>> {
         Ok(self.prefixes.iter())
     }
 
     fn prefixes_iter_mut(
         &mut self,
-    ) -> Result<std::slice::IterMut<'_, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>> {
+    ) -> Result<std::slice::IterMut<'_, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>> {
         Ok(self.prefixes.iter_mut())
     }
 }

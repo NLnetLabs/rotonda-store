@@ -1,4 +1,4 @@
-use crate::common::{MatchOptions, MatchType, PrefixInfoUnit};
+use crate::common::{MatchOptions, MatchType, InternalPrefixRecord};
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
@@ -30,7 +30,7 @@ where
 
     pub fn match_prefix(
         &'a self,
-        search_pfx: &PrefixInfoUnit<Store::AF, NoMeta>,
+        search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta>
     // where

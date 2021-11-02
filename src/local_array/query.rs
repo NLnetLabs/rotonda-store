@@ -2,7 +2,7 @@ use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 use routecore::addr::AddressFamily;
 
-use crate::common::PrefixInfoUnit;
+use crate::common::InternalPrefixRecord;
 use crate::local_array::storage_backend::*;
 use crate::store::QueryResult;
 use crate::store::RecordSet;
@@ -33,7 +33,7 @@ where
 
     pub fn match_prefix(
         &'a self,
-        search_pfx: &PrefixInfoUnit<Store::AF, NoMeta>,
+        search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta>
     // where

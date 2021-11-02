@@ -1,6 +1,6 @@
 use routecore::addr::AddressFamily;
 
-use crate::common::PrefixInfoUnit;
+use crate::common::InternalPrefixRecord;
 use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides;
 use crate::local_array::storage_backend::{CacheGuard, StorageBackend};
@@ -435,7 +435,7 @@ where
 
     pub fn insert(
         &mut self,
-        pfx: PrefixInfoUnit<Store::AF, Store::Meta>,
+        pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id(self.strides[0]);
@@ -518,7 +518,7 @@ where
 
     pub fn store_prefix(
         &mut self,
-        next_node: PrefixInfoUnit<Store::AF, Store::Meta>,
+        next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<
         <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         Box<dyn std::error::Error>,
@@ -551,7 +551,7 @@ where
     pub fn retrieve_prefix(
         &self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&PrefixInfoUnit<Store::AF, Store::Meta>> {
+    ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
     }
 
@@ -559,7 +559,7 @@ where
     pub fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&mut PrefixInfoUnit<Store::AF, Store::Meta>> {
+    ) -> Option<&mut InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix_mut(index)
     }
 

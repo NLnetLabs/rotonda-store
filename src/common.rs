@@ -52,10 +52,10 @@ impl Display for PrefixAs {
 }
 
 
-//------------ PrefixInfoUnit --------------------------------------------------------
+//------------ InternalPrefixRecord --------------------------------------------------------
 
 #[derive(Clone, Copy)]
-pub struct PrefixInfoUnit<AF, T>
+pub struct InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily,
@@ -65,27 +65,27 @@ where
     pub meta: Option<T>,
 }
 
-impl<T, AF> PrefixInfoUnit<AF, T>
+impl<T, AF> InternalPrefixRecord<AF, T>
 where
     T: Meta + MergeUpdate,
     AF: AddressFamily + PrimInt + Debug,
 {
-    pub fn new(net: AF, len: u8) -> PrefixInfoUnit<AF, T> {
+    pub fn new(net: AF, len: u8) -> InternalPrefixRecord<AF, T> {
         Self {
             net,
             len,
             meta: None,
         }
     }
-    pub fn new_with_meta(net: AF, len: u8, meta: T) -> PrefixInfoUnit<AF, T> {
+    pub fn new_with_meta(net: AF, len: u8, meta: T) -> InternalPrefixRecord<AF, T> {
         Self {
             net,
             len,
             meta: Some(meta),
         }
     }
-    pub fn strip_meta(&self) -> PrefixInfoUnit<AF, NoMeta> {
-        PrefixInfoUnit::<AF, NoMeta> {
+    pub fn strip_meta(&self) -> InternalPrefixRecord<AF, NoMeta> {
+        InternalPrefixRecord::<AF, NoMeta> {
             net: self.net,
             len: self.len,
             meta: None,
@@ -93,7 +93,7 @@ where
     }
 }
 
-impl<T, AF> std::fmt::Display for PrefixInfoUnit<AF, T>
+impl<T, AF> std::fmt::Display for InternalPrefixRecord<AF, T>
 where
     T: Meta + MergeUpdate,
     AF: AddressFamily + PrimInt + Debug,
@@ -109,7 +109,7 @@ where
     }
 }
 
-impl<AF, T> Ord for PrefixInfoUnit<AF, T>
+impl<AF, T> Ord for InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
@@ -120,7 +120,7 @@ where
     }
 }
 
-impl<AF, T> PartialEq for PrefixInfoUnit<AF, T>
+impl<AF, T> PartialEq for InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
@@ -131,7 +131,7 @@ where
     }
 }
 
-impl<AF, T> PartialOrd for PrefixInfoUnit<AF, T>
+impl<AF, T> PartialOrd for InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
@@ -144,14 +144,14 @@ where
     }
 }
 
-impl<AF, T> Eq for PrefixInfoUnit<AF, T>
+impl<AF, T> Eq for InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily + PrimInt + Debug,
 {
 }
 
-impl<T, AF> Debug for PrefixInfoUnit<AF, T>
+impl<T, AF> Debug for InternalPrefixRecord<AF, T>
 where
     AF: AddressFamily + PrimInt + Debug,
     T: Meta,

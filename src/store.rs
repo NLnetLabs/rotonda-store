@@ -1,6 +1,6 @@
 use std::{fmt, slice};
 
-use crate::{stats::StrideStats, MatchType, PrefixInfoUnit};
+use crate::{stats::StrideStats, MatchType, InternalPrefixRecord};
 use routecore::{
     addr::{IPv4, IPv6, AddressFamily, Prefix},
     record::Record,
@@ -98,9 +98,9 @@ impl<'a, Meta: routecore::record::Meta>
 }
 
 impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
-    std::iter::FromIterator<&'a PrefixInfoUnit<AF, Meta>> for RecordSet<'a, Meta>
+    std::iter::FromIterator<&'a InternalPrefixRecord<AF, Meta>> for RecordSet<'a, Meta>
 {
-    fn from_iter<I: IntoIterator<Item = &'a PrefixInfoUnit<AF, Meta>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = &'a InternalPrefixRecord<AF, Meta>>>(iter: I) -> Self {
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
@@ -178,8 +178,8 @@ impl<'a, Meta: routecore::record::Meta> Iterator for RecordSetIter<'a, Meta> {
 
 #[derive(Clone, Debug)]
 pub struct PrefixInfoUnitIter<'a, Meta: routecore::record::Meta> {
-    pub v4: Option<slice::Iter<'a, PrefixInfoUnit<IPv4, Meta>>>,
-    pub v6: slice::Iter<'a, PrefixInfoUnit<IPv6, Meta>>,
+    pub v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, Meta>>>,
+    pub v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
 }
 
 impl<'a, Meta: routecore::record::Meta> Iterator

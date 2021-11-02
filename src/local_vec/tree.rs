@@ -1,4 +1,4 @@
-use crate::common::PrefixInfoUnit;
+use crate::common::InternalPrefixRecord;
 use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides_with_local_vec;
 use crate::synth_int::{U256, U512, Zero};
@@ -27,8 +27,8 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
-pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>>;
-pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, PrefixInfoUnit<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
+pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
 // pub(crate) type SizedNodeOption<AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
 
@@ -63,13 +63,13 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::D
 }
 
 pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> {
-    pub guard: std::cell::Ref<'a, PrefixInfoUnit<AF, Meta>>,
+    pub guard: std::cell::Ref<'a, InternalPrefixRecord<AF, Meta>>,
 }
 
 impl<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> std::ops::Deref
     for PrefixCacheGuard<'a, AF, Meta>
 {
-    type Target = PrefixInfoUnit<AF, Meta>;
+    type Target = InternalPrefixRecord<AF, Meta>;
 
     fn deref(&self) -> &Self::Target {
         &self.guard
@@ -229,7 +229,7 @@ where
 
     pub fn insert(
         &mut self,
-        pfx: PrefixInfoUnit<Store::AF, Store::Meta>,
+        pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id();
@@ -312,7 +312,7 @@ where
 
     pub fn store_prefix(
         &mut self,
-        next_node: PrefixInfoUnit<Store::AF, Store::Meta>,
+        next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<
         <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         Box<dyn std::error::Error>,
@@ -345,7 +345,7 @@ where
     pub fn retrieve_prefix(
         &self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&PrefixInfoUnit<Store::AF, Store::Meta>> {
+    ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
     }
 
@@ -353,7 +353,7 @@ where
     pub fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&mut PrefixInfoUnit<Store::AF, Store::Meta>> {
+    ) -> Option<&mut InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix_mut(index)
     }
 
