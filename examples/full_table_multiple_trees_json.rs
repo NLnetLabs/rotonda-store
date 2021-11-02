@@ -1,7 +1,8 @@
 use rotonda_store::common::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 use routecore::addr::Prefix;
-use routecore::record::{Record, PrefixRecord};
+use routecore::record::Record;
+use routecore::bgp::PrefixRecord;
 use std::error::Error;
 use std::fs::File;
 use std::process;

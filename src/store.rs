@@ -3,7 +3,8 @@ use std::{fmt, slice};
 use crate::{stats::StrideStats, MatchType, PrefixInfoUnit};
 use routecore::{
     addr::{IPv4, IPv6, AddressFamily, Prefix},
-    record::{Record, PrefixRecord},
+    record::Record,
+    bgp::PrefixRecord
 };
 
 pub(crate) type AfStrideStats = Vec<StrideStats>;

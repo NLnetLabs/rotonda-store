@@ -1,6 +1,7 @@
 use rotonda_store::{MultiThreadedStore, PrefixAs};
 use routecore::addr::Prefix;
-use routecore::record::{Record, PrefixRecord};
+use routecore::record::Record;
+use routecore::bgp::PrefixRecord;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
