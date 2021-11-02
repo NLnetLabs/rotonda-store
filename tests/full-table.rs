@@ -5,7 +5,7 @@ mod test {
     use rotonda_store::common::PrefixAs;
     use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
     use rotonda_store::Prefix;
-    use rotonda_store::{Record, SinglePrefixRoute};
+    use rotonda_store::{Record, PrefixRecord};
     use std::error::Error;
     use std::fs::File;
     use std::process;
@@ -21,7 +21,7 @@ mod test {
         const FOUND_PREFIXES: u32 = 1322993;
 
         fn load_prefixes(
-            pfxs: &mut Vec<SinglePrefixRoute<PrefixAs>>,
+            pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -35,7 +35,7 @@ mod test {
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
                 let len: u8 = record[1].parse().unwrap();
                 let asn: u32 = record[2].parse().unwrap();
-                let pfx = SinglePrefixRoute::new_with_local_meta(Prefix::new(net.into(), len)?, PrefixAs(asn));
+                let pfx = PrefixRecord::new_with_local_meta(Prefix::new(net.into(), len)?, PrefixAs(asn));
                 pfxs.push(pfx);
             }
             Ok(())
@@ -48,7 +48,7 @@ mod test {
             vec![3, 4, 4, 6, 7, 8],
         ];
         for strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<SinglePrefixRoute<PrefixAs>> = vec![];
+            let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
             let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(strides.1.to_owned(), vec![8]);
 
             if let Err(err) = load_prefixes(&mut pfxs) {

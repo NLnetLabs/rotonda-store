@@ -3,7 +3,7 @@ use std::{fmt, slice};
 use crate::{stats::StrideStats, MatchType, PrefixInfoUnit};
 use routecore::{
     addr::{IPv4, IPv6, AddressFamily, Prefix},
-    record::{Record, SinglePrefixRoute},
+    record::{Record, PrefixRecord},
 };
 
 pub(crate) type AfStrideStats = Vec<StrideStats>;
@@ -36,8 +36,8 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 
 #[derive(Clone, Debug)]
 pub struct RecordSet<'a, Meta: routecore::record::Meta> {
-    pub v4: Vec<SinglePrefixRoute<'a, Meta>>,
-    pub v6: Vec<SinglePrefixRoute<'a, Meta>>,
+    pub v4: Vec<PrefixRecord<'a, Meta>>,
+    pub v6: Vec<PrefixRecord<'a, Meta>>,
 }
 
 impl<'a, Meta: routecore::record::Meta> RecordSet<'a, Meta> {
@@ -82,14 +82,14 @@ impl<'a, Meta: routecore::record::Meta> fmt::Display for RecordSet<'a, Meta> {
 
 impl<'a, Meta: routecore::record::Meta>
     From<(
-        Vec<SinglePrefixRoute<'a, Meta>>,
-        Vec<SinglePrefixRoute<'a, Meta>>,
+        Vec<PrefixRecord<'a, Meta>>,
+        Vec<PrefixRecord<'a, Meta>>,
     )> for RecordSet<'a, Meta>
 {
     fn from(
         (v4, v6): (
-            Vec<SinglePrefixRoute<'a, Meta>>,
-            Vec<SinglePrefixRoute<'a, Meta>>,
+            Vec<PrefixRecord<'a, Meta>>,
+            Vec<PrefixRecord<'a, Meta>>,
         ),
     ) -> Self {
         Self { v4, v6 }
@@ -106,10 +106,10 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
             let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(SinglePrefixRoute::new(u_pfx, pfx.meta.as_ref().unwrap()));
+                    v4.push(PrefixRecord::new(u_pfx, pfx.meta.as_ref().unwrap()));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(SinglePrefixRoute::new(u_pfx, pfx.meta.as_ref().unwrap()));
+                    v6.push(PrefixRecord::new(u_pfx, pfx.meta.as_ref().unwrap()));
                 }
             }
         }
@@ -117,20 +117,20 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> std::iter::FromIterator<&'a SinglePrefixRoute<'a, Meta>>
+impl<'a, Meta: routecore::record::Meta> std::iter::FromIterator<&'a PrefixRecord<'a, Meta>>
     for RecordSet<'a, Meta>
 {
-    fn from_iter<I: IntoIterator<Item = &'a SinglePrefixRoute<'a, Meta>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = &'a PrefixRecord<'a, Meta>>>(iter: I) -> Self {
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
             let u_pfx = pfx.prefix;
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(SinglePrefixRoute::new(u_pfx, pfx.meta.as_ref()));
+                    v4.push(PrefixRecord::new(u_pfx, pfx.meta.as_ref()));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(SinglePrefixRoute::new(u_pfx, pfx.meta.as_ref()));
+                    v6.push(PrefixRecord::new(u_pfx, pfx.meta.as_ref()));
                 }
             }
         }
@@ -139,7 +139,7 @@ impl<'a, Meta: routecore::record::Meta> std::iter::FromIterator<&'a SinglePrefix
 }
 
 impl<'a, Meta: routecore::record::Meta> std::ops::Index<usize> for RecordSet<'a, Meta> {
-    type Output = SinglePrefixRoute<'a, Meta>;
+    type Output = PrefixRecord<'a, Meta>;
 
     fn index(&self, index: usize) -> &Self::Output {
         if index < self.v4.len() {
@@ -154,12 +154,12 @@ impl<'a, Meta: routecore::record::Meta> std::ops::Index<usize> for RecordSet<'a,
 
 #[derive(Clone, Debug)]
 pub struct RecordSetIter<'a, Meta: routecore::record::Meta> {
-    v4: Option<slice::Iter<'a, SinglePrefixRoute<'a, Meta>>>,
-    v6: slice::Iter<'a, SinglePrefixRoute<'a, Meta>>,
+    v4: Option<slice::Iter<'a, PrefixRecord<'a, Meta>>>,
+    v6: slice::Iter<'a, PrefixRecord<'a, Meta>>,
 }
 
 impl<'a, Meta: routecore::record::Meta> Iterator for RecordSetIter<'a, Meta> {
-    type Item = SinglePrefixRoute<'a, Meta>;
+    type Item = PrefixRecord<'a, Meta>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // V4 is already done.
@@ -184,13 +184,13 @@ pub struct PrefixInfoUnitIter<'a, Meta: routecore::record::Meta> {
 impl<'a, Meta: routecore::record::Meta> Iterator
     for PrefixInfoUnitIter<'a, Meta>
 {
-    type Item = SinglePrefixRoute<'a, Meta>;
+    type Item = PrefixRecord<'a, Meta>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {
             return self.v6.next().map(|res| {
-                SinglePrefixRoute::new(
+                PrefixRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                     res.meta.as_ref().unwrap(),
                 )
@@ -198,7 +198,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator
         }
 
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
-            return Some(SinglePrefixRoute::new(
+            return Some(PrefixRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                 res.meta.as_ref().unwrap(),
             ));
@@ -213,7 +213,7 @@ impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixInfoUnitIt
         // V4 is already done.
         if self.v4.is_none() {
             return self.v6.next_back().map(|res| {
-                SinglePrefixRoute::new(
+                PrefixRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                     res.meta.as_ref().unwrap(),
                 )
@@ -221,7 +221,7 @@ impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixInfoUnitIt
         }
 
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
-            return Some(SinglePrefixRoute::new(
+            return Some(PrefixRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                 res.meta.as_ref().unwrap(),
             ));

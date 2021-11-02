@@ -1,6 +1,6 @@
 use rotonda_store::{MultiThreadedStore, PrefixAs};
 use routecore::addr::Prefix;
-use routecore::record::{Record, SinglePrefixRoute};
+use routecore::record::{Record, PrefixRecord};
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
@@ -15,7 +15,7 @@ fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     }
 }
 
-fn load_prefixes(pfxs: &mut Vec<SinglePrefixRoute<PrefixAs>>) -> Result<(), Box<dyn Error>> {
+fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
     let file = File::open(file_path)?;
@@ -32,7 +32,7 @@ fn load_prefixes(pfxs: &mut Vec<SinglePrefixRoute<PrefixAs>>) -> Result<(), Box<
         let net = IpAddr::V4(Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]));
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
-        let pfx = SinglePrefixRoute::<PrefixAs>::new_with_local_meta(
+        let pfx = PrefixRecord::<PrefixAs>::new_with_local_meta(
             Prefix::new(net, len)?,
             PrefixAs(asn),
         );
@@ -52,7 +52,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     ];
 
     for strides in strides_vec.iter().enumerate() {
-        let mut pfxs: Vec<SinglePrefixRoute<PrefixAs>> = vec![];
+        let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
         let mut tree_bitmap = MultiThreadedStore::new(strides.1.to_owned(), vec![8]);
 
         if let Err(err) = load_prefixes(&mut pfxs) {

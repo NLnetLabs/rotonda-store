@@ -92,7 +92,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    // pub fn prefixes_iter_as_slice(&'a self) -> std::slice::Iter<SinglePrefixRoute<'a, Meta>> {
+    // pub fn prefixes_iter_as_slice(&'a self) -> std::slice::Iter<PrefixRecord<'a, Meta>> {
     //     self.v4.store.prefixes.as_slice().iter()
     // }
 

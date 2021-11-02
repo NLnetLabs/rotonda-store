@@ -1,7 +1,7 @@
 use rotonda_store::common::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 use routecore::addr::Prefix;
-use routecore::record::{Record, SinglePrefixRoute};
+use routecore::record::{Record, PrefixRecord};
 use std::error::Error;
 use std::fs::File;
 use std::process;
@@ -9,7 +9,7 @@ use std::process;
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
 
-    fn load_prefixes(pfxs: &mut Vec<SinglePrefixRoute<PrefixAs>>) -> Result<(), Box<dyn Error>> {
+    fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn Error>> {
         let file = File::open(CSV_FILE_PATH)?;
         let mut rdr = csv::Reader::from_reader(file);
         for result in rdr.records() {
@@ -21,7 +21,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
             let len: u8 = record[1].parse().unwrap();
             let asn: u32 = record[2].parse().unwrap();
-            let pfx = SinglePrefixRoute::<PrefixAs>::new_with_local_meta(
+            let pfx = PrefixRecord::<PrefixAs>::new_with_local_meta(
                 Prefix::new(net.into(), len)?,
                 PrefixAs(asn),
             );
@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
-            let mut pfxs: Vec<SinglePrefixRoute<PrefixAs>> = vec![];
+            let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
             let mut tree_bitmap =
                 MultiThreadedStore::<PrefixAs>::new(strides.1.to_owned(), Vec::from([]));
 
