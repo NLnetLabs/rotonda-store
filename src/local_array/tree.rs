@@ -289,7 +289,7 @@ impl std::fmt::Display for StrideType {
 
 //--------------------- TreeBitMap -------------------------------------------
 
-pub struct TreeBitMap<Store>
+pub(crate) struct TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
@@ -433,7 +433,7 @@ where
     // 5 - 5 - 5 - 4 - 4 - [4] - 5
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
-    pub fn insert(
+    pub(crate) fn insert(
         &mut self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -516,7 +516,7 @@ where
         self.store.retrieve_node_mut(index)
     }
 
-    pub fn store_prefix(
+    pub(crate) fn store_prefix(
         &mut self,
         next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<
@@ -548,7 +548,7 @@ where
     }
 
     #[inline]
-    pub fn retrieve_prefix(
+    pub(crate) fn retrieve_prefix(
         &self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
@@ -556,7 +556,7 @@ where
     }
 
     #[inline]
-    pub fn retrieve_prefix_mut(
+    pub(crate) fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> Option<&mut InternalPrefixRecord<Store::AF, Store::Meta>> {

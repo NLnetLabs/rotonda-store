@@ -4,8 +4,9 @@ pub mod node;
 pub mod storage_backend;
 pub mod store;
 
-pub use tree::TreeBitMap;
-pub use storage_backend::{StorageBackend, InMemStorage};
+pub(crate) use tree::TreeBitMap;
+pub(crate) use storage_backend::StorageBackend;
+pub(crate) use storage_backend::InMemStorage;
 
 pub use store::Store;
 

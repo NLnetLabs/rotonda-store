@@ -12,7 +12,7 @@ pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, Int
 pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeOption<'a, AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
 
-pub trait StorageBackend
+pub(crate) trait StorageBackend
 where
     Self::NodeType: SortableNodeId + Copy,
 {
@@ -96,7 +96,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
+pub(crate) struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
     // pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     // each stride in its own vec avoids having to store SizedStrideNode, an enum, that will have
     // the size of the largest variant as its memory footprint (Stride8).
@@ -517,7 +517,7 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::D
     }
 }
 
-pub struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> {
+pub(crate) struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> {
     pub guard: std::cell::Ref<'a, InternalPrefixRecord<AF, Meta>>,
 }
 

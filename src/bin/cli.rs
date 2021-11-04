@@ -2,7 +2,7 @@
 
 use ansi_term::Colour;
 use rotonda_store::common::PrefixAs;
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStorageBackend, MultiThreadedStore};
+use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
 use routecore::addr::Prefix;
 use routecore::record::Record;
@@ -79,10 +79,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     //     acc
     // });
 
-    println!("IPv4 tree");
-    println!("{:?}", tree_bitmap.v4);
-    println!("IPv6 tree");
-    println!("{:?}", tree_bitmap.v6);
+    println!("Store");
+    println!("{:?}", tree_bitmap);
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
@@ -101,11 +99,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("total prefixes :\t{}", tree_bitmap.prefixes_len());
                                 println!(
                                     "ipv4 prefixes :\t{}",
-                                    tree_bitmap.v4.store.get_prefixes_len()
+                                    tree_bitmap.prefixes_v4_len()
                                 );
                                 println!(
                                     "ipv6 prefixes :\t{}",
-                                    tree_bitmap.v6.store.get_prefixes_len()
+                                    tree_bitmap.prefixes_v6_len()
                                 );
                                 // println!("{:#?}", tree_bitmap.prefixes());
                             }
@@ -121,8 +119,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 // }
 
                                 println!("total nodes :\t{}", tree_bitmap.nodes_len());
-                                println!("ipv4 nodes :\t{}", tree_bitmap.v4.store.get_nodes_len());
-                                println!("ipv6 nodes :\t{}", tree_bitmap.v6.store.get_nodes_len());
+                                println!("ipv4 nodes :\t{}", tree_bitmap.nodes_v4_len());
+                                println!("ipv6 nodes :\t{}", tree_bitmap.nodes_v6_len());
                             }
                             _ => {
                                 println!("Error: unknown command {:?}", s_pref);

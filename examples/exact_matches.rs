@@ -1,4 +1,3 @@
-use rotonda_store::MultiThreadedStorageBackend;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 use routecore::addr::AddressFamily;
 use routecore::addr::Prefix;
@@ -82,8 +81,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty)?;
     }
     println!("------ end of inserts\n");
-    println!("{:#?}", tree_bitmap.v4.store.prefixes.iter().enumerate().collect::<Vec<(usize, _)>>());
-    println!("{:#?}", tree_bitmap.v4.store.get_nodes().iter().enumerate().collect::<Vec<(usize, _)>>());
+    println!("{:#?}", tree_bitmap.prefixes_iter().enumerate().collect::<Vec<(usize, _)>>());
+    println!("{:#?}", tree_bitmap.nodes_v4_iter().enumerate().collect::<Vec<(usize, _)>>());
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 

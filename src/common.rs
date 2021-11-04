@@ -55,7 +55,7 @@ impl Display for PrefixAs {
 //------------ InternalPrefixRecord --------------------------------------------------------
 
 #[derive(Clone, Copy)]
-pub struct InternalPrefixRecord<AF, T>
+pub(crate) struct InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily,

@@ -65,10 +65,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned())?;
         }
 
-        println!("IPv4 tree");
-        println!("{:?}", tree_bitmap.v4);
-        println!("IPv6 tree");
-        println!("{:?}", tree_bitmap.v6);
+        println!("Store");
+        println!("{:?}", tree_bitmap);
 
         // let total_nodes = tree_bitmap.stats.iter().fold(0, |mut acc, c| {
         //     acc += c.created_nodes.iter().fold(0, |mut sum, l| {

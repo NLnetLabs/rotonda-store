@@ -1,8 +1,8 @@
 use rotonda_store::common::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
-use routecore::addr::Prefix;
 use routecore::addr::AddressFamily;
+use routecore::addr::Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
@@ -207,20 +207,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!(
         "{:#?}",
         tree_bitmap
-            .v4
-            .store
-            .prefixes
-            .iter()
+            .prefixes_iter()
             .enumerate()
             .collect::<Vec<(usize, _)>>()
     );
     println!(
         "{:#?}",
         tree_bitmap
-            .v4
-            .store
-            .nodes4
-            .iter()
+            .prefixes_iter()
             .enumerate()
             .collect::<Vec<(usize, _)>>()
     );

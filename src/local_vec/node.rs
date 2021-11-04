@@ -188,7 +188,7 @@ where
     // bytes from the requested prefix.
     // It mutates the `less_specifics_vec` that was passed in to hold all the prefixes
     // found along the way.
-    pub fn search_stride_for_longest_match_at(
+    pub(crate) fn search_stride_for_longest_match_at(
         &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
@@ -251,7 +251,7 @@ where
     // the appropriate bits in the requested prefix.
     // Although this is rather efficient, there's no way to collect less-specific prefixes from
     // the search prefix.
-    pub fn search_stride_for_exact_match_at(
+    pub(crate) fn search_stride_for_exact_match_at(
         &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         nibble: u32,
@@ -294,7 +294,7 @@ where
     // just like the one above, but this *does* iterate over all the bytes in the nibble to collect
     // the less-specific prefixes of the the search prefix.
     // This is of course slower, so it should only be used when the user explicitly requests less-specifics.
-    pub fn search_stride_for_exact_match_with_less_specifics_at(
+    pub(crate) fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,

@@ -1,10 +1,15 @@
 use std::{fmt, slice};
 
-use crate::{stats::StrideStats, MatchType, InternalPrefixRecord};
+use crate::{
+    local_array::node::{InMemStrideNodeId, SizedStrideRef, TreeBitMap},
+    node_id::SortableNodeId,
+    stats::StrideStats,
+    InternalPrefixRecord, MatchType,
+};
 use routecore::{
-    addr::{IPv4, IPv6, AddressFamily, Prefix},
+    addr::{AddressFamily, IPv4, IPv6, Prefix},
+    bgp::PrefixRecord,
     record::Record,
-    bgp::PrefixRecord
 };
 
 pub(crate) type AfStrideStats = Vec<StrideStats>;
@@ -82,17 +87,9 @@ impl<'a, Meta: routecore::record::Meta> fmt::Display for RecordSet<'a, Meta> {
 }
 
 impl<'a, Meta: routecore::record::Meta>
-    From<(
-        Vec<PrefixRecord<'a, Meta>>,
-        Vec<PrefixRecord<'a, Meta>>,
-    )> for RecordSet<'a, Meta>
+    From<(Vec<PrefixRecord<'a, Meta>>, Vec<PrefixRecord<'a, Meta>>)> for RecordSet<'a, Meta>
 {
-    fn from(
-        (v4, v6): (
-            Vec<PrefixRecord<'a, Meta>>,
-            Vec<PrefixRecord<'a, Meta>>,
-        ),
-    ) -> Self {
+    fn from((v4, v6): (Vec<PrefixRecord<'a, Meta>>, Vec<PrefixRecord<'a, Meta>>)) -> Self {
         Self { v4, v6 }
     }
 }
@@ -176,15 +173,17 @@ impl<'a, Meta: routecore::record::Meta> Iterator for RecordSetIter<'a, Meta> {
     }
 }
 
+//------------ PrefixRecordIter --------------------------------------------------
+
+// Converts from the InternalPrefixRecord to the (public) PrefixRecord
+// while iterating.
 #[derive(Clone, Debug)]
-pub struct PrefixInfoUnitIter<'a, Meta: routecore::record::Meta> {
-    pub v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, Meta>>>,
-    pub v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
+pub struct PrefixRecordIter<'a, Meta: routecore::record::Meta> {
+    pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, Meta>>>,
+    pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
 }
 
-impl<'a, Meta: routecore::record::Meta> Iterator
-    for PrefixInfoUnitIter<'a, Meta>
-{
+impl<'a, Meta: routecore::record::Meta> Iterator for PrefixRecordIter<'a, Meta> {
     type Item = PrefixRecord<'a, Meta>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -209,7 +208,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixInfoUnitIter<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixRecordIter<'a, Meta> {
     fn next_back(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {

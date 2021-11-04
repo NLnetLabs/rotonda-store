@@ -1,16 +1,19 @@
 use crate::local_array::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_array::tree::TreeBitMap;
-use crate::{MatchOptions, InternalPrefixRecord};
+use crate::node_id::SortableNodeId;
+use crate::{InternalPrefixRecord, MatchOptions};
 use crate::{QueryResult, Stats, Strides};
-use routecore::addr::Prefix;
-use routecore::record::{MergeUpdate, NoMeta};
+use routecore::addr::{AddressFamily, Prefix};
 use routecore::addr::{IPv4, IPv6};
+use routecore::record::{MergeUpdate, NoMeta};
 
 use std::fmt;
 
+use super::node::{InMemStrideNodeId, SizedStrideRef};
+
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
-    pub v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
-    pub v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    pub(crate) v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
+    pub(crate) v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
@@ -65,22 +68,71 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    pub fn prefixes_iter(&'a self) -> crate::PrefixInfoUnitIter<'a, Meta> {
-        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> = self.v4.store.prefixes[..].iter();
+    pub fn prefixes_iter(&self) -> crate::PrefixRecordIter<Meta> {
+        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> =
+            self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
-        crate::PrefixInfoUnitIter::<'a, Meta> {
+        crate::PrefixRecordIter::<Meta> {
             v4: Some(rs4),
             v6: rs6,
         }
+    }
+
+    pub fn bla() -> impl Iterator<Item = u32> {
+        vec![1, 2, 3].into_iter()
+    }
+
+    pub fn nodes_v4_iter(
+        &'a self,
+    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv4, InMemStrideNodeId>> + 'a {
+        self.v4
+            .store
+            .nodes3
+            .iter().map(|n| SizedStrideRef::Stride3(n))
+            .chain(self.v4.store.nodes4.iter().map(|n| SizedStrideRef::Stride4(n)))
+            .chain(self.v4.store.nodes5.iter().map(|n| SizedStrideRef::Stride5(n)))
+            .chain(self.v4.store.nodes6.iter().map(|n| SizedStrideRef::Stride6(n)))
+            .chain(self.v4.store.nodes7.iter().map(|n| SizedStrideRef::Stride7(n)))
+            .chain(self.v4.store.nodes8.iter().map(|n| SizedStrideRef::Stride8(n)))
+    }
+
+    pub fn nodes_v6_iter(
+        &'a self,
+    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv6, InMemStrideNodeId>> + 'a {
+        self.v6
+            .store
+            .nodes3
+            .iter().map(|n| SizedStrideRef::Stride3(n))
+            .chain(self.v6.store.nodes4.iter().map(|n| SizedStrideRef::Stride4(n)))
+            .chain(self.v6.store.nodes5.iter().map(|n| SizedStrideRef::Stride5(n)))
+            .chain(self.v6.store.nodes6.iter().map(|n| SizedStrideRef::Stride6(n)))
+            .chain(self.v6.store.nodes7.iter().map(|n| SizedStrideRef::Stride7(n)))
+            .chain(self.v6.store.nodes8.iter().map(|n| SizedStrideRef::Stride8(n)))
     }
 
     pub fn prefixes_len(&self) -> usize {
         self.v4.store.prefixes.len() + self.v6.store.prefixes.len()
     }
 
+    pub fn prefixes_v4_len(&self) -> usize {
+        self.v4.store.prefixes.len()
+    }
+
+    pub fn prefixes_v6_len(&self) -> usize {
+        self.v6.store.prefixes.len()
+    }
+
     pub fn nodes_len(&self) -> usize {
         self.v4.store.get_nodes_len() + self.v6.store.get_nodes_len()
+    }
+
+    pub fn nodes_v4_len(&self) -> usize {
+        self.v4.store.get_nodes_len()
+    }
+
+    pub fn nodes_v6_len(&self) -> usize {
+        self.v6.store.get_nodes_len()
     }
 
     pub fn nodes_per_stride(&'a self) -> (Vec<u32>, Vec<u32>) {
@@ -135,5 +187,16 @@ impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display for InMemStorage<
 impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display for InMemStorage<IPv6, Meta> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "InMemStorage<u128, {}>", std::any::type_name::<Meta>())
+    }
+}
+
+impl<Meta: routecore::record::Meta + MergeUpdate> std::fmt::Debug for Store<Meta> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Store")?;
+        write!(f, "IPv4 Tree")?;
+        write!(f, "{:?}", self.v4.store)?;
+        write!(f, "IPv6 Tree")?;
+        write!(f, "{:?}", self.v6.store)?;
+        Ok(())
     }
 }

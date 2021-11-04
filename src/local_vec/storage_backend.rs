@@ -10,7 +10,7 @@ use routecore::addr::AddressFamily;
 use std::io::{Error, ErrorKind};
 use std::fmt::Debug;
 
-pub trait StorageBackend
+pub(crate) trait StorageBackend
 where
     Self::NodeType: SortableNodeId + Copy,
 {
@@ -90,7 +90,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
+pub(crate) struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
     pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }

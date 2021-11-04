@@ -1,22 +1,23 @@
 use crate::common::InternalPrefixRecord;
+pub use crate::local_array::query::*;
+pub use crate::local_array::tree::*;
 use crate::node_id::SortableNodeId;
 pub use crate::stride::*;
-pub use crate::local_array::tree::*;
-pub use crate::local_array::query::*;
 use crate::synth_int::{Zero, U256, U512};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
 };
 
-use routecore::record::NoMeta;
 use routecore::addr::AddressFamily;
+use routecore::record::NoMeta;
 
 //---------------------- TreeBitMap Node --------------------------------------------------------
 
 #[derive(Copy, Clone)]
 pub struct TreeBitMapNode<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
 where
+    Self: Sized,
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     AF: AddressFamily,
@@ -212,7 +213,7 @@ where
     // bytes from the requested prefix.
     // It mutates the `less_specifics_vec` that was passed in to hold all the prefixes
     // found along the way.
-    pub fn search_stride_for_longest_match_at(
+    pub(crate) fn search_stride_for_longest_match_at(
         &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
@@ -275,7 +276,7 @@ where
     // the appropriate bits in the requested prefix.
     // Although this is rather efficient, there's no way to collect less-specific prefixes from
     // the search prefix.
-    pub fn search_stride_for_exact_match_at(
+    pub(crate) fn search_stride_for_exact_match_at(
         &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         nibble: u32,
@@ -318,7 +319,7 @@ where
     // just like the one above, but this *does* iterate over all the bytes in the nibble to collect
     // the less-specific prefixes of the the search prefix.
     // This is of course slower, so it should only be used when the user explicitly requests less-specifics.
-    pub fn search_stride_for_exact_match_with_less_specifics_at(
+    pub(crate) fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
@@ -384,7 +385,7 @@ where
 
     // Search a stride for more-specific prefixes and child nodes containing
     // more specifics for `search_prefix`.
-    pub fn add_more_specifics_at(
+    pub(crate) fn add_more_specifics_at(
         &self,
         nibble: u32,
         nibble_len: u8,

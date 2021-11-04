@@ -11,8 +11,8 @@ pub struct Store<Meta: routecore::record::Meta>
 where
     Meta: MergeUpdate,
 {
-    pub v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
-    pub v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    pub(crate) v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
+    pub(crate) v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
@@ -82,11 +82,11 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     // }
 
 
-    pub fn prefixes_iter(&'a self) -> crate::PrefixInfoUnitIter<'a, Meta> {
+    pub(crate) fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
         let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> = self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
-        crate::PrefixInfoUnitIter::<'a, Meta> {
+        crate::PrefixRecordIter::<'a, Meta> {
             v4: Some(rs4),
             v6: rs6,
         }
@@ -100,8 +100,24 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         self.v4.store.prefixes.len() + self.v6.store.prefixes.len()
     }
 
+    pub fn prefixes_v4_len(&self) -> usize {
+        self.v4.store.prefixes.len()
+    }
+
+    pub fn prefixes_v6_len(&self) -> usize {
+        self.v6.store.prefixes.len()
+    }
+
     pub fn nodes_len(&self) -> usize {
         self.v4.store.get_nodes_len() + self.v6.store.get_nodes_len()
+    }
+
+    pub fn nodes_v4_len(&self) -> usize {
+        self.v4.store.get_nodes_len()
+    }
+
+    pub fn nodes_v6_len(&self) -> usize {
+        self.v6.store.get_nodes_len()
     }
 
     pub fn nodes_per_stride(&'a self) -> (Vec<u32>, Vec<u32>) {
@@ -144,5 +160,16 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
             v4: &self.v4.strides,
             v6: &self.v6.strides,
         }
+    }
+}
+
+impl<Meta: routecore::record::Meta + MergeUpdate> std::fmt::Display for Store<Meta> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "Store")?;
+        write!(f,"IPv4 Tree")?;
+        write!(f, "{:?}", self.v4.store)?;
+        write!(f,"IPv6 Tree")?;
+        write!(f, "{:?}", self.v6.store)?;
+        Ok(())
     }
 }
