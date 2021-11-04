@@ -30,7 +30,6 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
 pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
 pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
-// pub(crate) type SizedNodeOption<AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
 
 impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
 where
@@ -274,7 +273,7 @@ where
         }
     }
 
-    pub fn store_node(
+    pub(crate) fn store_node(
         &mut self,
         id: Option<Store::NodeType>,
         next_node: SizedStrideNode<Store::AF, Store::NodeType>,
@@ -283,7 +282,7 @@ where
     }
 
     #[inline]
-    pub fn retrieve_node(
+    pub(crate) fn retrieve_node(
         &self,
         id: Store::NodeType,
     ) -> Option<&SizedStrideNode<Store::AF, Store::NodeType>> {
@@ -291,19 +290,19 @@ where
     }
 
     #[inline]
-    pub fn retrieve_node_with_guard(
+    pub(crate) fn retrieve_node_with_guard(
         &self,
         id: Store::NodeType,
     ) -> CacheGuard<Store::AF, Store::NodeType> {
         self.store.retrieve_node_with_guard(id)
     }
 
-    pub fn get_root_node_id(&self) -> Store::NodeType {
+    pub(crate) fn get_root_node_id(&self) -> Store::NodeType {
         self.store.get_root_node_id()
     }
 
     #[inline]
-    pub fn retrieve_node_mut(
+    pub(crate) fn retrieve_node_mut(
         &mut self,
         index: Store::NodeType,
     ) -> SizedNodeResult<Store::AF, Store::NodeType> {
@@ -322,7 +321,7 @@ where
         // id
     }
 
-    fn update_prefix_meta(
+    pub(crate) fn update_prefix_meta(
         &mut self,
         update_node_idx: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         meta: Store::Meta,

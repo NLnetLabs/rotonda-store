@@ -97,7 +97,6 @@ where
 
 #[derive(Debug)]
 pub(crate) struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
-    // pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     // each stride in its own vec avoids having to store SizedStrideNode, an enum, that will have
     // the size of the largest variant as its memory footprint (Stride8).
     pub nodes3: Vec<TreeBitMapNode<AF, Stride3, InMemStrideNodeId, 14, 8>>,
@@ -120,7 +119,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
     fn init(
         start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>,
     ) -> InMemStorage<AF, Meta> {
-        // let mut nodes = vec![];
         let mut nodes3 = vec![];
         let mut nodes4 = vec![];
         let mut nodes5 = vec![];
@@ -128,7 +126,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         let mut nodes7 = vec![];
         let mut nodes8 = vec![];
         if let Some(n) = start_node {
-            // nodes = vec![n];
             match n {
                 SizedStrideNode::Stride3(nodes) => {
                     nodes3 = vec![nodes];
@@ -165,7 +162,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
     fn acquire_new_node_id(
         &self,
         sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        // part: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
         level: u8,
     ) -> <Self as StorageBackend>::NodeType {
         // We're ignoring the part parameter here, because we want to store
@@ -197,7 +193,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
             ),
             _ => panic!("Invalid level"),
         }
-        // InMemStrideNodeId(sort, self.nodes3.len() as u32)
     }
 
     fn store_node(
@@ -255,9 +250,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
                 ))
             }
         }
-        // let id = self.nodes.len() as u32;
-        // self.nodes.push(next_node);
-        // Some(InMemNodeId::new(&0, &id))
     }
 
     fn update_node(
@@ -265,8 +257,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         current_node_id: Self::NodeType,
         updated_node: SizedStrideNode<Self::AF, Self::NodeType>,
     ) {
-        // std::mem::replace(&mut self.retrieve_node_mut(current_node_id).unwrap(), node);
-
         match updated_node {
             SizedStrideNode::Stride3(node) => {
                 let _default_val = std::mem::replace(
@@ -361,10 +351,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
                     .nodes3
                     .get_mut(part_id as usize)
                     .unwrap_or_else(|| panic!("no {:?} in stride 3 collection", id)),
-                // .ok_or_else(|| {
-                //     Box::new(Error::new(ErrorKind::Other, "Retrieve Node Error")).into()
-                // })
-                // .unwrap(),
             )),
             StrideNodeId(StrideType::Stride4, part_id) => Ok(SizedStrideNode::Stride4(
                 *self.nodes4.get_mut(part_id as usize).unwrap(),

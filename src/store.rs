@@ -1,8 +1,6 @@
 use std::{fmt, slice};
 
 use crate::{
-    local_array::node::{InMemStrideNodeId, SizedStrideRef, TreeBitMap},
-    node_id::SortableNodeId,
     stats::StrideStats,
     InternalPrefixRecord, MatchType,
 };

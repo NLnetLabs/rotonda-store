@@ -1,9 +1,8 @@
 use crate::local_array::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_array::tree::TreeBitMap;
-use crate::node_id::SortableNodeId;
 use crate::{InternalPrefixRecord, MatchOptions};
 use crate::{QueryResult, Stats, Strides};
-use routecore::addr::{AddressFamily, Prefix};
+use routecore::addr::Prefix;
 use routecore::addr::{IPv4, IPv6};
 use routecore::record::{MergeUpdate, NoMeta};
 
@@ -77,10 +76,6 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
             v4: Some(rs4),
             v6: rs6,
         }
-    }
-
-    pub fn bla() -> impl Iterator<Item = u32> {
-        vec![1, 2, 3].into_iter()
     }
 
     pub fn nodes_v4_iter(

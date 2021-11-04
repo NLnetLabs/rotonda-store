@@ -56,7 +56,7 @@ where
     }
 }
 
-// Used to create vec over all nodes.
+// Used to create a public iterator over all nodes.
 #[derive(Debug)]
 pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride3(&'a TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
