@@ -1,11 +1,15 @@
+use crate::local_array::node::InMemStrideNodeId;
 use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
+use crate::node_id::InMemNodeId;
 use crate::store::QueryResult;
 use crate::{MatchOptions, InternalPrefixRecord, Stats, Strides};
 
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
 use routecore::addr::{IPv4, IPv6};
+
+use super::tree::{SizedNodeResult, SizedStrideNode};
 
 pub struct Store<Meta: routecore::record::Meta>
 where
@@ -82,7 +86,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     // }
 
 
-    pub(crate) fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
+    pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
         let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> = self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
@@ -95,6 +99,25 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     // pub fn prefixes_iter_as_slice(&'a self) -> std::slice::Iter<PrefixRecord<'a, Meta>> {
     //     self.v4.store.prefixes.as_slice().iter()
     // }
+
+    pub fn nodes_v4_iter(
+        &'a self,
+    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv4, InMemNodeId>> + 'a {
+        self.v4
+            .store
+            .nodes
+            .iter()
+    }
+
+    pub fn nodes_v6_iter(
+        &'a self,
+    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv6, InMemNodeId>> + 'a {
+        self.v6
+            .store
+            .nodes
+            .iter()
+    }
+
 
     pub fn prefixes_len(&self) -> usize {
         self.v4.store.prefixes.len() + self.v6.store.prefixes.len()
