@@ -84,12 +84,43 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         self.v4
             .store
             .nodes3
-            .iter().map(|n| SizedStrideRef::Stride3(n))
-            .chain(self.v4.store.nodes4.iter().map(|n| SizedStrideRef::Stride4(n)))
-            .chain(self.v4.store.nodes5.iter().map(|n| SizedStrideRef::Stride5(n)))
-            .chain(self.v4.store.nodes6.iter().map(|n| SizedStrideRef::Stride6(n)))
-            .chain(self.v4.store.nodes7.iter().map(|n| SizedStrideRef::Stride7(n)))
-            .chain(self.v4.store.nodes8.iter().map(|n| SizedStrideRef::Stride8(n)))
+            .iter()
+            .map(|n| SizedStrideRef::Stride3(n))
+            .chain(
+                self.v4
+                    .store
+                    .nodes4
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride4(n)),
+            )
+            .chain(
+                self.v4
+                    .store
+                    .nodes5
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride5(n)),
+            )
+            .chain(
+                self.v4
+                    .store
+                    .nodes6
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride6(n)),
+            )
+            .chain(
+                self.v4
+                    .store
+                    .nodes7
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride7(n)),
+            )
+            .chain(
+                self.v4
+                    .store
+                    .nodes8
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride8(n)),
+            )
     }
 
     pub fn nodes_v6_iter(
@@ -98,12 +129,43 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         self.v6
             .store
             .nodes3
-            .iter().map(|n| SizedStrideRef::Stride3(n))
-            .chain(self.v6.store.nodes4.iter().map(|n| SizedStrideRef::Stride4(n)))
-            .chain(self.v6.store.nodes5.iter().map(|n| SizedStrideRef::Stride5(n)))
-            .chain(self.v6.store.nodes6.iter().map(|n| SizedStrideRef::Stride6(n)))
-            .chain(self.v6.store.nodes7.iter().map(|n| SizedStrideRef::Stride7(n)))
-            .chain(self.v6.store.nodes8.iter().map(|n| SizedStrideRef::Stride8(n)))
+            .iter()
+            .map(|n| SizedStrideRef::Stride3(n))
+            .chain(
+                self.v6
+                    .store
+                    .nodes4
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride4(n)),
+            )
+            .chain(
+                self.v6
+                    .store
+                    .nodes5
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride5(n)),
+            )
+            .chain(
+                self.v6
+                    .store
+                    .nodes6
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride6(n)),
+            )
+            .chain(
+                self.v6
+                    .store
+                    .nodes7
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride7(n)),
+            )
+            .chain(
+                self.v6
+                    .store
+                    .nodes8
+                    .iter()
+                    .map(|n| SizedStrideRef::Stride8(n)),
+            )
     }
 
     pub fn prefixes_len(&self) -> usize {
@@ -158,6 +220,11 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         (stride_levels_v4, stride_levels_v6)
     }
 
+    pub fn print_funky_stats(&self) {
+        println!("{}", self.v4);
+        println!("{}", self.v6);
+    }
+
     pub fn stats(&self) -> Stats {
         Stats {
             v4: &self.v4.stats,
@@ -182,16 +249,5 @@ impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display for InMemStorage<
 impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display for InMemStorage<IPv6, Meta> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "InMemStorage<u128, {}>", std::any::type_name::<Meta>())
-    }
-}
-
-impl<Meta: routecore::record::Meta + MergeUpdate> std::fmt::Debug for Store<Meta> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Store")?;
-        write!(f, "IPv4 Tree")?;
-        write!(f, "{:?}", self.v4.store)?;
-        write!(f, "IPv6 Tree")?;
-        write!(f, "{:?}", self.v6.store)?;
-        Ok(())
     }
 }

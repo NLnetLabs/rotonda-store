@@ -158,14 +158,3 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 }
-
-impl<Meta: routecore::record::Meta + MergeUpdate> std::fmt::Display for Store<Meta> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "Store")?;
-        write!(f,"IPv4 Tree")?;
-        write!(f, "{:?}", self.v4.store)?;
-        write!(f,"IPv6 Tree")?;
-        write!(f, "{:?}", self.v6.store)?;
-        Ok(())
-    }
-}

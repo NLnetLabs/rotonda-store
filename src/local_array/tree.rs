@@ -664,8 +664,8 @@ where
     }
 }
 
-
-impl<'a, Store: StorageBackend> std::fmt::Debug for TreeBitMap<Store> {
+// This implements the funky stats for a tree
+impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_nodes = self.store.get_nodes_len();
 

@@ -1,7 +1,7 @@
 #![cfg(feature = "cli")]
 
 use ansi_term::Colour;
-use rotonda_store::common::PrefixAs;
+use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
 use routecore::addr::Prefix;
@@ -71,16 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ready.checked_duration_since(start).unwrap().as_millis()
     );
 
-    // let total_nodes = tree_bitmap.stats().iter().fold(0, |mut acc, c| {
-    //     acc += c.created_nodes.iter().fold(0, |mut sum, l| {
-    //         sum += l.count;
-    //         sum
-    //     });
-    //     acc
-    // });
-
-    println!("Store");
-    println!("{:?}", tree_bitmap);
+    tree_bitmap.print_funky_stats();
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {

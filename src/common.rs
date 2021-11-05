@@ -168,18 +168,18 @@ where
 
 //------------ TrieLevelStats --------------------------------------------------------
 
-pub struct TrieLevelStats {
-    pub level: u8,
-    pub nodes_num: u32,
-    pub prefixes_num: u32,
-}
+// pub(crate) struct TrieLevelStats {
+//     pub level: u8,
+//     pub nodes_num: u32,
+//     pub prefixes_num: u32,
+// }
 
-impl fmt::Debug for TrieLevelStats {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "{{\"level\":{},\"nodes_num\":{},\"prefixes_num\":{}}}",
-            self.level, self.nodes_num, self.prefixes_num
-        )
-    }
-}
+// impl fmt::Debug for TrieLevelStats {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(
+//             f,
+//             "{{\"level\":{},\"nodes_num\":{},\"prefixes_num\":{}}}",
+//             self.level, self.nodes_num, self.prefixes_num
+//         )
+//     }
+// }

@@ -10,11 +10,29 @@ use routecore::{
     record::Record,
 };
 
+
+// ----- Types for strides displaying/monitoring ---------------------------
+
+
 pub(crate) type AfStrideStats = Vec<StrideStats>;
 
 pub struct Stats<'a> {
     pub v4: &'a AfStrideStats,
     pub v6: &'a AfStrideStats,
+}
+
+impl<'a> std::fmt::Display for Stats<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "v4 ")?;
+        for s in self.v4.iter() {
+            writeln!(f, "{} ", s)?;
+        }
+        writeln!(f, "v6 ")?;
+        for s in self.v6.iter() {
+            writeln!(f, "{} ", s)?;
+        }
+        Ok(())
+    }
 }
 
 pub struct Strides<'a> {

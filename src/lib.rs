@@ -13,8 +13,6 @@ pub use common::*;
 pub use store::*;
 pub use local_array::store::Store as MultiThreadedStore;
 pub use local_vec::store::Store as SingleThreadedStore;
-// pub use local_array::storage_backend::StorageBackend as MultiThreadedStorageBackend;
-// pub use local_vec::storage_backend::StorageBackend as SingleThreadedStorageBackend;
 
 // routecore re-exports
 pub use routecore::record::*;

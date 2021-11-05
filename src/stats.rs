@@ -1,7 +1,7 @@
 //---------------------- Types for Statistics -------------------------------------------------
 
 use crate::stride::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
-use std::fmt::Debug;
+use std::fmt::{Display, Debug};
 
 #[derive(Debug, Copy, Clone)]
 pub enum SizedStride {
@@ -104,6 +104,22 @@ impl StrideStats {
 }
 
 impl Debug for StrideStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{:?}:{:>8?} {:?} ({}k)",
+            &self.stride_type,
+            &self.created_nodes.iter().fold(0, |mut a, n| {
+                a += n.count;
+                a
+            }),
+            &self.created_nodes,
+            &self.mem_usage() / 1024
+        )
+    }
+}
+
+impl Display for StrideStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
