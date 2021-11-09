@@ -715,7 +715,10 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 .count as u32;
 
             let n = (nodes_num / SCALE) as usize;
-            let max_pfx: u64 = u64::pow(2, stride_bits[1] as u32);
+            let max_pfx = u128::overflowing_pow(
+                2, 
+                stride_bits[1] as u32
+            );
 
             print!("{}-{}\t", stride_bits[0], stride_bits[1]);
 
@@ -731,8 +734,8 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
             print!(
                 " {}/{} {:.2}%",
                 nodes_num,
-                max_pfx,
-                (nodes_num as f64 / max_pfx as f64) * 100.0
+                max_pfx.0,
+                (nodes_num as f64 / max_pfx.0 as f64) * 100.0
             );
             print!("\n\t");
 
