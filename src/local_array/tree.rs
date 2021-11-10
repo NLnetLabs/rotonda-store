@@ -3,11 +3,15 @@ use routecore::addr::AddressFamily;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::node_id::SortableNodeId;
 use crate::match_node_for_strides;
-use crate::local_array::storage_backend::{CacheGuard, StorageBackend};
+use crate::local_array::storage_backend::StorageBackend;
+
+#[cfg(feature = "dynamodb")]
+use crate::local_array::CacheGuard;
+
 pub use crate::stride::*;
 use crate::stats::{StrideStats, SizedStride};
 
-pub use crate::local_array::node::TreeBitMapNode;
+pub(crate) use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::storage_backend::{SizedNodeOption, SizedNodeResult};
 use crate::synth_int::{Zero, U256, U512};
 
@@ -23,10 +27,10 @@ use routecore::record::MergeUpdate;
 
 //------------------- Unsized Node Enums ------------------------------------------------
 
-pub trait UnsizedNode<AF: AddressFamily, NodeId: SortableNodeId> {}
+pub(crate) trait UnsizedNode<AF: AddressFamily, NodeId: SortableNodeId> {}
 
 #[derive(Debug, Copy, Clone)]
-pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+pub(crate) enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride3(TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
     Stride4(TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
     Stride5(TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
@@ -72,13 +76,12 @@ impl<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> UnsizedNode<AF, NodeI
 {
 }
 
-pub trait NodeWrapper<AF: AddressFamily, Node: SortableNodeId + Copy> {
+pub(crate) trait NodeWrapper<AF: AddressFamily, Node: SortableNodeId + Copy> {
     type Unsized: UnsizedNode<AF, Node>;
     type UnsizedRef: UnsizedNode<AF, Node>;
-    // type NodeCollection: NodeCollection<AF, Node>;
 }
 
-pub enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+pub(crate) enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), // New Node and bit_id of the new node
     ExistingNode(NodeId),
     NewPrefix,
@@ -480,7 +483,7 @@ where
         }
     }
 
-    pub fn store_node(
+    fn store_node(
         &mut self,
         id: Option<Store::NodeType>,
         next_node: SizedStrideNode<Store::AF, Store::NodeType>,
@@ -489,7 +492,7 @@ where
     }
 
     #[inline]
-    pub fn retrieve_node(
+    pub(crate) fn retrieve_node(
         &self,
         id: Store::NodeType,
     ) -> SizedNodeOption<Store::AF, Store::NodeType> {
@@ -497,19 +500,20 @@ where
     }
 
     #[inline]
-    pub fn retrieve_node_with_guard(
+    #[cfg(feature = "dynamodb")]
+    pub(crate) fn retrieve_node_with_guard(
         &self,
         id: Store::NodeType,
     ) -> CacheGuard<Store::AF, Store::NodeType> {
         self.store.retrieve_node_with_guard(id)
     }
 
-    pub fn get_root_node_id(&self) -> Store::NodeType {
+    pub(crate) fn get_root_node_id(&self) -> Store::NodeType {
         self.store.get_root_node_id(self.strides[0])
     }
 
     #[inline]
-    pub fn retrieve_node_mut(
+    pub(crate) fn retrieve_node_mut(
         &mut self,
         index: Store::NodeType,
     ) -> SizedNodeResult<Store::AF, Store::NodeType> {
@@ -556,6 +560,7 @@ where
     }
 
     #[inline]
+    #[cfg(feature = "dynamodb")]
     pub(crate) fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
@@ -637,7 +642,7 @@ where
 
     // This function assembles the prefixes of a child node starting on a specified bit position in a ptr_vec of
     // `current_node` into a vec, then adds all prefixes of these children recursively into a vec and returns that.
-    pub fn get_all_more_specifics_from_nibble<
+    pub(crate) fn get_all_more_specifics_from_nibble<
         S: Stride,
         const PFXARRAYSIZE: usize,
         const PTRARRAYSIZE: usize,

@@ -9,9 +9,12 @@ use routecore::record::{MergeUpdate, Meta};
 
 pub(crate) type PrefixIter<'a, AF, Meta> =
     Result<std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
+
+#[cfg(feature = "dynamodb")]
 pub(crate) type PrefixIterMut<'a, AF, Meta> =
     Result<std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
-pub(crate) type SizedNodeResult<'a, AF, NodeType> =
+
+    pub(crate) type SizedNodeResult<'a, AF, NodeType> =
     Result<SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeOption<'a, AF, NodeType> = Option<SizedStrideNode<AF, NodeType>>;
 
@@ -88,6 +91,7 @@ where
     fn get_prefixes(&self) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(&self) -> PrefixIter<'_, Self::AF, Self::Meta>;
+    #[cfg(feature = "dynamodb")]
     fn prefixes_iter_mut(&mut self) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
 }
 
@@ -476,6 +480,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         Ok(self.prefixes.iter())
     }
 
+    #[cfg(feature = "dynamodb")]
     fn prefixes_iter_mut(
         &mut self,
     ) -> Result<std::slice::IterMut<'_, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>
@@ -484,7 +489,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
     }
 }
 
-pub struct CacheGuard<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> {
+pub(crate) struct CacheGuard<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> {
     pub guard: std::cell::Ref<'a, SizedStrideNode<AF, NodeId>>,
 }
 

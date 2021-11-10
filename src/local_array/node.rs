@@ -108,7 +108,7 @@ where
     // - The index of the existing child node in the global `nodes` vec
     // - A newly created Prefix
     // - The index of the existing prefix in the global `prefixes` vec
-    pub fn eval_node_or_prefix_at(
+    pub(crate) fn eval_node_or_prefix_at(
         &mut self,
         nibble: u32,
         nibble_len: u8,

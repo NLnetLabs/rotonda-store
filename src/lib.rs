@@ -11,6 +11,7 @@ mod macros;
 // Public Interfaces
 pub mod rotonda_store;
 pub mod stats;
+
 pub use rotonda_store::*;
 
 // re-exports

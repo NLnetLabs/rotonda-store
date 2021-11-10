@@ -10,13 +10,16 @@ use routecore::addr::{IPv4, IPv6};
 use routecore::record::{MergeUpdate, NoMeta};
 
 use super::tree::SizedStrideNode;
-
+/// A fast, memory-efficient, single-threaded Prefix Store.
+/// 
+/// Can be used in multi-threaded contexts by wrapping it in a `Arc<Mutex<_>>`.
+/// Be aware that this is undesirable in cases with high contention.
 pub struct Store<Meta: routecore::record::Meta>
 where
     Meta: MergeUpdate,
 {
-    pub(crate) v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
-    pub(crate) v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
+    v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {

@@ -14,6 +14,8 @@ type PrefixIter<'a, AF, Meta> = Result<
     std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>,
     Box<dyn std::error::Error>,
 >;
+
+#[cfg(feature = "dynamodb")]
 type PrefixIterMut<'a, AF, Meta> = Result<
     std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>,
     Box<dyn std::error::Error>,
@@ -97,6 +99,7 @@ where
     ) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(&self) -> PrefixIter<'_, Self::AF, Self::Meta>;
+    #[cfg(feature = "dynamodb")]
     fn prefixes_iter_mut(
         &mut self,
     ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
@@ -265,13 +268,11 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn prefixes_iter(
         &self,
-    ) -> Result<
-        std::slice::Iter<'_, InternalPrefixRecord<AF, Meta>>,
-        Box<dyn std::error::Error>,
-    > {
+    ) -> PrefixIter<'_, AF, Meta> {
         Ok(self.prefixes.iter())
     }
 
+    #[cfg(feature = "dynamodb")]
     fn prefixes_iter_mut(
         &mut self,
     ) -> Result<

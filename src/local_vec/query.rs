@@ -42,9 +42,11 @@ where
 
         //---- result values ------------------------------------------------
 
-        // These result values are kept in mutable variables, and assembled at the end into a QueryResult struct.
-        // This proved to result in the most efficient code, where we don't have to match on SizedStrideNode over and over.
-        // The `match_type` field in the QueryResult is computed at the end.
+        // These result values are kept in mutable variables, and assembled
+        // at the end into a QueryResult struct. This proved to result in the
+        // most efficient code, where we don't have to match on 
+        // SizedStrideNode over and over. The `match_type` field in the 
+        // QueryResult is computed at the end.
 
         // The final prefix
         let mut match_prefix_idx: Option<

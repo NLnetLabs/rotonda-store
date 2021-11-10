@@ -306,6 +306,7 @@ where
     }
 
     #[inline]
+    #[cfg(feature = "dynamodb")]
     pub(crate) fn retrieve_node_with_guard(
         &self,
         id: Store::NodeType,
@@ -367,6 +368,7 @@ where
     }
 
     #[inline]
+    #[cfg(feature = "dynamodb")]
     pub(crate) fn retrieve_prefix_mut(
         &mut self,
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,

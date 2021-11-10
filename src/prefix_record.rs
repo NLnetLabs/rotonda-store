@@ -5,7 +5,7 @@ use std::fmt;
 use std::fmt::Debug;
 
 use routecore::addr::AddressFamily;
-use routecore::record::{MergeUpdate, Meta, NoMeta};
+use routecore::record::{MergeUpdate, Meta};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -41,13 +41,6 @@ where
             net,
             len,
             meta: Some(meta),
-        }
-    }
-    pub fn strip_meta(&self) -> InternalPrefixRecord<AF, NoMeta> {
-        InternalPrefixRecord::<AF, NoMeta> {
-            net: self.net,
-            len: self.len,
-            meta: None,
         }
     }
 }

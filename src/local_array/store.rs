@@ -11,9 +11,10 @@ use std::fmt;
 
 use super::node::{InMemStrideNodeId, SizedStrideRef};
 
+/// A multi-threaded, concurrently read/write, lock-free Prefix Store.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
-    pub(crate) v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
-    pub(crate) v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
+    v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
