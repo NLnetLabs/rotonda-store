@@ -1,8 +1,9 @@
 use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::node_id::InMemNodeId;
-use crate::store::QueryResult;
-use crate::{MatchOptions, InternalPrefixRecord, Stats, Strides};
+use crate::QueryResult;
+use crate::{MatchOptions, Stats, Strides};
+use crate::prefix_record::InternalPrefixRecord;
 
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};

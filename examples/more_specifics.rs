@@ -1,4 +1,4 @@
-use rotonda_store::common::PrefixAs;
+use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
 use routecore::addr::AddressFamily;

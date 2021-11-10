@@ -2,57 +2,12 @@ use num::PrimInt;
 
 use std::cmp::Ordering;
 use std::fmt;
-use std::fmt::{Debug, Display};
+use std::fmt::Debug;
 
-use routecore::record::{MergeUpdate, Meta, NoMeta};
 use routecore::addr::AddressFamily;
+use routecore::record::{MergeUpdate, Meta, NoMeta};
 
-//------------ MatchOptions ----------------------------------------------------------
-
-pub struct MatchOptions {
-    pub match_type: MatchType,
-    pub include_less_specifics: bool,
-    pub include_more_specifics: bool,
-}
-
-#[derive(Debug, Clone)]
-pub enum MatchType {
-    ExactMatch,
-    LongestMatch,
-    EmptyMatch,
-}
-
-impl std::fmt::Display for MatchType {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            MatchType::ExactMatch => write!(f, "exact-match"),
-            MatchType::LongestMatch => write!(f, "longest-match"),
-            MatchType::EmptyMatch => write!(f, "empty-match"),
-        }
-    }
-}
-
-
-//------------ Metadata Types --------------------------------------------------------
-
-#[derive(Debug, Copy, Clone)]
-pub struct PrefixAs(pub u32);
-
-impl MergeUpdate for PrefixAs {
-    fn merge_update(&mut self, update_record: PrefixAs) -> Result<(), Box<dyn std::error::Error>> {
-        self.0 = update_record.0;
-        Ok(())
-    }
-}
-
-impl Display for PrefixAs {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "AS{}", self.0)
-    }
-}
-
-
-//------------ InternalPrefixRecord --------------------------------------------------------
+//------------ InternalPrefixRecord -----------------------------------------
 
 #[derive(Clone, Copy)]
 pub(crate) struct InternalPrefixRecord<AF, T>
@@ -77,7 +32,11 @@ where
             meta: None,
         }
     }
-    pub fn new_with_meta(net: AF, len: u8, meta: T) -> InternalPrefixRecord<AF, T> {
+    pub fn new_with_meta(
+        net: AF,
+        len: u8,
+        meta: T,
+    ) -> InternalPrefixRecord<AF, T> {
         Self {
             net,
             len,
@@ -165,21 +124,3 @@ where
         ))
     }
 }
-
-//------------ TrieLevelStats --------------------------------------------------------
-
-// pub(crate) struct TrieLevelStats {
-//     pub level: u8,
-//     pub nodes_num: u32,
-//     pub prefixes_num: u32,
-// }
-
-// impl fmt::Debug for TrieLevelStats {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(
-//             f,
-//             "{{\"level\":{},\"nodes_num\":{},\"prefixes_num\":{}}}",
-//             self.level, self.nodes_num, self.prefixes_num
-//         )
-//     }
-// }

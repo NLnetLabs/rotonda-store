@@ -1,7 +1,6 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod test {
-    use rotonda_store::common::PrefixAs;
-    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
 
     use routecore::addr::Prefix;
 

@@ -1,4 +1,4 @@
-use crate::common::InternalPrefixRecord;
+use crate::prefix_record::InternalPrefixRecord;
 use crate::node_id::SortableNodeId;
 use crate::synth_int::{U256, U512, Zero};
 pub use crate::stride::*;

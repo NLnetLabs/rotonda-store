@@ -1,7 +1,7 @@
 use crate::local_array::tree::*;
 use crate::node_id::SortableNodeId;
 
-use crate::InternalPrefixRecord;
+use crate::prefix_record::InternalPrefixRecord;
 use std::fmt::Debug;
 
 use routecore::addr::AddressFamily;

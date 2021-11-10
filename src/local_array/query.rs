@@ -2,12 +2,11 @@ use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 use routecore::addr::AddressFamily;
 
-use crate::common::InternalPrefixRecord;
+use crate::prefix_record::InternalPrefixRecord;
 use crate::local_array::storage_backend::*;
-use crate::store::QueryResult;
-use crate::store::RecordSet;
+use crate::{QueryResult, RecordSet};
 
-use crate::common::{MatchOptions, MatchType};
+use crate::{MatchOptions, MatchType};
 use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;

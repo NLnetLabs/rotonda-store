@@ -2,9 +2,8 @@
 #[cfg(test)]
 
 mod test {
-    use rotonda_store::common::PrefixAs;
-    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
-    use rotonda_store::Prefix;
+    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
+    use routecore::addr::Prefix;
     use routecore::record::Record;
     use routecore::bgp::PrefixRecord;
     use std::error::Error;

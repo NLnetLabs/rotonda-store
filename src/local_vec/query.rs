@@ -1,9 +1,10 @@
-use crate::common::{MatchOptions, MatchType, InternalPrefixRecord};
+use crate::{MatchOptions, MatchType};
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
-use crate::store::{QueryResult,RecordSet};
+use crate::prefix_record::InternalPrefixRecord;
+use crate::{QueryResult, RecordSet};
 
 use routecore::addr::Prefix;
 use routecore::record::NoMeta;

@@ -1,23 +1,18 @@
-pub mod common;
-pub mod store;
-
-pub(crate) mod synth_int;
 mod stride;
-pub(crate) mod node_id;
-
-pub(crate) mod local_array;
-pub(crate) mod local_vec;
-pub mod stats;
-
-pub use common::*;
-pub use store::*;
-pub use local_array::store::Store as MultiThreadedStore;
-pub use local_vec::store::Store as SingleThreadedStore;
-
-// routecore re-exports
-pub use routecore::record::*;
-pub use routecore::addr::*;
-pub use routecore::bgp::*;
+mod synth_int;
+mod node_id;
+mod local_array;
+mod local_vec;
+mod prefix_record;
 
 #[macro_use]
 mod macros;
+
+// Public Interfaces
+pub mod rotonda_store;
+pub mod stats;
+pub use rotonda_store::*;
+
+// re-exports
+pub use routecore::*;
+

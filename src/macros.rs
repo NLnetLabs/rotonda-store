@@ -4,6 +4,7 @@
 // the ones with synthetic integers (U256, U512) don't have the trait
 // implementations for left|right shift, counting ones etc.
 
+#[doc(hidden)]
 macro_rules! impl_primitive_stride {
     ( $( $len: expr; $bits: expr; $pfxsize:ty; $ptrsize: ty ), * ) => {
             $(

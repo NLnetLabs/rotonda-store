@@ -1,20 +1,21 @@
 use std::{fmt, slice};
 
-use crate::{
-    stats::StrideStats,
-    InternalPrefixRecord, MatchType,
-};
+use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
+
 use routecore::{
     addr::{AddressFamily, IPv4, IPv6, Prefix},
     bgp::PrefixRecord,
-    record::Record,
+    record::{MergeUpdate, Record},
 };
 
+//------------ The publicly available Rotonda Stores ------------------------
 
-// ----- Types for strides displaying/monitoring ---------------------------
+pub use crate::local_array::store::Store as MultiThreadedStore;
+pub use crate::local_vec::store::Store as SingleThreadedStore;
 
+//------------ Types for strides displaying/monitoring ----------------------
 
-pub(crate) type AfStrideStats = Vec<StrideStats>;
+type AfStrideStats = Vec<StrideStats>;
 
 pub struct Stats<'a> {
     pub v4: &'a AfStrideStats,
@@ -54,7 +55,53 @@ impl<'a> std::fmt::Debug for Strides<'a> {
     }
 }
 
-//------------ RecordSet -----------------------------------------------------
+//------------ MatchOptions / MatchType -------------------------------------
+
+pub struct MatchOptions {
+    pub match_type: MatchType,
+    pub include_less_specifics: bool,
+    pub include_more_specifics: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum MatchType {
+    ExactMatch,
+    LongestMatch,
+    EmptyMatch,
+}
+
+impl std::fmt::Display for MatchType {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            MatchType::ExactMatch => write!(f, "exact-match"),
+            MatchType::LongestMatch => write!(f, "longest-match"),
+            MatchType::EmptyMatch => write!(f, "empty-match"),
+        }
+    }
+}
+
+//------------ Metadata Types -----------------------------------------------
+
+#[derive(Debug, Copy, Clone)]
+pub struct PrefixAs(pub u32);
+
+impl MergeUpdate for PrefixAs {
+    fn merge_update(
+        &mut self,
+        update_record: PrefixAs,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.0 = update_record.0;
+        Ok(())
+    }
+}
+
+impl fmt::Display for PrefixAs {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "AS{}", self.0)
+    }
+}
+
+//------------ RecordSet ----------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct RecordSet<'a, Meta: routecore::record::Meta> {
@@ -91,39 +138,55 @@ impl<'a, Meta: routecore::record::Meta> RecordSet<'a, Meta> {
 
 impl<'a, Meta: routecore::record::Meta> fmt::Display for RecordSet<'a, Meta> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let arr_str_v4 = self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
-            format!("{} {}", pfx_arr, *pfx)
-        });
-        let arr_str_v6 = self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
-            format!("{} {}", pfx_arr, *pfx)
-        });
+        let arr_str_v4 =
+            self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
+                format!("{} {}", pfx_arr, *pfx)
+            });
+        let arr_str_v6 =
+            self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
+                format!("{} {}", pfx_arr, *pfx)
+            });
 
         write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
     }
 }
 
 impl<'a, Meta: routecore::record::Meta>
-    From<(Vec<PrefixRecord<'a, Meta>>, Vec<PrefixRecord<'a, Meta>>)> for RecordSet<'a, Meta>
+    From<(Vec<PrefixRecord<'a, Meta>>, Vec<PrefixRecord<'a, Meta>>)>
+    for RecordSet<'a, Meta>
 {
-    fn from((v4, v6): (Vec<PrefixRecord<'a, Meta>>, Vec<PrefixRecord<'a, Meta>>)) -> Self {
+    fn from(
+        (v4, v6): (Vec<PrefixRecord<'a, Meta>>, Vec<PrefixRecord<'a, Meta>>),
+    ) -> Self {
         Self { v4, v6 }
     }
 }
 
 impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
-    std::iter::FromIterator<&'a InternalPrefixRecord<AF, Meta>> for RecordSet<'a, Meta>
+    std::iter::FromIterator<&'a InternalPrefixRecord<AF, Meta>>
+    for RecordSet<'a, Meta>
 {
-    fn from_iter<I: IntoIterator<Item = &'a InternalPrefixRecord<AF, Meta>>>(iter: I) -> Self {
+    fn from_iter<
+        I: IntoIterator<Item = &'a InternalPrefixRecord<AF, Meta>>,
+    >(
+        iter: I,
+    ) -> Self {
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
             let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PrefixRecord::new(u_pfx, pfx.meta.as_ref().unwrap()));
+                    v4.push(PrefixRecord::new(
+                        u_pfx,
+                        pfx.meta.as_ref().unwrap(),
+                    ));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PrefixRecord::new(u_pfx, pfx.meta.as_ref().unwrap()));
+                    v6.push(PrefixRecord::new(
+                        u_pfx,
+                        pfx.meta.as_ref().unwrap(),
+                    ));
                 }
             }
         }
@@ -131,10 +194,13 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> std::iter::FromIterator<&'a PrefixRecord<'a, Meta>>
+impl<'a, Meta: routecore::record::Meta>
+    std::iter::FromIterator<&'a PrefixRecord<'a, Meta>>
     for RecordSet<'a, Meta>
 {
-    fn from_iter<I: IntoIterator<Item = &'a PrefixRecord<'a, Meta>>>(iter: I) -> Self {
+    fn from_iter<I: IntoIterator<Item = &'a PrefixRecord<'a, Meta>>>(
+        iter: I,
+    ) -> Self {
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
@@ -152,7 +218,9 @@ impl<'a, Meta: routecore::record::Meta> std::iter::FromIterator<&'a PrefixRecord
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> std::ops::Index<usize> for RecordSet<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> std::ops::Index<usize>
+    for RecordSet<'a, Meta>
+{
     type Output = PrefixRecord<'a, Meta>;
 
     fn index(&self, index: usize) -> &Self::Output {
@@ -164,7 +232,7 @@ impl<'a, Meta: routecore::record::Meta> std::ops::Index<usize> for RecordSet<'a,
     }
 }
 
-//------------ RecordSetIter -------------------------------------------------
+//------------ RecordSetIter ------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct RecordSetIter<'a, Meta: routecore::record::Meta> {
@@ -189,7 +257,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator for RecordSetIter<'a, Meta> {
     }
 }
 
-//------------ PrefixRecordIter --------------------------------------------------
+//------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
 // while iterating.
@@ -199,7 +267,9 @@ pub struct PrefixRecordIter<'a, Meta: routecore::record::Meta> {
     pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
 }
 
-impl<'a, Meta: routecore::record::Meta> Iterator for PrefixRecordIter<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> Iterator
+    for PrefixRecordIter<'a, Meta>
+{
     type Item = PrefixRecord<'a, Meta>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -224,7 +294,9 @@ impl<'a, Meta: routecore::record::Meta> Iterator for PrefixRecordIter<'a, Meta> 
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixRecordIter<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
+    for PrefixRecordIter<'a, Meta>
+{
     fn next_back(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {
@@ -247,7 +319,7 @@ impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator for PrefixRecordIter
     }
 }
 
-//------------- QueryResult ---------------------------------------------------
+//------------- QueryResult -------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct QueryResult<'a, Meta: routecore::record::Meta> {
@@ -258,7 +330,9 @@ pub struct QueryResult<'a, Meta: routecore::record::Meta> {
     pub more_specifics: Option<RecordSet<'a, Meta>>,
 }
 
-impl<'a, Meta: routecore::record::Meta> fmt::Display for QueryResult<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta> fmt::Display
+    for QueryResult<'a, Meta>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),

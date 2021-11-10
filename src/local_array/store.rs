@@ -1,7 +1,8 @@
 use crate::local_array::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_array::tree::TreeBitMap;
-use crate::{InternalPrefixRecord, MatchOptions};
+use crate::MatchOptions;
 use crate::{QueryResult, Stats, Strides};
+use crate::prefix_record::InternalPrefixRecord;
 use routecore::addr::Prefix;
 use routecore::addr::{IPv4, IPv6};
 use routecore::record::{MergeUpdate, NoMeta};

@@ -1,10 +1,9 @@
 #[cfg(test)]
 mod test {
-use rotonda_store::common::PrefixAs;
-    use rotonda_store::{AddressFamily, NoMeta};
-    use rotonda_store::Prefix;
-    // use rotonda_store::local_array::storage_backend::StorageBackend;
-    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+    use routecore::addr::AddressFamily;
+    use routecore::record::NoMeta;
+    use routecore::addr::Prefix;
+    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
 
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {

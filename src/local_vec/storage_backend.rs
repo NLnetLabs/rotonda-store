@@ -1,4 +1,4 @@
-use crate::common::InternalPrefixRecord;
+use crate::prefix_record::InternalPrefixRecord;
 use crate::node_id::{SortableNodeId, InMemNodeId};
 pub use crate::stride::*;
 
@@ -9,6 +9,9 @@ use routecore::addr::AddressFamily;
 
 use std::io::{Error, ErrorKind};
 use std::fmt::Debug;
+
+type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
+type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
 
 pub(crate) trait StorageBackend
 where

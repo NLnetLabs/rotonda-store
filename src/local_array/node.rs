@@ -1,4 +1,4 @@
-use crate::common::InternalPrefixRecord;
+use crate::prefix_record::InternalPrefixRecord;
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
 use crate::node_id::SortableNodeId;

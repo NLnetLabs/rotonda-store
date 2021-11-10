@@ -1,11 +1,11 @@
-use crate::common::InternalPrefixRecord;
-use crate::node_id::SortableNodeId;
+use crate::prefix_record::InternalPrefixRecord;
+use crate::node_id::{InMemNodeId, SortableNodeId};
 use crate::match_node_for_strides_with_local_vec;
 use crate::synth_int::{U256, U512, Zero};
-pub use crate::stride::*;
+use crate::stride::*;
 
-use crate::local_vec::node::{TreeBitMapNode};
-use crate::local_vec::storage_backend::{StorageBackend};
+use crate::local_vec::node::TreeBitMapNode;
+use crate::local_vec::storage_backend::StorageBackend;
 use crate::stats::{StrideStats, SizedStride};
 
 use routecore::record::MergeUpdate;
@@ -16,6 +16,8 @@ use std::{
     marker::PhantomData,
 };
 
+#[cfg(feature = "cli")]
+use ansi_term::Colour;
 
 #[derive(Debug)]
 pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
@@ -27,8 +29,6 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
-pub(crate) type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
-pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
 
 impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
