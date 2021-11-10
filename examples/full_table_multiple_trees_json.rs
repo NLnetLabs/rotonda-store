@@ -1,7 +1,7 @@
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
 use routecore::addr::Prefix;
-use routecore::record::Record;
 use routecore::bgp::PrefixRecord;
+use routecore::record::Record;
 use std::error::Error;
 use std::fs::File;
 use std::process;
@@ -9,7 +9,9 @@ use std::process;
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
 
-    fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn Error>> {
+    fn load_prefixes(
+        pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+    ) -> Result<(), Box<dyn Error>> {
         let file = File::open(CSV_FILE_PATH)?;
         let mut rdr = csv::Reader::from_reader(file);
         for result in rdr.records() {
@@ -42,8 +44,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap =
-                MultiThreadedStore::<PrefixAs>::new(strides.1.to_owned(), Vec::from([]));
+            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
+                strides.1.to_owned(),
+                Vec::from([]),
+            );
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -57,7 +61,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned())?;
             }
             let ready = std::time::Instant::now();
-            let dur_insert_nanos = ready.checked_duration_since(start).unwrap().as_nanos();
+            let dur_insert_nanos =
+                ready.checked_duration_since(start).unwrap().as_nanos();
 
             let inet_max = 255;
             let len_max = 32;
@@ -66,8 +71,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             for i_net in 0..inet_max {
                 for s_len in 0..len_max {
                     for ii_net in 0..inet_max {
-                        let pfx =
-                            Prefix::new(std::net::Ipv4Addr::new(i_net, ii_net, 0, 0).into(), s_len)?;
+                        let pfx = Prefix::new(
+                            std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
+                                .into(),
+                            s_len,
+                        )?;
                         tree_bitmap.match_prefix(
                             &pfx,
                             &MatchOptions {
@@ -80,8 +88,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                 }
             }
             let ready = std::time::Instant::now();
-            let dur_search_nanos = ready.checked_duration_since(start).unwrap().as_nanos();
-            let searches_num = inet_max as u128 * inet_max as u128 * len_max as u128;
+            let dur_search_nanos =
+                ready.checked_duration_since(start).unwrap().as_nanos();
+            let searches_num =
+                inet_max as u128 * inet_max as u128 * len_max as u128;
 
             println!("{{");
             println!("\"type\": \"treebitmap_univec\",");

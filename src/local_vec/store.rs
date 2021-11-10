@@ -1,13 +1,13 @@
 use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::node_id::InMemNodeId;
+use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
 use crate::{MatchOptions, Stats, Strides};
-use crate::prefix_record::InternalPrefixRecord;
 
 use routecore::addr::Prefix;
-use routecore::record::{MergeUpdate, NoMeta};
 use routecore::addr::{IPv4, IPv6};
+use routecore::record::{MergeUpdate, NoMeta};
 
 use super::tree::SizedStrideNode;
 
@@ -36,11 +36,17 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     ) -> QueryResult<'a, Meta> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
-                &InternalPrefixRecord::<IPv4, NoMeta>::new(addr.into(), search_pfx.len()),
+                &InternalPrefixRecord::<IPv4, NoMeta>::new(
+                    addr.into(),
+                    search_pfx.len(),
+                ),
                 options,
             ),
             std::net::IpAddr::V6(addr) => self.v6.match_prefix(
-                &InternalPrefixRecord::<IPv6, NoMeta>::new(addr.into(), search_pfx.len()),
+                &InternalPrefixRecord::<IPv6, NoMeta>::new(
+                    addr.into(),
+                    search_pfx.len(),
+                ),
                 options,
             ),
         }
@@ -52,21 +58,26 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         meta: Meta,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
-            std::net::IpAddr::V4(addr) => self.v4.insert(InternalPrefixRecord::new_with_meta(
-                addr.into(),
-                prefix.len(),
-                meta,
-            )),
-            std::net::IpAddr::V6(addr) => self.v6.insert(InternalPrefixRecord::new_with_meta(
-                addr.into(),
-                prefix.len(),
-                meta,
-            )),
+            std::net::IpAddr::V4(addr) => {
+                self.v4.insert(InternalPrefixRecord::new_with_meta(
+                    addr.into(),
+                    prefix.len(),
+                    meta,
+                ))
+            }
+            std::net::IpAddr::V6(addr) => {
+                self.v6.insert(InternalPrefixRecord::new_with_meta(
+                    addr.into(),
+                    prefix.len(),
+                    meta,
+                ))
+            }
         }
     }
 
     pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
-        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> = self.v4.store.prefixes[..].iter();
+        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> =
+            self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
         crate::PrefixRecordIter::<'a, Meta> {
@@ -77,20 +88,16 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 
     pub fn nodes_v4_iter(
         &'a self,
-    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv4, InMemNodeId>> + 'a {
-        self.v4
-            .store
-            .nodes
-            .iter()
+    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv4, InMemNodeId>> + 'a
+    {
+        self.v4.store.nodes.iter()
     }
 
     pub fn nodes_v6_iter(
         &'a self,
-    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv6, InMemNodeId>> + 'a {
-        self.v6
-            .store
-            .nodes
-            .iter()
+    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv6, InMemNodeId>> + 'a
+    {
+        self.v6.store.nodes.iter()
     }
 
     pub fn prefixes_len(&self) -> usize {

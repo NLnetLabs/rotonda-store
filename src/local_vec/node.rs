@@ -1,7 +1,7 @@
-use crate::prefix_record::InternalPrefixRecord;
 use crate::node_id::SortableNodeId;
-use crate::synth_int::{U256, U512, Zero};
+use crate::prefix_record::InternalPrefixRecord;
 pub use crate::stride::*;
+use crate::synth_int::{Zero, U256, U512};
 
 use std::{
     fmt::{Binary, Debug},
@@ -10,8 +10,8 @@ use std::{
 
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
 
-use routecore::record::NoMeta;
 use routecore::addr::AddressFamily;
+use routecore::record::NoMeta;
 
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
 where
@@ -56,9 +56,16 @@ where
 impl<AF, S, NodeId> TreeBitMapNode<AF, S, NodeId>
 where
     AF: AddressFamily,
-    S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S> + Zero,
-    <S as Stride>::PtrSize:
-        Debug + Binary + Copy + std::ops::BitAnd<Output = S::PtrSize> + PartialOrd + Zero,
+    S: Stride
+        + std::ops::BitAnd<Output = S>
+        + std::ops::BitOr<Output = S>
+        + Zero,
+    <S as Stride>::PtrSize: Debug
+        + Binary
+        + Copy
+        + std::ops::BitAnd<Output = S::PtrSize>
+        + PartialOrd
+        + Zero,
     NodeId: SortableNodeId + Copy,
 {
     // Inspects the stride (nibble, nibble_len) to see it there's
@@ -93,8 +100,9 @@ where
             // Check it the ptr bit is already set in this position
             if (S::into_stride_size(self.ptrbitarr) & bit_pos) == S::zero() {
                 // Nope, set it and create a child node
-                self.ptrbitarr =
-                    S::into_ptrbitarr_size(bit_pos | S::into_stride_size(self.ptrbitarr));
+                self.ptrbitarr = S::into_ptrbitarr_size(
+                    bit_pos | S::into_stride_size(self.ptrbitarr),
+                );
 
                 match next_stride.unwrap() {
                     3_u8 => {
@@ -164,24 +172,33 @@ where
                 // In a stride3 (ptrbitarr lenght is 8):
                 // bit_pos 0001 0000
                 // so this is the fourth bit, so points to index = 3
-                return NewNodeOrIndex::NewNode(new_node, (bit_pos.leading_zeros() as u16).into());
+                return NewNodeOrIndex::NewNode(
+                    new_node,
+                    (bit_pos.leading_zeros() as u16).into(),
+                );
             }
         } else {
             // only at the last stride do we create the bit in the prefix bitmap,
             // and only if it doesn't exist already
-            if self.pfxbitarr & bit_pos == <S as std::ops::BitAnd>::Output::zero() {
+            if self.pfxbitarr & bit_pos
+                == <S as std::ops::BitAnd>::Output::zero()
+            {
                 self.pfxbitarr = bit_pos | self.pfxbitarr;
                 return NewNodeOrIndex::NewPrefix;
             }
             return NewNodeOrIndex::ExistingPrefix(
-                self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)].get_part(),
+                self.pfx_vec
+                    [S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)]
+                .get_part(),
             );
         }
 
-        NewNodeOrIndex::ExistingNode(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)])
+        NewNodeOrIndex::ExistingNode(
+            self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)],
+        )
     }
 
-    //-------------------- Search nibble functions -------------------------------
+    //-------- Search nibble functions --------------------------------------
 
     // This function looks for the longest marching prefix in the provided nibble,
     // by iterating over all the bits in it and comparing that with the appriopriate
@@ -201,7 +218,8 @@ where
 
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
-            nibble = AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
+            nibble =
+                AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix. This is not
@@ -209,7 +227,8 @@ where
 
             // Check it there's a prefix matching in this bitmap for this nibble
             if self.pfxbitarr & bit_pos > S::zero() {
-                let f_pfx = self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, n_l)];
+                let f_pfx = self.pfx_vec
+                    [S::get_pfx_index(self.pfxbitarr, nibble, n_l)];
 
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
@@ -271,15 +290,24 @@ where
             true => {
                 // Check for an actual prefix at the right position, i.e. consider the complete nibble
                 if self.pfxbitarr & bit_pos > S::zero() {
-                    found_pfx =
-                        Some(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, nibble_len)]);
+                    found_pfx = Some(
+                        self.pfx_vec[S::get_pfx_index(
+                            self.pfxbitarr,
+                            nibble,
+                            nibble_len,
+                        )],
+                    );
                 }
             }
             // We're not at the last nibble.
             false => {
                 // Check for a child node at the right position, i.e. consider the complete nibble.
-                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-                    found_child = Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
+                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero()
+                {
+                    found_child = Some(
+                        self.ptr_vec
+                            [S::get_ptr_index(self.ptrbitarr, nibble)],
+                    );
                 }
             }
         }
@@ -311,7 +339,8 @@ where
 
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
-            nibble = AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
+            nibble =
+                AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix. This is not
@@ -323,12 +352,18 @@ where
                 // since we want an exact match only, we will fill the prefix field only
                 // if we're exactly at the last bit of the nibble
                 if n_l == nibble_len {
-                    found_pfx = Some(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, n_l)]);
+                    found_pfx = Some(
+                        self.pfx_vec
+                            [S::get_pfx_index(self.pfxbitarr, nibble, n_l)],
+                    );
                 }
 
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
-                ls_vec.push(self.pfx_vec[S::get_pfx_index(self.pfxbitarr, nibble, n_l)]);
+                ls_vec.push(
+                    self.pfx_vec
+                        [S::get_pfx_index(self.pfxbitarr, nibble, n_l)],
+                );
             }
         }
 
@@ -380,7 +415,8 @@ where
         // Note that even without a child node, there may be more specifics further up in this
         // pfxbitarr or children in this ptrbitarr.
         if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-            found_child = Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
+            found_child =
+                Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]);
         }
 
         if let Some(child) = found_child {
@@ -410,21 +446,29 @@ where
                 // move the nibble left with the amount of bits we're going to loop over.
                 // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
                 // then it will iterate over ...1100,...1101,...1110,...1111
-                let ms_nibble = (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
+                let ms_nibble =
+                    (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
                 bit_pos = S::get_bit_pos(ms_nibble, ms_nibble_len);
 
                 // println!("nibble:    {:032b}", ms_nibble);
                 // println!("ptrbitarr: {:032b}", self.ptrbitarr);
                 // println!("bitpos:    {:032b}", bit_pos);
 
-                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero() {
-                    found_children_with_more_specifics
-                        .push(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, ms_nibble)]);
+                if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero()
+                {
+                    found_children_with_more_specifics.push(
+                        self.ptr_vec
+                            [S::get_ptr_index(self.ptrbitarr, ms_nibble)],
+                    );
                 }
 
                 if self.pfxbitarr & bit_pos > S::zero() {
                     found_more_specifics_vec.push(
-                        self.pfx_vec[S::get_pfx_index(self.pfxbitarr, ms_nibble, ms_nibble_len)],
+                        self.pfx_vec[S::get_pfx_index(
+                            self.pfxbitarr,
+                            ms_nibble,
+                            ms_nibble_len,
+                        )],
                     );
                 }
             }

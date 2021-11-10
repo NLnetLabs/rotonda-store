@@ -5,8 +5,8 @@ use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
 use routecore::addr::Prefix;
-use routecore::record::Record;
 use routecore::bgp::PrefixRecord;
+use routecore::record::Record;
 
 use std::env;
 use std::error::Error;
@@ -26,7 +26,9 @@ fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     }
 }
 
-fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn Error>> {
+fn load_prefixes(
+    pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
     let file = File::open(file_path)?;
@@ -42,8 +44,10 @@ fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn E
         let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
-        let pfx =
-            PrefixRecord::new_with_local_meta(Prefix::new(net.into(), len)?, PrefixAs(asn));
+        let pfx = PrefixRecord::new_with_local_meta(
+            Prefix::new(net.into(), len)?,
+            PrefixAs(asn),
+        );
         pfxs.push(pfx);
     }
     Ok(())
@@ -51,8 +55,10 @@ fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn E
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let mut tree_bitmap =
-        MultiThreadedStore::<PrefixAs>::new(vec![8, 3, 3, 3, 3, 3, 3, 3, 3], vec![8]);
+    let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
+        vec![8, 3, 3, 3, 3, 3, 3, 3, 3],
+        vec![8],
+    );
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -87,7 +93,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     if let Some(cmd) = line.chars().next() {
                         match cmd.to_string().as_ref() {
                             "p" => {
-                                println!("total prefixes :\t{}", tree_bitmap.prefixes_len());
+                                println!(
+                                    "total prefixes :\t{}",
+                                    tree_bitmap.prefixes_len()
+                                );
                                 println!(
                                     "ipv4 prefixes :\t{}",
                                     tree_bitmap.prefixes_v4_len()
@@ -109,12 +118,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 //     }
                                 // }
 
-                                println!("total nodes :\t{}", tree_bitmap.nodes_len());
-                                println!("ipv4 nodes :\t{}", tree_bitmap.nodes_v4_len());
-                                println!("ipv6 nodes :\t{}", tree_bitmap.nodes_v6_len());
+                                println!(
+                                    "total nodes :\t{}",
+                                    tree_bitmap.nodes_len()
+                                );
+                                println!(
+                                    "ipv4 nodes :\t{}",
+                                    tree_bitmap.nodes_v4_len()
+                                );
+                                println!(
+                                    "ipv6 nodes :\t{}",
+                                    tree_bitmap.nodes_v6_len()
+                                );
                             }
                             _ => {
-                                println!("Error: unknown command {:?}", s_pref);
+                                println!(
+                                    "Error: unknown command {:?}",
+                                    s_pref
+                                );
                             }
                         }
                     } else {
@@ -158,7 +179,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     )
                                 );
                             }
-                            Err(routecore::addr::PrefixError::NonZeroHost) => {
+                            Err(
+                                routecore::addr::PrefixError::NonZeroHost,
+                            ) => {
                                 println!("{}", Colour::Yellow.paint("Warning: Prefix has bits set to the right of the prefix length. Zeroing those out."));
                                 println!(
                                     "{}",
@@ -179,7 +202,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
                     }
                     Err(err) => {
-                        println!("Error: Can't parse address part. {:?}: {}", s_pref[0], err);
+                        println!(
+                            "Error: Can't parse address part. {:?}: {}",
+                            s_pref[0], err
+                        );
                     }
                 };
             }

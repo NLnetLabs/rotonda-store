@@ -1,10 +1,14 @@
-//------------------------ NodeId Types ------------------------------------------------------------
+//------------ NodeId Types -------------------------------------------------
 
 pub trait SortableNodeId
 where
     Self: std::cmp::Ord + std::fmt::Debug + Sized + Default,
-    Self::Sort: std::cmp::Ord + std::convert::From<u16> + std::convert::Into<usize>,
-    Self::Part: std::cmp::Ord + std::convert::From<u16> + std::marker::Copy + std::fmt::Debug,
+    Self::Sort:
+        std::cmp::Ord + std::convert::From<u16> + std::convert::Into<usize>,
+    Self::Part: std::cmp::Ord
+        + std::convert::From<u16>
+        + std::marker::Copy
+        + std::fmt::Debug,
 {
     type Part;
     type Sort;
@@ -16,7 +20,9 @@ where
     fn is_empty(&self) -> bool;
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone, Default)]
+#[derive(
+    Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone, Default,
+)]
 pub struct InMemNodeId(pub u16, pub u32);
 
 // This works for both IPv4 and IPv6 up to a certain point.

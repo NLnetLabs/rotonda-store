@@ -164,8 +164,8 @@ impl Stride for Stride8 {
     fn get_pfx_index(bitmap: Self, nibble: u32, len: u8) -> usize {
         let n = 512 - ((1 << len) - 1) as u16 - nibble as u16 - 1;
         match n {
-            // if we move less than 128 bits to the right,
-            // all of bitmap.2 and a part of bitmap.3 will be used for counting zeros
+            // if we move less than 128 bits to the right, all of bitmap.2
+            // and a part of bitmap.3 will be used for counting zeros.
             // ex.
             // ...1011_1010... >> 2 => ...0010_111010...
             //    ____ ====                 -- --====
@@ -188,9 +188,9 @@ impl Stride for Stride8 {
                 bitmap.0.count_ones() as usize + (bitmap.1 >> (n - 256)).count_ones() as usize - 1
             }
 
-            // if we move more than 384 bits to the right,
-            // all of bitmap.[1,2,3] will be shifted out of sight,
-            // so we only have to count bitmap.0 zeroes then (after shifting of course).
+            // if we move more than 384 bits to the right, all of bitmap.
+            // [1,2,3] will be shifted out of sight, so we only have to count
+            // bitmap.0 zeroes then (after shifting of course).
             n => (bitmap.0 >> (n - 384)).count_ones() as usize - 1,
         }
     }
@@ -198,17 +198,17 @@ impl Stride for Stride8 {
     fn get_ptr_index(bitmap: Self::PtrSize, nibble: u32) -> usize {
         let n = (512 >> 1) - nibble as u16 - 1;
         match n {
-            // if we move less than 256 bits to the right,
-            // all of bitmap.0 and a part of bitmap.1 will be used for counting zeros
+            // if we move less than 256 bits to the right, all of bitmap.0
+            // and a part of bitmap.1 will be used for counting zeros
             // ex.
             // ...1011_1010... >> 2 => ...0010_111010...
             //    ____ ====                 -- --====
             n if n < 128 => {
                 bitmap.0.count_ones() as usize + (bitmap.1 >> n).count_ones() as usize - 1
             }
-            // if we move more than 256 bits to the right,
-            // all of bitmap.1 wil be shifted out of sight,
-            // so we only have to count bitmap.0 zeroes than (after) shifting of course).
+            // if we move more than 256 bits to the right, all of bitmap.1
+            // wil be shifted out of sight, so we only have to count bitmap.0
+            // zeroes than (after) shifting of course).
             n => (bitmap.0 >> (n - 128)).count_ones() as usize - 1,
         }
     }

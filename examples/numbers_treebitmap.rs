@@ -1,7 +1,7 @@
 use rotonda_store::{MultiThreadedStore, PrefixAs};
 use routecore::addr::Prefix;
-use routecore::record::Record;
 use routecore::bgp::PrefixRecord;
+use routecore::record::Record;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
@@ -16,7 +16,9 @@ fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     }
 }
 
-fn load_prefixes(pfxs: &mut Vec<PrefixRecord<PrefixAs>>) -> Result<(), Box<dyn Error>> {
+fn load_prefixes(
+    pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
     let file = File::open(file_path)?;
@@ -54,7 +56,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for strides in strides_vec.iter().enumerate() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-        let mut tree_bitmap = MultiThreadedStore::new(strides.1.to_owned(), vec![8]);
+        let mut tree_bitmap =
+            MultiThreadedStore::new(strides.1.to_owned(), vec![8]);
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

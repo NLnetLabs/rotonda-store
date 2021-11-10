@@ -6,7 +6,8 @@ use routecore::addr::Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
-    let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(vec![4], vec![8]);
+    let mut tree_bitmap =
+        MultiThreadedStore::<PrefixAs>::new(vec![4], vec![8]);
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -146,13 +147,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ),
         Prefix::new_relaxed(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 23),
         Prefix::new_relaxed(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 16),
-        Prefix::new_relaxed(std::net::Ipv4Addr::new(192, 0, 10, 0).into(), 23),
+        Prefix::new_relaxed(
+            std::net::Ipv4Addr::new(192, 0, 10, 0).into(),
+            23,
+        ),
         Prefix::new_relaxed(std::net::Ipv4Addr::new(192, 0, 9, 0).into(), 24),
         Prefix::new_relaxed(std::net::Ipv4Addr::new(193, 0, 0, 0).into(), 23),
-        Prefix::new_relaxed(std::net::Ipv4Addr::new(193, 0, 10, 0).into(), 23),
+        Prefix::new_relaxed(
+            std::net::Ipv4Addr::new(193, 0, 10, 0).into(),
+            23,
+        ),
         Prefix::new_relaxed(std::net::Ipv4Addr::new(209, 0, 0, 0).into(), 16),
         Prefix::new_relaxed(std::net::Ipv4Addr::new(193, 0, 9, 0).into(), 24),
-        Prefix::new_relaxed(std::net::Ipv4Addr::new(193, 0, 10, 0).into(), 24),
+        Prefix::new_relaxed(
+            std::net::Ipv4Addr::new(193, 0, 10, 0).into(),
+            24,
+        ),
         Prefix::new_relaxed(
             0b0011_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
             4,
@@ -190,7 +200,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             0b1111_1111_0011_0111_0000_0000_0000_0000_u32.into_ipaddr(),
             17,
         ),
-        Prefix::new_relaxed(std::net::Ipv4Addr::new(100, 0, 12, 0).into(), 24),
+        Prefix::new_relaxed(
+            std::net::Ipv4Addr::new(100, 0, 12, 0).into(),
+            24,
+        ),
         Prefix::new(
             0b0000_0001_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
             24,

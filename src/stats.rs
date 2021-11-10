@@ -1,7 +1,7 @@
-//---------------------- Types for Statistics -------------------------------------------------
+//------------ Types for Statistics -----------------------------------------
 
 use crate::stride::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
-use std::fmt::{Display, Debug};
+use std::fmt::{Debug, Display};
 
 #[derive(Debug, Copy, Clone)]
 pub enum SizedStride {

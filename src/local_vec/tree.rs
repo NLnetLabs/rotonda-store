@@ -1,15 +1,15 @@
-use crate::prefix_record::InternalPrefixRecord;
-use crate::node_id::{InMemNodeId, SortableNodeId};
 use crate::match_node_for_strides_with_local_vec;
-use crate::synth_int::{U256, U512, Zero};
+use crate::node_id::{InMemNodeId, SortableNodeId};
+use crate::prefix_record::InternalPrefixRecord;
 use crate::stride::*;
+use crate::synth_int::{Zero, U256, U512};
 
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::StorageBackend;
-use crate::stats::{StrideStats, SizedStride};
+use crate::stats::{SizedStride, StrideStats};
 
-use routecore::record::MergeUpdate;
 use routecore::addr::AddressFamily;
+use routecore::record::MergeUpdate;
 
 use std::{
     fmt::{Binary, Debug},
@@ -29,7 +29,8 @@ pub enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     Stride8(TreeBitMapNode<AF, Stride8, NodeId>),
 }
 
-pub(crate) type SizedNodeResult<'a, AF, NodeType> = Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
+pub(crate) type SizedNodeResult<'a, AF, NodeType> =
+    Result<&'a mut SizedStrideNode<AF, NodeType>, Box<dyn std::error::Error>>;
 
 impl<AF, NodeId> Default for SizedStrideNode<AF, NodeId>
 where
@@ -47,12 +48,16 @@ where
     }
 }
 
-pub struct CacheGuard<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> {
+pub struct CacheGuard<
+    'a,
+    AF: 'static + AddressFamily,
+    NodeId: SortableNodeId + Copy,
+> {
     pub guard: std::cell::Ref<'a, SizedStrideNode<AF, NodeId>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::Deref
-    for CacheGuard<'a, AF, NodeId>
+impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy>
+    std::ops::Deref for CacheGuard<'a, AF, NodeId>
 {
     type Target = SizedStrideNode<AF, NodeId>;
 
@@ -61,12 +66,16 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy> std::ops::D
     }
 }
 
-pub(crate) struct PrefixCacheGuard<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> {
+pub(crate) struct PrefixCacheGuard<
+    'a,
+    AF: 'static + AddressFamily,
+    Meta: routecore::record::Meta,
+> {
     pub guard: std::cell::Ref<'a, InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> std::ops::Deref
-    for PrefixCacheGuard<'a, AF, Meta>
+impl<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta>
+    std::ops::Deref for PrefixCacheGuard<'a, AF, Meta>
 {
     type Target = InternalPrefixRecord<AF, Meta>;
 
@@ -75,7 +84,10 @@ impl<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta> std::ops::D
     }
 }
 
-pub(crate) enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+pub(crate) enum NewNodeOrIndex<
+    AF: AddressFamily,
+    NodeId: SortableNodeId + Copy,
+> {
     NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), // New Node and bit_id of the new node
     ExistingNode(NodeId),
     NewPrefix,
@@ -243,7 +255,11 @@ where
                 stride
             };
 
-            let nibble = Store::AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
+            let nibble = Store::AF::get_nibble(
+                pfx.net,
+                stride_end - stride,
+                nibble_len,
+            );
             let is_last_stride = pfx.len <= stride_end;
 
             let next_node_idx = match_node_for_strides_with_local_vec![
@@ -328,7 +344,9 @@ where
     ) -> Result<(), Box<dyn std::error::Error>> {
         match self.store.retrieve_prefix_mut(update_node_idx) {
             Some(update_pfx) => match update_pfx.meta.as_mut() {
-                Some(exist_meta) => <Store::Meta>::merge_update(exist_meta, meta),
+                Some(exist_meta) => {
+                    <Store::Meta>::merge_update(exist_meta, meta)
+                }
                 None => {
                     update_pfx.meta = Some(meta);
                     Ok(())
@@ -437,11 +455,19 @@ where
         nibble_len: u8,
     ) -> Option<Vec<Store::NodeType>>
     where
-        S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S> + Zero,
-        <S as Stride>::PtrSize:
-            Debug + Binary + Copy + std::ops::BitAnd<Output = S::PtrSize> + PartialOrd + Zero,
+        S: Stride
+            + std::ops::BitAnd<Output = S>
+            + std::ops::BitOr<Output = S>
+            + Zero,
+        <S as Stride>::PtrSize: Debug
+            + Binary
+            + Copy
+            + std::ops::BitAnd<Output = S::PtrSize>
+            + PartialOrd
+            + Zero,
     {
-        let (cnvec, mut msvec) = current_node.add_more_specifics_at(nibble, nibble_len);
+        let (cnvec, mut msvec) =
+            current_node.add_more_specifics_at(nibble, nibble_len);
 
         for child_node in cnvec.iter() {
             self.get_all_more_specifics_for_node(
@@ -467,10 +493,11 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         );
         println!(
             "memory used by nodes: {}kb",
-            self.store.get_nodes_len() * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
+            self.store.get_nodes_len()
+                * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
                 / 1024
         );
-        
+
         println!("stride division {:?}", self.strides);
         for s in &self.stats {
             println!("{:?}", s);
@@ -504,10 +531,7 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 .count as u32;
 
             let n = (nodes_num / SCALE) as usize;
-            let max_pfx = u128::overflowing_pow(
-                2, 
-                stride_bits[1] as u32
-            );
+            let max_pfx = u128::overflowing_pow(2, stride_bits[1] as u32);
 
             print!("{}-{}\t", stride_bits[0], stride_bits[1]);
 
@@ -517,7 +541,9 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
 
             print!(
                 "{}",
-                Colour::Blue.paint(bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]) //  = scale / 7
+                Colour::Blue.paint(
+                    bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
+                ) //  = scale / 7
             );
 
             print!(
@@ -535,7 +561,9 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
 
             print!(
                 "{}",
-                Colour::Green.paint(bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]) //  = scale / 7
+                Colour::Green.paint(
+                    bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
+                ) //  = scale / 7
             );
 
             println!(" {}", prefixes_num);

@@ -2,10 +2,12 @@
 #[cfg(test)]
 
 mod test {
-    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
+    use rotonda_store::{
+        MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+    };
     use routecore::addr::Prefix;
-    use routecore::record::Record;
     use routecore::bgp::PrefixRecord;
+    use routecore::record::Record;
     use std::error::Error;
     use std::fs::File;
     use std::process;
@@ -35,7 +37,10 @@ mod test {
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
                 let len: u8 = record[1].parse().unwrap();
                 let asn: u32 = record[2].parse().unwrap();
-                let pfx = PrefixRecord::new_with_local_meta(Prefix::new(net.into(), len)?, PrefixAs(asn));
+                let pfx = PrefixRecord::new_with_local_meta(
+                    Prefix::new(net.into(), len)?,
+                    PrefixAs(asn),
+                );
                 pfxs.push(pfx);
             }
             Ok(())
@@ -49,7 +54,10 @@ mod test {
         ];
         for strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(strides.1.to_owned(), vec![8]);
+            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
+                strides.1.to_owned(),
+                vec![8],
+            );
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -70,7 +78,8 @@ mod test {
                 (0..len_max).into_iter().for_each(|s_len| {
                     (0..inet_max).into_iter().for_each(|ii_net| {
                         let pfx = Prefix::new_relaxed(
-                            std::net::Ipv4Addr::new(i_net, ii_net, 0, 0).into(),
+                            std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
+                                .into(),
                             s_len,
                         );
                         print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
@@ -98,14 +107,12 @@ mod test {
             println!("found pfx: {}", found_counter);
             println!("not found pfx: {}", not_found_counter);
 
-            let searches_num = inet_max as u128 * inet_max as u128 * len_max as u128;
+            let searches_num =
+                inet_max as u128 * inet_max as u128 * len_max as u128;
 
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
-            assert_eq!(
-                tree_bitmap.prefixes_len(),
-                GLOBAL_PREFIXES_VEC_SIZE
-            );
+            assert_eq!(tree_bitmap.prefixes_len(), GLOBAL_PREFIXES_VEC_SIZE);
             assert_eq!(found_counter, FOUND_PREFIXES);
             assert_eq!(not_found_counter, SEARCHES_NUM - FOUND_PREFIXES);
         }

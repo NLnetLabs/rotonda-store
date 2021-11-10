@@ -1,17 +1,23 @@
+use crate::node_id::{InMemNodeId, SortableNodeId};
 use crate::prefix_record::InternalPrefixRecord;
-use crate::node_id::{SortableNodeId, InMemNodeId};
 pub use crate::stride::*;
 
 use crate::local_vec::tree::*;
 
-use routecore::record::MergeUpdate;
 use routecore::addr::AddressFamily;
+use routecore::record::MergeUpdate;
 
-use std::io::{Error, ErrorKind};
 use std::fmt::Debug;
+use std::io::{Error, ErrorKind};
 
-type PrefixIter<'a, AF, Meta> = Result<std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
-type PrefixIterMut<'a, AF, Meta> = Result<std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>>;
+type PrefixIter<'a, AF, Meta> = Result<
+    std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>,
+    Box<dyn std::error::Error>,
+>;
+type PrefixIterMut<'a, AF, Meta> = Result<
+    std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>,
+    Box<dyn std::error::Error>,
+>;
 
 pub(crate) trait StorageBackend
 where
@@ -21,17 +27,19 @@ where
     type AF: AddressFamily;
     type Meta: routecore::record::Meta + MergeUpdate;
 
-    fn init(start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>) -> Self;
+    fn init(
+        start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>,
+    ) -> Self;
     fn acquire_new_node_id(
         &self,
         sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         part: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> <Self as StorageBackend>::NodeType;
-    // store_node should return an index with the associated type `Part` of the associated type
-    // of this trait.
-    // `id` is optional, since a vec uses the indexes as the ids of the nodes,
-    // other storage data-structures may use unordered lists, where the id is in the
-    // record, e.g., dynamodb
+    // store_node should return an index with the associated type `Part` of
+    // the associated type of this trait.
+    // `id` is optional, since a vec uses the indexes as the ids of the nodes
+    // other storage data-structures may use unordered lists, where the id is
+    // in the record, e.g., dynamodb
     fn store_node(
         &mut self,
         id: Option<Self::NodeType>,
@@ -55,7 +63,9 @@ where
         index: Self::NodeType,
     ) -> CacheGuard<Self::AF, Self::NodeType>;
     fn get_root_node_id(&self) -> Self::NodeType;
-    fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn get_root_node_mut(
+        &mut self,
+    ) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
     fn acquire_new_prefix_id(
@@ -82,23 +92,28 @@ where
         &self,
         index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
-    fn get_prefixes(&self) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
-    fn get_prefixes_len(&self) -> usize;
-    fn prefixes_iter(
+    fn get_prefixes(
         &self,
-    ) -> PrefixIter<'_, Self::AF, Self::Meta>;
+    ) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
+    fn get_prefixes_len(&self) -> usize;
+    fn prefixes_iter(&self) -> PrefixIter<'_, Self::AF, Self::Meta>;
     fn prefixes_iter_mut(
         &mut self,
     ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
 }
 
 #[derive(Debug)]
-pub(crate) struct InMemStorage<AF: AddressFamily, Meta: routecore::record::Meta> {
+pub(crate) struct InMemStorage<
+    AF: AddressFamily,
+    Meta: routecore::record::Meta,
+> {
     pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBackend for InMemStorage<AF, Meta> {
+impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
+    StorageBackend for InMemStorage<AF, Meta>
+{
     type NodeType = InMemNodeId;
     type AF = AF;
     type Meta = Meta;
@@ -112,7 +127,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         }
         InMemStorage {
             nodes,
-            prefixes: vec![]
+            prefixes: vec![],
         }
     }
 
@@ -162,7 +177,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
     ) -> SizedNodeResult<Self::AF, Self::NodeType> {
         self.nodes
             .get_mut(index.get_part() as usize)
-            .ok_or_else(|| Box::new(Error::new(ErrorKind::Other, "Retrieve Node Error")).into())
+            .ok_or_else(|| {
+                Box::new(Error::new(ErrorKind::Other, "Retrieve Node Error"))
+                    .into()
+            })
     }
 
     // Don't use this function, this is just a placeholder and a really
@@ -178,7 +196,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         InMemNodeId(0, 0)
     }
 
-    fn get_root_node_mut(&mut self) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
+    fn get_root_node_mut(
+        &mut self,
+    ) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
         Some(&mut self.nodes[0])
     }
 
@@ -193,7 +213,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
     fn acquire_new_prefix_id(
         &self,
         sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        _part: &InternalPrefixRecord<<Self as StorageBackend>::AF, <Self as StorageBackend>::Meta>,
+        _part: &InternalPrefixRecord<
+            <Self as StorageBackend>::AF,
+            <Self as StorageBackend>::Meta,
+        >,
     ) -> <Self as StorageBackend>::NodeType {
         // We're ignoring the part parameter here, because we want to store
         // the index into the global self.prefixes vec in the local vec.
@@ -209,11 +232,17 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         Ok(id)
     }
 
-    fn retrieve_prefix(&self, index: u32) -> Option<&InternalPrefixRecord<Self::AF, Self::Meta>> {
+    fn retrieve_prefix(
+        &self,
+        index: u32,
+    ) -> Option<&InternalPrefixRecord<Self::AF, Self::Meta>> {
         self.prefixes.get(index as usize)
     }
 
-    fn retrieve_prefix_mut(&mut self, index: u32) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>> {
+    fn retrieve_prefix_mut(
+        &mut self,
+        index: u32,
+    ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>> {
         self.prefixes.get_mut(index as usize)
     }
 
@@ -224,7 +253,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
         panic!("nOt ImPlEmEnTed for InMemNode");
     }
 
-    fn get_prefixes(&self) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>> {
+    fn get_prefixes(
+        &self,
+    ) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>> {
         &self.prefixes
     }
 
@@ -234,13 +265,19 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate> StorageBack
 
     fn prefixes_iter(
         &self,
-    ) -> Result<std::slice::Iter<'_, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>> {
+    ) -> Result<
+        std::slice::Iter<'_, InternalPrefixRecord<AF, Meta>>,
+        Box<dyn std::error::Error>,
+    > {
         Ok(self.prefixes.iter())
     }
 
     fn prefixes_iter_mut(
         &mut self,
-    ) -> Result<std::slice::IterMut<'_, InternalPrefixRecord<AF, Meta>>, Box<dyn std::error::Error>> {
+    ) -> Result<
+        std::slice::IterMut<'_, InternalPrefixRecord<AF, Meta>>,
+        Box<dyn std::error::Error>,
+    > {
         Ok(self.prefixes.iter_mut())
     }
 }

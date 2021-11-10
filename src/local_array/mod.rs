@@ -1,7 +1,7 @@
 pub(crate) mod node;
 pub(crate) mod query;
-pub(crate) mod tree;
 pub(crate) mod storage_backend;
+pub(crate) mod tree;
 
 pub mod store;
 
