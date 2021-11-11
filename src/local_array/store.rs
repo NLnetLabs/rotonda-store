@@ -5,13 +5,13 @@ use crate::{QueryResult, Stats, Strides};
 use crate::prefix_record::InternalPrefixRecord;
 use routecore::addr::Prefix;
 use routecore::addr::{IPv4, IPv6};
-use routecore::record::{MergeUpdate, NoMeta};
+use routecore::record::{Meta, MergeUpdate, NoMeta};
 
 use std::fmt;
 
 use super::node::{InMemStrideNodeId, SizedStrideRef};
 
-/// A multi-threaded, concurrently read/write, lock-free Prefix Store.
+/// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
     v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
     v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
@@ -24,6 +24,24 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+    /// Creates a new empty store with a tree for IPv4 and on for IPv6.
+    /// 
+    /// You'll have to provide the stride sizes per address family and the
+    /// meta-data type. Some meta-data type are included with this crate.
+    /// 
+    /// The stride-sizes can be any of [3,4,5,6,7,8], and they should add up
+    /// to the total number of bits in the address family (32 for IPv4 and
+    /// 128 for IPv6).
+    /// 
+    /// # Example
+    /// ```
+    /// use rotonda_store::MultiThreadedStore;
+    /// use routecore::bgp::PrefixAs;
+    /// 
+    /// let store = MultiThreadedStore::<PrefixAs>::new(
+    ///     vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![8]
+    /// );
+    /// ```
     pub fn new(v4_strides: Vec<u8>, v6_strides: Vec<u8>) -> Self {
         Store {
             v4: TreeBitMap::new(v4_strides),
