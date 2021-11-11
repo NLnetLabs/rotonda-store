@@ -4,10 +4,11 @@ use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{MatchOptions, MatchType};
-use crate::{QueryResult, RecordSet};
+use crate::QueryResult;
 
 use routecore::addr::AddressFamily;
 use routecore::addr::Prefix;
+use routecore::bgp::RecordSet;
 use routecore::record::NoMeta;
 
 //------------ Longest Matching Prefix  -------------------------------------

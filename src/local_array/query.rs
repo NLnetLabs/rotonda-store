@@ -1,10 +1,11 @@
 use routecore::addr::AddressFamily;
 use routecore::addr::Prefix;
 use routecore::record::NoMeta;
+use routecore::bgp::RecordSet;
 
 use crate::local_array::storage_backend::*;
 use crate::prefix_record::InternalPrefixRecord;
-use crate::{QueryResult, RecordSet};
+use crate::QueryResult;
 
 use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
