@@ -1,5 +1,7 @@
-use rotonda_store::{InMemStorage, StorageBackend, common::{NoMeta, Prefix, PrefixAs}};
-use rotonda_store::TreeBitMap;
+use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
+use routecore::addr::Prefix;
+use routecore::bgp::PrefixRecord;
+use routecore::record::Record;
 use std::error::Error;
 use std::fs::File;
 use std::process;
@@ -7,7 +9,9 @@ use std::process;
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
 
-    fn load_prefixes(pfxs: &mut Vec<Prefix<u32, PrefixAs>>) -> Result<(), Box<dyn Error>> {
+    fn load_prefixes(
+        pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+    ) -> Result<(), Box<dyn Error>> {
         let file = File::open(CSV_FILE_PATH)?;
         let mut rdr = csv::Reader::from_reader(file);
         for result in rdr.records() {
@@ -19,7 +23,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
             let len: u8 = record[1].parse().unwrap();
             let asn: u32 = record[2].parse().unwrap();
-            let pfx = Prefix::<u32, PrefixAs>::new_with_meta(net.into(), len, PrefixAs(asn));
+            let pfx = PrefixRecord::<PrefixAs>::new_with_local_meta(
+                Prefix::new(net.into(), len)?,
+                PrefixAs(asn),
+            );
             pfxs.push(pfx);
         }
         Ok(())
@@ -32,13 +39,15 @@ fn main() -> Result<(), Box<dyn Error>> {
         vec![6, 6, 6, 6, 4, 4],
         vec![3, 4, 4, 6, 7, 8],
     ];
-    type StoreType = InMemStorage<u32, PrefixAs>;
+
     for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
-            let mut pfxs: Vec<Prefix<u32, PrefixAs>> = vec![];
-            let mut tree_bitmap: TreeBitMap<StoreType> =
-                TreeBitMap::new(strides.1.to_owned());
+            let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
+            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
+                strides.1.to_owned(),
+                Vec::from([]),
+            );
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -49,10 +58,11 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                tree_bitmap.insert(pfx)?;
+                tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned())?;
             }
             let ready = std::time::Instant::now();
-            let dur_insert_nanos = ready.checked_duration_since(start).unwrap().as_nanos();
+            let dur_insert_nanos =
+                ready.checked_duration_since(start).unwrap().as_nanos();
 
             let inet_max = 255;
             let len_max = 32;
@@ -61,29 +71,42 @@ fn main() -> Result<(), Box<dyn Error>> {
             for i_net in 0..inet_max {
                 for s_len in 0..len_max {
                     for ii_net in 0..inet_max {
-                        let pfx = Prefix::<u32, NoMeta>::new(
-                            std::net::Ipv4Addr::new(i_net, ii_net, 0, 0).into(),
+                        let pfx = Prefix::new(
+                            std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
+                                .into(),
                             s_len,
+                        )?;
+                        tree_bitmap.match_prefix(
+                            &pfx,
+                            &MatchOptions {
+                                match_type: MatchType::LongestMatch,
+                                include_less_specifics: false,
+                                include_more_specifics: false,
+                            },
                         );
-                        tree_bitmap.match_longest_prefix(&pfx);
                     }
                 }
             }
             let ready = std::time::Instant::now();
-            let dur_search_nanos = ready.checked_duration_since(start).unwrap().as_nanos();
-            let searches_num = inet_max as u128 * inet_max as u128 * len_max as u128;
+            let dur_search_nanos =
+                ready.checked_duration_since(start).unwrap().as_nanos();
+            let searches_num =
+                inet_max as u128 * inet_max as u128 * len_max as u128;
 
             println!("{{");
             println!("\"type\": \"treebitmap_univec\",");
-            println!("\"strides\": {:?},", tree_bitmap.strides);
+            println!("\"strides\": {:?},", &tree_bitmap.strides());
             println!("\"run_no\": {},", n);
             println!("\"inserts_num\": {},", inserts_num);
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
             println!(
                 "\"global_prefix_vec_size\": {},",
-                tree_bitmap.store.get_prefixes_len()
+                tree_bitmap.prefixes_len()
             );
-            println!("\"global_node_vec_size\": {},", tree_bitmap.store.get_nodes_len());
+            println!(
+                "\"global_node_vec_size\": {},",
+                tree_bitmap.nodes_len()
+            );
             println!(
                 "\"insert_time_nanos\": {},",
                 dur_insert_nanos as f32 / inserts_num as f32
