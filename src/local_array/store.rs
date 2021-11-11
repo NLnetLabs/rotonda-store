@@ -194,33 +194,33 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         self.v6.store.get_nodes_len()
     }
 
-    pub fn nodes_per_stride(&'a self) -> (Vec<u32>, Vec<u32>) {
-        let mut stride_levels_v4 = Vec::from([]);
-        let mut stride_levels_v6 = Vec::from([]);
-        for stride in self.strides().v4.iter().enumerate() {
-            stride_levels_v4.push(
-                self.v4
-                    .stats
-                    .iter()
-                    .find(|s| s.stride_len == *stride.1)
-                    .unwrap()
-                    .created_nodes[stride.0]
-                    .count as u32,
-            );
-        }
-        for stride in self.strides().v6.iter().enumerate() {
-            stride_levels_v6.push(
-                self.v6
-                    .stats
-                    .iter()
-                    .find(|s| s.stride_len == *stride.1)
-                    .unwrap()
-                    .created_nodes[stride.0]
-                    .count as u32,
-            );
-        }
-        (stride_levels_v4, stride_levels_v6)
-    }
+    // pub fn nodes_per_stride(&'a self) -> (Vec<u32>, Vec<u32>) {
+    //     let mut stride_levels_v4 = Vec::from([]);
+    //     let mut stride_levels_v6 = Vec::from([]);
+    //     for stride in self.strides().v4.iter().enumerate() {
+    //         stride_levels_v4.push(
+    //             self.v4
+    //                 .stats
+    //                 .iter()
+    //                 .find(|s| s.stride_len == *stride.1)
+    //                 .unwrap()
+    //                 .created_nodes[stride.0]
+    //                 .count as u32,
+    //         );
+    //     }
+    //     for stride in self.strides().v6.iter().enumerate() {
+    //         stride_levels_v6.push(
+    //             self.v6
+    //                 .stats
+    //                 .iter()
+    //                 .find(|s| s.stride_len == *stride.1)
+    //                 .unwrap()
+    //                 .created_nodes[stride.0]
+    //                 .count as u32,
+    //         );
+    //     }
+    //     (stride_levels_v4, stride_levels_v6)
+    // }
 
     pub fn print_funky_stats(&self) {
         println!("{}", self.v4);
