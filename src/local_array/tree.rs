@@ -670,6 +670,7 @@ where
 }
 
 // This implements the funky stats for a tree
+#[cfg(feature = "cli")]
 impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_nodes = self.store.get_nodes_len();
