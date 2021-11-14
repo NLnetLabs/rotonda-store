@@ -1,20 +1,22 @@
 use routecore::addr::AddressFamily;
 
-use crate::prefix_record::InternalPrefixRecord;
-use crate::node_id::SortableNodeId;
-use crate::match_node_for_strides;
 use crate::local_array::storage_backend::StorageBackend;
+use crate::match_node_for_strides;
+use crate::node_id::SortableNodeId;
+use crate::prefix_record::InternalPrefixRecord;
 
 #[cfg(feature = "dynamodb")]
 use crate::local_array::CacheGuard;
 
-pub use crate::stride::*;
-use crate::stats::{StrideStats, SizedStride};
+pub(crate) use super::atomic_stride::*;
+use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult};
+use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::storage_backend::{SizedNodeOption, SizedNodeResult};
 use crate::synth_int::{Zero, U256, U512};
 
+use std::sync::atomic::{AtomicU8, AtomicU16, AtomicU32, AtomicU64};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
@@ -29,14 +31,39 @@ use routecore::record::MergeUpdate;
 
 pub(crate) trait UnsizedNode<AF: AddressFamily, NodeId: SortableNodeId> {}
 
-#[derive(Debug, Copy, Clone)]
-pub(crate) enum SizedStrideNode<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+#[derive(Debug)]
+pub(crate) enum SizedStrideNode<
+    AF: AddressFamily,
+    NodeId: SortableNodeId + Copy,
+> {
     Stride3(TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
     Stride4(TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
     Stride5(TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
-    Stride6(TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    Stride7(TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+    // Stride6(TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    // Stride7(TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    // Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+}
+
+impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
+    Default
+    for TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
+where
+    AF: AddressFamily,
+    S: Stride,
+    <S as Stride>::PtrSize: Debug + Binary + Copy,
+    <S as Stride>::AtomicPfxSize: AtomicBitmap,
+    <S as Stride>::AtomicPtrSize: AtomicBitmap,
+    NodeId: SortableNodeId + Copy,
+{
+    fn default() -> Self {
+        Self {
+            ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
+            pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
+            pfx_vec: NodeSet::empty(),
+            ptr_vec: NodeSet::empty(),
+            _af: PhantomData,
+        }
+    }
 }
 
 impl<AF: AddressFamily, NodeId: SortableNodeId + Copy> UnsizedNode<AF, NodeId>
@@ -51,8 +78,8 @@ where
 {
     fn default() -> Self {
         SizedStrideNode::Stride3(TreeBitMapNode {
-            ptrbitarr: 0,
-            pfxbitarr: 0,
+            ptrbitarr: AtomicStride2(AtomicU8::new(0)),
+            pfxbitarr: AtomicStride3(AtomicU16::new(0)),
             pfx_vec: NodeSet::empty(),
             ptr_vec: NodeSet::empty(),
             _af: PhantomData,
@@ -62,17 +89,45 @@ where
 
 // Used to create a public iterator over all nodes.
 #[derive(Debug)]
-pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy>
+{
     Stride3(&'a TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
     Stride4(&'a TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
     Stride5(&'a TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
-    Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
-impl<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy> UnsizedNode<AF, NodeId>
-    for SizedStrideRef<'a, AF, NodeId>
+#[derive(Debug)]
+pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy>
+{
+    Stride3(&'a mut TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
+    Stride4(&'a mut TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
+    Stride5(&'a mut TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
+    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+}
+
+// impl<'a, AF, NodeId> Default for SizedStrideRefMut<'a, AF, NodeId>
+// where
+//     AF: AddressFamily,
+//     NodeId: SortableNodeId + Copy,
+// {
+//     fn default() -> Self {
+//         SizedStrideRefMut::Stride3(&mut TreeBitMapNode {
+//             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
+//             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
+//             pfx_vec: NodeSet::empty(),
+//             ptr_vec: NodeSet::empty(),
+//             _af: PhantomData,
+//         })
+//     }
+// }
+
+impl<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy>
+    UnsizedNode<AF, NodeId> for SizedStrideRef<'a, AF, NodeId>
 {
 }
 
@@ -81,7 +136,10 @@ pub(crate) trait NodeWrapper<AF: AddressFamily, Node: SortableNodeId + Copy> {
     type UnsizedRef: UnsizedNode<AF, Node>;
 }
 
-pub(crate) enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
+pub(crate) enum NewNodeOrIndex<
+    AF: AddressFamily,
+    NodeId: SortableNodeId + Copy,
+> {
     NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), // New Node and bit_id of the new node
     ExistingNode(NodeId),
     NewPrefix,
@@ -199,7 +257,9 @@ pub trait NodeCollection<NodeId: SortableNodeId + Copy> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct NodeSet<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>([NodeId; ARRAYSIZE]);
+pub struct NodeSet<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>(
+    [NodeId; ARRAYSIZE],
+);
 
 impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> std::fmt::Display
     for NodeSet<NodeId, ARRAYSIZE>
@@ -209,7 +269,9 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> std::fmt::Display
     }
 }
 
-impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeCollection<NodeId> for NodeSet<NodeId, ARRAYSIZE> {
+impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>
+    NodeCollection<NodeId> for NodeSet<NodeId, ARRAYSIZE>
+{
     fn insert(&mut self, insert_node: NodeId) {
         let idx = self
             .0
@@ -244,8 +306,8 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> NodeCollection<NodeI
     }
 }
 
-impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize> std::ops::Index<usize>
-    for NodeSet<NodeId, ARRAYSIZE>
+impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>
+    std::ops::Index<usize> for NodeSet<NodeId, ARRAYSIZE>
 {
     type Output = NodeId;
     fn index(&self, idx: usize) -> &NodeId {
@@ -258,9 +320,9 @@ pub enum StrideType {
     Stride3,
     Stride4,
     Stride5,
-    Stride6,
-    Stride7,
-    Stride8,
+    // Stride6,
+    // Stride7,
+    // Stride8,
 }
 
 impl From<u8> for StrideType {
@@ -269,9 +331,9 @@ impl From<u8> for StrideType {
             3 => StrideType::Stride3,
             4 => StrideType::Stride4,
             5 => StrideType::Stride5,
-            6 => StrideType::Stride6,
-            7 => StrideType::Stride7,
-            8 => StrideType::Stride8,
+            // 6 => StrideType::Stride6,
+            // 7 => StrideType::Stride7,
+            // 8 => StrideType::Stride8,
             _ => panic!("Invalid stride level"),
         }
     }
@@ -283,9 +345,9 @@ impl std::fmt::Display for StrideType {
             StrideType::Stride3 => write!(f, "S3"),
             StrideType::Stride4 => write!(f, "S4"),
             StrideType::Stride5 => write!(f, "S5"),
-            StrideType::Stride6 => write!(f, "S6"),
-            StrideType::Stride7 => write!(f, "S7"),
-            StrideType::Stride8 => write!(f, "S8"),
+            // StrideType::Stride6 => write!(f, "S6"),
+            // StrideType::Stride7 => write!(f, "S7"),
+            // StrideType::Stride8 => write!(f, "S8"),
         }
     }
 }
@@ -322,9 +384,9 @@ where
             StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
             StrideStats::new(SizedStride::Stride4, strides.len() as u8), // 1
             StrideStats::new(SizedStride::Stride5, strides.len() as u8), // 2
-            StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
-            StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
-            StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
+            // StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
+            // StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
+            // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
         let node: SizedStrideNode<
@@ -335,8 +397,8 @@ where
         match strides[0] {
             3 => {
                 node = SizedStrideNode::Stride3(TreeBitMapNode {
-                    ptrbitarr: 0,
-                    pfxbitarr: 0,
+                    ptrbitarr: AtomicStride2(AtomicU8::new(0)),
+                    pfxbitarr: AtomicStride3(AtomicU16::new(0)),
                     ptr_vec: NodeSet::empty(),
                     pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
@@ -345,8 +407,8 @@ where
             }
             4 => {
                 node = SizedStrideNode::Stride4(TreeBitMapNode {
-                    ptrbitarr: 0,
-                    pfxbitarr: 0,
+                    ptrbitarr: AtomicStride3(AtomicU16::new(0)),
+                    pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                     ptr_vec: NodeSet::empty(),
                     pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
@@ -355,44 +417,44 @@ where
             }
             5 => {
                 node = SizedStrideNode::Stride5(TreeBitMapNode {
-                    ptrbitarr: 0,
-                    pfxbitarr: 0,
+                    ptrbitarr: AtomicStride4(AtomicU32::new(0)),
+                    pfxbitarr: AtomicStride5(AtomicU64::new(0)),
                     ptr_vec: NodeSet::empty(),
                     pfx_vec: NodeSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
             }
-            6 => {
-                node = SizedStrideNode::Stride6(TreeBitMapNode {
-                    ptrbitarr: 0,
-                    pfxbitarr: 0,
-                    ptr_vec: NodeSet::empty(),
-                    pfx_vec: NodeSet::empty(),
-                    _af: PhantomData,
-                });
-                stride_stats[3].inc(0);
-            }
-            7 => {
-                node = SizedStrideNode::Stride7(TreeBitMapNode {
-                    ptrbitarr: 0,
-                    pfxbitarr: U256(0, 0),
-                    ptr_vec: NodeSet::empty(),
-                    pfx_vec: NodeSet::empty(),
-                    _af: PhantomData,
-                });
-                stride_stats[4].inc(0);
-            }
-            8 => {
-                node = SizedStrideNode::Stride8(TreeBitMapNode {
-                    ptrbitarr: U256(0, 0),
-                    pfxbitarr: U512(0, 0, 0, 0),
-                    ptr_vec: NodeSet::empty(),
-                    pfx_vec: NodeSet::empty(),
-                    _af: PhantomData,
-                });
-                stride_stats[5].inc(0);
-            }
+            // 6 => {
+            //     node = SizedStrideNode::Stride6(TreeBitMapNode {
+            //         ptrbitarr: 0,
+            //         pfxbitarr: 0,
+            //         ptr_vec: NodeSet::empty(),
+            //         pfx_vec: NodeSet::empty(),
+            //         _af: PhantomData,
+            //     });
+            //     stride_stats[3].inc(0);
+            // }
+            // 7 => {
+            //     node = SizedStrideNode::Stride7(TreeBitMapNode {
+            //         ptrbitarr: 0,
+            //         pfxbitarr: U256(0, 0),
+            //         ptr_vec: NodeSet::empty(),
+            //         pfx_vec: NodeSet::empty(),
+            //         _af: PhantomData,
+            //     });
+            //     stride_stats[4].inc(0);
+            // }
+            // 8 => {
+            //     node = SizedStrideNode::Stride8(TreeBitMapNode {
+            //         ptrbitarr: U256(0, 0),
+            //         pfxbitarr: U512(0, 0, 0, 0),
+            //         ptr_vec: NodeSet::empty(),
+            //         pfx_vec: NodeSet::empty(),
+            //         _af: PhantomData,
+            //     });
+            //     stride_stats[5].inc(0);
+            // }
             _ => {
                 panic!("unknown stride size encountered in STRIDES array");
             }
@@ -453,7 +515,11 @@ where
                 stride
             };
 
-            let nibble = Store::AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
+            let nibble = Store::AF::get_nibble(
+                pfx.net,
+                stride_end - stride,
+                nibble_len,
+            );
             let is_last_stride = pfx.len <= stride_end;
 
             let next_node_idx = match_node_for_strides![
@@ -468,10 +534,10 @@ where
                 // Strides to create match arm for; stats level
                 Stride3; 0,
                 Stride4; 1,
-                Stride5; 2,
-                Stride6; 3,
-                Stride7; 4,
-                Stride8; 5
+                Stride5; 2
+                // Stride6; 3,
+                // Stride7; 4,
+                // Stride8; 5
             ];
 
             if let Some(i) = next_node_idx {
@@ -495,7 +561,7 @@ where
     pub(crate) fn retrieve_node(
         &self,
         id: Store::NodeType,
-    ) -> SizedNodeOption<Store::AF, Store::NodeType> {
+    ) -> SizedNodeRefOption<Store::AF, Store::NodeType> {
         self.store.retrieve_node(id)
     }
 
@@ -514,9 +580,9 @@ where
 
     #[inline]
     pub(crate) fn retrieve_node_mut(
-        &mut self,
+        &'a mut self,
         index: Store::NodeType,
-    ) -> SizedNodeResult<Store::AF, Store::NodeType> {
+    ) -> SizedNodeRefResult<'a, Store::AF, Store::NodeType> {
         self.store.retrieve_node_mut(index)
     }
 
@@ -539,7 +605,9 @@ where
     ) -> Result<(), Box<dyn std::error::Error>> {
         match self.store.retrieve_prefix_mut(update_node_idx) {
             Some(update_pfx) => match update_pfx.meta.as_mut() {
-                Some(exist_meta) => <Store::Meta>::merge_update(exist_meta, meta),
+                Some(exist_meta) => {
+                    <Store::Meta>::merge_update(exist_meta, meta)
+                }
                 None => {
                     update_pfx.meta = Some(meta);
                     Ok(())
@@ -573,70 +641,70 @@ where
     // adding all `pfx_vec`s of its children.
     fn get_all_more_specifics_for_node(
         &self,
-        start_node: &SizedStrideNode<Store::AF, Store::NodeType>,
+        start_node: SizedStrideRef<Store::AF, Store::NodeType>,
         found_pfx_vec: &mut Vec<Store::NodeType>,
     ) {
         match start_node {
-            SizedStrideNode::Stride3(n) => {
+            SizedStrideRef::Stride3(n) => {
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
-                        &self.retrieve_node(*nn).unwrap(),
+                        self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
                     );
                 }
             }
-            SizedStrideNode::Stride4(n) => {
+            SizedStrideRef::Stride4(n) => {
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
-                        &self.retrieve_node(*nn).unwrap(),
+                        self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
                     );
                 }
             }
-            SizedStrideNode::Stride5(n) => {
+            SizedStrideRef::Stride5(n) => {
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     self.get_all_more_specifics_for_node(
-                        &self.retrieve_node(*nn).unwrap(),
+                        self.retrieve_node(*nn).unwrap(),
                         found_pfx_vec,
                     );
                 }
             }
-            SizedStrideNode::Stride6(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+            // SizedStrideNode::Stride6(n) => {
+            //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.as_slice().iter() {
-                    self.get_all_more_specifics_for_node(
-                        &self.retrieve_node(*nn).unwrap(),
-                        found_pfx_vec,
-                    );
-                }
-            }
-            SizedStrideNode::Stride7(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+            //     for nn in n.ptr_vec.as_slice().iter() {
+            //         self.get_all_more_specifics_for_node(
+            //             &self.retrieve_node(*nn).unwrap(),
+            //             found_pfx_vec,
+            //         );
+            //     }
+            // }
+            // SizedStrideNode::Stride7(n) => {
+            //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.as_slice().iter() {
-                    self.get_all_more_specifics_for_node(
-                        &self.retrieve_node(*nn).unwrap(),
-                        found_pfx_vec,
-                    );
-                }
-            }
-            SizedStrideNode::Stride8(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+            //     for nn in n.ptr_vec.as_slice().iter() {
+            //         self.get_all_more_specifics_for_node(
+            //             &self.retrieve_node(*nn).unwrap(),
+            //             found_pfx_vec,
+            //         );
+            //     }
+            // }
+            // SizedStrideNode::Stride8(n) => {
+            //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 
-                for nn in n.ptr_vec.as_slice().iter() {
-                    self.get_all_more_specifics_for_node(
-                        &self.retrieve_node(*nn).unwrap(),
-                        found_pfx_vec,
-                    );
-                }
-            }
+            //     for nn in n.ptr_vec.as_slice().iter() {
+            //         self.get_all_more_specifics_for_node(
+            //             &self.retrieve_node(*nn).unwrap(),
+            //             found_pfx_vec,
+            //         );
+            //     }
+            // }
         }
     }
 
@@ -648,20 +716,36 @@ where
         const PTRARRAYSIZE: usize,
     >(
         &self,
-        current_node: &TreeBitMapNode<Store::AF, S, Store::NodeType, PFXARRAYSIZE, PTRARRAYSIZE>,
+        current_node: &TreeBitMapNode<
+            Store::AF,
+            S,
+            Store::NodeType,
+            PFXARRAYSIZE,
+            PTRARRAYSIZE,
+        >,
         nibble: u32,
         nibble_len: u8,
     ) -> Option<Vec<Store::NodeType>>
     where
-        S: Stride + std::ops::BitAnd<Output = S> + std::ops::BitOr<Output = S> + Zero,
-        <S as Stride>::PtrSize:
-            Debug + Binary + Copy + std::ops::BitAnd<Output = S::PtrSize> + PartialOrd + Zero,
+        S: Stride
+            + std::ops::BitAnd<Output = S>
+            + std::ops::BitOr<Output = S>
+            + Zero,
+        <S as Stride>::PtrSize: Debug
+            + Binary
+            + Copy
+            + std::ops::BitAnd<Output = S::PtrSize>
+            + PartialOrd
+            + Zero,
+        <S as Stride>::AtomicPfxSize: AtomicBitmap,
+        <S as Stride>::AtomicPtrSize: AtomicBitmap,
     {
-        let (cnvec, mut msvec) = current_node.add_more_specifics_at(nibble, nibble_len);
+        let (cnvec, mut msvec) =
+            current_node.add_more_specifics_at(nibble, nibble_len);
 
         for child_node in cnvec.iter() {
             self.get_all_more_specifics_for_node(
-                &self.retrieve_node(*child_node).unwrap(),
+                self.retrieve_node(*child_node).unwrap(),
                 &mut msvec,
             );
         }
@@ -684,10 +768,12 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         );
         println!(
             "memory used by nodes: {}kb",
-            self.store.get_nodes_len() * std::mem::size_of::<SizedStrideNode<u32, InMemStrideNodeId>>()
+            self.store.get_nodes_len()
+                * std::mem::size_of::<SizedStrideNode<u32, InMemStrideNodeId>>(
+                )
                 / 1024
         );
-        
+
         println!("stride division {:?}", self.strides);
         for s in &self.stats {
             println!("{:?}", s);
@@ -721,10 +807,7 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 .count as u32;
 
             let n = (nodes_num / SCALE) as usize;
-            let max_pfx = u128::overflowing_pow(
-                2, 
-                stride_bits[1] as u32
-            );
+            let max_pfx = u128::overflowing_pow(2, stride_bits[1] as u32);
 
             print!("{}-{}\t", stride_bits[0], stride_bits[1]);
 
@@ -734,7 +817,9 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
 
             print!(
                 "{}",
-                Colour::Blue.paint(bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]) //  = scale / 7
+                Colour::Blue.paint(
+                    bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
+                ) //  = scale / 7
             );
 
             print!(
@@ -752,7 +837,9 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
 
             print!(
                 "{}",
-                Colour::Green.paint(bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]) //  = scale / 7
+                Colour::Green.paint(
+                    bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
+                ) //  = scale / 7
             );
 
             println!(" {}", prefixes_num);

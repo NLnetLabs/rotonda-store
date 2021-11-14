@@ -120,27 +120,27 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
                     .iter()
                     .map(|n| SizedStrideRef::Stride5(n)),
             )
-            .chain(
-                self.v4
-                    .store
-                    .nodes6
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride6(n)),
-            )
-            .chain(
-                self.v4
-                    .store
-                    .nodes7
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride7(n)),
-            )
-            .chain(
-                self.v4
-                    .store
-                    .nodes8
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride8(n)),
-            )
+            // .chain(
+            //     self.v4
+            //         .store
+            //         .nodes6
+            //         .iter()
+            //         .map(|n| SizedStrideRef::Stride6(n)),
+            // )
+            // .chain(
+            //     self.v4
+            //         .store
+            //         .nodes7
+            //         .iter()
+            //         .map(|n| SizedStrideRef::Stride7(n)),
+            // )
+            // .chain(
+            //     self.v4
+            //         .store
+            //         .nodes8
+            //         .iter()
+            //         .map(|n| SizedStrideRef::Stride8(n)),
+            // )
     }
 
     pub fn nodes_v6_iter(
@@ -165,27 +165,27 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
                     .iter()
                     .map(|n| SizedStrideRef::Stride5(n)),
             )
-            .chain(
-                self.v6
-                    .store
-                    .nodes6
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride6(n)),
-            )
-            .chain(
-                self.v6
-                    .store
-                    .nodes7
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride7(n)),
-            )
-            .chain(
-                self.v6
-                    .store
-                    .nodes8
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride8(n)),
-            )
+            // .chain(
+            //     self.v6
+            //         .store
+            //         .nodes6
+            //         .iter()
+            //         .map(|n| SizedStrideRef::Stride6(n)),
+            // )
+            // .chain(
+            //     self.v6
+            //         .store
+            //         .nodes7
+            //         .iter()
+            //         .map(|n| SizedStrideRef::Stride7(n)),
+            // )
+            // .chain(
+            //     self.v6
+            //         .store
+            //         .nodes8
+            //         .iter()
+            //         .map(|n| SizedStrideRef::Stride8(n)),
+            // )
     }
 
     pub fn prefixes_len(&self) -> usize {
