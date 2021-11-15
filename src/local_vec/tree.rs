@@ -2,7 +2,7 @@ use crate::match_node_for_strides_with_local_vec;
 use crate::node_id::{InMemNodeId, SortableNodeId};
 use crate::prefix_record::InternalPrefixRecord;
 use crate::stride::*;
-use crate::synth_int::{Zero, U256, U512};
+use crate::synth_int::{U256, U512};
 
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::StorageBackend;
@@ -460,13 +460,13 @@ where
         S: Stride
             + std::ops::BitAnd<Output = S>
             + std::ops::BitOr<Output = S>
-            + Zero,
+            + num::Zero,
         <S as Stride>::PtrSize: Debug
             + Binary
             + Copy
             + std::ops::BitAnd<Output = S::PtrSize>
             + PartialOrd
-            + Zero,
+            + num::Zero,
     {
         let (cnvec, mut msvec) =
             current_node.add_more_specifics_at(nibble, nibble_len);

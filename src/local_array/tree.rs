@@ -14,7 +14,7 @@ use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::storage_backend::{SizedNodeOption, SizedNodeResult};
-use crate::synth_int::{Zero, U256, U512};
+use crate::synth_int::{U256, U512};
 
 use std::sync::atomic::{AtomicU8, AtomicU16, AtomicU32, AtomicU64};
 use std::{
@@ -730,13 +730,13 @@ where
         S: Stride
             + std::ops::BitAnd<Output = S>
             + std::ops::BitOr<Output = S>
-            + Zero,
+            + num::Zero,
         <S as Stride>::PtrSize: Debug
             + Binary
             + Copy
             + std::ops::BitAnd<Output = S::PtrSize>
             + PartialOrd
-            + Zero,
+            + num::Zero,
         <S as Stride>::AtomicPfxSize: AtomicBitmap,
         <S as Stride>::AtomicPtrSize: AtomicBitmap,
     {
