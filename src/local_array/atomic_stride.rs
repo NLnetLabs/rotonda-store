@@ -6,145 +6,40 @@ use std::sync::atomic::{
 use num::{PrimInt, Zero};
 
 use crate::impl_primitive_atomic_stride;
-// use crate::synth_int::{U256, U512};
+use crate::synth_int::{AtomicU128, AtomicU256, AtomicU512};
 
 pub type Stride3 = u16;
 pub type Stride4 = u32;
 pub type Stride5 = u64;
 
-// #[derive(Debug)]
-// pub struct Stride3(u16);
-
-// #[derive(Debug)]
-// pub struct Stride4(u32);
-
-// #[derive(Debug)]
-// pub struct Stride5(u64);
-// pub struct Stride6(u128);
-// pub struct Stride7(U256);
-// pub struct Stride8(U512);
-
-// impl PartialEq for Stride3 {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0.load(Ordering::Relaxed) == other.0.load(Ordering::Relaxed)
-//     }
-// }
-// impl Eq for Stride3 {}
-// impl Ord for Stride3 {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.0.load(Ordering::Relaxed).cmp(&other.0.load(Ordering::Relaxed))
-//     }
-// }
-// impl PartialOrd for Stride3 {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
-// impl PartialEq for Stride4 {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0.load(Ordering::Relaxed) == other.0.load(Ordering::Relaxed)
-//     }
-// }
-// impl Eq for Stride4 {}
-// impl Ord for Stride4 {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.0.load(Ordering::Relaxed).cmp(&other.0.load(Ordering::Relaxed))
-//     }
-// }
-// impl PartialOrd for Stride4 {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
-// impl PartialEq for Stride5 {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0.load(Ordering::Relaxed) == other.0.load(Ordering::Relaxed)
-//     }
-// }
-// impl Eq for Stride5 {}
-// impl Ord for Stride5 {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.0.load(Ordering::Relaxed).cmp(&other.0.load(Ordering::Relaxed))
-//     }
-// }
-// impl PartialOrd for Stride5 {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
-// impl PartialEq for Stride3 {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0 ==  other.0
-//     }
-// }
-// impl Eq for Stride3 {}
-// impl Ord for Stride3 {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.0.cmp(&other.0)
-//     }
-// }
-// impl PartialOrd for Stride3 {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
-// impl PartialEq for Stride4 {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0 ==  other.0
-//     }
-// }
-// impl Eq for Stride4 {}
-// impl Ord for Stride4 {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.0.cmp(&other.0)
-//     }
-// }
-// impl PartialOrd for Stride4 {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
-// impl PartialEq for Stride5 {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.0 ==  other.0
-//     }
-// }
-// impl Eq for Stride5 {}
-// impl Ord for Stride5 {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         self.0.cmp(&other.0)
-//     }
-// }
-// impl PartialOrd for Stride5 {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.cmp(other))
-//     }
-// }
-
 pub struct AtomicStride2(pub AtomicU8);
 pub struct AtomicStride3(pub AtomicU16);
 pub struct AtomicStride4(pub AtomicU32);
 pub struct AtomicStride5(pub AtomicU64);
+pub struct AtomicStride6(pub AtomicU128);
+
+pub struct CasResult<InnerType>(pub Result<InnerType, InnerType>);
+
+impl<InnerType> CasResult<InnerType> {
+    fn new(value: InnerType) -> Self {
+        CasResult(Ok(value))
+    }
+}
 
 pub trait AtomicBitmap {
     type InnerType: Binary + Debug + PrimInt + Zero;
 
     fn new() -> Self;
     fn inner(self) -> Self::InnerType;
-    fn fetch_update<F: FnMut(Self::InnerType) -> Option<Self::InnerType>>(
-        &self,
-        f: F,
-    ) -> Result<Self::InnerType, Self::InnerType>;
+    // fn fetch_update<F: FnMut(Self::InnerType) -> Option<Self::InnerType>>(
+    //     &self,
+    //     f: F,
+    // ) -> CasResult<Self::InnerType>;
     fn compare_exchange(
         &self,
         current: Self::InnerType,
         new: Self::InnerType,
-    ) -> Result<Self::InnerType, Self::InnerType>;
+    ) -> CasResult<Self::InnerType>;
     fn load(&self) -> Self::InnerType;
 }
 
@@ -157,26 +52,23 @@ impl AtomicBitmap for AtomicStride2 {
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
     }
-    fn fetch_update<F>(
-        &self,
-        f: F,
-    ) -> Result<Self::InnerType, Self::InnerType>
-    where
-        F: FnMut(u8) -> Option<u8>,
-    {
-        self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f)
-    }
+    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
+    // where
+    //     F: FnMut(u8) -> Option<u8>,
+    // {
+    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
+    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
         new: Self::InnerType,
-    ) -> Result<Self::InnerType, Self::InnerType> {
-        self.0.compare_exchange(
+    ) -> CasResult<Self::InnerType> {
+        CasResult(self.0.compare_exchange(
             current,
             new,
             Ordering::SeqCst,
             Ordering::SeqCst,
-        )
+        ))
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
@@ -192,26 +84,23 @@ impl AtomicBitmap for AtomicStride3 {
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
     }
-    fn fetch_update<F>(
-        &self,
-        f: F,
-    ) -> Result<Self::InnerType, Self::InnerType>
-    where
-        F: FnMut(u16) -> Option<u16>,
-    {
-        self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f)
-    }
+    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
+    // where
+    //     F: FnMut(u16) -> Option<u16>,
+    // {
+    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
+    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
         new: Self::InnerType,
-    ) -> Result<Self::InnerType, Self::InnerType> {
-        self.0.compare_exchange(
+    ) -> CasResult<Self::InnerType> {
+        CasResult(self.0.compare_exchange(
             current,
             new,
             Ordering::SeqCst,
             Ordering::SeqCst,
-        )
+        ))
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
@@ -227,26 +116,23 @@ impl AtomicBitmap for AtomicStride4 {
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
     }
-    fn fetch_update<F>(
-        &self,
-        f: F,
-    ) -> Result<Self::InnerType, Self::InnerType>
-    where
-        F: FnMut(u32) -> Option<u32>,
-    {
-        self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f)
-    }
+    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
+    // where
+    //     F: FnMut(u32) -> Option<u32>,
+    // {
+    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
+    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
         new: Self::InnerType,
-    ) -> Result<Self::InnerType, Self::InnerType> {
-        self.0.compare_exchange(
+    ) -> CasResult<Self::InnerType> {
+        CasResult(self.0.compare_exchange(
             current,
             new,
             Ordering::SeqCst,
             Ordering::SeqCst,
-        )
+        ))
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
@@ -262,33 +148,172 @@ impl AtomicBitmap for AtomicStride5 {
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
     }
-    fn fetch_update<F>(
-        &self,
-        f: F,
-    ) -> Result<Self::InnerType, Self::InnerType>
-    where
-        F: FnMut(u64) -> Option<u64>,
-    {
-        self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f)
-    }
+    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
+    // where
+    //     F: FnMut(u64) -> Option<u64>,
+    // {
+    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
+    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
         new: Self::InnerType,
-    ) -> Result<Self::InnerType, Self::InnerType> {
-        self.0.compare_exchange(
+    ) -> CasResult<Self::InnerType> {
+        CasResult(self.0.compare_exchange(
             current,
             new,
             Ordering::SeqCst,
             Ordering::SeqCst,
-        )
+        ))
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
     }
 }
 
-// Sized + Debug + Binary + Eq + PartialOrd + PartialEq + Copy
+impl AtomicBitmap for AtomicStride6 {
+    type InnerType = u128;
+
+    fn new() -> Self {
+        AtomicStride6(AtomicU128::new(0))
+    }
+    fn inner(self) -> Self::InnerType {
+        let hi = self.0 .0.into_inner().to_be_bytes();
+        let lo = self.0 .1.into_inner().to_be_bytes();
+
+        u128::from_be_bytes([
+            hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
+            lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
+        ])
+    }
+    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
+    // where
+    //     F: FnMut(u128) -> Option<u128>,
+    // {
+    //     let hi: AtomicU64 = self.0 .0;
+    //     (
+    //         self.0
+    //              .0
+    //             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, f),
+    //         self.0
+    //              .1
+    //             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, f),
+    //     )
+    //         .into()
+    // }
+    fn compare_exchange(
+        &self,
+        current: Self::InnerType,
+        new: Self::InnerType,
+    ) -> CasResult<Self::InnerType> {
+        // TODO TODO
+        // This is not actually thread-safe, it actually
+        // needs a memory fence, since we're writing
+        // to two different memory locations.
+        (
+            self.0 .0.compare_exchange(
+                ((current << 64) >> 64) as u64,
+                ((new >> 64) << 64) as u64,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ),
+            self.0 .1.compare_exchange(
+                ((current << 64) >> 64) as u64,
+                ((new >> 64) << 64) as u64,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ),
+        )
+            .into()
+    }
+    fn load(&self) -> Self::InnerType {
+        let hi = self.0 .0.load(Ordering::SeqCst).to_be_bytes();
+        let lo = self.0 .1.load(Ordering::SeqCst).to_be_bytes();
+        u128::from_be_bytes([
+            hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
+            lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
+        ])
+    }
+}
+
+impl From<(Result<u64, u64>, Result<u64, u64>)> for CasResult<u128> {
+    fn from(r: (Result<u64, u64>, Result<u64, u64>)) -> Self {
+        match r {
+            (Ok(hi), Ok(lo)) => CasResult::new(u128::from_be_bytes([
+                hi.to_be_bytes()[0],
+                hi.to_be_bytes()[1],
+                hi.to_be_bytes()[2],
+                hi.to_be_bytes()[3],
+                hi.to_be_bytes()[4],
+                hi.to_be_bytes()[5],
+                hi.to_be_bytes()[6],
+                hi.to_be_bytes()[7],
+                lo.to_be_bytes()[0],
+                lo.to_be_bytes()[1],
+                lo.to_be_bytes()[2],
+                lo.to_be_bytes()[3],
+                lo.to_be_bytes()[4],
+                lo.to_be_bytes()[5],
+                lo.to_be_bytes()[6],
+                lo.to_be_bytes()[7],
+            ])),
+            (Err(hi), Ok(lo)) => CasResult(Err(u128::from_be_bytes([
+                hi.to_be_bytes()[0],
+                hi.to_be_bytes()[1],
+                hi.to_be_bytes()[2],
+                hi.to_be_bytes()[3],
+                hi.to_be_bytes()[4],
+                hi.to_be_bytes()[5],
+                hi.to_be_bytes()[6],
+                hi.to_be_bytes()[7],
+                lo.to_be_bytes()[0],
+                lo.to_be_bytes()[1],
+                lo.to_be_bytes()[2],
+                lo.to_be_bytes()[3],
+                lo.to_be_bytes()[4],
+                lo.to_be_bytes()[5],
+                lo.to_be_bytes()[6],
+                lo.to_be_bytes()[7],
+            ]))),
+            (Ok(hi), Err(lo)) => CasResult(Err(u128::from_be_bytes([
+                hi.to_be_bytes()[0],
+                hi.to_be_bytes()[1],
+                hi.to_be_bytes()[2],
+                hi.to_be_bytes()[3],
+                hi.to_be_bytes()[4],
+                hi.to_be_bytes()[5],
+                hi.to_be_bytes()[6],
+                hi.to_be_bytes()[7],
+                lo.to_be_bytes()[0],
+                lo.to_be_bytes()[1],
+                lo.to_be_bytes()[2],
+                lo.to_be_bytes()[3],
+                lo.to_be_bytes()[4],
+                lo.to_be_bytes()[5],
+                lo.to_be_bytes()[6],
+                lo.to_be_bytes()[7],
+            ]))),
+            (Err(hi), Err(lo)) => CasResult(Err(u128::from_be_bytes([
+                hi.to_be_bytes()[0],
+                hi.to_be_bytes()[1],
+                hi.to_be_bytes()[2],
+                hi.to_be_bytes()[3],
+                hi.to_be_bytes()[4],
+                hi.to_be_bytes()[5],
+                hi.to_be_bytes()[6],
+                hi.to_be_bytes()[7],
+                lo.to_be_bytes()[0],
+                lo.to_be_bytes()[1],
+                lo.to_be_bytes()[2],
+                lo.to_be_bytes()[3],
+                lo.to_be_bytes()[4],
+                lo.to_be_bytes()[5],
+                lo.to_be_bytes()[6],
+                lo.to_be_bytes()[7],
+            ]))),
+        }
+    }
+}
 
 pub trait Stride:
     Sized + Debug + Eq + Binary + PartialOrd + PartialEq + Zero
