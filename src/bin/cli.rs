@@ -56,8 +56,8 @@ fn load_prefixes(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
     let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-        vec![8, 3, 3, 3, 3, 3, 3, 3, 3],
-        vec![8],
+        vec![4, 4, 3, 3, 3, 3, 3, 3, 3, 3],
+        vec![4],
     );
 
     if let Err(err) = load_prefixes(&mut pfxs) {
