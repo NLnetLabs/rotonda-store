@@ -16,7 +16,7 @@ pub(crate) use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::storage_backend::{SizedNodeOption, SizedNodeResult};
 use crate::synth_int::{U256, U512};
 
-use std::sync::atomic::{AtomicU8, AtomicU16, AtomicU32, AtomicU64};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
@@ -45,8 +45,7 @@ pub(crate) enum SizedStrideNode<
 }
 
 impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
-    Default
-    for TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
+    Default for TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
     S: Stride,
@@ -100,8 +99,11 @@ pub enum SizedStrideRef<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy>
 }
 
 #[derive(Debug)]
-pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily, NodeId: SortableNodeId + Copy>
-{
+pub(crate) enum SizedStrideRefMut<
+    'a,
+    AF: AddressFamily,
+    NodeId: SortableNodeId + Copy,
+> {
     Stride3(&'a mut TreeBitMapNode<AF, Stride3, NodeId, 14, 8>),
     Stride4(&'a mut TreeBitMapNode<AF, Stride4, NodeId, 30, 16>),
     Stride5(&'a mut TreeBitMapNode<AF, Stride5, NodeId, 62, 32>),
@@ -142,7 +144,7 @@ pub(crate) enum NewNodeOrIndex<
 > {
     NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), // New Node and bit_id of the new node
     ExistingNode(NodeId),
-    NewPrefix,
+    NewPrefix(NodeId::Sort),
     ExistingPrefix(NodeId::Part),
 }
 
@@ -273,32 +275,34 @@ impl<NodeId: SortableNodeId + Copy, const ARRAYSIZE: usize>
     NodeCollection<NodeId> for NodeSet<NodeId, ARRAYSIZE>
 {
     fn insert(&mut self, insert_node: NodeId) {
-        let idx = self
-            .0
-            .as_ref()
-            .binary_search_by(|n| n.cmp(&insert_node))
-            .unwrap_or_else(|x| x);
-        if idx + 1 < ARRAYSIZE {
-            self.0.copy_within(idx..ARRAYSIZE - 1, idx + 1);
-        }
-        if idx < ARRAYSIZE {
-            self.0[idx] = insert_node;
-        }
+        // let idx = self
+        //     .0
+        //     .as_ref()
+        //     .binary_search_by(|n| n.cmp(&insert_node))
+        //     .unwrap_or_else(|x| x);
+        // if idx + 1 < ARRAYSIZE {
+        //     self.0.copy_within(idx..ARRAYSIZE - 1, idx + 1);
+        // }
+        // if idx < ARRAYSIZE {
+        //     self.0[idx] = insert_node;
+        // }
+
+        self.0[insert_node.get_sort().into()] = insert_node;
     }
 
     fn as_slice(&self) -> &[NodeId] {
-        let idx = self
-            .0
-            .as_ref()
-            .binary_search_by(|n| {
-                if n.is_empty() {
-                    std::cmp::Ordering::Greater
-                } else {
-                    std::cmp::Ordering::Less
-                }
-            })
-            .unwrap_or_else(|x| x);
-        &self.0[0..idx]
+        // let idx = self
+        //     .0
+        //     .as_ref()
+        //     .binary_search_by(|n| {
+        //         if n.is_empty() {
+        //             std::cmp::Ordering::Greater
+        //         } else {
+        //             std::cmp::Ordering::Less
+        //         }
+        //     })
+        //     .unwrap_or_else(|x| x);
+        &self.0[..]
     }
 
     fn empty() -> Self {
@@ -647,34 +651,43 @@ where
         match start_node {
             SizedStrideRef::Stride3(n) => {
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
-                    self.get_all_more_specifics_for_node(
-                        self.retrieve_node(*nn).unwrap(),
-                        found_pfx_vec,
-                    );
+                    if !nn.is_empty() {
+                        self.get_all_more_specifics_for_node(
+                            self.retrieve_node(*nn).unwrap(),
+                            found_pfx_vec,
+                        );
+                    }
                 }
             }
             SizedStrideRef::Stride4(n) => {
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
-                    self.get_all_more_specifics_for_node(
-                        self.retrieve_node(*nn).unwrap(),
-                        found_pfx_vec,
-                    );
+                    if !nn.is_empty() {
+                        self.get_all_more_specifics_for_node(
+                            self.retrieve_node(*nn).unwrap(),
+                            found_pfx_vec,
+                        );
+                    }
                 }
             }
             SizedStrideRef::Stride5(n) => {
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
-                    self.get_all_more_specifics_for_node(
-                        self.retrieve_node(*nn).unwrap(),
-                        found_pfx_vec,
-                    );
+                    if !nn.is_empty() {
+                        self.get_all_more_specifics_for_node(
+                            self.retrieve_node(*nn).unwrap(),
+                            found_pfx_vec,
+                        );
+                    }
                 }
-            }
+            } 
             // SizedStrideNode::Stride6(n) => {
             //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
 

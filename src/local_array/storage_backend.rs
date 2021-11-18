@@ -78,10 +78,13 @@ where
     //     stride_size: u8,
     // ) -> Option<SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
+    // The Node and Prefix ID consist of the same type, that
+    // have a `sort` field, that descibes the index of the local array
+    // (stored inside each node) and the `part` fiels, that describes
+    // the index of the prefix in the global store.
     fn acquire_new_prefix_id(
         &self,
         sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        part: &InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> <Self as StorageBackend>::NodeType;
     fn store_prefix(
         &mut self,
@@ -452,13 +455,11 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn acquire_new_prefix_id(
         &self,
         sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        _part: &InternalPrefixRecord<
-            <Self as StorageBackend>::AF,
-            <Self as StorageBackend>::Meta,
-        >,
     ) -> <Self as StorageBackend>::NodeType {
-        // We're ignoring the part parameter here, because we want to store
-        // the index into the global self.prefixes vec in the local vec.
+        // The return value the StrideType doesn't matter here,
+        // because we store all prefixes in one huge vec (unlike the nodes,
+        // which are stored in separate vec for each stride size).
+        // We'll return the index to the end of the vec.
         InMemStrideNodeId::new(
             sort,
             &StrideNodeId(StrideType::Stride5, self.prefixes.len() as u32),

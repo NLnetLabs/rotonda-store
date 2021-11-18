@@ -49,7 +49,7 @@ macro_rules! match_node_for_strides {
                     //     SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
-                NewNodeOrIndex::NewPrefix => {
+                NewNodeOrIndex::NewPrefix(sort_id) => {
 
                     // let pfx_len = $pfx.len.clone();
                     // let pfx_net = $pfx.net.clone();
@@ -58,7 +58,8 @@ macro_rules! match_node_for_strides {
                     // nibble_len, so that nibble_len determines the base
                     // position (2^nibble_len) and then nibble is the offset
                     // from the base position.
-                    let new_id = $self.store.acquire_new_prefix_id(&((1 << $nibble_len) + $nibble as u16).into(), &$pfx);
+                    // let new_id = $self.store.acquire_new_prefix_id(&((1 << ($nibble_len - 1)) + $nibble as u16).into());
+                    let new_id = $self.store.acquire_new_prefix_id(&sort_id);
                     $self.stats[$stats_level].inc_prefix_count($level);
 
                     current_node
@@ -90,7 +91,7 @@ macro_rules! match_node_for_strides {
                     // );
                     return Ok(());
                 }
-            } 
+            }
             }
         )*,
         }
@@ -163,7 +164,7 @@ macro_rules! match_node_for_strides {
 // implementations for left|right shift, counting ones etc.
 #[doc(hidden)]
 macro_rules! impl_primitive_atomic_stride {
-    ( 
+    (
         $(
             $len: expr;
             $bits: expr;
@@ -171,7 +172,7 @@ macro_rules! impl_primitive_atomic_stride {
             $atomicpfxsize: ty;
             $ptrsize: ty;
             $atomicptrsize: ty
-        ), 
+        ),
     *) => {
         $(
             impl Stride for $pfxsize {
@@ -183,29 +184,35 @@ macro_rules! impl_primitive_atomic_stride {
 
                 fn get_bit_pos(nibble: u32, len: u8) -> $pfxsize {
                     1 << (
-                            <Self as Stride>::BITS - ((1 << len) - 1) as u8  
+                            <Self as Stride>::BITS - ((1 << len) - 1) as u8
                             - nibble as u8 - 1
-                        )
+                    )
                 }
 
-                fn get_pfx_index(bitmap: $pfxsize, nibble: u32, len: u8) 
+                fn get_pfx_index(_bitmap: $pfxsize, nibble: u32, len: u8)
                 -> usize {
-                    (
-                        bitmap >> (
-                            (
-                                <Self as Stride>::BITS - ((1 << len) - 1) as u8 
-                                - nibble as u8 - 1
-                            ) as usize
-                        )
-                    ).count_ones() as usize
-                    - 1
+                    // (
+                    //     bitmap >> (
+                    //         (
+                    //             <Self as Stride>::BITS - ((1 << len) - 1) as u8
+                    //             - nibble as u8 - 1
+                    //         ) as usize
+                    //     )
+                    // ).count_ones() as usize
+                    // - 1
+                    
+
+                    (Self::get_bit_pos(nibble, len).leading_zeros() - 1) as usize
+
                 }
-                fn get_ptr_index(bitmap: $ptrsize, nibble: u32) -> usize {
-                    (
-                        bitmap >> (
-                        (<Self as Stride>::BITS >> 1) - nibble as u8 - 1) as usize
-                    ).count_ones() as usize
-                    - 1
+                fn get_ptr_index(_bitmap: $ptrsize, nibble: u32) -> usize {
+                    // (
+                    //     bitmap >> (
+                    //     (<Self as Stride>::BITS >> 1) - nibble as u8 - 1) as usize
+                    // ).count_ones() as usize
+                    // - 1
+                    // ((<Self as Stride>::BITS >> 1) - nibble as u8 - 1) as usize
+                    (nibble as u16).into()
                 }
 
                 fn into_stride_size(bitmap: $ptrsize) -> $pfxsize {

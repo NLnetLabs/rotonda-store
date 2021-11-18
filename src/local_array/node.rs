@@ -213,12 +213,12 @@ where
                 // so the number of zeros in front of it should always be unique and describes
                 // the index of this node in the ptrbitarr.
                 // ex.:
-                // In a stride3 (ptrbitarr lenght is 8):
+                // In a stride3 (ptrbitarr length is 8):
                 // bit_pos 0001 0000
-                // so this is the fourth bit, so points to index = 3
+                // so this is the fourth bit, so points to index = 3                
                 return NewNodeOrIndex::NewNode(
                     new_node,
-                    (bit_pos.leading_zeros() as u16).into(),
+                    (nibble as u16).into(),
                 );
             }
         } else {
@@ -230,7 +230,7 @@ where
                 // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
                 let res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
-                return NewNodeOrIndex::NewPrefix;
+                return NewNodeOrIndex::NewPrefix(((<S as Stride>::get_bit_pos(nibble, nibble_len).leading_zeros() - 1) as u16).into());
             }
             return NewNodeOrIndex::ExistingPrefix(
                 self.pfx_vec[S::get_pfx_index(pfxbitarr, nibble, nibble_len)]
