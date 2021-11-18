@@ -230,10 +230,10 @@ where
                 // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
                 let res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
-                return NewNodeOrIndex::NewPrefix(((<S as Stride>::get_bit_pos(nibble, nibble_len).leading_zeros() - 1) as u16).into());
+                return NewNodeOrIndex::NewPrefix((<S as Stride>::get_pfx_index(nibble, nibble_len) as u16).into());
             }
             return NewNodeOrIndex::ExistingPrefix(
-                self.pfx_vec[S::get_pfx_index(pfxbitarr, nibble, nibble_len)]
+                self.pfx_vec[S::get_pfx_index(nibble, nibble_len)]
                     .get_part(),
             );
         }
@@ -275,7 +275,7 @@ where
             // Check it there's a prefix matching in this bitmap for this nibble
             if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                 let f_pfx = self.pfx_vec
-                    [S::get_pfx_index(pfxbitarr, nibble, n_l)];
+                    [S::get_pfx_index(nibble, n_l)];
 
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
@@ -344,7 +344,6 @@ where
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_pfx = Some(
                         self.pfx_vec[S::get_pfx_index(
-                            pfxbitarr,
                             nibble,
                             nibble_len,
                         )],
@@ -408,14 +407,14 @@ where
                 if n_l == nibble_len {
                     found_pfx = Some(
                         self.pfx_vec
-                            [S::get_pfx_index(pfxbitarr, nibble, n_l)],
+                            [S::get_pfx_index(nibble, n_l)],
                     );
                 }
 
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
                 ls_vec.push(
-                    self.pfx_vec[S::get_pfx_index(pfxbitarr, nibble, n_l)],
+                    self.pfx_vec[S::get_pfx_index(nibble, n_l)],
                 );
             }
         }
@@ -523,7 +522,6 @@ where
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
                         self.pfx_vec[S::get_pfx_index(
-                            pfxbitarr,
                             ms_nibble,
                             ms_nibble_len,
                         )],

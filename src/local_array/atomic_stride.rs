@@ -363,8 +363,10 @@ where
     // `nibble`
     // The bit position relative to the offset for the nibble length, this index
     // is only used at the last (relevant) stride, so the offset is always 0.
+
+    // get_pfx_index only needs nibble and len for fixed-layout bitarrays,
+    // since the index can be deducted from them.
     fn get_pfx_index(
-        bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
         nibble: u32,
         len: u8,
     ) -> usize;

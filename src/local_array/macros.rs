@@ -189,7 +189,7 @@ macro_rules! impl_primitive_atomic_stride {
                     )
                 }
 
-                fn get_pfx_index(_bitmap: $pfxsize, nibble: u32, len: u8)
+                fn get_pfx_index(nibble: u32, len: u8)
                 -> usize {
                     // (
                     //     bitmap >> (
