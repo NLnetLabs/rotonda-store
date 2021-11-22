@@ -1,9 +1,8 @@
 pub use super::atomic_stride::*;
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
-use crate::node_id::SortableNodeId;
 use crate::prefix_record::InternalPrefixRecord;
-use num::{PrimInt, Zero};
+use num::Zero;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 // use crate::synth_int::{Zero, U256, U512};
 use std::{
@@ -211,7 +210,7 @@ where
                 // so this is the fourth bit, so points to index = 3                
                 return NewNodeOrIndex::NewNode(
                     new_node,
-                    (nibble as u16).into(),
+                    nibble as u16,
                 );
             }
         } else {
@@ -223,7 +222,7 @@ where
                 // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
                 let res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
-                return NewNodeOrIndex::NewPrefix((<S as Stride>::get_pfx_index(nibble, nibble_len) as u16).into());
+                return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
             return NewNodeOrIndex::ExistingPrefix(
                 self.pfx_vec[S::get_pfx_index(nibble, nibble_len)]
