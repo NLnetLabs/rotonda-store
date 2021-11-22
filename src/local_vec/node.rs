@@ -11,7 +11,7 @@ use std::{
 
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::NoMeta;
 
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>

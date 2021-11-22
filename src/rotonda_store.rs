@@ -3,10 +3,12 @@ use std::{fmt, slice};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::{
-    addr::{AddressFamily, IPv4, IPv6, Prefix},
+    addr::Prefix,
     bgp::{PrefixRecord, RecordSet},
     record::{MergeUpdate, Record},
 };
+
+pub use crate::af::{AddressFamily, IPv4, IPv6};
 
 //------------ The publicly available Rotonda Stores ------------------------
 

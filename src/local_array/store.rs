@@ -4,7 +4,7 @@ use crate::MatchOptions;
 use crate::{QueryResult, Stats, Strides};
 use crate::prefix_record::InternalPrefixRecord;
 use routecore::addr::Prefix;
-use routecore::addr::{IPv4, IPv6};
+use crate::af::{IPv4, IPv6};
 use routecore::record::{Meta, MergeUpdate, NoMeta};
 
 use std::fmt;

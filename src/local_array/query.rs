@@ -1,4 +1,4 @@
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 use routecore::bgp::RecordSet;

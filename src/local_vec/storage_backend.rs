@@ -4,7 +4,7 @@ pub use crate::stride::*;
 
 use crate::local_vec::tree::*;
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::MergeUpdate;
 
 use std::fmt::Debug;

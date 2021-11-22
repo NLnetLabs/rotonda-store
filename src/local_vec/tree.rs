@@ -8,7 +8,7 @@ use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::StorageBackend;
 use crate::stats::{SizedStride, StrideStats};
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::MergeUpdate;
 
 use std::{

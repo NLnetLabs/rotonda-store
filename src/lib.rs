@@ -10,6 +10,7 @@
 //! Part of the (upcoming) Rotonda modular BGP engine.
 
 //! Read more about the data-structure in this [blog post](https://blog.nlnetlabs.nl/donkeys-mules-horses/).
+mod af;
 mod stride;
 mod synth_int;
 mod node_id;

@@ -4,7 +4,7 @@ use crate::node_id::SortableNodeId;
 use crate::prefix_record::InternalPrefixRecord;
 use std::fmt::Debug;
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::{MergeUpdate, Meta};
 
 pub(crate) type PrefixIter<'a, AF, Meta> = Result<

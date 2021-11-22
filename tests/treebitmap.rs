@@ -3,7 +3,7 @@ mod test {
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
     };
-    use routecore::addr::AddressFamily;
+    use rotonda_store::AddressFamily;
     use routecore::addr::Prefix;
     use routecore::record::NoMeta;
 

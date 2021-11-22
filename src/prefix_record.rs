@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::{MergeUpdate, Meta};
 
 //------------ InternalPrefixRecord -----------------------------------------

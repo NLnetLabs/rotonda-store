@@ -1,4 +1,4 @@
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;

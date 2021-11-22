@@ -11,7 +11,7 @@ use std::{
     marker::PhantomData,
 };
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::NoMeta;
 
 //------------ TreeBitMap Node ----------------------------------------------
