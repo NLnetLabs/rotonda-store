@@ -13,7 +13,6 @@ use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
-use crate::local_array::storage_backend::{SizedNodeOption, SizedNodeResult};
 use crate::synth_int::{U256, U512};
 
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};

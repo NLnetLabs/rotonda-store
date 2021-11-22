@@ -29,7 +29,6 @@ pub(crate) type SizedNodeRefOption<'a, AF> =
 
 pub(crate) trait StorageBackend
 {
-    type NodeType;
     type AF: AddressFamily;
     type Meta: Meta + MergeUpdate;
 
@@ -67,7 +66,7 @@ pub(crate) trait StorageBackend
     ) -> SizedNodeResult<Self::AF>;
     fn retrieve_node_with_guard(
         &self,
-        index: Self::NodeType,
+        index: StrideNodeId,
     ) -> CacheGuard<Self::AF>;
     fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>>;
     fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId;
@@ -124,17 +123,15 @@ pub(crate) struct InMemStorage<
     pub nodes3: Vec<TreeBitMapNode<AF, Stride3, 14, 8>>,
     pub nodes4: Vec<TreeBitMapNode<AF, Stride4, 30, 16>>,
     pub nodes5: Vec<TreeBitMapNode<AF, Stride5, 62, 32>>,
-    // pub nodes6: Vec<TreeBitMapNode<AF, Stride6, InMemStrideNodeId, 126, 64>>,
-    // pub nodes7: Vec<TreeBitMapNode<AF, Stride7, InMemStrideNodeId, 254, 128>>,
-    // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, InMemStrideNodeId, 510, 256>>,
+    // pub nodes6: Vec<TreeBitMapNode<AF, Stride6, 126, 64>>,
+    // pub nodes7: Vec<TreeBitMapNode<AF, Stride7, 254, 128>>,
+    // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, 510, 256>>,
     pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     StorageBackend for InMemStorage<AF, Meta>
 {
-    type NodeType = InMemStrideNodeId;
-
     type AF = AF;
     type Meta = Meta;
 
@@ -392,7 +389,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     // inefficient implementation.
     fn retrieve_node_with_guard(
         &self,
-        _id: Self::NodeType,
+        _id: StrideNodeId,
     ) -> CacheGuard<Self::AF> {
         panic!("Not Implemented for InMeMStorage");
     }
