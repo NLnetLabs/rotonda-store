@@ -19,7 +19,6 @@ use routecore::record::NoMeta;
 pub struct TreeBitMapNode<
     AF,
     S,
-    NodeId,
     const PFXARRAYSIZE: usize,
     const PTRARRAYSIZE: usize,
 > where
@@ -29,7 +28,6 @@ pub struct TreeBitMapNode<
     <S as Stride>::AtomicPfxSize: AtomicBitmap,
     <S as Stride>::AtomicPtrSize: AtomicBitmap,
     AF: AddressFamily,
-    NodeId: SortableNodeId + Copy,
 {
     pub ptrbitarr: <S as Stride>::AtomicPtrSize,
     pub pfxbitarr: <S as Stride>::AtomicPfxSize,
@@ -37,25 +35,23 @@ pub struct TreeBitMapNode<
     // referenced by (bit_id, global prefix index)
     // This is the exact same type as for the NodeIds,
     // so we reuse that.
-    pub pfx_vec: NodeSet<NodeId, PFXARRAYSIZE>,
+    pub pfx_vec: NodeSet<PFXARRAYSIZE>,
     // The vec of child nodes hosted by this
     // node, referenced by (ptrbitarr_index, global vec index)
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
-    pub ptr_vec: NodeSet<NodeId, PTRARRAYSIZE>,
+    pub ptr_vec: NodeSet<PTRARRAYSIZE>,
     pub _af: PhantomData<AF>,
 }
 
-impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
-    Debug for TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Debug
+    for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     <S as Stride>::AtomicPtrSize: AtomicBitmap,
     <S as Stride>::AtomicPfxSize: AtomicBitmap,
-    NodeId: SortableNodeId + Copy,
-    // <NodeId as SortableNodeId>::Part: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeBitMapNode")
@@ -67,16 +63,14 @@ where
     }
 }
 
-impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
-    std::fmt::Display
-    for TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
+    std::fmt::Display for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     <S as Stride>::AtomicPfxSize: AtomicBitmap,
     <S as Stride>::AtomicPtrSize: AtomicBitmap,
-    NodeId: SortableNodeId + Copy,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -90,8 +84,8 @@ where
     }
 }
 
-impl<AF, S, NodeId, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
-    TreeBitMapNode<AF, S, NodeId, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
+    TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
     S: Stride
@@ -106,7 +100,6 @@ where
         + Zero,
     <S as Stride>::AtomicPfxSize: AtomicBitmap,
     <S as Stride>::AtomicPtrSize: AtomicBitmap,
-    NodeId: SortableNodeId + Copy,
 {
     // Inspects the stride (nibble, nibble_len) to see it there's
     // already a child node (if not at the last stride) or a prefix
@@ -123,11 +116,11 @@ where
         nibble_len: u8,
         next_stride: Option<&u8>,
         is_last_stride: bool,
-    ) -> NewNodeOrIndex<AF, NodeId> {
+    ) -> NewNodeOrIndex<AF> {
         let ptrbitarr = self.ptrbitarr.load();
         let pfxbitarr = self.pfxbitarr.load();
         let bit_pos = S::get_bit_pos(nibble, nibble_len);
-        let new_node: SizedStrideNode<AF, NodeId>;
+        let new_node: SizedStrideNode<AF>;
 
         // Check that we're not at the last stride (pfx.len <= stride_end),
         // Note that next_stride may have a value, but we still don't want to
@@ -234,7 +227,6 @@ where
             }
             return NewNodeOrIndex::ExistingPrefix(
                 self.pfx_vec[S::get_pfx_index(nibble, nibble_len)]
-                    .get_part(),
             );
         }
 
@@ -256,8 +248,8 @@ where
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
-        less_specifics_vec: &mut Option<Vec<NodeId>>,
-    ) -> (Option<NodeId>, Option<NodeId>) {
+        less_specifics_vec: &mut Option<Vec<StrideNodeId>>,
+    ) -> (Option<StrideNodeId>, Option<StrideNodeId>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -324,8 +316,8 @@ where
         nibble: u32,
         nibble_len: u8,
         start_bit: u8,
-        _: &mut Option<Vec<NodeId>>,
-    ) -> (Option<NodeId>, Option<NodeId>) {
+        _: &mut Option<Vec<StrideNodeId>>,
+    ) -> (Option<StrideNodeId>, Option<StrideNodeId>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         // This is an exact match, so we're only considering the position of
@@ -379,8 +371,8 @@ where
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
-        less_specifics_vec: &mut Option<Vec<NodeId>>,
-    ) -> (Option<NodeId>, Option<NodeId>) {
+        less_specifics_vec: &mut Option<Vec<StrideNodeId>>,
+    ) -> (Option<StrideNodeId>, Option<StrideNodeId>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -453,13 +445,13 @@ where
         nibble_len: u8,
     ) -> (
         // Option<NodeId>, /* the node with children in the next stride  */
-        Vec<NodeId>, /* child nodes with more more-specifics in this stride */
-        Vec<NodeId>, /* more-specific prefixes in this stride */
+        Vec<StrideNodeId>, /* child nodes with more more-specifics in this stride */
+        Vec<StrideNodeId>, /* more-specific prefixes in this stride */
     ) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut found_children_with_more_specifics = vec![];
-        let mut found_more_specifics_vec: Vec<NodeId> = vec![];
+        let mut found_more_specifics_vec: Vec<StrideNodeId> = vec![];
 
         // This is an exact match, so we're only considering the position of the full nibble.
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);

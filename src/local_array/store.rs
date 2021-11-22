@@ -100,7 +100,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 
     pub fn nodes_v4_iter(
         &'a self,
-    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv4, InMemStrideNodeId>> + 'a {
+    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv4>> + 'a {
         self.v4
             .store
             .nodes3
@@ -145,7 +145,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 
     pub fn nodes_v6_iter(
         &'a self,
-    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv6, InMemStrideNodeId>> + 'a {
+    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv6>> + 'a {
         self.v6
             .store
             .nodes3

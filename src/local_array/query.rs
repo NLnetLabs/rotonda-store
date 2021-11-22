@@ -12,7 +12,7 @@ use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
 use crate::{MatchOptions, MatchType};
 
-use super::node::SizedStrideRef;
+use super::node::{SizedStrideRef, StrideNodeId};
 
 //------------ Longest Matching Prefix  -------------------------------------
 
@@ -54,19 +54,19 @@ where
 
         // The final prefix
         let mut match_prefix_idx: Option<
-            <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
+            StrideNodeId,
         > = None;
 
         // The indexes of the less-specifics
         let mut less_specifics_vec = if options.include_less_specifics {
-            Some(Vec::<Store::NodeType>::new())
+            Some(Vec::<StrideNodeId>::new())
         } else {
             None
         };
 
         // The indexes of the more-specifics.
         let mut more_specifics_vec = if options.include_more_specifics {
-            Some(Vec::<Store::NodeType>::new())
+            Some(Vec::<StrideNodeId>::new())
         } else {
             None
         };
@@ -143,7 +143,7 @@ where
                         // intermediary nodes, but they might also handle
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             node = self.store.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
@@ -183,7 +183,7 @@ where
                                         nibble_len,
                                     );
                             }
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         // This handles cases where there's no prefix (and no
@@ -243,7 +243,7 @@ where
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
@@ -280,7 +280,7 @@ where
                                         nibble_len,
                                     );
                             }
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         (None, None) => {
@@ -332,7 +332,7 @@ where
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
@@ -369,7 +369,7 @@ where
                                         nibble_len,
                                     );
                             }
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         (None, None) => {
@@ -697,7 +697,7 @@ where
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
                     vec.iter()
-                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                        .map(|p| self.retrieve_prefix(*p).unwrap())
                         .collect::<RecordSet<'a, Store::Meta>>()
                 })
             } else {
@@ -706,7 +706,7 @@ where
             more_specifics: if options.include_more_specifics {
                 more_specifics_vec.map(|vec| {
                     vec.iter()
-                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                        .map(|p| self.retrieve_prefix(*p).unwrap())
                         .collect()
                 })
             } else {

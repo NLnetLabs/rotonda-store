@@ -31,11 +31,11 @@ macro_rules! match_node_for_strides {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
                     $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     // let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
-                    let new_id = $self.store.acquire_new_node_id(bit_id, $self.strides[($level + 1) as usize]);
+                    let new_id = $self.store.acquire_new_node_id($self.strides[($level + 1) as usize]);
                     // current_node.ptr_vec.push(new_id);
-                    current_node.ptr_vec.insert(new_id);
+                    current_node.ptr_vec.insert(bit_id, new_id);
                     // current_node.ptr_vec.sort();
-                    let i = $self.store_node(Some(new_id), n).unwrap();
+                    let i = $self.store_node(new_id, n).unwrap();
 
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
@@ -59,12 +59,12 @@ macro_rules! match_node_for_strides {
                     // position (2^nibble_len) and then nibble is the offset
                     // from the base position.
                     // let new_id = $self.store.acquire_new_prefix_id(&((1 << ($nibble_len - 1)) + $nibble as u16).into());
-                    let new_id = $self.store.acquire_new_prefix_id(&sort_id);
+                    let new_id = $self.store.acquire_new_prefix_id();
                     $self.stats[$stats_level].inc_prefix_count($level);
 
                     current_node
                         .pfx_vec
-                        .insert(new_id);
+                        .insert(sort_id, new_id);
                     // current_node.pfx_vec.sort();
 
                     $self.store_prefix($pfx)?;
