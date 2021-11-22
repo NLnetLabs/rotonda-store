@@ -235,30 +235,31 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let id = self.nodes5.len() as u32;
                 self.nodes5.push(node);
                 Some(StrideNodeId::new(StrideType::Stride5, id))
-            } // SizedStrideNode::Stride6(node) => {
-              //     let id = self.nodes6.len() as u32;
-              //     self.nodes6.push(node);
-              //     Some(InMemStrideNodeId::new(
-              //         &0,
-              //         &StrideNodeId(StrideType::Stride6, id),
-              //     ))
-              // }
-              // SizedStrideNode::Stride7(node) => {
-              //     let id = self.nodes7.len() as u32;
-              //     self.nodes7.push(node);
-              //     Some(InMemStrideNodeId::new(
-              //         &0,
-              //         &StrideNodeId(StrideType::Stride7, id),
-              //     ))
-              // }
-              // SizedStrideNode::Stride8(node) => {
-              //     let id = self.nodes8.len() as u32;
-              //     self.nodes8.push(node);
-              //     Some(InMemStrideNodeId::new(
-              //         &0,
-              //         &StrideNodeId(StrideType::Stride8, id),
-              //     ))
-              // }
+            } 
+            // SizedStrideNode::Stride6(node) => {
+            //     let id = self.nodes6.len() as u32;
+            //     self.nodes6.push(node);
+            //     Some(InMemStrideNodeId::new(
+            //         &0,
+            //         &StrideNodeId(StrideType::Stride6, id),
+            //     ))
+            // }
+            // SizedStrideNode::Stride7(node) => {
+            //     let id = self.nodes7.len() as u32;
+            //     self.nodes7.push(node);
+            //     Some(InMemStrideNodeId::new(
+            //         &0,
+            //         &StrideNodeId(StrideType::Stride7, id),
+            //     ))
+            // }
+            // SizedStrideNode::Stride8(node) => {
+            //     let id = self.nodes8.len() as u32;
+            //     self.nodes8.push(node);
+            //     Some(InMemStrideNodeId::new(
+            //         &0,
+            //         &StrideNodeId(StrideType::Stride8, id),
+            //     ))
+            // }
         }
     }
 
@@ -291,30 +292,31 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         .unwrap(),
                     node,
                 );
-            } // SizedStrideNode::Stride6(node) => {
-              //     let _default_val = std::mem::replace(
-              //         self.nodes6
-              //             .get_mut::<usize>(current_node_id.get_part().into())
-              //             .unwrap(),
-              //         node,
-              //     );
-              // }
-              // SizedStrideNode::Stride7(node) => {
-              //     let _default_val = std::mem::replace(
-              //         self.nodes7
-              //             .get_mut::<usize>(current_node_id.get_part().into())
-              //             .unwrap(),
-              //         node,
-              //     );
-              // }
-              // SizedStrideNode::Stride8(node) => {
-              //     let _default_val = std::mem::replace(
-              //         self.nodes8
-              //             .get_mut::<usize>(current_node_id.get_part().into())
-              //             .unwrap(),
-              //         node,
-              //     );
-              // }
+            } 
+            // SizedStrideNode::Stride6(node) => {
+            //     let _default_val = std::mem::replace(
+            //         self.nodes6
+            //             .get_mut::<usize>(current_node_id.get_part().into())
+            //             .unwrap(),
+            //         node,
+            //     );
+            // }
+            // SizedStrideNode::Stride7(node) => {
+            //     let _default_val = std::mem::replace(
+            //         self.nodes7
+            //             .get_mut::<usize>(current_node_id.get_part().into())
+            //             .unwrap(),
+            //         node,
+            //     );
+            // }
+            // SizedStrideNode::Stride8(node) => {
+            //     let _default_val = std::mem::replace(
+            //         self.nodes8
+            //             .get_mut::<usize>(current_node_id.get_part().into())
+            //             .unwrap(),
+            //         node,
+            //     );
+            // }
         }
     }
 

@@ -388,9 +388,9 @@ where
             StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
             StrideStats::new(SizedStride::Stride4, strides.len() as u8), // 1
             StrideStats::new(SizedStride::Stride5, strides.len() as u8), // 2
-                                                                         // StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
-                                                                         // StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
-                                                                         // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
+            // StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
+            // StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
+            // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
         let node: SizedStrideNode<<Store as StorageBackend>::AF>;
