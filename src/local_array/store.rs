@@ -9,7 +9,7 @@ use routecore::record::{Meta, MergeUpdate, NoMeta};
 
 use std::fmt;
 
-use super::node::{InMemStrideNodeId, SizedStrideRef};
+use super::node::SizedStrideRef;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {

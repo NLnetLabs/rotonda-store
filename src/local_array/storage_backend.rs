@@ -321,16 +321,16 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         &self,
         id: StrideNodeId,
     ) -> SizedNodeRefOption<'_, Self::AF> {
-        match id {
-            StrideNodeId(StrideType::Stride3, Some(part_id)) => self
+        match id.into_inner() {
+            (StrideType::Stride3, Some(part_id)) => self
                 .nodes3
                 .get(part_id as usize)
                 .map(|n| SizedStrideRef::Stride3(n)),
-            StrideNodeId(StrideType::Stride4, Some(part_id)) => self
+            (StrideType::Stride4, Some(part_id)) => self
                 .nodes4
                 .get(part_id as usize)
                 .map(|n| SizedStrideRef::Stride4(n)),
-            StrideNodeId(StrideType::Stride5, Some(part_id)) => self
+            (StrideType::Stride5, Some(part_id)) => self
                 .nodes5
                 .get(part_id as usize)
                 .map(|n| SizedStrideRef::Stride5(n)),
@@ -346,7 +346,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             //     .nodes8
             //     .get(part_id as usize)
             //     .map(|n| SizedStrideNode::Stride8(*n)),
-            StrideNodeId(_, None) => None,
+            (_, None) => None,
         }
     }
 
@@ -354,20 +354,20 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         &'a mut self,
         id: StrideNodeId,
     ) -> SizedNodeResult<'a, Self::AF> {
-        match id {
-            StrideNodeId(StrideType::Stride3, Some(part_id)) => {
+        match id.into_inner() {
+            (StrideType::Stride3, Some(part_id)) => {
                 Ok(SizedStrideRefMut::Stride3(
                     self.nodes3.get_mut(part_id as usize).unwrap_or_else(
                         || panic!("no {:?} in stride 3 collection", id),
                     ),
                 ))
             }
-            StrideNodeId(StrideType::Stride4, Some(part_id)) => {
+            (StrideType::Stride4, Some(part_id)) => {
                 Ok(SizedStrideRefMut::Stride4(
                     self.nodes4.get_mut(part_id as usize).unwrap(),
                 ))
             }
-            StrideNodeId(StrideType::Stride5, Some(part_id)) => {
+            (StrideType::Stride5, Some(part_id)) => {
                 Ok(SizedStrideRefMut::Stride5(
                     self.nodes5.get_mut(part_id as usize).unwrap(),
                 ))
@@ -381,7 +381,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             // StrideNodeId(StrideType::Stride8, part_id) => Ok(SizedStrideNode::Stride8(
             //     *self.nodes8.get_mut(part_id as usize).unwrap(),
             // )),
-            StrideNodeId(_, None) => panic!("no {:?} in stride collection", id),
+            (_, None) => panic!("no {:?} in stride collection", id),
         }
     }
 

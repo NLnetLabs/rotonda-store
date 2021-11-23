@@ -15,7 +15,9 @@ use crate::stats::{SizedStride, StrideStats};
 pub(crate) use crate::local_array::node::TreeBitMapNode;
 use crate::synth_int::{U256, U512};
 
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
+use std::sync::atomic::{
+    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
@@ -122,19 +124,16 @@ pub(crate) trait NodeWrapper<AF: AddressFamily> {
 }
 
 pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
-    NewNode(
-        SizedStrideNode<AF>,
-        <InMemStrideNodeId as SortableNodeId>::Sort,
-    ), // New Node and bit_id of the new node
+    NewNode(SizedStrideNode<AF>, u16), // New Node and bit_id of the new node
     ExistingNode(StrideNodeId),
-    NewPrefix(<InMemStrideNodeId as SortableNodeId>::Sort),
+    NewPrefix(u16),
     ExistingPrefix(StrideNodeId),
 }
 
 //--------------------- Per-Stride-Node-Id Type ------------------------------------
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Hash, Ord, Debug)]
-pub struct StrideNodeId(pub StrideType, pub Option<u32>);
+pub struct StrideNodeId(StrideType, Option<u32>);
 
 impl StrideNodeId {
     pub fn empty() -> Self {
@@ -151,6 +150,10 @@ impl StrideNodeId {
 
     pub fn get_id(&self) -> u32 {
         self.1.unwrap()
+    }
+
+    pub fn into_inner(self) -> (StrideType, Option<u32>) {
+        (self.0, self.1)
     }
 
     pub fn get_stride_type(&self) -> StrideType {
@@ -189,8 +192,22 @@ impl std::convert::From<StrideNodeId> for usize {
     }
 }
 
-#[derive(Eq, PartialEq, Hash, Debug, Copy, Clone, Default)]
-pub struct InMemStrideNodeId(Option<(u16, StrideNodeId)>);
+pub struct AtomicStrideNodeId(StrideType, Option<AtomicU32>);
+
+impl AtomicStrideNodeId {
+    pub fn into_inner(self) -> (StrideType, Option<u32>) {
+        (self.0, self.1.as_ref().map(|x| x.load(Ordering::Relaxed)))
+    }
+}
+
+impl std::convert::From<AtomicStrideNodeId> for usize {
+    fn from(id: AtomicStrideNodeId) -> Self {
+        id.1.as_ref().map(|x| x.load(Ordering::Relaxed)).unwrap() as usize
+    }
+}
+
+// #[derive(Eq, PartialEq, Hash, Debug, Default)]
+// pub struct InMemStrideNodeId(Option<(u16, StrideNodeId)>);
 
 // This works for both IPv4 and IPv6 up to a certain point.
 // the u16 for Sort is used for ordering the local vecs
@@ -199,72 +216,73 @@ pub struct InMemStrideNodeId(Option<(u16, StrideNodeId)>);
 // so you CANNOT store all IPv6 prefixes that could exist!
 // If you really want that you should implement your own type with trait
 // SortableNodeId, e.g., Sort = u16, Part = u128.
-impl SortableNodeId for InMemStrideNodeId {
-    type Sort = u16;
-    type Part = StrideNodeId;
+// impl SortableNodeId for InMemStrideNodeId {
+//     type Sort = u16;
+//     type Part = StrideNodeId;
 
-    fn new(sort: &Self::Sort, part: &Self::Part) -> InMemStrideNodeId {
-        InMemStrideNodeId(Some((*sort, *part)))
-    }
+//     fn new(sort: &Self::Sort, part: &Self::Part) -> InMemStrideNodeId {
+//         InMemStrideNodeId(Some((*sort, *part)))
+//     }
 
-    fn get_sort(&self) -> Self::Sort {
-        self.0.unwrap().0
-    }
+//     fn get_sort(&self) -> Self::Sort {
+//         self.0.unwrap().0
+//     }
 
-    fn get_part(&self) -> Self::Part {
-        self.0.unwrap().1
-    }
+//     fn get_part(&self) -> Self::Part {
+//         self.0.unwrap().1
+//     }
 
-    fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
+//     fn is_empty(&self) -> bool {
+//         self.0.is_none()
+//     }
 
-    fn empty() -> Self {
-        Self(None)
-    }
-}
+//     fn empty() -> Self {
+//         Self(None)
+//     }
+// }
 
-impl std::cmp::Ord for InMemStrideNodeId {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        if self.0.is_none() {
-            std::cmp::Ordering::Greater
-        } else if let Some(sort_id) = other.0 {
-            self.0.unwrap().0.cmp(&sort_id.0)
-        } else {
-            std::cmp::Ordering::Less
-        }
-    }
-}
+// impl std::cmp::Ord for InMemStrideNodeId {
+//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+//         if self.0.is_none() {
+//             std::cmp::Ordering::Greater
+//         } else if let Some(sort_id) = other.0 {
+//             self.0.unwrap().0.cmp(&sort_id.0)
+//         } else {
+//             std::cmp::Ordering::Less
+//         }
+//     }
+// }
 
-impl std::cmp::PartialOrd for InMemStrideNodeId {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.0.cmp(&other.0))
-    }
-}
+// impl std::cmp::PartialOrd for InMemStrideNodeId {
+//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+//         Some(self.0.cmp(&other.0))
+//     }
+// }
 
-impl std::fmt::Display for InMemStrideNodeId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{:?}",
-            if self.0.is_none() {
-                "-".to_string()
-            } else {
-                self.0.unwrap().1.to_string()
-            }
-        )
-    }
-}
+// impl std::fmt::Display for InMemStrideNodeId {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(
+//             f,
+//             "{:?}",
+//             if self.0.is_none() {
+//                 "-".to_string()
+//             } else {
+//                 self.0.unwrap().1.to_string()
+//             }
+//         )
+//     }
+// }
 
 //------------------------- Node Collections ---------------------------------------------------
 
 pub trait NodeCollection {
     fn insert(&mut self, index: u16, insert_node: StrideNodeId);
+    // fn into_vec(self) -> Vec<(StrideType, Option<u32>)>;
     fn as_slice(&self) -> &[StrideNodeId];
     fn empty() -> Self;
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 pub struct NodeSet<const ARRAYSIZE: usize>([StrideNodeId; ARRAYSIZE]);
 
 impl<const ARRAYSIZE: usize> std::fmt::Display for NodeSet<ARRAYSIZE> {
@@ -289,6 +307,14 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
 
         self.0[index as usize] = insert_node;
     }
+
+    // fn into_vec(self) -> Vec<(StrideType, Option<u32>)> {
+    //     self.as_slice()
+    //         .iter()
+    //         .map(|p| (p.0, p.1.as_ref().map(|x| x.load(Ordering::Relaxed))))
+    //         .collect()
+    // }
+
 
     fn as_slice(&self) -> &[StrideNodeId] {
         // let idx = self
@@ -387,9 +413,9 @@ where
             StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
             StrideStats::new(SizedStride::Stride4, strides.len() as u8), // 1
             StrideStats::new(SizedStride::Stride5, strides.len() as u8), // 2
-            // StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
-            // StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
-            // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
+                                                                         // StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
+                                                                         // StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
+                                                                         // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
         let node: SizedStrideNode<<Store as StorageBackend>::AF>;
@@ -773,8 +799,7 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         println!(
             "memory used by nodes: {}kb",
             self.store.get_nodes_len()
-                * std::mem::size_of::<SizedStrideNode<u32>>(
-                )
+                * std::mem::size_of::<SizedStrideNode<u32>>()
                 / 1024
         );
 
