@@ -225,12 +225,12 @@ where
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
             return NewNodeOrIndex::ExistingPrefix(
-                self.pfx_vec[S::get_pfx_index(nibble, nibble_len)]
+                self.pfx_vec.into_vec()[S::get_pfx_index(nibble, nibble_len)],
             );
         }
 
         NewNodeOrIndex::ExistingNode(
-            self.ptr_vec[S::get_ptr_index(ptrbitarr, nibble)],
+            self.ptr_vec.into_vec()[S::get_ptr_index(ptrbitarr, nibble)],
         )
     }
 
@@ -265,7 +265,7 @@ where
 
             // Check it there's a prefix matching in this bitmap for this nibble
             if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
-                let f_pfx = self.pfx_vec
+                let f_pfx = self.pfx_vec.into_vec()
                     [S::get_pfx_index(nibble, n_l)];
 
                 // Receiving a less_specifics_vec means that the user wants to have
@@ -299,7 +299,9 @@ where
         // There's another child, return it together with the preliminary LMP we found.
         (
             // The node that has children the next stride
-            Some(self.ptr_vec[S::get_ptr_index(ptrbitarr, nibble)]),
+            Some(
+                self.ptr_vec.into_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+            ),
             found_pfx,
         )
     }
@@ -334,7 +336,7 @@ where
                 // Check for an actual prefix at the right position, i.e. consider the complete nibble
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_pfx = Some(
-                        self.pfx_vec[S::get_pfx_index(
+                        self.pfx_vec.into_vec()[S::get_pfx_index(
                             nibble,
                             nibble_len,
                         )],
@@ -347,7 +349,7 @@ where
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
                     found_child = Some(
-                        self.ptr_vec
+                        self.ptr_vec.into_vec()
                             [S::get_ptr_index(ptrbitarr, nibble)],
                     );
                 }
@@ -397,7 +399,7 @@ where
                 // if we're exactly at the last bit of the nibble
                 if n_l == nibble_len {
                     found_pfx = Some(
-                        self.pfx_vec
+                        self.pfx_vec.into_vec()
                             [S::get_pfx_index(nibble, n_l)],
                     );
                 }
@@ -405,7 +407,7 @@ where
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
                 ls_vec.push(
-                    self.pfx_vec[S::get_pfx_index(nibble, n_l)],
+                    self.pfx_vec.into_vec()[S::get_pfx_index(nibble, n_l)],
                 );
             }
         }
@@ -430,7 +432,7 @@ where
             // There's another child, we won't return the found_pfx, since we're not
             // at the last nibble and we want an exact match only.
             false => (
-                Some(self.ptr_vec[S::get_ptr_index(ptrbitarr, nibble)]), /* The node that has children the next stride */
+                Some(self.ptr_vec.into_vec()[S::get_ptr_index(ptrbitarr, nibble)]), /* The node that has children the next stride */
                 None,
             ),
         }
@@ -463,8 +465,9 @@ where
             > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero(
             )
         {
-            found_child =
-                Some(self.ptr_vec[S::get_ptr_index(ptrbitarr, nibble)]);
+            found_child = Some(
+                self.ptr_vec.into_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+            );
         }
 
         if let Some(child) = found_child {
@@ -505,14 +508,14 @@ where
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
                     found_children_with_more_specifics.push(
-                        self.ptr_vec
+                        self.ptr_vec.into_vec()
                             [S::get_ptr_index(ptrbitarr, ms_nibble)],
                     );
                 }
 
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
-                        self.pfx_vec[S::get_pfx_index(
+                        self.pfx_vec.into_vec()[S::get_pfx_index(
                             ms_nibble,
                             ms_nibble_len,
                         )],

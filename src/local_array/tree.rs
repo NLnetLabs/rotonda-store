@@ -16,7 +16,7 @@ pub(crate) use crate::local_array::node::TreeBitMapNode;
 use crate::synth_int::{U256, U512};
 
 use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+    AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 use std::{
     fmt::{Binary, Debug},
@@ -132,7 +132,7 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 
 //--------------------- Per-Stride-Node-Id Type ------------------------------------
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Hash, Ord, Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct StrideNodeId(StrideType, Option<u32>);
 
 impl StrideNodeId {
@@ -192,17 +192,120 @@ impl std::convert::From<StrideNodeId> for usize {
     }
 }
 
-pub struct AtomicStrideNodeId(StrideType, Option<AtomicU32>);
+impl std::convert::From<AtomicStrideNodeId> for StrideNodeId {
+    fn from(id: AtomicStrideNodeId) -> Self {
+        let i = match id.index.load(Ordering::Relaxed) {
+            0 => None,
+            x => Some(x as u32),
+        };
+        Self(id.stride_type, i)
+    }
+}
+
+impl std::convert::From<&AtomicStrideNodeId> for StrideNodeId {
+    fn from(id: &AtomicStrideNodeId) -> Self {
+        let i = match id.index.load(Ordering::Relaxed) {
+            0 => None,
+            x => Some(x as u32),
+        };
+        Self(id.stride_type, i)
+    }
+}
+
+#[derive(Debug)]
+pub struct AtomicStrideNodeId {
+    stride_type: StrideType,
+    index: AtomicU32,
+    serial: AtomicUsize,
+}
 
 impl AtomicStrideNodeId {
+    pub fn new(stride_type: StrideType, index: u32) -> Self {
+        Self {
+            stride_type,
+            index: AtomicU32::new(index),
+            serial: AtomicUsize::new(1),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self {
+            stride_type: StrideType::Stride4,
+            index: AtomicU32::new(0),
+            serial: AtomicUsize::new(0),
+        }
+    }
+
+    // get_serial() and update_serial() are intimiately linked in the
+    // critical section of updating a node.
+    //
+    // The layout of the critical section is as follows:
+    // 1. get_serial() to retrieve the serial number of the node
+    // 2. do work in the critical section
+    // 3. store work result in the node
+    // 4. update_serial() to update the serial number of the node if
+    //    and only if the serial is the same as the one retrieved in step 1.
+    // 5. check the result of update_serial(). When succesful, we're done,
+    //    otherwise, rollback the work result & repeat from step 1.
+    pub fn get_serial(&self) -> usize {
+        let serial = self.serial.load(Ordering::Relaxed);
+        std::sync::atomic::fence(Ordering::Acquire);
+        serial
+    }
+
+    pub fn update_serial(
+        &self,
+        current_serial: usize,
+    ) -> Result<usize, usize> {
+        std::sync::atomic::fence(Ordering::Release);
+        self.serial.compare_exchange(
+            current_serial,
+            current_serial + 1,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        )
+    }
+
+    // The idea is that we can only set the index once. An uninitialized
+    // index has a value of 0, so if we encounter a non-zero value that
+    // means somebody else already set it. We'll return an Err(index) with
+    // the index that was set.
+    pub fn set_id(&self, index: u32) -> Result<u32, u32> {
+        self.index.compare_exchange(
+            0,
+            index,
+            Ordering::Relaxed,
+            Ordering::Relaxed,
+        )
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.index.load(Ordering::Relaxed) == 0
+    }
+
     pub fn into_inner(self) -> (StrideType, Option<u32>) {
-        (self.0, self.1.as_ref().map(|x| x.load(Ordering::Relaxed)))
+        match self.serial.load(Ordering::Relaxed) {
+            0 => (self.stride_type, None),
+            _ => (
+                self.stride_type,
+                Some(self.index.load(Ordering::Relaxed) as u32),
+            ),
+        }
+    }
+
+    pub fn from_stridenodeid(id: StrideNodeId) -> Self {
+        let index = id.1.map_or(0, |i| i as u32);
+        Self {
+            stride_type: id.0,
+            index: AtomicU32::new(index),
+            serial: AtomicUsize::new(if index == 0 { 0 } else { 1 }),
+        }
     }
 }
 
 impl std::convert::From<AtomicStrideNodeId> for usize {
     fn from(id: AtomicStrideNodeId) -> Self {
-        id.1.as_ref().map(|x| x.load(Ordering::Relaxed)).unwrap() as usize
+        id.index.load(Ordering::Relaxed) as usize
     }
 }
 
@@ -277,13 +380,13 @@ impl std::convert::From<AtomicStrideNodeId> for usize {
 
 pub trait NodeCollection {
     fn insert(&mut self, index: u16, insert_node: StrideNodeId);
-    // fn into_vec(self) -> Vec<(StrideType, Option<u32>)>;
-    fn as_slice(&self) -> &[StrideNodeId];
+    fn into_vec(&self) -> Vec<StrideNodeId>;
+    fn as_slice(&self) -> &[AtomicStrideNodeId];
     fn empty() -> Self;
 }
 
 #[derive(Debug)]
-pub struct NodeSet<const ARRAYSIZE: usize>([StrideNodeId; ARRAYSIZE]);
+pub struct NodeSet<const ARRAYSIZE: usize>([AtomicStrideNodeId; ARRAYSIZE]);
 
 impl<const ARRAYSIZE: usize> std::fmt::Display for NodeSet<ARRAYSIZE> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -304,19 +407,39 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
         // if idx < ARRAYSIZE {
         //     self.0[idx] = insert_node;
         // }
-
-        self.0[index as usize] = insert_node;
+        let new_node = AtomicStrideNodeId::from_stridenodeid(insert_node);
+        let serial = new_node.get_serial();
+        self[index as usize] = new_node;
+        match self[index as usize].update_serial(serial) {
+            Ok(_) => (),
+            Err(other_serial) if other_serial > serial => {
+                self.insert(index, insert_node);
+            }
+            Err(other_serial) if other_serial <= serial => {
+                panic!(
+                    "NodeSet::insert: serial conflict: {} vs {}",
+                    serial, other_serial
+                );
+            }
+            _ => unreachable!(),
+        };
     }
 
-    // fn into_vec(self) -> Vec<(StrideType, Option<u32>)> {
-    //     self.as_slice()
-    //         .iter()
-    //         .map(|p| (p.0, p.1.as_ref().map(|x| x.load(Ordering::Relaxed))))
-    //         .collect()
-    // }
+    fn into_vec(&self) -> Vec<StrideNodeId> {
+        self.as_slice()
+            .iter()
+            .map(|p| {
+                let index = p.index.load(Ordering::Relaxed);
+                let serial = p.serial.load(Ordering::Relaxed);
+                StrideNodeId(
+                    p.stride_type,
+                    if serial == 0 { None } else { Some(index) },
+                )
+            })
+            .collect()
+    }
 
-
-    fn as_slice(&self) -> &[StrideNodeId] {
+    fn as_slice(&self) -> &[AtomicStrideNodeId] {
         // let idx = self
         //     .0
         //     .as_ref()
@@ -332,15 +455,30 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
     }
 
     fn empty() -> Self {
-        NodeSet([StrideNodeId::empty(); ARRAYSIZE])
+        let iter = std::ops::Range {
+            start: 0,
+            end: ARRAYSIZE,
+        };
+        NodeSet(
+            array_init::from_iter(iter.map(|_| AtomicStrideNodeId::empty()))
+                .unwrap(),
+        )
     }
 }
 
 impl<const ARRAYSIZE: usize> std::ops::Index<usize> for NodeSet<ARRAYSIZE> {
-    type Output = StrideNodeId;
+    type Output = AtomicStrideNodeId;
 
-    fn index(&self, idx: usize) -> &StrideNodeId {
+    fn index(&self, idx: usize) -> &AtomicStrideNodeId {
         &self.0[idx as usize]
+    }
+}
+
+impl<const ARRAYSIZE: usize> std::ops::IndexMut<usize>
+    for NodeSet<ARRAYSIZE>
+{
+    fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
+        &mut self.0[idx as usize]
     }
 }
 
@@ -669,39 +807,39 @@ where
     ) {
         match start_node {
             SizedStrideRef::Stride3(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.extend(n.pfx_vec.into_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(*nn).unwrap(),
+                            self.retrieve_node(nn.into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
                 }
             }
             SizedStrideRef::Stride4(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.extend(n.pfx_vec.into_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(*nn).unwrap(),
+                            self.retrieve_node(nn.into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
                 }
             }
             SizedStrideRef::Stride5(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.extend(n.pfx_vec.into_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(*nn).unwrap(),
+                            self.retrieve_node(nn.into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
