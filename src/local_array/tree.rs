@@ -2,7 +2,6 @@ use crate::af::AddressFamily;
 
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
-use crate::node_id::SortableNodeId;
 use crate::prefix_record::InternalPrefixRecord;
 
 #[cfg(feature = "dynamodb")]
@@ -13,7 +12,6 @@ use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
-use crate::synth_int::{U256, U512};
 
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
@@ -28,10 +26,14 @@ use ansi_term::Colour;
 
 use routecore::record::MergeUpdate;
 
-//------------------- Unsized Node Enums ------------------------------------------------
+//------------------- Unsized Node Enums ------------------------------------
 
 pub(crate) trait UnsizedNode<AF: AddressFamily> {}
 
+// No, no, NO, NO, no, no! We're not going to Box this, because that's slow! 
+// This enum is never used to store nodes/prefixes, it's only to be used in 
+// generic code.
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(crate) enum SizedStrideNode<AF: AddressFamily> {
     Stride3(TreeBitMapNode<AF, Stride3, 14, 8>),
@@ -380,7 +382,7 @@ impl std::convert::From<AtomicStrideNodeId> for usize {
 
 pub trait NodeCollection {
     fn insert(&mut self, index: u16, insert_node: StrideNodeId);
-    fn into_vec(&self) -> Vec<StrideNodeId>;
+    fn to_vec(&self) -> Vec<StrideNodeId>;
     fn as_slice(&self) -> &[AtomicStrideNodeId];
     fn empty() -> Self;
 }
@@ -425,7 +427,7 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
         };
     }
 
-    fn into_vec(&self) -> Vec<StrideNodeId> {
+    fn to_vec(&self) -> Vec<StrideNodeId> {
         self.as_slice()
             .iter()
             .map(|p| {
@@ -807,7 +809,7 @@ where
     ) {
         match start_node {
             SizedStrideRef::Stride3(n) => {
-                found_pfx_vec.extend(n.pfx_vec.into_vec());
+                found_pfx_vec.extend(n.pfx_vec.to_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
@@ -820,7 +822,7 @@ where
                 }
             }
             SizedStrideRef::Stride4(n) => {
-                found_pfx_vec.extend(n.pfx_vec.into_vec());
+                found_pfx_vec.extend(n.pfx_vec.to_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
@@ -833,7 +835,7 @@ where
                 }
             }
             SizedStrideRef::Stride5(n) => {
-                found_pfx_vec.extend(n.pfx_vec.into_vec());
+                found_pfx_vec.extend(n.pfx_vec.to_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {

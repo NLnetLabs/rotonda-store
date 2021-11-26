@@ -1,5 +1,4 @@
-use crate::{local_array::tree::*, local_vec::node::Stride};
-use crate::node_id::SortableNodeId;
+use crate::local_array::tree::*;
 
 use crate::prefix_record::InternalPrefixRecord;
 use std::fmt::Debug;
@@ -22,8 +21,6 @@ pub(crate) type SizedNodeResult<'a, AF> =
     Result<SizedStrideRefMut<'a, AF>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeRefResult<'a, AF> =
     Result<SizedStrideRefMut<'a, AF>, Box<dyn std::error::Error>>;
-pub(crate) type SizedNodeOption<'a, AF> =
-    Option<SizedStrideNode<AF>>;
 pub(crate) type SizedNodeRefOption<'a, AF> =
     Option<SizedStrideRef<'a, AF>>;
 
@@ -56,10 +53,10 @@ pub(crate) trait StorageBackend
         current_node_id: StrideNodeId,
         updated_node: SizedStrideNode<Self::AF>,
     );
-    fn retrieve_node<'a>(
-        &'a self,
+    fn retrieve_node(
+        &'_ self,
         index: StrideNodeId,
-    ) -> SizedNodeRefOption<'a, Self::AF>;
+    ) -> SizedNodeRefOption<'_, Self::AF>;
     fn retrieve_node_mut(
         &mut self,
         index: StrideNodeId,
@@ -350,10 +347,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         }
     }
 
-    fn retrieve_node_mut<'a>(
-        &'a mut self,
+    fn retrieve_node_mut(
+        &'_ mut self,
         id: StrideNodeId,
-    ) -> SizedNodeResult<'a, Self::AF> {
+    ) -> SizedNodeResult<'_, Self::AF> {
         match id.into_inner() {
             (StrideType::Stride3, Some(part_id)) => {
                 Ok(SizedStrideRefMut::Stride3(

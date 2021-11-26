@@ -8,8 +8,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
 
 use crate::local_array::node::TreeBitMapNode;
-use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
-use crate::node_id::SortableNodeId;
+use crate::local_array::tree::TreeBitMap;
 use crate::{MatchOptions, MatchType};
 
 use super::node::{SizedStrideRef, StrideNodeId};
@@ -132,7 +131,7 @@ where
                     // where `include_less_specifics` was requested by the
                     // user.
                     match search_fn(
-                        &current_node,
+                        current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -149,7 +148,7 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -163,7 +162,7 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -178,7 +177,7 @@ where
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
-                                        &current_node,
+                                        current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -199,7 +198,7 @@ where
                                     // early here.
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -235,7 +234,7 @@ where
                         }
                     };
                     match search_fn(
-                        &current_node,
+                        current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -249,7 +248,7 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -263,7 +262,7 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -275,7 +274,7 @@ where
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
-                                        &current_node,
+                                        current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -290,7 +289,7 @@ where
                                     // return early here.
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -324,7 +323,7 @@ where
                         }
                     };
                     match search_fn(
-                        &current_node,
+                        current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -338,7 +337,7 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -352,7 +351,7 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );
@@ -364,7 +363,7 @@ where
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
-                                        &current_node,
+                                        current_node,
                                         nibble,
                                         nibble_len,
                                     );
@@ -377,7 +376,7 @@ where
                                 MatchType::EmptyMatch => {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
                                         );

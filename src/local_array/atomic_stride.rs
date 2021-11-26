@@ -6,7 +6,7 @@ use std::sync::atomic::{
 use num::{PrimInt, Zero};
 
 use crate::impl_primitive_atomic_stride;
-use crate::synth_int::{AtomicU128, AtomicU256, AtomicU512};
+use crate::synth_int::AtomicU128;
 
 pub type Stride3 = u16;
 pub type Stride4 = u32;

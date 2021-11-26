@@ -243,7 +243,7 @@ impl AtomicU128 {
         AtomicU128(AtomicU64::new(hi), AtomicU64::new(lo))
     }
 
-    pub fn to_be_bytes(self) -> [u8; 16] {
+    pub fn into_be_bytes(self) -> [u8; 16] {
         [
             self.0.into_inner().to_be_bytes(),
             self.1.into_inner().to_be_bytes(),
@@ -301,7 +301,7 @@ impl AtomicU256 {
         )
     }
 
-    pub fn to_be_bytes(self) -> [u8; 32] {
+    pub fn into_be_bytes(self) -> [u8; 32] {
         [
             self.0.into_inner().to_be_bytes(),
             self.1.into_inner().to_be_bytes(),
@@ -376,7 +376,7 @@ impl AtomicU512 {
         )  
     }
 
-    pub fn to_be_bytes(self) -> [u8; 64] {
+    pub fn into_be_bytes(self) -> [u8; 64] {
         [
             self.0.into_inner().to_be_bytes(),
             self.1.into_inner().to_be_bytes(),
