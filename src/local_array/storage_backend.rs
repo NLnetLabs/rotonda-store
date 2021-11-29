@@ -79,7 +79,8 @@ pub(crate) trait StorageBackend {
     // (stored inside each node) and the `part` fiels, that describes
     // the index of the prefix in the global store.
     fn acquire_new_prefix_id(
-        &self, prefix: &InternalPrefixRecord<Self::AF, Self::Meta>,
+        &self,
+        prefix: &InternalPrefixRecord<Self::AF, Self::Meta>,
         // sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
     ) -> PrefixId<Self::AF>;
     fn store_prefix(
@@ -101,7 +102,10 @@ pub(crate) trait StorageBackend {
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
     fn get_prefixes(
         &self,
-    ) -> &HashMap<PrefixId<Self::AF>, InternalPrefixRecord<Self::AF, Self::Meta>>;
+    ) -> &HashMap<
+        PrefixId<Self::AF>,
+        InternalPrefixRecord<Self::AF, Self::Meta>,
+    >;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(&self) -> PrefixIterResult<'_, Self::AF, Self::Meta>;
     #[cfg(feature = "dynamodb")]
@@ -144,13 +148,22 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         if let Some(n) = start_node {
             match n {
                 SizedStrideNode::Stride3(node) => {
-                    nodes3.insert(StrideNodeId::new(StrideType::Stride3, 0), node);
+                    nodes3.insert(
+                        StrideNodeId::new(StrideType::Stride3, 0),
+                        node,
+                    );
                 }
                 SizedStrideNode::Stride4(node) => {
-                    nodes4.insert(StrideNodeId::new(StrideType::Stride4, 0), node);
+                    nodes4.insert(
+                        StrideNodeId::new(StrideType::Stride4, 0),
+                        node,
+                    );
                 }
                 SizedStrideNode::Stride5(node) => {
-                    nodes5.insert(StrideNodeId::new(StrideType::Stride5, 0), node);
+                    nodes5.insert(
+                        StrideNodeId::new(StrideType::Stride5, 0),
+                        node,
+                    );
                 } // SizedStrideNode::Stride6(nodes) => {
                   //     nodes6 = vec![nodes];
                   // }
@@ -243,22 +256,25 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     ) {
         match updated_node {
             SizedStrideNode::Stride3(node) => {
-                let _default_val = std::mem::replace(
-                    self.nodes3.get_mut(&current_node_id).unwrap(),
-                    node,
-                );
+                let _default_val = self.nodes3.insert(current_node_id, node);
+                // std::mem::replace(
+                //     self.nodes3.get_mut(&current_node_id).unwrap(),
+                //     node,
+                // );
             }
             SizedStrideNode::Stride4(node) => {
-                let _default_val = std::mem::replace(
-                    self.nodes4.get_mut(&current_node_id).unwrap(),
-                    node,
-                );
+                let _default_val = self.nodes4.insert(current_node_id, node);
+                // std::mem::replace(
+                //     self.nodes4.get_mut(&current_node_id).unwrap(),
+                //     node,
+                // );
             }
             SizedStrideNode::Stride5(node) => {
-                let _default_val = std::mem::replace(
-                    self.nodes5.get_mut(&current_node_id).unwrap(),
-                    node,
-                );
+                let _default_val = self.nodes5.insert(current_node_id, node);
+                // std::mem::replace(
+                //     self.nodes5.get_mut(&current_node_id).unwrap(),
+                //     node,
+                // );
             }
         }
     }
@@ -397,8 +413,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn get_prefixes(
         &self,
-    ) -> &HashMap<PrefixId<Self::AF>, InternalPrefixRecord<Self::AF, Self::Meta>>
-    {
+    ) -> &HashMap<
+        PrefixId<Self::AF>,
+        InternalPrefixRecord<Self::AF, Self::Meta>,
+    > {
         &self.prefixes
     }
 

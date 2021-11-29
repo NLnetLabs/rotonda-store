@@ -121,16 +121,16 @@ where
     }
 }
 
-impl<AF, T> std::hash::Hash for InternalPrefixRecord<AF, T>
-where
-    AF: AddressFamily + PrimInt + Debug,
-    T: Meta,
-{
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.net.hash(state);
-        self.len.hash(state);
-    }
-}
+// impl<AF, T> std::hash::Hash for InternalPrefixRecord<AF, T>
+// where
+//     AF: AddressFamily + PrimInt + Debug,
+//     T: Meta,
+// {
+//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+//         self.net.hash(state);
+//         self.len.hash(state);
+//     }
+// }
 
 impl<AF, T> From<InternalPrefixRecord<AF, T>> for PrefixId<AF>
 where
@@ -138,6 +138,6 @@ where
     T: Meta,
 {
     fn from(record: InternalPrefixRecord<AF, T>) -> Self {
-        Self((record.net << (AF::BITS - record.len) as usize).into())
+        Self(Some((record.net, record.len)))
     }
 }

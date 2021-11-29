@@ -135,10 +135,10 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct PrefixId<AF: AddressFamily>(pub Option<AF>);
+pub struct PrefixId<AF: AddressFamily>(pub Option<(AF, u8)>);
 
 impl<AF: AddressFamily> PrefixId<AF> {
-    pub fn new(net: AF, len: u8) -> Self { PrefixId(Some(net << (AF::BITS - len).into())) }
+    pub fn new(net: AF, len: u8) -> Self { PrefixId(Some((net, len))) }
     pub fn is_empty(&self) -> bool { self.0.is_none() }
 }
 
