@@ -135,6 +135,39 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
+//------------ HashMapPrefixRecordIterator ----------------------------------
+
+#[derive(Debug)]
+pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
+    pub(crate) v4: Option<std::collections::hash_map::Values<'a, PrefixId<IPv4>, InternalPrefixRecord<IPv4, Meta>>>,
+    pub(crate) v6: std::collections::hash_map::Values<'a, PrefixId<IPv6>, InternalPrefixRecord<IPv6, Meta>>,
+}
+
+impl <'a, Meta: routecore::record::Meta + 'a> Iterator for HashMapPrefixRecordIterator<'a, Meta> {
+    type Item = PrefixRecord<'a, Meta>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // V4 is already done.
+        if self.v4.is_none() {
+            return self.v6.next().map(|res| {
+                PrefixRecord::new(
+                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                    res.meta.as_ref().unwrap(),
+                )
+            });
+        }
+
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
+            return Some(PrefixRecord::new(
+                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                res.meta.as_ref().unwrap(),
+            ));
+        }
+        self.v4 = None;
+        self.next()
+    }
+}
+
 //------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord

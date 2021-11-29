@@ -135,7 +135,7 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct PrefixId<AF: AddressFamily>(Option<AF>);
+pub struct PrefixId<AF: AddressFamily>(pub Option<AF>);
 
 impl<AF: AddressFamily> PrefixId<AF> {
     pub fn new(net: AF, len: u8) -> Self { PrefixId(Some(net << (AF::BITS - len).into())) }
@@ -154,8 +154,8 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
 pub struct StrideNodeId(StrideType, Option<u32>);
 
 impl StrideNodeId {
-    pub fn empty() -> Self {
-        Self(StrideType::Stride4, None)
+    pub fn empty(stride_type: StrideType) -> Self {
+        Self(stride_type, None)
     }
 
     pub fn new(stride_type: StrideType, index: u32) -> Self {
@@ -212,6 +212,16 @@ impl std::convert::From<StrideNodeId> for usize {
 
 impl std::convert::From<AtomicStrideNodeId> for StrideNodeId {
     fn from(id: AtomicStrideNodeId) -> Self {
+        let i = match id.index.load(Ordering::Relaxed) {
+            0 => None,
+            x => Some(x as u32),
+        };
+        Self(id.stride_type, i)
+    }
+}
+
+impl std::convert::From<&AtomicStrideNodeId> for StrideNodeId {
+    fn from(id: &AtomicStrideNodeId) -> Self {
         let i = match id.index.load(Ordering::Relaxed) {
             0 => None,
             x => Some(x as u32),
@@ -810,8 +820,8 @@ where
         next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
         // let id = self.prefixes.len() as u32;
-        let id = next_node.net << (Store::AF::BITS - next_node.len) as usize;
-        self.store.store_prefix(PrefixId::from(next_node), next_node)
+        // let id = next_node.net << (Store::AF::BITS - next_node.len) as usize;
+        self.store.store_prefix(PrefixId::from(next_node.clone()), next_node)
         // id
     }
 
@@ -869,7 +879,7 @@ where
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node((*nn).into()).unwrap(),
+                            self.retrieve_node(nn.into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
@@ -882,7 +892,7 @@ where
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node((*nn).into()).unwrap(),
+                            self.retrieve_node(nn.into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
@@ -895,7 +905,7 @@ where
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node((*nn).into()).unwrap(),
+                            self.retrieve_node(nn.into()).unwrap(),
                             found_pfx_vec,
                         );
                     }

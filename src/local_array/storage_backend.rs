@@ -17,12 +17,6 @@ pub(crate) type PrefixIterResult<'a, AF, Meta> = Result<
     Box<dyn std::error::Error>,
 >;
 
-type PrefixRecordIter<'a, AF, Meta> = std::collections::hash_map::Values<
-    'a,
-    PrefixId<AF>,
-    InternalPrefixRecord<AF, Meta>,
->;
-
 #[cfg(feature = "dynamodb")]
 pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<
     std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>,
@@ -149,14 +143,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         // let mut nodes8 = vec![];
         if let Some(n) = start_node {
             match n {
-                SizedStrideNode::Stride3(nodes) => {
-                    nodes3.insert(0.into(), nodes);
+                SizedStrideNode::Stride3(node) => {
+                    nodes3.insert(StrideNodeId::new(StrideType::Stride3, 0), node);
                 }
-                SizedStrideNode::Stride4(nodes) => {
-                    nodes4.insert(0.into(), nodes);
+                SizedStrideNode::Stride4(node) => {
+                    nodes4.insert(StrideNodeId::new(StrideType::Stride4, 0), node);
                 }
-                SizedStrideNode::Stride5(nodes) => {
-                    nodes5.insert(0.into(), nodes);
+                SizedStrideNode::Stride5(node) => {
+                    nodes5.insert(StrideNodeId::new(StrideType::Stride5, 0), node);
                 } // SizedStrideNode::Stride6(nodes) => {
                   //     nodes6 = vec![nodes];
                   // }

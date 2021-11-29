@@ -1,12 +1,13 @@
+use crate::af::{IPv4, IPv6};
 use crate::local_array::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_array::tree::TreeBitMap;
-use crate::MatchOptions;
-use crate::{QueryResult, Stats, Strides};
 use crate::prefix_record::InternalPrefixRecord;
+use crate::{HashMapPrefixRecordIterator, MatchOptions};
+use crate::{QueryResult, Stats, Strides};
 use routecore::addr::Prefix;
-use crate::af::{IPv4, IPv6};
 use routecore::record::{MergeUpdate, NoMeta};
 
+use std::collections::HashMap;
 use std::fmt;
 
 use super::node::SizedStrideRef;
@@ -25,19 +26,19 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     /// Creates a new empty store with a tree for IPv4 and on for IPv6.
-    /// 
+    ///
     /// You'll have to provide the stride sizes per address family and the
     /// meta-data type. Some meta-data type are included with this crate.
-    /// 
+    ///
     /// The stride-sizes can be any of [3,4,5,6,7,8], and they should add up
     /// to the total number of bits in the address family (32 for IPv4 and
     /// 128 for IPv6).
-    /// 
+    ///
     /// # Example
     /// ```
     /// use rotonda_store::MultiThreadedStore;
     /// use routecore::bgp::PrefixAs;
-    /// 
+    ///
     /// let store = MultiThreadedStore::<PrefixAs>::new(
     ///     vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![8]
     /// );
@@ -58,11 +59,17 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     ) -> QueryResult<'a, Meta> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
-                &InternalPrefixRecord::<IPv4, NoMeta>::new(addr.into(), search_pfx.len()),
+                &InternalPrefixRecord::<IPv4, NoMeta>::new(
+                    addr.into(),
+                    search_pfx.len(),
+                ),
                 options,
             ),
             std::net::IpAddr::V6(addr) => self.v6.match_prefix(
-                &InternalPrefixRecord::<IPv6, NoMeta>::new(addr.into(), search_pfx.len()),
+                &InternalPrefixRecord::<IPv6, NoMeta>::new(
+                    addr.into(),
+                    search_pfx.len(),
+                ),
                 options,
             ),
         }
@@ -74,25 +81,28 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         meta: Meta,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
-            std::net::IpAddr::V4(addr) => self.v4.insert(InternalPrefixRecord::new_with_meta(
-                addr.into(),
-                prefix.len(),
-                meta,
-            )),
-            std::net::IpAddr::V6(addr) => self.v6.insert(InternalPrefixRecord::new_with_meta(
-                addr.into(),
-                prefix.len(),
-                meta,
-            )),
+            std::net::IpAddr::V4(addr) => {
+                self.v4.insert(InternalPrefixRecord::new_with_meta(
+                    addr.into(),
+                    prefix.len(),
+                    meta,
+                ))
+            }
+            std::net::IpAddr::V6(addr) => {
+                self.v6.insert(InternalPrefixRecord::new_with_meta(
+                    addr.into(),
+                    prefix.len(),
+                    meta,
+                ))
+            }
         }
     }
 
-    pub fn prefixes_iter(&self) -> impl Iterator {
-        let rs4: crate::PrefixRecordIter<Meta> =
-            self.v4.store.prefixes.values();
+    pub fn prefixes_iter(&self) -> HashMapPrefixRecordIterator<Meta> {
+        let rs4 = self.v4.store.prefixes.values();
         let rs6 = self.v6.store.prefixes.values();
 
-        crate::PrefixRecordIter::<Meta> {
+        crate::HashMapPrefixRecordIterator::<Meta> {
             v4: Some(rs4),
             v6: rs6,
         }
@@ -120,27 +130,27 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
                     .values()
                     .map(|n| SizedStrideRef::Stride5(n)),
             )
-            // .chain(
-            //     self.v4
-            //         .store
-            //         .nodes6
-            //         .iter()
-            //         .map(|n| SizedStrideRef::Stride6(n)),
-            // )
-            // .chain(
-            //     self.v4
-            //         .store
-            //         .nodes7
-            //         .iter()
-            //         .map(|n| SizedStrideRef::Stride7(n)),
-            // )
-            // .chain(
-            //     self.v4
-            //         .store
-            //         .nodes8
-            //         .iter()
-            //         .map(|n| SizedStrideRef::Stride8(n)),
-            // )
+        // .chain(
+        //     self.v4
+        //         .store
+        //         .nodes6
+        //         .iter()
+        //         .map(|n| SizedStrideRef::Stride6(n)),
+        // )
+        // .chain(
+        //     self.v4
+        //         .store
+        //         .nodes7
+        //         .iter()
+        //         .map(|n| SizedStrideRef::Stride7(n)),
+        // )
+        // .chain(
+        //     self.v4
+        //         .store
+        //         .nodes8
+        //         .iter()
+        //         .map(|n| SizedStrideRef::Stride8(n)),
+        // )
     }
 
     pub fn nodes_v6_iter(
@@ -165,27 +175,27 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
                     .values()
                     .map(|n| SizedStrideRef::Stride5(n)),
             )
-            // .chain(
-            //     self.v6
-            //         .store
-            //         .nodes6
-            //         .iter()
-            //         .map(|n| SizedStrideRef::Stride6(n)),
-            // )
-            // .chain(
-            //     self.v6
-            //         .store
-            //         .nodes7
-            //         .iter()
-            //         .map(|n| SizedStrideRef::Stride7(n)),
-            // )
-            // .chain(
-            //     self.v6
-            //         .store
-            //         .nodes8
-            //         .iter()
-            //         .map(|n| SizedStrideRef::Stride8(n)),
-            // )
+        // .chain(
+        //     self.v6
+        //         .store
+        //         .nodes6
+        //         .iter()
+        //         .map(|n| SizedStrideRef::Stride6(n)),
+        // )
+        // .chain(
+        //     self.v6
+        //         .store
+        //         .nodes7
+        //         .iter()
+        //         .map(|n| SizedStrideRef::Stride7(n)),
+        // )
+        // .chain(
+        //     self.v6
+        //         .store
+        //         .nodes8
+        //         .iter()
+        //         .map(|n| SizedStrideRef::Stride8(n)),
+        // )
     }
 
     pub fn prefixes_len(&self) -> usize {
@@ -233,13 +243,17 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     }
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display for InMemStorage<IPv4, Meta> {
+impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
+    for InMemStorage<IPv4, Meta>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "InMemStorage<u32, {}>", std::any::type_name::<Meta>())
     }
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display for InMemStorage<IPv6, Meta> {
+impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
+    for InMemStorage<IPv6, Meta>
+{
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "InMemStorage<u128, {}>", std::any::type_name::<Meta>())
     }
