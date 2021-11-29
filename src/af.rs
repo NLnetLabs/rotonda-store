@@ -8,7 +8,7 @@ use std::fmt::Debug;
 /// be able to only take the amount of memory needs. Useful when building
 /// trees with large amounts of addresses/prefixes. Used by rotonda-store for
 /// this purpose.
-pub trait AddressFamily: PrimInt + Debug {
+pub trait AddressFamily: PrimInt + Debug + std::hash::Hash {
     /// The byte representation of the family filled with 1s.
     const BITMASK: Self;
     /// The number of bits in the byte representation of the family.

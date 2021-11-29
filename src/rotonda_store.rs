@@ -1,6 +1,6 @@
 use std::{fmt, slice};
 
-use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
+use crate::{local_array::node::PrefixId, prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::{
     addr::Prefix,
@@ -172,30 +172,30 @@ impl<'a, Meta: routecore::record::Meta> Iterator
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
-    for PrefixRecordIter<'a, Meta>
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        // V4 is already done.
-        if self.v4.is_none() {
-            return self.v6.next_back().map(|res| {
-                PrefixRecord::new(
-                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    res.meta.as_ref().unwrap(),
-                )
-            });
-        }
+// impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
+//     for PrefixRecordIter<'a, Meta>
+// {
+//     fn next_back(&mut self) -> Option<Self::Item> {
+//         // V4 is already done.
+//         if self.v4.is_none() {
+//             return self.v6.next_back().map(|res| {
+//                 PrefixRecord::new(
+//                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+//                     res.meta.as_ref().unwrap(),
+//                 )
+//             });
+//         }
 
-        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
-            return Some(PrefixRecord::new(
-                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                res.meta.as_ref().unwrap(),
-            ));
-        }
-        self.v4 = None;
-        self.next_back()
-    }
-}
+//         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
+//             return Some(PrefixRecord::new(
+//                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+//                 res.meta.as_ref().unwrap(),
+//             ));
+//         }
+//         self.v4 = None;
+//         self.next_back()
+//     }
+// }
 
 //------------- QueryResult -------------------------------------------------
 

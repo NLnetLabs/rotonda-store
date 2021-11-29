@@ -4,7 +4,10 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::af::AddressFamily;
+use crate::{
+    af::AddressFamily,
+    local_array::node::{PrefixId, StrideNodeId, StrideType},
+};
 use routecore::record::{MergeUpdate, Meta};
 
 //------------ InternalPrefixRecord -----------------------------------------
@@ -115,5 +118,26 @@ where
             self.len,
             self.meta
         ))
+    }
+}
+
+impl<AF, T> std::hash::Hash for InternalPrefixRecord<AF, T>
+where
+    AF: AddressFamily + PrimInt + Debug,
+    T: Meta,
+{
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.net.hash(state);
+        self.len.hash(state);
+    }
+}
+
+impl<AF, T> From<InternalPrefixRecord<AF, T>> for PrefixId<AF>
+where
+    AF: AddressFamily + PrimInt + Debug,
+    T: Meta,
+{
+    fn from(record: InternalPrefixRecord<AF, T>) -> Self {
+        Self((record.net << (AF::BITS - record.len) as usize).into())
     }
 }

@@ -10,7 +10,7 @@ use routecore::record::MergeUpdate;
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 
-type PrefixIter<'a, AF, Meta> = Result<
+pub(crate) type PrefixIter<'a, AF, Meta> = Result<
     std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>,
     Box<dyn std::error::Error>,
 >;

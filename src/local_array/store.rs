@@ -87,10 +87,10 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    pub fn prefixes_iter(&self) -> crate::PrefixRecordIter<Meta> {
-        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> =
-            self.v4.store.prefixes[..].iter();
-        let rs6 = self.v6.store.prefixes[..].iter();
+    pub fn prefixes_iter(&self) -> impl Iterator {
+        let rs4: crate::PrefixRecordIter<Meta> =
+            self.v4.store.prefixes.values();
+        let rs6 = self.v6.store.prefixes.values();
 
         crate::PrefixRecordIter::<Meta> {
             v4: Some(rs4),
@@ -104,20 +104,20 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         self.v4
             .store
             .nodes3
-            .iter()
+            .values()
             .map(|n| SizedStrideRef::Stride3(n))
             .chain(
                 self.v4
                     .store
                     .nodes4
-                    .iter()
+                    .values()
                     .map(|n| SizedStrideRef::Stride4(n)),
             )
             .chain(
                 self.v4
                     .store
                     .nodes5
-                    .iter()
+                    .values()
                     .map(|n| SizedStrideRef::Stride5(n)),
             )
             // .chain(
@@ -149,20 +149,20 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         self.v6
             .store
             .nodes3
-            .iter()
+            .values()
             .map(|n| SizedStrideRef::Stride3(n))
             .chain(
                 self.v6
                     .store
                     .nodes4
-                    .iter()
+                    .values()
                     .map(|n| SizedStrideRef::Stride4(n)),
             )
             .chain(
                 self.v6
                     .store
                     .nodes5
-                    .iter()
+                    .values()
                     .map(|n| SizedStrideRef::Stride5(n)),
             )
             // .chain(

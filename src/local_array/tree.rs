@@ -1,3 +1,5 @@
+use std::hash::Hash;
+
 use crate::af::AddressFamily;
 
 use crate::local_array::storage_backend::StorageBackend;
@@ -30,8 +32,8 @@ use routecore::record::MergeUpdate;
 
 pub(crate) trait UnsizedNode<AF: AddressFamily> {}
 
-// No, no, NO, NO, no, no! We're not going to Box this, because that's slow! 
-// This enum is never used to store nodes/prefixes, it's only to be used in 
+// No, no, NO, NO, no, no! We're not going to Box this, because that's slow!
+// This enum is never used to store nodes/prefixes, it's only to be used in
 // generic code.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
@@ -57,7 +59,7 @@ where
         Self {
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
             pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
-            pfx_vec: NodeSet::empty(),
+            pfx_vec: PrefixSet::empty(),
             ptr_vec: NodeSet::empty(),
             _af: PhantomData,
         }
@@ -74,7 +76,7 @@ where
         SizedStrideNode::Stride3(TreeBitMapNode {
             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-            pfx_vec: NodeSet::empty(),
+            pfx_vec: PrefixSet::empty(),
             ptr_vec: NodeSet::empty(),
             _af: PhantomData,
         })
@@ -129,12 +131,26 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>, u16), // New Node and bit_id of the new node
     ExistingNode(StrideNodeId),
     NewPrefix(u16),
-    ExistingPrefix(StrideNodeId),
+    ExistingPrefix(PrefixId<AF>),
+}
+
+#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+pub struct PrefixId<AF: AddressFamily>(Option<AF>);
+
+impl<AF: AddressFamily> PrefixId<AF> {
+    pub fn new(net: AF, len: u8) -> Self { PrefixId(Some(net << (AF::BITS - len).into())) }
+    pub fn is_empty(&self) -> bool { self.0.is_none() }
+}
+
+impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
+    fn default() -> Self {
+        PrefixId(None)
+    }
 }
 
 //--------------------- Per-Stride-Node-Id Type ------------------------------------
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 pub struct StrideNodeId(StrideType, Option<u32>);
 
 impl StrideNodeId {
@@ -196,16 +212,6 @@ impl std::convert::From<StrideNodeId> for usize {
 
 impl std::convert::From<AtomicStrideNodeId> for StrideNodeId {
     fn from(id: AtomicStrideNodeId) -> Self {
-        let i = match id.index.load(Ordering::Relaxed) {
-            0 => None,
-            x => Some(x as u32),
-        };
-        Self(id.stride_type, i)
-    }
-}
-
-impl std::convert::From<&AtomicStrideNodeId> for StrideNodeId {
-    fn from(id: &AtomicStrideNodeId) -> Self {
         let i = match id.index.load(Ordering::Relaxed) {
             0 => None,
             x => Some(x as u32),
@@ -378,7 +384,7 @@ impl std::convert::From<AtomicStrideNodeId> for usize {
 //     }
 // }
 
-//------------------------- Node Collections ---------------------------------------------------
+//------------------------- Node Collections --------------------------------
 
 pub trait NodeCollection {
     fn insert(&mut self, index: u16, insert_node: StrideNodeId);
@@ -386,6 +392,53 @@ pub trait NodeCollection {
     fn as_slice(&self) -> &[AtomicStrideNodeId];
     fn empty() -> Self;
 }
+
+//------------ PrefixSet ----------------------------------------------------
+
+#[derive(Debug)]
+pub struct PrefixSet<AF: AddressFamily, const ARRAYSIZE: usize>([PrefixId<AF>; ARRAYSIZE]);
+
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display for PrefixSet<AF, ARRAYSIZE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}", self)
+    }
+}
+
+impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
+    pub(crate) fn insert(&mut self, index: u16, insert_node: PrefixId<AF>) {
+        self[index as usize] = insert_node;
+    }
+
+    pub(crate) fn to_vec(&self) -> Vec<PrefixId<AF>> {
+        self.0.to_vec()
+    }
+
+    pub(crate) fn as_slice(&self) -> &[PrefixId<AF>] {
+        &self.0[..]
+    }
+
+    pub(crate) fn empty() -> Self {
+        PrefixSet([<PrefixId<AF>>::default(); ARRAYSIZE])
+    }
+}
+
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize> for PrefixSet<AF, ARRAYSIZE> {
+    type Output = PrefixId<AF>;
+
+    fn index(&self, idx: usize) -> &PrefixId<AF> {
+        &self.0[idx as usize]
+    }
+}
+
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
+    for PrefixSet<AF, ARRAYSIZE>
+{
+    fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
+        &mut self.0[idx as usize]
+    }
+}
+
+//------------------------- NodeSet ---------------------------------------------------
 
 #[derive(Debug)]
 pub struct NodeSet<const ARRAYSIZE: usize>([AtomicStrideNodeId; ARRAYSIZE]);
@@ -566,7 +619,7 @@ where
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
                     ptr_vec: NodeSet::empty(),
-                    pfx_vec: NodeSet::empty(),
+                    pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
@@ -576,7 +629,7 @@ where
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                     ptr_vec: NodeSet::empty(),
-                    pfx_vec: NodeSet::empty(),
+                    pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
@@ -586,7 +639,7 @@ where
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
                     ptr_vec: NodeSet::empty(),
-                    pfx_vec: NodeSet::empty(),
+                    pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
@@ -755,15 +808,16 @@ where
     pub(crate) fn store_prefix(
         &mut self,
         next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
-    ) -> Result<StrideNodeId, Box<dyn std::error::Error>> {
+    ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
         // let id = self.prefixes.len() as u32;
-        self.store.store_prefix(next_node)
+        let id = next_node.net << (Store::AF::BITS - next_node.len) as usize;
+        self.store.store_prefix(PrefixId::from(next_node), next_node)
         // id
     }
 
     fn update_prefix_meta(
         &mut self,
-        update_node_idx: StrideNodeId,
+        update_node_idx: PrefixId<Store::AF>,
         meta: Store::Meta,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match self.store.retrieve_prefix_mut(update_node_idx) {
@@ -785,7 +839,7 @@ where
     #[inline]
     pub(crate) fn retrieve_prefix(
         &self,
-        index: StrideNodeId,
+        index: PrefixId<Store::AF>,
     ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
     }
@@ -805,17 +859,17 @@ where
     fn get_all_more_specifics_for_node(
         &self,
         start_node: SizedStrideRef<Store::AF>,
-        found_pfx_vec: &mut Vec<StrideNodeId>,
+        found_pfx_vec: &mut Vec<PrefixId<Store::AF>>,
     ) {
         match start_node {
             SizedStrideRef::Stride3(n) => {
-                found_pfx_vec.extend(n.pfx_vec.to_vec());
+                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(nn.into()).unwrap(),
+                            self.retrieve_node((*nn).into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
@@ -828,7 +882,7 @@ where
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(nn.into()).unwrap(),
+                            self.retrieve_node((*nn).into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
@@ -841,7 +895,7 @@ where
                 for nn in n.ptr_vec.as_slice().iter() {
                     if !nn.is_empty() {
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(nn.into()).unwrap(),
+                            self.retrieve_node((*nn).into()).unwrap(),
                             found_pfx_vec,
                         );
                     }
@@ -895,7 +949,7 @@ where
         >,
         nibble: u32,
         nibble_len: u8,
-    ) -> Option<Vec<StrideNodeId>>
+    ) -> Option<Vec<PrefixId<Store::AF>>>
     where
         S: Stride
             + std::ops::BitAnd<Output = S>

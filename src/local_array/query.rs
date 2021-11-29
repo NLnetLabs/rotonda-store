@@ -11,7 +11,7 @@ use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::TreeBitMap;
 use crate::{MatchOptions, MatchType};
 
-use super::node::{SizedStrideRef, StrideNodeId};
+use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
 
 //------------ Longest Matching Prefix  -------------------------------------
 
@@ -53,19 +53,19 @@ where
 
         // The final prefix
         let mut match_prefix_idx: Option<
-            StrideNodeId,
+            PrefixId<Store::AF>,
         > = None;
 
         // The indexes of the less-specifics
         let mut less_specifics_vec = if options.include_less_specifics {
-            Some(Vec::<StrideNodeId>::new())
+            Some(Vec::<PrefixId<Store::AF>>::new())
         } else {
             None
         };
 
         // The indexes of the more-specifics.
         let mut more_specifics_vec = if options.include_more_specifics {
-            Some(Vec::<StrideNodeId>::new())
+            Some(Vec::<PrefixId<Store::AF>>::new())
         } else {
             None
         };

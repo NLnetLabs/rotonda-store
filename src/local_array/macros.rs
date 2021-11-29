@@ -59,7 +59,7 @@ macro_rules! match_node_for_strides {
                     // position (2^nibble_len) and then nibble is the offset
                     // from the base position.
                     // let new_id = $self.store.acquire_new_prefix_id(&((1 << ($nibble_len - 1)) + $nibble as u16).into());
-                    let new_id = $self.store.acquire_new_prefix_id();
+                    let new_id = $self.store.acquire_new_prefix_id(&$pfx);
                     $self.stats[$stats_level].inc_prefix_count($level);
 
                     current_node
