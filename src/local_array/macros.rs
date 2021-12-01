@@ -10,6 +10,7 @@ macro_rules! match_node_for_strides {
         $nibble: expr;
         $is_last_stride: expr;
         $pfx: ident;
+        $stride_end: ident;
         $cur_i: expr;
         $level: expr;
         // $enum: ident;
@@ -29,14 +30,19 @@ macro_rules! match_node_for_strides {
                 $is_last_stride,
             ) {
                 NewNodeOrIndex::NewNode(n, bit_id) => {
-                    $self.stats[$stats_level].inc($level); // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    // let new_id = Store::NodeType::new(&bit_id,&$cur_i.get_part());
-                    let new_id = $self.store.acquire_new_node_id($self.strides[($level + 1) as usize]);
-                    // current_node.ptr_vec.push(new_id);
+                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
+                    $self.stats[$stats_level].inc($level); 
+
+                    // get a new identifier for the node we're going to create.
+                    let new_id = $self.store.acquire_new_node_id($self.strides[($level + 1) as usize], ($pfx.net, $pfx.len - $stride_end));
+
+                    // set the right bit in the ptr array
                     current_node.ptr_vec.insert(bit_id, new_id);
-                    // current_node.ptr_vec.sort();
+
+                    // store the node in the global store
                     let i = $self.store_node(new_id, n).unwrap();
 
+                    // update ptrbitarr in the current node
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     Some(i)
@@ -200,7 +206,7 @@ macro_rules! impl_primitive_atomic_stride {
                     //     )
                     // ).count_ones() as usize
                     // - 1
-                    
+
 
                     (Self::get_bit_pos(nibble, len).leading_zeros() - 1) as usize
 

@@ -39,7 +39,7 @@ pub struct TreeBitMapNode<
     // node, referenced by (ptrbitarr_index, global vec index)
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
-    pub ptr_vec: NodeSet<PTRARRAYSIZE>,
+    pub ptr_vec: NodeSet<AF, PTRARRAYSIZE>,
     pub _af: PhantomData<AF>,
 }
 
@@ -248,7 +248,7 @@ where
         nibble_len: u8,
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
-    ) -> (Option<StrideNodeId>, Option<PrefixId<AF>>) {
+    ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -318,7 +318,7 @@ where
         nibble_len: u8,
         start_bit: u8,
         _: &mut Option<Vec<PrefixId<AF>>>,
-    ) -> (Option<StrideNodeId>, Option<PrefixId<AF>>) {
+    ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         // This is an exact match, so we're only considering the position of
@@ -373,7 +373,7 @@ where
         nibble_len: u8,
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
-    ) -> (Option<StrideNodeId>, Option<PrefixId<AF>>) {
+    ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -446,7 +446,7 @@ where
         nibble_len: u8,
     ) -> (
         // Option<NodeId>, /* the node with children in the next stride  */
-        Vec<StrideNodeId>, /* child nodes with more more-specifics in this stride */
+        Vec<StrideNodeId<AF>>, /* child nodes with more more-specifics in this stride */
         Vec<PrefixId<AF>>, /* more-specific prefixes in this stride */
     ) {
         let pfxbitarr = self.pfxbitarr.load();

@@ -1,4 +1,5 @@
 use std::hash::Hash;
+use std::ops::Add;
 
 use crate::af::AddressFamily;
 
@@ -129,7 +130,7 @@ pub(crate) trait NodeWrapper<AF: AddressFamily> {
 
 pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>, u16), // New Node and bit_id of the new node
-    ExistingNode(StrideNodeId),
+    ExistingNode(StrideNodeId<AF>),
     NewPrefix(u16),
     ExistingPrefix(PrefixId<AF>),
 }
@@ -138,8 +139,12 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 pub struct PrefixId<AF: AddressFamily>(pub Option<(AF, u8)>);
 
 impl<AF: AddressFamily> PrefixId<AF> {
-    pub fn new(net: AF, len: u8) -> Self { PrefixId(Some((net, len))) }
-    pub fn is_empty(&self) -> bool { self.0.is_none() }
+    pub fn new(net: AF, len: u8) -> Self {
+        PrefixId(Some((net, len)))
+    }
+    pub fn is_empty(&self) -> bool {
+        self.0.is_none()
+    }
 }
 
 impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
@@ -151,14 +156,14 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
 //--------------------- Per-Stride-Node-Id Type ------------------------------------
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
-pub struct StrideNodeId(StrideType, Option<u32>);
+pub struct StrideNodeId<AF: AddressFamily>(StrideType, Option<(AF, u8)>);
 
-impl StrideNodeId {
+impl<AF: AddressFamily> StrideNodeId<AF> {
     pub fn empty(stride_type: StrideType) -> Self {
         Self(stride_type, None)
     }
 
-    pub fn new(stride_type: StrideType, index: u32) -> Self {
+    pub fn new(stride_type: StrideType, index: (AF, u8)) -> Self {
         Self(stride_type, Some(index))
     }
 
@@ -166,11 +171,11 @@ impl StrideNodeId {
         self.1.is_none()
     }
 
-    pub fn get_id(&self) -> u32 {
+    pub fn get_id(&self) -> (AF, u8) {
         self.1.unwrap()
     }
 
-    pub fn into_inner(self) -> (StrideType, Option<u32>) {
+    pub fn into_inner(self) -> (StrideType, Option<(AF, u8)>) {
         (self.0, self.1)
     }
 
@@ -179,70 +184,73 @@ impl StrideNodeId {
     }
 }
 
-impl Default for StrideNodeId {
+impl<AF: AddressFamily> Default for StrideNodeId<AF> {
     fn default() -> Self {
         Self(StrideType::Stride4, None)
     }
 }
 
-impl std::convert::From<u16> for StrideNodeId {
+impl<AF: AddressFamily + From<u32> + From<u16>> std::convert::From<u16>
+    for StrideNodeId<AF>
+{
     fn from(id: u16) -> Self {
-        Self(StrideType::Stride4, Some(id as u32))
+        Self(StrideType::Stride4, Some((id.into(), 0)))
     }
 }
 
-impl std::fmt::Display for StrideNodeId {
+impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}:{}",
             self.0,
             self.1
-                .map(|x| x.to_string())
+                .map(|x| format!("{}-{}", x.0, x.1))
                 .unwrap_or_else(|| "-".to_string())
         )
     }
 }
 
-impl std::convert::From<StrideNodeId> for usize {
-    fn from(id: StrideNodeId) -> Self {
-        id.1.unwrap() as usize
-    }
-}
-
-impl std::convert::From<AtomicStrideNodeId> for StrideNodeId {
-    fn from(id: AtomicStrideNodeId) -> Self {
+impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>>
+    for StrideNodeId<AF>
+{
+    fn from(id: AtomicStrideNodeId<AF>) -> Self {
         let i = match id.index.load(Ordering::Relaxed) {
             0 => None,
-            x => Some(x as u32),
+            // THIS DOESN'T ACTUALLY WORK. TEMPORARY.
+            x => Some((x.into(), 0)),
         };
         Self(id.stride_type, i)
     }
 }
 
-impl std::convert::From<&AtomicStrideNodeId> for StrideNodeId {
-    fn from(id: &AtomicStrideNodeId) -> Self {
+impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
+    for StrideNodeId<AF>
+{
+    fn from(id: &AtomicStrideNodeId<AF>) -> Self {
         let i = match id.index.load(Ordering::Relaxed) {
             0 => None,
-            x => Some(x as u32),
+            x => Some((x.into(), 0)),
         };
         Self(id.stride_type, i)
     }
 }
 
 #[derive(Debug)]
-pub struct AtomicStrideNodeId {
+pub struct AtomicStrideNodeId<AF: AddressFamily> {
     stride_type: StrideType,
     index: AtomicU32,
     serial: AtomicUsize,
+    _af: PhantomData<AF>,
 }
 
-impl AtomicStrideNodeId {
+impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
     pub fn new(stride_type: StrideType, index: u32) -> Self {
         Self {
             stride_type,
             index: AtomicU32::new(index),
             serial: AtomicUsize::new(1),
+            _af: PhantomData,
         }
     }
 
@@ -251,6 +259,7 @@ impl AtomicStrideNodeId {
             stride_type: StrideType::Stride4,
             index: AtomicU32::new(0),
             serial: AtomicUsize::new(0),
+            _af: PhantomData,
         }
     }
 
@@ -298,7 +307,7 @@ impl AtomicStrideNodeId {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.index.load(Ordering::Relaxed) == 0
+        self.serial.load(Ordering::Relaxed) == 0
     }
 
     pub fn into_inner(self) -> (StrideType, Option<u32>) {
@@ -311,18 +320,19 @@ impl AtomicStrideNodeId {
         }
     }
 
-    pub fn from_stridenodeid(id: StrideNodeId) -> Self {
-        let index = id.1.map_or(0, |i| i as u32);
+    pub fn from_stridenodeid(id: StrideNodeId<AF>) -> Self {
+        let index: AF = id.1.map_or(AF::zero(), |i| i.0);
         Self {
             stride_type: id.0,
-            index: AtomicU32::new(index),
-            serial: AtomicUsize::new(if index == 0 { 0 } else { 1 }),
+            index: AtomicU32::new(index.dangerously_truncate_to_u32()),
+            serial: AtomicUsize::new(if index == AF::zero() { 0 } else { 1 }),
+            _af: PhantomData,
         }
     }
 }
 
-impl std::convert::From<AtomicStrideNodeId> for usize {
-    fn from(id: AtomicStrideNodeId) -> Self {
+impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
+    fn from(id: AtomicStrideNodeId<AF>) -> Self {
         id.index.load(Ordering::Relaxed) as usize
     }
 }
@@ -396,19 +406,23 @@ impl std::convert::From<AtomicStrideNodeId> for usize {
 
 //------------------------- Node Collections --------------------------------
 
-pub trait NodeCollection {
-    fn insert(&mut self, index: u16, insert_node: StrideNodeId);
-    fn to_vec(&self) -> Vec<StrideNodeId>;
-    fn as_slice(&self) -> &[AtomicStrideNodeId];
+pub trait NodeCollection<AF: AddressFamily> {
+    fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>);
+    fn to_vec(&self) -> Vec<StrideNodeId<AF>>;
+    fn as_slice(&self) -> &[AtomicStrideNodeId<AF>];
     fn empty() -> Self;
 }
 
 //------------ PrefixSet ----------------------------------------------------
 
 #[derive(Debug)]
-pub struct PrefixSet<AF: AddressFamily, const ARRAYSIZE: usize>([PrefixId<AF>; ARRAYSIZE]);
+pub struct PrefixSet<AF: AddressFamily, const ARRAYSIZE: usize>(
+    [PrefixId<AF>; ARRAYSIZE],
+);
 
-impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display for PrefixSet<AF, ARRAYSIZE> {
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display
+    for PrefixSet<AF, ARRAYSIZE>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self)
     }
@@ -432,7 +446,9 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
     }
 }
 
-impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize> for PrefixSet<AF, ARRAYSIZE> {
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize>
+    for PrefixSet<AF, ARRAYSIZE>
+{
     type Output = PrefixId<AF>;
 
     fn index(&self, idx: usize) -> &PrefixId<AF> {
@@ -451,16 +467,23 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
 //------------------------- NodeSet ---------------------------------------------------
 
 #[derive(Debug)]
-pub struct NodeSet<const ARRAYSIZE: usize>([AtomicStrideNodeId; ARRAYSIZE]);
+pub struct NodeSet<AF: AddressFamily, const ARRAYSIZE: usize>(
+    [AtomicStrideNodeId<AF>; ARRAYSIZE],
+    PhantomData<AF>,
+);
 
-impl<const ARRAYSIZE: usize> std::fmt::Display for NodeSet<ARRAYSIZE> {
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display
+    for NodeSet<AF, ARRAYSIZE>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
-    fn insert(&mut self, index: u16, insert_node: StrideNodeId) {
+impl<AF: AddressFamily, const ARRAYSIZE: usize> NodeCollection<AF>
+    for NodeSet<AF, ARRAYSIZE>
+{
+    fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>) {
         // let idx = self
         //     .0
         //     .as_ref()
@@ -490,11 +513,11 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
         };
     }
 
-    fn to_vec(&self) -> Vec<StrideNodeId> {
+    fn to_vec(&self) -> Vec<StrideNodeId<AF>> {
         self.as_slice()
             .iter()
             .map(|p| {
-                let index = p.index.load(Ordering::Relaxed);
+                let index = (p.index.load(Ordering::Relaxed).into(), 0);
                 let serial = p.serial.load(Ordering::Relaxed);
                 StrideNodeId(
                     p.stride_type,
@@ -504,7 +527,7 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
             .collect()
     }
 
-    fn as_slice(&self) -> &[AtomicStrideNodeId] {
+    fn as_slice(&self) -> &[AtomicStrideNodeId<AF>] {
         // let idx = self
         //     .0
         //     .as_ref()
@@ -527,20 +550,23 @@ impl<const ARRAYSIZE: usize> NodeCollection for NodeSet<ARRAYSIZE> {
         NodeSet(
             array_init::from_iter(iter.map(|_| AtomicStrideNodeId::empty()))
                 .unwrap(),
+            PhantomData,
         )
     }
 }
 
-impl<const ARRAYSIZE: usize> std::ops::Index<usize> for NodeSet<ARRAYSIZE> {
-    type Output = AtomicStrideNodeId;
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize>
+    for NodeSet<AF, ARRAYSIZE>
+{
+    type Output = AtomicStrideNodeId<AF>;
 
-    fn index(&self, idx: usize) -> &AtomicStrideNodeId {
+    fn index(&self, idx: usize) -> &AtomicStrideNodeId<AF> {
         &self.0[idx as usize]
     }
 }
 
-impl<const ARRAYSIZE: usize> std::ops::IndexMut<usize>
-    for NodeSet<ARRAYSIZE>
+impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
+    for NodeSet<AF, ARRAYSIZE>
 {
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
         &mut self.0[idx as usize]
@@ -758,6 +784,7 @@ where
                 nibble;
                 is_last_stride;
                 pfx;
+                stride_end;
                 cur_i;
                 level;
                 // Strides to create match arm for; stats level
@@ -780,16 +807,16 @@ where
 
     fn store_node(
         &mut self,
-        id: StrideNodeId,
+        id: StrideNodeId<Store::AF>,
         next_node: SizedStrideNode<Store::AF>,
-    ) -> Option<StrideNodeId> {
+    ) -> Option<StrideNodeId<Store::AF>> {
         self.store.store_node(id, next_node)
     }
 
     #[inline]
     pub(crate) fn retrieve_node(
         &self,
-        id: StrideNodeId,
+        id: StrideNodeId<Store::AF>,
     ) -> SizedNodeRefOption<Store::AF> {
         self.store.retrieve_node(id)
     }
@@ -803,14 +830,14 @@ where
         self.store.retrieve_node_with_guard(id)
     }
 
-    pub(crate) fn get_root_node_id(&self) -> StrideNodeId {
+    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
         self.store.get_root_node_id(self.strides[0])
     }
 
     #[inline]
     pub(crate) fn retrieve_node_mut(
         &'a mut self,
-        index: StrideNodeId,
+        index: StrideNodeId<Store::AF>,
     ) -> SizedNodeRefResult<'a, Store::AF> {
         self.store.retrieve_node_mut(index)
     }
@@ -821,7 +848,8 @@ where
     ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
         // let id = self.prefixes.len() as u32;
         // let id = next_node.net << (Store::AF::BITS - next_node.len) as usize;
-        self.store.store_prefix(PrefixId::from(next_node.clone()), next_node)
+        self.store
+            .store_prefix(PrefixId::from(next_node.clone()), next_node)
         // id
     }
 

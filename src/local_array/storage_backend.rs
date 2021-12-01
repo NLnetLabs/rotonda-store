@@ -39,7 +39,8 @@ pub(crate) trait StorageBackend {
         // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         //
         level: u8,
-    ) -> StrideNodeId;
+        sub_prefix: (Self::AF, u8),
+    ) -> StrideNodeId<Self::AF>;
     // store_node should return an index with the associated type `Part` of the associated type
     // of this trait.
     // `id` is optional, since a vec uses the indexes as the ids of the nodes,
@@ -47,28 +48,28 @@ pub(crate) trait StorageBackend {
     // record, e.g., dynamodb
     fn store_node(
         &mut self,
-        id: StrideNodeId,
+        id: StrideNodeId<Self::AF>,
         next_node: SizedStrideNode<Self::AF>,
-    ) -> Option<StrideNodeId>;
+    ) -> Option<StrideNodeId<Self::AF>>;
     fn update_node(
         &mut self,
-        current_node_id: StrideNodeId,
+        current_node_id: StrideNodeId<Self::AF>,
         updated_node: SizedStrideNode<Self::AF>,
     );
     fn retrieve_node(
         &'_ self,
-        index: StrideNodeId,
+        index: StrideNodeId<Self::AF>,
     ) -> SizedNodeRefOption<'_, Self::AF>;
     fn retrieve_node_mut(
         &mut self,
-        index: StrideNodeId,
+        index: StrideNodeId<Self::AF>,
     ) -> SizedNodeResult<Self::AF>;
     fn retrieve_node_with_guard(
         &self,
-        index: StrideNodeId,
+        index: StrideNodeId<Self::AF>,
     ) -> CacheGuard<Self::AF>;
     fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>>;
-    fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId;
+    fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId<Self::AF>;
     // fn get_root_node_mut(
     //     &mut self,
     //     stride_size: u8,
@@ -98,7 +99,7 @@ pub(crate) trait StorageBackend {
     ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn retrieve_prefix_with_guard(
         &self,
-        index: StrideNodeId,
+        index: StrideNodeId<Self::AF>,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
     fn get_prefixes(
         &self,
@@ -121,9 +122,11 @@ pub(crate) struct InMemStorage<
 > {
     // each stride in its own vec avoids having to store SizedStrideNode, an enum, that will have
     // the size of the largest variant as its memory footprint (Stride8).
-    pub nodes3: HashMap<StrideNodeId, TreeBitMapNode<AF, Stride3, 14, 8>>,
-    pub nodes4: HashMap<StrideNodeId, TreeBitMapNode<AF, Stride4, 30, 16>>,
-    pub nodes5: HashMap<StrideNodeId, TreeBitMapNode<AF, Stride5, 62, 32>>,
+    pub nodes3: HashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3, 14, 8>>,
+    pub nodes4:
+        HashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4, 30, 16>>,
+    pub nodes5:
+        HashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5, 62, 32>>,
     // pub nodes6: Vec<TreeBitMapNode<AF, Stride6, 126, 64>>,
     // pub nodes7: Vec<TreeBitMapNode<AF, Stride7, 254, 128>>,
     // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, 510, 256>>,
@@ -137,11 +140,20 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     type Meta = Meta;
 
     fn init(
-        start_node: Option<SizedStrideNode<Self::AF>>,
-    ) -> InMemStorage<AF, Meta> {
-        let mut nodes3 = HashMap::new();
-        let mut nodes4 = HashMap::new();
-        let mut nodes5 = HashMap::new();
+        start_node: Option<SizedStrideNode<AF>>,
+    ) -> InMemStorage<Self::AF, Self::Meta> {
+        let mut nodes3 = <HashMap<
+            StrideNodeId<AF>,
+            TreeBitMapNode<AF, Stride3, 14, 8>,
+        >>::new();
+        let mut nodes4 = <HashMap<
+            StrideNodeId<AF>,
+            TreeBitMapNode<AF, Stride4, 30, 16>,
+        >>::new();
+        let mut nodes5 = <HashMap<
+            StrideNodeId<AF>,
+            TreeBitMapNode<AF, Stride5, 62, 32>,
+        >>::new();
         // let mut nodes6 = vec![];
         // let mut nodes7 = vec![];
         // let mut nodes8 = vec![];
@@ -149,19 +161,28 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             match n {
                 SizedStrideNode::Stride3(node) => {
                     nodes3.insert(
-                        StrideNodeId::new(StrideType::Stride3, 0),
+                        StrideNodeId::new(
+                            StrideType::Stride3,
+                            (AF::zero(), 0),
+                        ),
                         node,
                     );
                 }
                 SizedStrideNode::Stride4(node) => {
                     nodes4.insert(
-                        StrideNodeId::new(StrideType::Stride4, 0),
+                        StrideNodeId::new(
+                            StrideType::Stride4,
+                            (AF::zero(), 0),
+                        ),
                         node,
                     );
                 }
                 SizedStrideNode::Stride5(node) => {
                     nodes5.insert(
-                        StrideNodeId::new(StrideType::Stride5, 0),
+                        StrideNodeId::new(
+                            StrideType::Stride5,
+                            (AF::zero(), 0),
+                        ),
                         node,
                     );
                 } // SizedStrideNode::Stride6(nodes) => {
@@ -191,22 +212,30 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         &self,
         // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         level: u8,
-    ) -> StrideNodeId {
+        (sub_prefix_bits, sub_prefix_len): (Self::AF, u8),
+    ) -> StrideNodeId<AF> {
         // We're ignoring the part parameter here, because we want to store
         // the index into the global self.nodes vec in the local vec.
+        println!(
+            "{:#b}/{} ->\t{:#b}",
+            sub_prefix_bits,
+            sub_prefix_len,
+            sub_prefix_bits >> sub_prefix_len as usize
+        );
         match level {
             3 => StrideNodeId::new(
                 StrideType::Stride3,
-                self.nodes3.len() as u32,
+                (sub_prefix_bits >> sub_prefix_len as usize, 0),
+                // self.nodes3.len() as u32,
             ),
             4 => StrideNodeId::new(
                 StrideType::Stride4,
-                self.nodes4.len() as u32,
+                (sub_prefix_bits >> sub_prefix_len as usize, 0), // self.nodes4.len() as u32,
             ),
 
             5 => StrideNodeId::new(
                 StrideType::Stride5,
-                self.nodes5.len() as u32,
+                (sub_prefix_bits >> sub_prefix_len as usize, 0), // self.nodes5.len() as u32,
             ),
 
             // 6 => InMemStrideNodeId::new(
@@ -227,9 +256,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn store_node(
         &mut self,
-        id: StrideNodeId,
+        id: StrideNodeId<AF>,
         next_node: SizedStrideNode<Self::AF>,
-    ) -> Option<StrideNodeId> {
+    ) -> Option<StrideNodeId<AF>> {
         match next_node {
             SizedStrideNode::Stride3(node) => {
                 // let id = self.nodes3.len() as u32;
@@ -251,8 +280,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn update_node(
         &mut self,
-        current_node_id: StrideNodeId,
-        updated_node: SizedStrideNode<Self::AF>,
+        current_node_id: StrideNodeId<AF>,
+        updated_node: SizedStrideNode<AF>,
     ) {
         match updated_node {
             SizedStrideNode::Stride3(node) => {
@@ -281,7 +310,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn retrieve_node(
         &self,
-        id: StrideNodeId,
+        id: StrideNodeId<AF>,
     ) -> SizedNodeRefOption<'_, Self::AF> {
         match id.get_stride_type() {
             StrideType::Stride3 => {
@@ -298,7 +327,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn retrieve_node_mut(
         &'_ mut self,
-        id: StrideNodeId,
+        id: StrideNodeId<AF>,
     ) -> SizedNodeResult<'_, Self::AF> {
         match id.get_stride_type() {
             StrideType::Stride3 => Ok(self
@@ -323,7 +352,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     // inefficient implementation.
     fn retrieve_node_with_guard(
         &self,
-        _id: StrideNodeId,
+        _id: StrideNodeId<AF>,
     ) -> CacheGuard<Self::AF> {
         panic!("Not Implemented for InMeMStorage");
     }
@@ -337,14 +366,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             .collect()
     }
 
-    fn get_root_node_id(&self, first_stride_size: u8) -> StrideNodeId {
+    fn get_root_node_id(&self, first_stride_size: u8) -> StrideNodeId<AF> {
         let first_stride_type = match first_stride_size {
             3 => StrideType::Stride3,
             4 => StrideType::Stride4,
             5 => StrideType::Stride5,
             _ => panic!("Invalid stride size"),
         };
-        StrideNodeId::new(first_stride_type, 0)
+        StrideNodeId::new(first_stride_type, (AF::zero(), 0))
     }
 
     // fn get_root_node_mut(
@@ -406,7 +435,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn retrieve_prefix_with_guard(
         &self,
-        _index: StrideNodeId,
+        _index: StrideNodeId<AF>,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta> {
         panic!("nOt ImPlEmEnTed for InMemNode");
     }
