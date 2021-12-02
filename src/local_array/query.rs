@@ -1,7 +1,7 @@
 use crate::af::AddressFamily;
 use routecore::addr::Prefix;
-use routecore::record::NoMeta;
 use routecore::bgp::RecordSet;
+use routecore::record::NoMeta;
 
 use crate::local_array::storage_backend::*;
 use crate::prefix_record::InternalPrefixRecord;
@@ -11,7 +11,7 @@ use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::TreeBitMap;
 use crate::{MatchOptions, MatchType};
 
-use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
+use super::node::{PrefixId, SizedStrideRef, StrideNodeId, StrideType};
 
 //------------ Longest Matching Prefix  -------------------------------------
 
@@ -35,11 +35,13 @@ where
         &'a self,
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
-    ) -> QueryResult<'a, Store::Meta>
-    {
+    ) -> QueryResult<'a, Store::Meta> {
         let mut stride_end = 0;
+        let mut level: usize = 0;
 
-        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
+        let mut node = self
+            .retrieve_node_at_level(self.strides[0], self.get_root_node_id())
+            .unwrap();
         let mut nibble;
         let mut nibble_len;
 
@@ -52,9 +54,7 @@ where
         // QueryResult is computed at the end.
 
         // The final prefix
-        let mut match_prefix_idx: Option<
-            PrefixId<Store::AF>,
-        > = None;
+        let mut match_prefix_idx: Option<PrefixId<Store::AF>> = None;
 
         // The indexes of the less-specifics
         let mut less_specifics_vec = if options.include_less_specifics {
@@ -84,6 +84,7 @@ where
         // `post-processing` section.
 
         for stride in self.strides.iter() {
+            print!("xxx ");
             stride_end += stride;
             let last_stride = search_pfx.len < stride_end;
 
@@ -92,6 +93,7 @@ where
             } else {
                 *stride
             };
+            level += 1;
 
             // Shift left and right to set the bits to zero that are not
             // in the nibble we're handling here.
@@ -101,6 +103,7 @@ where
                 nibble_len,
             );
 
+            println!("s_node: {:?}", node);
             match node {
                 SizedStrideRef::Stride3(current_node) => {
                     let search_fn = match options.match_type {
@@ -135,6 +138,8 @@ where
                         search_pfx,
                         nibble,
                         nibble_len,
+                        (search_pfx.net, stride_end),
+                        self.strides[level].into(),
                         stride_end - stride,
                         &mut less_specifics_vec,
                     ) {
@@ -143,7 +148,8 @@ where
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node =
+                                self.store.retrieve_node(n.0, n.1).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -151,13 +157,18 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride3,
                                         );
                                 }
                                 break;
                             }
                         }
                         (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n.0, n.1).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -165,6 +176,11 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride3,
                                         );
                                 }
                                 break;
@@ -180,6 +196,11 @@ where
                                         current_node,
                                         nibble,
                                         nibble_len,
+                                        StrideNodeId::new((
+                                            search_pfx.net,
+                                            stride_end,
+                                        )),
+                                        StrideType::Stride3,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -201,6 +222,11 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride3,
                                         );
 
                                     match_prefix_idx = None;
@@ -238,12 +264,14 @@ where
                         search_pfx,
                         nibble,
                         nibble_len,
+                        (search_pfx.net, stride_end),
+                        self.strides[level].into(),
                         stride_end - stride,
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n.0, n.1).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -251,13 +279,18 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride4,
                                         );
                                 }
                                 break;
                             }
                         }
                         (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n.0, n.1).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -265,6 +298,11 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride4,
                                         );
                                 }
                                 break;
@@ -277,6 +315,11 @@ where
                                         current_node,
                                         nibble,
                                         nibble_len,
+                                        StrideNodeId::new((
+                                            search_pfx.net,
+                                            stride_end,
+                                        )),
+                                        StrideType::Stride4,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -292,6 +335,11 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride4,
                                         );
 
                                     match_prefix_idx = None;
@@ -327,12 +375,14 @@ where
                         search_pfx,
                         nibble,
                         nibble_len,
+                        (search_pfx.net, stride_end),
+                        self.strides[level].into(),
                         stride_end - stride,
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n.0, n.1).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -340,13 +390,20 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride5,
                                         );
                                 }
                                 break;
                             }
                         }
                         (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
+                            println!("nn {:?}", n);
+                            println!("{:?}", self.store.get_nodes());
+                            node = self.retrieve_node(n.0, n.1).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -354,6 +411,11 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride5,
                                         );
                                 }
                                 break;
@@ -366,6 +428,11 @@ where
                                         current_node,
                                         nibble,
                                         nibble_len,
+                                        StrideNodeId::new((
+                                            search_pfx.net,
+                                            stride_end,
+                                        )),
+                                        StrideType::Stride5,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -379,6 +446,11 @@ where
                                             current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new((
+                                                search_pfx.net,
+                                                stride_end,
+                                            )),
+                                            StrideType::Stride5,
                                         );
 
                                     match_prefix_idx = None;
@@ -392,271 +464,270 @@ where
                             break;
                         }
                     }
-                }
-                // SizedStrideNode::Stride6(current_node) => {
-                //     let search_fn = match options.match_type {
-                //         MatchType::ExactMatch => {
-                //             if options.include_less_specifics {
-                //                 TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                //             } else {
-                //                 TreeBitMapNode::search_stride_for_exact_match_at
-                //             }
-                //         }
-                //         MatchType::LongestMatch => {
-                //             TreeBitMapNode::search_stride_for_longest_match_at
-                //         }
-                //         MatchType::EmptyMatch => {
-                //             TreeBitMapNode::search_stride_for_longest_match_at
-                //         }
-                //     };
+                } // SizedStrideNode::Stride6(current_node) => {
+                  //     let search_fn = match options.match_type {
+                  //         MatchType::ExactMatch => {
+                  //             if options.include_less_specifics {
+                  //                 TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                  //             } else {
+                  //                 TreeBitMapNode::search_stride_for_exact_match_at
+                  //             }
+                  //         }
+                  //         MatchType::LongestMatch => {
+                  //             TreeBitMapNode::search_stride_for_longest_match_at
+                  //         }
+                  //         MatchType::EmptyMatch => {
+                  //             TreeBitMapNode::search_stride_for_longest_match_at
+                  //         }
+                  //     };
 
-                //     match search_fn(
-                //         &current_node,
-                //         search_pfx,
-                //         nibble,
-                //         nibble_len,
-                //         stride_end - stride,
-                //         &mut less_specifics_vec,
-                //     ) {
-                //         (Some(n), Some(pfx_idx)) => {
-                //             match_prefix_idx = Some(pfx_idx.get_part());
-                //             node = self.retrieve_node(n).unwrap();
-                //             if last_stride {
-                //                 if options.include_more_specifics {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
-                //                 }
-                //                 break;
-                //             }
-                //         }
-                //         (Some(n), None) => {
-                //             node = self.retrieve_node(n).unwrap();
-                //             if last_stride {
-                //                 if options.include_more_specifics {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
-                //                 }
-                //                 break;
-                //             }
-                //         }
-                //         (None, Some(pfx_idx)) => {
-                //             if options.include_more_specifics {
-                //                 more_specifics_vec = self
-                //                     .get_all_more_specifics_from_nibble(
-                //                         &current_node,
-                //                         nibble,
-                //                         nibble_len,
-                //                     );
-                //             }
-                //             match_prefix_idx = Some(pfx_idx.get_part());
-                //             break;
-                //         }
-                //         (None, None) => {
-                //             match options.match_type {
-                //                 MatchType::EmptyMatch => {
-                //                     // To make sure we don't process this match arm more then once, we
-                //                     // return early here.
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
+                  //     match search_fn(
+                  //         &current_node,
+                  //         search_pfx,
+                  //         nibble,
+                  //         nibble_len,
+                  //         stride_end - stride,
+                  //         &mut less_specifics_vec,
+                  //     ) {
+                  //         (Some(n), Some(pfx_idx)) => {
+                  //             match_prefix_idx = Some(pfx_idx.get_part());
+                  //             node = self.retrieve_node(n).unwrap();
+                  //             if last_stride {
+                  //                 if options.include_more_specifics {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
+                  //                 }
+                  //                 break;
+                  //             }
+                  //         }
+                  //         (Some(n), None) => {
+                  //             node = self.retrieve_node(n).unwrap();
+                  //             if last_stride {
+                  //                 if options.include_more_specifics {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
+                  //                 }
+                  //                 break;
+                  //             }
+                  //         }
+                  //         (None, Some(pfx_idx)) => {
+                  //             if options.include_more_specifics {
+                  //                 more_specifics_vec = self
+                  //                     .get_all_more_specifics_from_nibble(
+                  //                         &current_node,
+                  //                         nibble,
+                  //                         nibble_len,
+                  //                     );
+                  //             }
+                  //             match_prefix_idx = Some(pfx_idx.get_part());
+                  //             break;
+                  //         }
+                  //         (None, None) => {
+                  //             match options.match_type {
+                  //                 MatchType::EmptyMatch => {
+                  //                     // To make sure we don't process this match arm more then once, we
+                  //                     // return early here.
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
 
-                //                     match_prefix_idx = None;
-                //                     break;
-                //                 }
-                //                 MatchType::LongestMatch => {}
-                //                 MatchType::ExactMatch => {
-                //                     match_prefix_idx = None;
-                //                 }
-                //             }
-                //             break;
-                //         }
-                //     }
-                // }
-                // SizedStrideNode::Stride7(current_node) => {
-                //     let search_fn = match options.match_type {
-                //         MatchType::ExactMatch => {
-                //             if options.include_less_specifics {
-                //                 TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                //             } else {
-                //                 TreeBitMapNode::search_stride_for_exact_match_at
-                //             }
-                //         }
-                //         MatchType::LongestMatch => {
-                //             TreeBitMapNode::search_stride_for_longest_match_at
-                //         }
-                //         MatchType::EmptyMatch => {
-                //             TreeBitMapNode::search_stride_for_longest_match_at
-                //         }
-                //     };
-                //     match search_fn(
-                //         &current_node,
-                //         search_pfx,
-                //         nibble,
-                //         nibble_len,
-                //         stride_end - stride,
-                //         &mut less_specifics_vec,
-                //     ) {
-                //         (Some(n), Some(pfx_idx)) => {
-                //             match_prefix_idx = Some(pfx_idx.get_part());
-                //             node = self.retrieve_node(n).unwrap();
-                //             if last_stride {
-                //                 if options.include_more_specifics {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
-                //                 }
-                //                 break;
-                //             }
-                //         }
-                //         (Some(n), None) => {
-                //             node = self.retrieve_node(n).unwrap();
-                //             if last_stride {
-                //                 if options.include_more_specifics {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
-                //                 }
-                //                 break;
-                //             }
-                //         }
-                //         (None, Some(pfx_idx)) => {
-                //             if options.include_more_specifics {
-                //                 more_specifics_vec = self
-                //                     .get_all_more_specifics_from_nibble(
-                //                         &current_node,
-                //                         nibble,
-                //                         nibble_len,
-                //                     );
-                //             }
-                //             match_prefix_idx = Some(pfx_idx.get_part());
-                //             break;
-                //         }
-                //         (None, None) => {
-                //             match options.match_type {
-                //                 MatchType::EmptyMatch => {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
+                  //                     match_prefix_idx = None;
+                  //                     break;
+                  //                 }
+                  //                 MatchType::LongestMatch => {}
+                  //                 MatchType::ExactMatch => {
+                  //                     match_prefix_idx = None;
+                  //                 }
+                  //             }
+                  //             break;
+                  //         }
+                  //     }
+                  // }
+                  // SizedStrideNode::Stride7(current_node) => {
+                  //     let search_fn = match options.match_type {
+                  //         MatchType::ExactMatch => {
+                  //             if options.include_less_specifics {
+                  //                 TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                  //             } else {
+                  //                 TreeBitMapNode::search_stride_for_exact_match_at
+                  //             }
+                  //         }
+                  //         MatchType::LongestMatch => {
+                  //             TreeBitMapNode::search_stride_for_longest_match_at
+                  //         }
+                  //         MatchType::EmptyMatch => {
+                  //             TreeBitMapNode::search_stride_for_longest_match_at
+                  //         }
+                  //     };
+                  //     match search_fn(
+                  //         &current_node,
+                  //         search_pfx,
+                  //         nibble,
+                  //         nibble_len,
+                  //         stride_end - stride,
+                  //         &mut less_specifics_vec,
+                  //     ) {
+                  //         (Some(n), Some(pfx_idx)) => {
+                  //             match_prefix_idx = Some(pfx_idx.get_part());
+                  //             node = self.retrieve_node(n).unwrap();
+                  //             if last_stride {
+                  //                 if options.include_more_specifics {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
+                  //                 }
+                  //                 break;
+                  //             }
+                  //         }
+                  //         (Some(n), None) => {
+                  //             node = self.retrieve_node(n).unwrap();
+                  //             if last_stride {
+                  //                 if options.include_more_specifics {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
+                  //                 }
+                  //                 break;
+                  //             }
+                  //         }
+                  //         (None, Some(pfx_idx)) => {
+                  //             if options.include_more_specifics {
+                  //                 more_specifics_vec = self
+                  //                     .get_all_more_specifics_from_nibble(
+                  //                         &current_node,
+                  //                         nibble,
+                  //                         nibble_len,
+                  //                     );
+                  //             }
+                  //             match_prefix_idx = Some(pfx_idx.get_part());
+                  //             break;
+                  //         }
+                  //         (None, None) => {
+                  //             match options.match_type {
+                  //                 MatchType::EmptyMatch => {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
 
-                //                     match_prefix_idx = None;
-                //                     break;
-                //                 }
-                //                 MatchType::LongestMatch => {}
-                //                 MatchType::ExactMatch => {
-                //                     match_prefix_idx = None;
-                //                 }
-                //             }
-                //             break;
-                //         }
-                //     }
-                // }
-                // SizedStrideNode::Stride8(current_node) => {
-                //     let search_fn = match options.match_type {
-                //         MatchType::ExactMatch => {
-                //             if options.include_less_specifics {
-                //                 TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                //             } else {
-                //                 TreeBitMapNode::search_stride_for_exact_match_at
-                //             }
-                //         }
-                //         MatchType::LongestMatch => {
-                //             TreeBitMapNode::search_stride_for_longest_match_at
-                //         }
-                //         MatchType::EmptyMatch => {
-                //             TreeBitMapNode::search_stride_for_longest_match_at
-                //         }
-                //     };
-                //     match search_fn(
-                //         &current_node,
-                //         search_pfx,
-                //         nibble,
-                //         nibble_len,
-                //         stride_end - stride,
-                //         &mut less_specifics_vec,
-                //     ) {
-                //         (Some(n), Some(pfx_idx)) => {
-                //             match_prefix_idx = Some(pfx_idx.get_part());
-                //             node = self.retrieve_node(n).unwrap();
-                //             if last_stride {
-                //                 if options.include_more_specifics {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
-                //                 }
-                //                 break;
-                //             }
-                //         }
-                //         (Some(n), None) => {
-                //             node = self.retrieve_node(n).unwrap();
-                //             if last_stride {
-                //                 if options.include_more_specifics {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
-                //                 }
-                //                 break;
-                //             }
-                //         }
-                //         (None, Some(pfx_idx)) => {
-                //             if options.include_more_specifics {
-                //                 more_specifics_vec = self
-                //                     .get_all_more_specifics_from_nibble(
-                //                         &current_node,
-                //                         nibble,
-                //                         nibble_len,
-                //                     );
-                //             }
-                //             match_prefix_idx = Some(pfx_idx.get_part());
-                //             break;
-                //         }
-                //         (None, None) => {
-                //             match options.match_type {
-                //                 MatchType::EmptyMatch => {
-                //                     more_specifics_vec = self
-                //                         .get_all_more_specifics_from_nibble(
-                //                             &current_node,
-                //                             nibble,
-                //                             nibble_len,
-                //                         );
+                  //                     match_prefix_idx = None;
+                  //                     break;
+                  //                 }
+                  //                 MatchType::LongestMatch => {}
+                  //                 MatchType::ExactMatch => {
+                  //                     match_prefix_idx = None;
+                  //                 }
+                  //             }
+                  //             break;
+                  //         }
+                  //     }
+                  // }
+                  // SizedStrideNode::Stride8(current_node) => {
+                  //     let search_fn = match options.match_type {
+                  //         MatchType::ExactMatch => {
+                  //             if options.include_less_specifics {
+                  //                 TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
+                  //             } else {
+                  //                 TreeBitMapNode::search_stride_for_exact_match_at
+                  //             }
+                  //         }
+                  //         MatchType::LongestMatch => {
+                  //             TreeBitMapNode::search_stride_for_longest_match_at
+                  //         }
+                  //         MatchType::EmptyMatch => {
+                  //             TreeBitMapNode::search_stride_for_longest_match_at
+                  //         }
+                  //     };
+                  //     match search_fn(
+                  //         &current_node,
+                  //         search_pfx,
+                  //         nibble,
+                  //         nibble_len,
+                  //         stride_end - stride,
+                  //         &mut less_specifics_vec,
+                  //     ) {
+                  //         (Some(n), Some(pfx_idx)) => {
+                  //             match_prefix_idx = Some(pfx_idx.get_part());
+                  //             node = self.retrieve_node(n).unwrap();
+                  //             if last_stride {
+                  //                 if options.include_more_specifics {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
+                  //                 }
+                  //                 break;
+                  //             }
+                  //         }
+                  //         (Some(n), None) => {
+                  //             node = self.retrieve_node(n).unwrap();
+                  //             if last_stride {
+                  //                 if options.include_more_specifics {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
+                  //                 }
+                  //                 break;
+                  //             }
+                  //         }
+                  //         (None, Some(pfx_idx)) => {
+                  //             if options.include_more_specifics {
+                  //                 more_specifics_vec = self
+                  //                     .get_all_more_specifics_from_nibble(
+                  //                         &current_node,
+                  //                         nibble,
+                  //                         nibble_len,
+                  //                     );
+                  //             }
+                  //             match_prefix_idx = Some(pfx_idx.get_part());
+                  //             break;
+                  //         }
+                  //         (None, None) => {
+                  //             match options.match_type {
+                  //                 MatchType::EmptyMatch => {
+                  //                     more_specifics_vec = self
+                  //                         .get_all_more_specifics_from_nibble(
+                  //                             &current_node,
+                  //                             nibble,
+                  //                             nibble_len,
+                  //                         );
 
-                //                     match_prefix_idx = None;
-                //                     break;
-                //                 }
-                //                 MatchType::LongestMatch => {}
-                //                 MatchType::ExactMatch => {
-                //                     match_prefix_idx = None;
-                //                 }
-                //             }
-                //             break;
-                //         }
-                //     }
-                // }
+                  //                     match_prefix_idx = None;
+                  //                     break;
+                  //                 }
+                  //                 MatchType::LongestMatch => {}
+                  //                 MatchType::ExactMatch => {
+                  //                     match_prefix_idx = None;
+                  //                 }
+                  //             }
+                  //             break;
+                  //         }
+                  //     }
+                  // }
             }
         }
         //------------------ end of Stride branch arm repetition ------------

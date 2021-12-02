@@ -175,9 +175,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap.match_prefix(
                                         &p,
                                         &MatchOptions {
-                                            match_type: MatchType::EmptyMatch,
-                                            include_less_specifics: true,
-                                            include_more_specifics: true
+                                            match_type: MatchType::LongestMatch,
+                                            include_less_specifics: false,
+                                            include_more_specifics: false
                                         }
                                     )
                                 );

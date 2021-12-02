@@ -5,8 +5,8 @@ use std::sync::atomic::{
 
 use num::{PrimInt, Zero};
 
-use crate::impl_primitive_atomic_stride;
 use crate::synth_int::AtomicU128;
+use crate::{impl_primitive_atomic_stride, AddressFamily};
 
 pub type Stride3 = u16;
 pub type Stride4 = u32;
@@ -35,6 +35,7 @@ pub trait AtomicBitmap {
     //     &self,
     //     f: F,
     // ) -> CasResult<Self::InnerType>;
+    fn is_set(&self, index: usize) -> bool;
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -51,6 +52,9 @@ impl AtomicBitmap for AtomicStride2 {
     }
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
+    }
+    fn is_set(&self, bit: usize) -> bool {
+        self.load() & (1 << bit) != 0
     }
     // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
     // where
@@ -84,6 +88,9 @@ impl AtomicBitmap for AtomicStride3 {
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
     }
+    fn is_set(&self, bit: usize) -> bool {
+        self.load() & (1 << bit) != 0
+    }
     // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
     // where
     //     F: FnMut(u16) -> Option<u16>,
@@ -116,6 +123,9 @@ impl AtomicBitmap for AtomicStride4 {
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
     }
+    fn is_set(&self, bit: usize) -> bool {
+        self.load() & (1 << bit) != 0
+    }
     // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
     // where
     //     F: FnMut(u32) -> Option<u32>,
@@ -147,6 +157,9 @@ impl AtomicBitmap for AtomicStride5 {
     }
     fn inner(self) -> Self::InnerType {
         self.0.into_inner()
+    }
+    fn is_set(&self, bit: usize) -> bool {
+        self.load() & (1 << bit) != 0
     }
     // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
     // where
@@ -185,6 +198,9 @@ impl AtomicBitmap for AtomicStride6 {
             hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
             lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
         ])
+    }
+    fn is_set(&self, bit: usize) -> bool {
+        self.load() & (1 << bit) != 0
     }
     // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
     // where
@@ -366,10 +382,7 @@ where
 
     // get_pfx_index only needs nibble and len for fixed-layout bitarrays,
     // since the index can be deducted from them.
-    fn get_pfx_index(
-        nibble: u32,
-        len: u8,
-    ) -> usize;
+    fn get_pfx_index(nibble: u32, len: u8) -> usize;
 
     // Clear the bitmap to the right of the pointer and count the number of ones.
     // This number represents the index to the corresponding child node in the ptr_vec.
@@ -391,6 +404,11 @@ where
         bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
         nibble: u32,
     ) -> usize;
+
+    fn get_child_node_id<AF: AddressFamily>(
+        prefix_id: AF,
+        truncate_len: u8,
+    ) -> super::node::StrideNodeId<AF>;
 
     // Convert a ptrbitarr into a pfxbitarr sized bitmap,
     // so we can do bitwise operations with a pfxbitarr sized

@@ -39,7 +39,7 @@ pub struct TreeBitMapNode<
     // node, referenced by (ptrbitarr_index, global vec index)
     // We need the u16 (ptrbitarr_index) to sort the
     // vec that's stored in the node.
-    pub ptr_vec: NodeSet<AF, PTRARRAYSIZE>,
+    // pub ptr_vec: NodeSet<AF, PTRARRAYSIZE>,
     pub _af: PhantomData<AF>,
 }
 
@@ -54,9 +54,9 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeBitMapNode")
-            // .field("ptrbitarr", &self.ptrbitarr.inner())
-            // .field("pfxbitarr", &self.pfxbitarr.inner())
-            .field("ptr_vec", &self.ptr_vec)
+            .field("ptrbitarr", &self.ptrbitarr.load())
+            .field("pfxbitarr", &self.pfxbitarr.load())
+            // .field("ptr_vec", &self.ptr_vec)
             .field("pfx_vec", &self.pfx_vec)
             .finish()
     }
@@ -74,10 +74,10 @@ where
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "TreeBitMapNode {{ ptrbitarr: {:?}, pfxbitarr: {:?}, ptr_vec: {:?}, pfx_vec: {:?} }}",
+            "TreeBitMapNode {{ ptrbitarr: {:?}, pfxbitarr: {:?}, pfx_vec: {:?} }}",
             self.ptrbitarr.load(),
             self.pfxbitarr.load(),
-            self.ptr_vec.as_slice(),
+            // self.ptr_vec.as_slice(),
             self.pfx_vec.as_slice()
         )
     }
@@ -100,6 +100,26 @@ where
     <S as Stride>::AtomicPfxSize: AtomicBitmap,
     <S as Stride>::AtomicPtrSize: AtomicBitmap,
 {
+    // create a vec of all child nodes ids
+    pub(crate) fn ptr_vec(
+        &self,
+        stride_type: StrideType,
+        current_len: u8,
+    ) -> Vec<StrideNodeId<AF>> {
+        let mut child_node_ids = Vec::with_capacity(PTRARRAYSIZE);
+        for ptrbitarr_index in 0..PTRARRAYSIZE {
+            if self.ptrbitarr.is_set(ptrbitarr_index) {
+                let node_id = StrideNodeId::<AF>::new((
+                    (ptrbitarr_index as u32).into(),
+                    current_len + stride_type.len(),
+                ));
+                child_node_ids.push(node_id);
+            }
+        }
+        println!("vec: {:?}", child_node_ids);
+        child_node_ids
+    }
+
     // Inspects the stride (nibble, nibble_len) to see it there's
     // already a child node (if not at the last stride) or a prefix
     //  (if it's the last stride).
@@ -113,6 +133,7 @@ where
         &mut self,
         nibble: u32,
         nibble_len: u8,
+        prefix_id: (AF, u8),
         next_stride: Option<&u8>,
         is_last_stride: bool,
     ) -> NewNodeOrIndex<AF> {
@@ -146,7 +167,7 @@ where
                             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
                             pfx_vec: PrefixSet::empty(),
-                            ptr_vec: NodeSet::empty(),
+                            // ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -155,7 +176,7 @@ where
                             ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                             pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                             pfx_vec: PrefixSet::empty(),
-                            ptr_vec: NodeSet::empty(),
+                            // ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -164,7 +185,7 @@ where
                             ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                             pfxbitarr: AtomicStride5(AtomicU64::new(0)),
                             pfx_vec: PrefixSet::empty(),
-                            ptr_vec: NodeSet::empty(),
+                            // ptr_vec: NodeSet::empty(),
                             _af: PhantomData,
                         });
                     }
@@ -207,30 +228,36 @@ where
                 // ex.:
                 // In a stride3 (ptrbitarr length is 8):
                 // bit_pos 0001 0000
-                // so this is the fourth bit, so points to index = 3                
+                // so this is the fourth bit, so points to index = 3       
+                println!("create new node {:?}", new_node);         
                 return NewNodeOrIndex::NewNode(
                     new_node,
                     nibble as u16,
                 );
             }
         } else {
+            println!("checking for existing prefix");
             // only at the last stride do we create the bit in the prefix bitmap,
             // and only if it doesn't exist already
             if pfxbitarr & bit_pos
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
             {
+                println!("creating new prefix");
                 // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
                 let _res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
+            println!("found existing prefix");
             return NewNodeOrIndex::ExistingPrefix(
                 self.pfx_vec.to_vec()[S::get_pfx_index(nibble, nibble_len)],
             );
         }
 
+        println!("found existing node");
         NewNodeOrIndex::ExistingNode(
-            self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+            // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+            S::get_child_node_id(prefix_id.0, prefix_id.1),
         )
     }
 
@@ -246,14 +273,17 @@ where
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
+        prefix_id: (AF, u8),
+        stride_type: StrideType,
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
-    ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
+    ) -> (Option<(StrideType, StrideNodeId<AF>)>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
         let mut found_pfx = None;
 
+        println!("yy ");
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
             nibble =
@@ -284,12 +314,20 @@ where
             }
         }
 
+        println!("prefix_id {:?} {}/{}", prefix_id, prefix_id.0.into_ipaddr(), prefix_id.1);
+        println!("zz {} <= {}+{}", search_pfx.len, start_bit, nibble_len);
+        println!("cond {}", (S::into_stride_size(ptrbitarr) & bit_pos) == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero());
+        println!("{:032b} ptrbitarr", ptrbitarr);
+        println!("{:032b} bit_pos", bit_pos);
+
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
         if search_pfx.len <= start_bit + nibble_len
             || (S::into_stride_size(ptrbitarr) & bit_pos) == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
         // No children or at the end, return the definitive LMP we found.
         {
+            println!("done");
+            println!("found preliminary: {:?}", found_pfx);
             return (
                 None,      /* no more children */
                 found_pfx, /* The definitive LMP if any */
@@ -298,16 +336,20 @@ where
 
         // There's another child, return it together with the preliminary LMP we found.
         (
-            // The node that has children the next stride
+            // The identifier of the node that has children of the next stride
             Some(
-                self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+                // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+                (
+                    stride_type,
+                    S::get_child_node_id(prefix_id.0, start_bit + nibble_len),
+                ),
             ),
             found_pfx,
         )
     }
 
     // This function looks for the exactly matching prefix in the provided
-    // nibble. It doesn't needd to iterate over anything it just compares
+    // nibble. It doesn't need to iterate over anything it just compares
     // the complete nibble, with the appropriate bits in the requested
     // prefix. Although this is rather efficient, there's no way to collect
     // less-specific prefixes from the search prefix.
@@ -316,9 +358,11 @@ where
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         nibble: u32,
         nibble_len: u8,
+        prefix_id: (AF, u8),
+        stride_type: StrideType,
         start_bit: u8,
         _: &mut Option<Vec<PrefixId<AF>>>,
-    ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
+    ) -> (Option<(StrideType, StrideNodeId<AF>)>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         // This is an exact match, so we're only considering the position of
@@ -349,8 +393,9 @@ where
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
                     found_child = Some(
-                        self.ptr_vec.to_vec()
-                            [S::get_ptr_index(ptrbitarr, nibble)],
+                        // self.ptr_vec.to_vec()
+                        //     [S::get_ptr_index(ptrbitarr, nibble)],
+                        (stride_type, S::get_child_node_id(prefix_id.0, start_bit + nibble_len)),
                     );
                 }
             }
@@ -371,9 +416,11 @@ where
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
+        prefix_id: (AF, u8),
+        stride_type: StrideType,
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
-    ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
+    ) -> (Option<(StrideType, StrideNodeId<AF>)>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -432,7 +479,8 @@ where
             // There's another child, we won't return the found_pfx, since we're not
             // at the last nibble and we want an exact match only.
             false => (
-                Some(self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)]), /* The node that has children the next stride */
+                // Some(self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)]), /* The node that has children the next stride */
+                Some((stride_type, S::get_child_node_id(prefix_id.0, start_bit + nibble_len))),
                 None,
             ),
         }
@@ -444,9 +492,12 @@ where
         &self,
         nibble: u32,
         nibble_len: u8,
+        start_bit: u8,
+        prefix_id: StrideNodeId<AF>,
+        stride_type: StrideType,
     ) -> (
         // Option<NodeId>, /* the node with children in the next stride  */
-        Vec<StrideNodeId<AF>>, /* child nodes with more more-specifics in this stride */
+        Vec<(StrideType, StrideNodeId<AF>)>, /* child nodes with more more-specifics in this stride */
         Vec<PrefixId<AF>>, /* more-specific prefixes in this stride */
     ) {
         let pfxbitarr = self.pfxbitarr.load();
@@ -466,12 +517,16 @@ where
             )
         {
             found_child = Some(
-                self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+                // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
+                S::get_child_node_id(
+                    prefix_id.get_id().0,
+                    start_bit + nibble_len,
+                ),
             );
         }
 
         if let Some(child) = found_child {
-            found_children_with_more_specifics.push(child);
+            found_children_with_more_specifics.push((stride_type, child));
         }
 
         // println!("{}..{}", nibble_len + start_bit, S::STRIDE_LEN + start_bit);
@@ -508,8 +563,10 @@ where
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
                     found_children_with_more_specifics.push(
-                        self.ptr_vec.to_vec()
-                            [S::get_ptr_index(ptrbitarr, ms_nibble)],
+                        // self.ptr_vec.to_vec()
+                        //     [S::get_ptr_index(ptrbitarr, ms_nibble)],
+                        (stride_type,
+                        S::get_child_node_id(prefix_id.get_id().0, start_bit + ms_nibble_len))
                     );
                 }
 
