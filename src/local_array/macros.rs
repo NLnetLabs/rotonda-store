@@ -19,14 +19,14 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match $self.retrieve_node_mut_at_level($level, $cur_i)? {
+        match $self.retrieve_node_mut($cur_i)? {
             $(
             SizedStrideRefMut::$variant(node) => {
             let mut current_node = std::mem::take(node);
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
-                ($pfx.net, $truncate_len),
+                StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
                 $self.strides.get(($level + 1) as usize),
                 $is_last_stride,
             ) {
@@ -35,7 +35,7 @@ macro_rules! match_node_for_strides {
                     $self.stats[$stats_level].inc($level);
 
                     // get a new identifier for the node we're going to create.
-                    let new_id = $self.store.acquire_new_node_id($self.strides[($level + 1) as usize], ($pfx.net, $truncate_len));
+                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len));
 
                     // store the node identifier in the local ptr array
                     // current_node.ptr_vec.insert(bit_id, new_id);
@@ -50,7 +50,7 @@ macro_rules! match_node_for_strides {
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-
+                    println!("Existing node {:?}", i);
                     // let _default_val = std::mem::replace(
                     //     $self.retrieve_node_mut($cur_i).unwrap(),
                     //     SizedStrideNode::$variant(current_node));
@@ -229,18 +229,14 @@ macro_rules! impl_primitive_atomic_stride {
                     (nibble as u16).into()
                 }
 
-                fn get_child_node_id<AF: AddressFamily>(
-                    prefix_id: AF,
-                    truncate_len: u8
+                fn into_node_id<AF: AddressFamily>(
+                    addr_bits: AF,
+                    len: u8
                 ) -> crate::local_array::node::StrideNodeId<AF> {
-                    let child_id = (prefix_id >> (AF::BITS - truncate_len) as usize) << (AF::BITS - truncate_len) as usize;
-                    println!("search {}/{}", prefix_id.into_ipaddr(), truncate_len);
-                    println!("sub-search {} {}/{}", child_id, child_id.into_ipaddr(), truncate_len);
-
-                    crate::local_array::node::StrideNodeId::new((
-                        child_id,
-                        truncate_len
-                    ))
+                    let id = crate::local_array::node::StrideNodeId::new_with_cleaned_id(addr_bits, len);
+                    println!("search {}/{}", id.get_id().0.into_ipaddr(), len);
+                    println!("sub-search {} {}/{}", id, id.get_id().0.into_ipaddr(), len);
+                    id
                 }
 
                 fn into_stride_size(bitmap: $ptrsize) -> $pfxsize {

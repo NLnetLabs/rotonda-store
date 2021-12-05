@@ -8,7 +8,15 @@ use std::fmt::Debug;
 /// be able to only take the amount of memory needs. Useful when building
 /// trees with large amounts of addresses/prefixes. Used by rotonda-store for
 /// this purpose.
-pub trait AddressFamily: PrimInt + std::fmt::Binary + Debug + std::hash::Hash + std::fmt::Display + From<u32> + From<u16> {
+pub trait AddressFamily:
+    PrimInt
+    + std::fmt::Binary
+    + Debug
+    + std::hash::Hash
+    + std::fmt::Display
+    + From<u32>
+    + From<u16>
+{
     /// The byte representation of the family filled with 1s.
     const BITMASK: Self;
     /// The number of bits in the byte representation of the family.
@@ -17,6 +25,10 @@ pub trait AddressFamily: PrimInt + std::fmt::Binary + Debug + std::hash::Hash + 
     // returns the specified nibble from `start_bit` to (and including)
     // `start_bit + len` and shifted to the right.
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
+
+    fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8);
+
+    fn truncate_to_len(self, len: u8) -> Self;
 
     #[cfg(feature = "dynamodb")]
     fn from_addr(net: Addr) -> Self;
@@ -48,6 +60,16 @@ impl AddressFamily for IPv4 {
 
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32 {
         (net << start_bit) >> ((32 - len) % 32)
+    }
+
+    fn truncate_to_len(self, len: u8) -> Self {
+        (self >> ((32 - len) as usize)) << (32 - len) as usize
+    }
+
+    fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (u32, u8) {
+        let res =
+            self | ((nibble << (32 - len - nibble_len) as usize) as u32);
+        (res, len + nibble_len)
     }
 
     #[cfg(feature = "dynamodb")]
@@ -89,6 +111,16 @@ impl AddressFamily for IPv6 {
 
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32 {
         ((net << start_bit) >> ((128 - len) % 128)) as u32
+    }
+
+    fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8) {
+        let res =
+            self | ((nibble << (128 - len - nibble_len) as usize) as u128);
+        (res, len + nibble_len)
+    }
+
+    fn truncate_to_len(self, len: u8) -> Self {
+        (self >> ((128 - len) as usize)) << (128 - len) as usize
     }
 
     #[cfg(feature = "dynamodb")]

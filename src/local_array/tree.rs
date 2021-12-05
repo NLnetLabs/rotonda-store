@@ -1,3 +1,4 @@
+use num::Zero;
 use std::hash::Hash;
 
 use crate::af::AddressFamily;
@@ -162,8 +163,17 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
         Self(None)
     }
 
-    pub fn new(index: (AF, u8)) -> Self {
-        Self(Some(index))
+    pub fn dangerously_new_with_id_as_is(addr_bits: AF, len: u8) -> Self {
+        Self(Some((addr_bits, len)))
+    }
+
+    #[inline]
+    pub fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
+        Self(Some((
+            (addr_bits >> (AF::BITS - len) as usize)
+                << (AF::BITS - len) as usize,
+            len,
+        )))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -172,6 +182,45 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
 
     pub fn get_id(&self) -> (AF, u8) {
         self.0.unwrap()
+    }
+
+    #[inline]
+    pub fn clean(self) -> Self {
+        let (addr_bits, len) = self.0.unwrap();
+        // This creates the root node, not to be confused with an empty StrideNodeId.
+        if len == 0 {
+            return StrideNodeId::dangerously_new_with_id_as_is(
+                AF::zero(),
+                0,
+            );
+        }
+
+        StrideNodeId::new_with_cleaned_id(addr_bits, len)
+    }
+
+    // clean out all bits that are set beyond the len. This function should
+    // be used before doing any ORing to add a nibble.
+    #[inline]
+    pub fn unwrap_with_cleaned_id(&self) -> (AF, u8) {
+        let (addr_bits, len) = self.0.unwrap();
+        (
+            (addr_bits >> (AF::BITS - len) as usize)
+                << (AF::BITS - len) as usize,
+            len,
+        )
+    }
+
+    pub fn add_nibble(&self, nibble: u32, nibble_len: u8) -> Self {
+        let (addr_bits, len) = self.unwrap_with_cleaned_id();
+//         let res = addr_bits
+//         | ((nibble << (32 - len - nibble_len) as usize) as u32);
+//    (res, len + nibble_len)
+
+
+        let res = addr_bits.add_nibble(len, nibble, nibble_len);
+        println!("clean addr: {:032b}/{}", addr_bits, len);
+        println!("new shift:  {:032b}/{}", res.0, res.1);
+        Self(Some(res))
     }
 
     pub fn into_inner(self) -> Option<(AF, u8)> {
@@ -645,17 +694,22 @@ impl<'a, Store> TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
-    pub fn new(_strides_vec: Vec<u8>) -> TreeBitMap<Store> {
+    pub fn new(strides_vec: Vec<u8>) -> TreeBitMap<Store> {
         // Check if the strides division makes sense
         let mut strides = vec![];
+        let mut len_to_stride_size: [StrideType; 128] =
+            [StrideType::Stride3; 128];
+        let start_stride_type: StrideType;
         let mut strides_sum = 0;
-        for s in _strides_vec.iter().cycle() {
+        for s in strides_vec.iter().cycle() {
             strides.push(*s);
+            len_to_stride_size[strides_sum as usize] = StrideType::from(*s);
             strides_sum += s;
             if strides_sum >= Store::AF::BITS - 1 {
                 break;
             }
         }
+        println!("{:?}", len_to_stride_size);
         assert_eq!(strides.iter().sum::<u8>(), Store::AF::BITS);
 
         let mut stride_stats: Vec<StrideStats> = vec![
@@ -667,21 +721,22 @@ where
                                                                          // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
-        let node: SizedStrideNode<<Store as StorageBackend>::AF>;
+        let root_node: SizedStrideNode<<Store as StorageBackend>::AF>;
 
         match strides[0] {
             3 => {
-                node = SizedStrideNode::Stride3(TreeBitMapNode {
+                root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
                     // ptr_vec: NodeSet::empty(),
                     pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
+                // start_stride_type = StrideType::Stride3;
                 stride_stats[0].inc(0);
             }
             4 => {
-                node = SizedStrideNode::Stride4(TreeBitMapNode {
+                root_node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                     // ptr_vec: NodeSet::empty(),
@@ -689,9 +744,10 @@ where
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
+                // start_stride_type = StrideType::Stride4;
             }
             5 => {
-                node = SizedStrideNode::Stride5(TreeBitMapNode {
+                root_node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
                     // ptr_vec: NodeSet::empty(),
@@ -699,6 +755,7 @@ where
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
+                start_stride_type = StrideType::Stride5;
             }
             // 6 => {
             //     node = SizedStrideNode::Stride6(TreeBitMapNode {
@@ -738,7 +795,7 @@ where
         TreeBitMap {
             strides,
             stats: stride_stats,
-            store: Store::init(Some(node)),
+            store: Store::init(len_to_stride_size, root_node),
         }
     }
 
@@ -777,10 +834,18 @@ where
         &mut self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("--- start insert {}/{} ----", pfx.net.into_ipaddr(), pfx.len);
+        println!(
+            "--- start insert {}/{} ----",
+            pfx.net.into_ipaddr(),
+            pfx.len
+        );
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id(self.strides[0]);
+        // let mut cur_i = StrideNodeId::new(((pfx.net
+        //     >> (Store::AF::BITS - self.strides[0]) as usize)
+        //     << (Store::AF::BITS - self.strides[0]) as usize, self.strides[0]));
         println!("root node {}", cur_i);
+        // self.store.update_node(cur_i,SizedStrideNode::Stride5(TreeBitMapNode::default()));
         let mut level: u8 = 0;
 
         loop {
@@ -793,6 +858,7 @@ where
             };
             println!("stride {}", stride);
             println!("stride end {}", stride_end);
+            println!("nibble len {}", nibble_len);
             println!("level {}", level);
 
             let nibble = Store::AF::get_nibble(
@@ -804,7 +870,11 @@ where
             if is_last_stride {
                 println!("==last stride");
             }
-
+            println!("nibble:  {:032b} ({})", nibble, nibble);
+            println!("pfx.net: {:032b}", pfx.net);
+            println!("nibble   {:032b}", nibble);
+            
+            let stride_start = stride_end - stride;
             let next_node_idx = match_node_for_strides![
                 // applicable to the whole outer match in the macro
                 self;
@@ -848,24 +918,9 @@ where
     #[inline]
     pub(crate) fn retrieve_node(
         &self,
-        stride_type: StrideType,
         id: StrideNodeId<Store::AF>,
     ) -> SizedNodeRefOption<Store::AF> {
-        self.store.retrieve_node(stride_type, id)
-    }
-
-    #[inline]
-    pub(crate) fn retrieve_node_at_level(
-        &self,
-        level: u8,
-        id: StrideNodeId<Store::AF>,
-    ) -> SizedNodeRefOption<Store::AF> {
-        match level {
-            3 => self.store.retrieve_node(StrideType::Stride3, id),
-            4 => self.store.retrieve_node(StrideType::Stride4, id),
-            5 => self.store.retrieve_node(StrideType::Stride5, id),
-            _ => panic!("invalid level"),
-        }
+        self.store.retrieve_node(id)
     }
 
     #[inline]
@@ -884,26 +939,25 @@ where
     #[inline]
     pub(crate) fn retrieve_node_mut(
         &'a mut self,
-        stride_type: StrideType,
         index: StrideNodeId<Store::AF>,
     ) -> SizedNodeRefResult<'a, Store::AF> {
-        self.store.retrieve_node_mut(stride_type, index)
+        self.store.retrieve_node_mut(index)
     }
 
-    #[inline]
-    pub(crate) fn retrieve_node_mut_at_level(
-        &'a mut self,
-        level: u8,
-        index: StrideNodeId<Store::AF>,
-    ) -> SizedNodeRefResult<'a, Store::AF> {
-        println!("level: {}", level);
-        match self.strides[level as usize] {
-            3 => self.retrieve_node_mut(StrideType::Stride3, index),
-            4 => self.retrieve_node_mut(StrideType::Stride4, index),
-            5 => self.retrieve_node_mut(StrideType::Stride5, index),
-            _ => panic!("invalid level"),
-        }
-    }
+    // #[inline]
+    // pub(crate) fn retrieve_node_mut_at_level(
+    //     &'a mut self,
+    //     level: u8,
+    //     index: StrideNodeId<Store::AF>,
+    // ) -> SizedNodeRefResult<'a, Store::AF> {
+    //     println!("level: {}", level);
+    //     match self.strides[level as usize] {
+    //         3 => self.retrieve_node_mut(StrideType::Stride3, index),
+    //         4 => self.retrieve_node_mut(StrideType::Stride4, index),
+    //         5 => self.retrieve_node_mut(StrideType::Stride5, index),
+    //         _ => panic!("invalid level"),
+    //     }
+    // }
 
     pub(crate) fn store_prefix(
         &mut self,
@@ -959,26 +1013,28 @@ where
     // adding all `pfx_vec`s of its children.
     fn get_all_more_specifics_for_node(
         &self,
-        start_node: SizedStrideRef<Store::AF>,
+        start_node_id: StrideNodeId<Store::AF>,
         found_pfx_vec: &mut Vec<PrefixId<Store::AF>>,
-        mut current_len: u8,
     ) {
-        current_len += current_len;
-        match start_node {
+        println!(
+            "get_all_more_specifics_for_node for {} ({})",
+            start_node_id.get_id().0.into_ipaddr(),
+            start_node_id
+        );
+        match self.retrieve_node(start_node_id).unwrap() {
             SizedStrideRef::Stride3(n) => {
+                println!("3 pfxbitarr: {:032b}", n.pfxbitarr.load());
+                println!("pfx_vec: {:?}", n.pfx_vec.as_slice());
                 found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
                 found_pfx_vec.retain(|&x| !x.is_empty());
+                println!("found_pfx_vec: {:?}", found_pfx_vec);
 
-                for nn in n.ptr_vec(StrideType::Stride3, current_len) {
-                    if !nn.is_empty() {
+                for child_node in n.ptr_vec(start_node_id) {
+                    if !child_node.is_empty() {
+                        println!("found pfx vec prel: {:?}", found_pfx_vec);
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(
-                                StrideType::Stride3,
-                                nn.into(),
-                            )
-                            .unwrap(),
+                            child_node,
                             found_pfx_vec,
-                            current_len,
                         );
                     }
                 }
@@ -987,16 +1043,13 @@ where
                 found_pfx_vec.extend(n.pfx_vec.to_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
-                for nn in n.ptr_vec(StrideType::Stride4, current_len) {
-                    if !nn.is_empty() {
+                for child_node in n.ptr_vec(start_node_id) {
+                    if !child_node.is_empty() {
+                        println!("found pfx vec prel: {:?}", found_pfx_vec);
+                        println!("4 pfxbitarr: {:032b}", n.pfxbitarr.load());
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(
-                                StrideType::Stride4,
-                                nn.into(),
-                            )
-                            .unwrap(),
+                            child_node,
                             found_pfx_vec,
-                            current_len,
                         );
                     }
                 }
@@ -1005,16 +1058,13 @@ where
                 found_pfx_vec.extend(n.pfx_vec.to_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
-                for nn in n.ptr_vec(StrideType::Stride5, current_len) {
-                    if !nn.is_empty() {
+                for child_node in n.ptr_vec(start_node_id) {
+                    if !child_node.is_empty() {
+                        println!("found pfx vec prel: {:?}", found_pfx_vec);
+                        println!("5 pfxbitarr: {:032b}", n.pfxbitarr.load());
                         self.get_all_more_specifics_for_node(
-                            self.retrieve_node(
-                                StrideType::Stride5,
-                                nn.into(),
-                            )
-                            .unwrap(),
+                            child_node,
                             found_pfx_vec,
-                            current_len,
                         );
                     }
                 }
@@ -1067,8 +1117,7 @@ where
         >,
         nibble: u32,
         nibble_len: u8,
-        prefix_id: StrideNodeId<Store::AF>,
-        stride_type: StrideType,
+        base_prefix: StrideNodeId<Store::AF>,
     ) -> Option<Vec<PrefixId<Store::AF>>>
     where
         S: Stride
@@ -1084,23 +1133,23 @@ where
         <S as Stride>::AtomicPfxSize: AtomicBitmap,
         <S as Stride>::AtomicPtrSize: AtomicBitmap,
     {
-        println!("assemble more specifics...");
+        println!(
+            "assemble more specifics for {}/{}...",
+            base_prefix.get_id().0.into_ipaddr(),
+            base_prefix.get_id().1
+        );
         let (cnvec, mut msvec) = current_node.add_more_specifics_at(
             nibble,
             nibble_len,
-            0,
-            prefix_id,
-            stride_type,
+            base_prefix,
+            // prefix_id.get_id().1
         );
         println!("cnvec: {:?}", cnvec);
 
         for child_node in cnvec.iter() {
-            self.get_all_more_specifics_for_node(
-                self.retrieve_node(child_node.0, child_node.1).unwrap(),
-                &mut msvec,
-                S::STRIDE_LEN,
-            );
+            self.get_all_more_specifics_for_node(*child_node, &mut msvec);
         }
+        println!("msvec: {:?}", msvec);
         Some(msvec)
     }
 }

@@ -1,4 +1,5 @@
 use std::fmt::{Binary, Debug};
+use std::ops::BitAnd;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };
@@ -405,9 +406,9 @@ where
         nibble: u32,
     ) -> usize;
 
-    fn get_child_node_id<AF: AddressFamily>(
-        prefix_id: AF,
-        truncate_len: u8,
+    fn into_node_id<AF: AddressFamily>(
+        addr_bits: AF,
+        len: u8,
     ) -> super::node::StrideNodeId<AF>;
 
     // Convert a ptrbitarr into a pfxbitarr sized bitmap,

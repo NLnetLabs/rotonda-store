@@ -33,12 +33,14 @@ pub(crate) trait StorageBackend {
     type AF: AddressFamily;
     type Meta: Meta + MergeUpdate;
 
-    fn init(start_node: Option<SizedStrideNode<Self::AF>>) -> Self;
+    fn init(
+        len_to_stride_size: [StrideType; 128],
+        root_node: SizedStrideNode<Self::AF>,
+    ) -> Self;
     fn acquire_new_node_id(
         &self,
         // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         //
-        level: u8,
         sub_prefix: (Self::AF, u8),
     ) -> StrideNodeId<Self::AF>;
     // store_node should return an index with the associated type `Part` of the associated type
@@ -58,12 +60,10 @@ pub(crate) trait StorageBackend {
     );
     fn retrieve_node(
         &'_ self,
-        stride_type: StrideType,
         index: StrideNodeId<Self::AF>,
     ) -> SizedNodeRefOption<'_, Self::AF>;
     fn retrieve_node_mut(
         &mut self,
-        stride_type: StrideType,
         index: StrideNodeId<Self::AF>,
     ) -> SizedNodeResult<Self::AF>;
     fn retrieve_node_with_guard(
@@ -133,6 +133,7 @@ pub(crate) struct InMemStorage<
     // pub nodes7: Vec<TreeBitMapNode<AF, Stride7, 254, 128>>,
     // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, 510, 256>>,
     pub prefixes: HashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
+    len_to_stride_size: [StrideType; 128],
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
@@ -142,46 +143,46 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     type Meta = Meta;
 
     fn init(
-        start_node: Option<SizedStrideNode<AF>>,
+        len_to_stride_size: [StrideType; 128],
+        root_node: SizedStrideNode<Self::AF>,
     ) -> InMemStorage<Self::AF, Self::Meta> {
-        let mut nodes3 = <HashMap<
+        let nodes3 = <HashMap<
             StrideNodeId<AF>,
             TreeBitMapNode<AF, Stride3, 14, 8>,
         >>::new();
-        let mut nodes4 = <HashMap<
+        let nodes4 = <HashMap<
             StrideNodeId<AF>,
             TreeBitMapNode<AF, Stride4, 30, 16>,
         >>::new();
-        let mut nodes5 = <HashMap<
+        let nodes5 = <HashMap<
             StrideNodeId<AF>,
             TreeBitMapNode<AF, Stride5, 62, 32>,
         >>::new();
+
         // let mut nodes6 = vec![];
         // let mut nodes7 = vec![];
         // let mut nodes8 = vec![];
-        if let Some(n) = start_node {
-            match n {
-                SizedStrideNode::Stride3(node) => {
-                    nodes3.insert(StrideNodeId::new((AF::zero(), 3)), node);
-                }
-                SizedStrideNode::Stride4(node) => {
-                    nodes4.insert(StrideNodeId::new((AF::zero(), 4)), node);
-                }
-                SizedStrideNode::Stride5(node) => {
-                    nodes5.insert(StrideNodeId::new((AF::zero(), 5)), node);
-                } // SizedStrideNode::Stride6(nodes) => {
-                  //     nodes6 = vec![nodes];
-                  // }
-                  // SizedStrideNode::Stride7(nodes) => {
-                  //     nodes7 = vec![nodes];
-                  // }
-                  // SizedStrideNode::Stride8(nodes) => {
-                  //     nodes8 = vec![nodes];
-                  // }
-            }
-        }
+        // match stride_type {
+        //     StrideType::Stride3 => {
+        //         nodes3.insert(start_node, TreeBitMapNode::default());
+        //     }
+        //     StrideType::Stride4 => {
+        //         nodes4.insert(start_node, TreeBitMapNode::default());
+        //     }
+        //     StrideType::Stride5 => {
+        //         nodes5.insert(start_node, TreeBitMapNode::default());
+        //     } // SizedStrideNode::Stride6(nodes) => {
+        //       //     nodes6 = vec![nodes];
+        //       // }
+        //       // SizedStrideNode::Stride7(nodes) => {
+        //       //     nodes7 = vec![nodes];
+        //       // }
+        //       // SizedStrideNode::Stride8(nodes) => {
+        //       //     nodes8 = vec![nodes];
+        //       // }
+        // }
 
-        InMemStorage {
+        let mut store = InMemStorage {
             nodes3,
             nodes4,
             nodes5,
@@ -189,20 +190,27 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             // nodes7,
             // nodes8,
             prefixes: HashMap::new(),
-        }
+            len_to_stride_size,
+        };
+        let first_stride_type = match len_to_stride_size[0] {
+            StrideType::Stride3 => 3,
+            StrideType::Stride4 => 4,
+            StrideType::Stride5 => 5,
+        };
+        store.store_node(store.get_root_node_id(first_stride_type), root_node);
+        store
     }
 
     fn acquire_new_node_id(
         &self,
         // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        level: u8,
         (prefix_net, sub_prefix_len): (Self::AF, u8),
     ) -> StrideNodeId<AF> {
         // We're ignoring the part parameter here, because we want to store
         // the index into the global self.nodes vec in the local vec.
         println!(
-            "{} {} {:032b} ({}) {} -> \t{:032b} {}/{} ({})",
-            level,
+            "Stride {} {} {:032b} ({}) {} -> \t{:032b} {}/{} ({})",
+            self.len_to_stride_size[sub_prefix_len as usize],
             sub_prefix_len,
             prefix_net,
             prefix_net,
@@ -217,11 +225,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 << (Self::AF::BITS - sub_prefix_len) as usize)
         );
 
-        StrideNodeId::new((
-            (prefix_net >> (Self::AF::BITS - sub_prefix_len) as usize)
-                << (Self::AF::BITS - sub_prefix_len) as usize,
-            sub_prefix_len,
-        ))
+        StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
 
         // match level {
         //     3 => StrideNodeId::new((
@@ -315,10 +319,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn retrieve_node(
         &self,
-        stride_type: StrideType,
         id: StrideNodeId<AF>,
     ) -> SizedNodeRefOption<'_, Self::AF> {
-        match stride_type {
+        match self.len_to_stride_size[id.get_id().1 as usize] {
             StrideType::Stride3 => {
                 self.nodes3.get(&id).map(|n| SizedStrideRef::Stride3(n))
             }
@@ -333,11 +336,16 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn retrieve_node_mut(
         &'_ mut self,
-        stride_type: StrideType,
         id: StrideNodeId<AF>,
     ) -> SizedNodeResult<'_, Self::AF> {
-        println!("retrieve mut {}/{} ({}) in stride {}", id.get_id().0.into_ipaddr(), id.get_id().1, id.get_id().0, stride_type);
-        match stride_type {
+        println!(
+            "retrieve mut {}/{} ({}) in stride {}",
+            id.get_id().0.into_ipaddr(),
+            id.get_id().1,
+            id.get_id().0,
+            self.len_to_stride_size[id.get_id().1 as usize]
+        );
+        match self.len_to_stride_size[id.get_id().1 as usize] {
             StrideType::Stride3 => Ok(self
                 .nodes3
                 .get_mut(&id)
@@ -378,13 +386,13 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     }
 
     fn get_root_node_id(&self, first_stride_size: u8) -> StrideNodeId<AF> {
-        let first_stride_type = match first_stride_size {
-            3 => (AF::zero(), 3),
-            4 => (AF::zero(), 4),
-            5 => (AF::zero(), 5),
+        let (addr_bits, len) = match first_stride_size {
+            3 => (AF::zero(), 0),
+            4 => (AF::zero(), 0),
+            5 => (AF::zero(), 0),
             _ => panic!("Invalid stride size"),
         };
-        StrideNodeId::new(first_stride_type)
+        StrideNodeId::dangerously_new_with_id_as_is(addr_bits, len)
     }
 
     // fn get_root_node_mut(
