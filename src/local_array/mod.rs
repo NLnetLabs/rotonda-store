@@ -5,6 +5,7 @@ pub(crate) mod tree;
 mod atomic_stride;
 
 pub mod store;
+mod tests;
 
 pub use store::Store;
 
