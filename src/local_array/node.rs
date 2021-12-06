@@ -397,8 +397,6 @@ where
         //     )
 
 
-
-        println!("nibble:    {:032b}", (nibble << (AF::BITS - base_prefix.get_id().1)) as u32);
         println!("prefix_id: {:032b}/{}", base_prefix.get_id().0, base_prefix.get_id().1);
         println!("clean_id:  {:?}", base_prefix.clean());
 

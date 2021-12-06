@@ -169,11 +169,7 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
 
     #[inline]
     pub fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
-        Self(Some((
-            (addr_bits >> (AF::BITS - len) as usize)
-                << (AF::BITS - len) as usize,
-            len,
-        )))
+        Self(Some((addr_bits.truncate_to_len(len), len)))
     }
 
     pub fn is_empty(&self) -> bool {
@@ -187,13 +183,6 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     #[inline]
     pub fn clean(self) -> Self {
         let (addr_bits, len) = self.0.unwrap();
-        // This creates the root node, not to be confused with an empty StrideNodeId.
-        // if len == 0 {
-        //     return StrideNodeId::dangerously_new_with_id_as_is(
-        //         AF::zero(),
-        //         0,
-        //     );
-        // }
         StrideNodeId::new_with_cleaned_id(addr_bits, len)
     }
 
@@ -202,20 +191,11 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     #[inline]
     pub fn unwrap_with_cleaned_id(&self) -> (AF, u8) {
         let (addr_bits, len) = self.0.unwrap();
-        (
-            (addr_bits >> (AF::BITS - len) as usize)
-                << (AF::BITS - len) as usize,
-            len,
-        )
+        (addr_bits.truncate_to_len(len), len)
     }
 
     pub fn add_nibble(&self, nibble: u32, nibble_len: u8) -> Self {
         let (addr_bits, len) = self.unwrap_with_cleaned_id();
-//         let res = addr_bits
-//         | ((nibble << (32 - len - nibble_len) as usize) as u32);
-//    (res, len + nibble_len)
-
-
         let res = addr_bits.add_nibble(len, nibble, nibble_len);
         println!("clean addr: {:032b}/{}", addr_bits, len);
         println!("new shift:  {:032b}/{}", res.0, res.1);

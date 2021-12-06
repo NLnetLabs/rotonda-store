@@ -62,8 +62,18 @@ impl AddressFamily for IPv4 {
         (net << start_bit) >> ((32 - len) % 32)
     }
 
+
+    // You can't shift with the number of bits of self, so we'll just return
+    // zero for that case.
+    //
+    // Panics if len is greater than 32 (the number of bits of self).
     fn truncate_to_len(self, len: u8) -> Self {
-        (self >> ((32 - len) as usize)) << (32 - len) as usize
+        match len {
+            0 => 0,
+            1..=31 => (self >> ((32 - len) as usize)) << (32 - len) as usize,
+            32 => self,
+            _ => panic!("Can't truncate to more than 32 bits"),
+        }
     }
 
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (u32, u8) {
@@ -120,7 +130,11 @@ impl AddressFamily for IPv6 {
     }
 
     fn truncate_to_len(self, len: u8) -> Self {
-        (self >> ((128 - len) as usize)) << (128 - len) as usize
+        if (128 - len) == 0 {
+            0
+        } else {
+            (self >> ((128 - len) as usize)) << (128 - len) as usize
+        }
     }
 
     #[cfg(feature = "dynamodb")]
