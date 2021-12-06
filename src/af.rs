@@ -62,7 +62,6 @@ impl AddressFamily for IPv4 {
         (net << start_bit) >> ((32 - len) % 32)
     }
 
-
     // You can't shift with the number of bits of self, so we'll just return
     // zero for that case.
     //

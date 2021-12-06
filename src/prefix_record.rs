@@ -4,10 +4,7 @@ use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::{
-    af::AddressFamily,
-    local_array::node::PrefixId
-};
+use crate::{af::AddressFamily, local_array::node::PrefixId};
 use routecore::record::{MergeUpdate, Meta};
 
 //------------ InternalPrefixRecord -----------------------------------------
