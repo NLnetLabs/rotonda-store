@@ -106,6 +106,12 @@ where
     // (`child_len`). Since children  in the first nibbles are leaf nodes.
     // leaf nodes will only be prefixes. So if we have a first stride of
     // size 5, all ptr nodes wil have StrideNodeIds with len = 5.
+    //
+    // OTDO TOD TOTO DOT TODO: this still goes over all nibble lengths!!!
+    // While you're here:
+    // - calling AF::clean() is done way to many times. Come up with a
+    // strategy to duplicating that call. (not only in this function but
+    // everywhere).
     pub(crate) fn ptr_vec(
         &self,
         base_prefix: StrideNodeId<AF>,
@@ -148,7 +154,6 @@ where
             }
         }
 
-        println!("ptr_vec: {:?}", child_node_ids.iter().map(|x| format!("{}/{}", x.get_id().0.into_ipaddr(), x.get_id().1)).collect::<Vec<_>>());
         child_node_ids
     }
 

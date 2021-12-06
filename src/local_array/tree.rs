@@ -188,13 +188,12 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     pub fn clean(self) -> Self {
         let (addr_bits, len) = self.0.unwrap();
         // This creates the root node, not to be confused with an empty StrideNodeId.
-        if len == 0 {
-            return StrideNodeId::dangerously_new_with_id_as_is(
-                AF::zero(),
-                0,
-            );
-        }
-
+        // if len == 0 {
+        //     return StrideNodeId::dangerously_new_with_id_as_is(
+        //         AF::zero(),
+        //         0,
+        //     );
+        // }
         StrideNodeId::new_with_cleaned_id(addr_bits, len)
     }
 
