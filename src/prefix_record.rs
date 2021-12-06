@@ -65,8 +65,8 @@ where
     AF: AddressFamily,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.net >> (AF::BITS - self.len) as usize)
-            .cmp(&(other.net >> ((AF::BITS - other.len) % 32) as usize))
+        (self.net >> (AF::BITS - self.len))
+            .cmp(&(other.net >> ((AF::BITS - other.len) % 32)))
     }
 }
 
@@ -76,8 +76,8 @@ where
     AF: AddressFamily,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.net >> (AF::BITS - self.len) as usize
-            == other.net >> ((AF::BITS - other.len) % 32) as usize
+        self.net >> (AF::BITS - self.len)
+            == other.net >> ((AF::BITS - other.len) % 32)
     }
 }
 
@@ -88,8 +88,8 @@ where
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(
-            (self.net >> (AF::BITS - self.len) as usize)
-                .cmp(&(other.net >> ((AF::BITS - other.len) % 32) as usize)),
+            (self.net >> (AF::BITS - self.len))
+                .cmp(&(other.net >> ((AF::BITS - other.len) % 32))),
         )
     }
 }

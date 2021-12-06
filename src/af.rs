@@ -15,7 +15,7 @@ pub trait AddressFamily:
     + Eq
     + std::ops::BitAnd<Output = Self>
     + std::ops::BitOr<Output = Self>
-    + std::ops::Shr<usize, Output = Self>
+    + std::ops::Shr<u8, Output = Self>
     + std::ops::Shl<Output = Self>
     + crate::af::Zero
     + Copy
