@@ -174,17 +174,6 @@ macro_rules! impl_primitive_atomic_stride {
 
                 fn get_pfx_index(nibble: u32, len: u8)
                 -> usize {
-                    // (
-                    //     bitmap >> (
-                    //         (
-                    //             <Self as Stride>::BITS - ((1 << len) - 1) as u8
-                    //             - nibble as u8 - 1
-                    //         ) as usize
-                    //     )
-                    // ).count_ones() as usize
-                    // - 1
-
-
                     (Self::get_bit_pos(nibble, len).leading_zeros() - 1) as usize
 
                 }

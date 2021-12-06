@@ -60,7 +60,6 @@ where
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
             pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
             pfx_vec: PrefixSet::empty(),
-            // ptr_vec: NodeSet::empty(),
             _af: PhantomData,
         }
     }
@@ -77,7 +76,6 @@ where
             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
             pfx_vec: PrefixSet::empty(),
-            // ptr_vec: NodeSet::empty(),
             _af: PhantomData,
         })
     }
@@ -103,22 +101,6 @@ pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
     // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
-
-// impl<'a, AF, NodeId> Default for SizedStrideRefMut<'a, AF, NodeId>
-// where
-//     AF: AddressFamily,
-//     NodeId: SortableNodeId + Copy,
-// {
-//     fn default() -> Self {
-//         SizedStrideRefMut::Stride3(&mut TreeBitMapNode {
-//             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
-//             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-//             pfx_vec: NodeSet::empty(),
-//             ptr_vec: NodeSet::empty(),
-//             _af: PhantomData,
-//         })
-//     }
-// }
 
 impl<'a, AF: AddressFamily> UnsizedNode<AF> for SizedStrideRef<'a, AF> {}
 
@@ -359,73 +341,6 @@ impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
     }
 }
 
-// #[derive(Eq, PartialEq, Hash, Debug, Default)]
-// pub struct InMemStrideNodeId(Option<(u16, StrideNodeId)>);
-
-// This works for both IPv4 and IPv6 up to a certain point.
-// the u16 for Sort is used for ordering the local vecs
-// inside the nodes.
-// The u32 Part is used as an index to the backing global vecs,
-// so you CANNOT store all IPv6 prefixes that could exist!
-// If you really want that you should implement your own type with trait
-// SortableNodeId, e.g., Sort = u16, Part = u128.
-// impl SortableNodeId for InMemStrideNodeId {
-//     type Sort = u16;
-//     type Part = StrideNodeId;
-
-//     fn new(sort: &Self::Sort, part: &Self::Part) -> InMemStrideNodeId {
-//         InMemStrideNodeId(Some((*sort, *part)))
-//     }
-
-//     fn get_sort(&self) -> Self::Sort {
-//         self.0.unwrap().0
-//     }
-
-//     fn get_part(&self) -> Self::Part {
-//         self.0.unwrap().1
-//     }
-
-//     fn is_empty(&self) -> bool {
-//         self.0.is_none()
-//     }
-
-//     fn empty() -> Self {
-//         Self(None)
-//     }
-// }
-
-// impl std::cmp::Ord for InMemStrideNodeId {
-//     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-//         if self.0.is_none() {
-//             std::cmp::Ordering::Greater
-//         } else if let Some(sort_id) = other.0 {
-//             self.0.unwrap().0.cmp(&sort_id.0)
-//         } else {
-//             std::cmp::Ordering::Less
-//         }
-//     }
-// }
-
-// impl std::cmp::PartialOrd for InMemStrideNodeId {
-//     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-//         Some(self.0.cmp(&other.0))
-//     }
-// }
-
-// impl std::fmt::Display for InMemStrideNodeId {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(
-//             f,
-//             "{:?}",
-//             if self.0.is_none() {
-//                 "-".to_string()
-//             } else {
-//                 self.0.unwrap().1.to_string()
-//             }
-//         )
-//     }
-// }
-
 //------------------------- Node Collections --------------------------------
 
 pub trait NodeCollection<AF: AddressFamily> {
@@ -486,143 +401,12 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
     }
 }
 
-//------------------------- NodeSet ---------------------------------------------------
-
-// #[derive(Debug)]
-// pub struct NodeSet<AF: AddressFamily, const ARRAYSIZE: usize>(
-//     [AtomicStrideNodeId<AF>; ARRAYSIZE],
-//     PhantomData<AF>,
-// );
-
-// impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display
-//     for NodeSet<AF, ARRAYSIZE>
-// {
-//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//         write!(f, "{}", self)
-//     }
-// }
-
-// impl<AF: AddressFamily, const ARRAYSIZE: usize> NodeCollection<AF>
-//     for NodeSet<AF, ARRAYSIZE>
-// {
-//     fn insert(
-//         &mut self,
-//         index: u16,
-//         insert_node: StrideNodeId<AF>,
-//         stride_type: StrideType,
-//     ) {
-//         // let idx = self
-//         //     .0
-//         //     .as_ref()
-//         //     .binary_search_by(|n| n.cmp(&insert_node))
-//         //     .unwrap_or_else(|x| x);
-//         // if idx + 1 < ARRAYSIZE {
-//         //     self.0.copy_within(idx..ARRAYSIZE - 1, idx + 1);
-//         // }
-//         // if idx < ARRAYSIZE {
-//         //     self.0[idx] = insert_node;
-//         // }
-//         let new_node =
-//             AtomicStrideNodeId::from_stridenodeid(stride_type, insert_node);
-//         let serial = new_node.get_serial();
-//         self[index as usize] = new_node;
-//         match self[index as usize].update_serial(serial) {
-//             Ok(_) => (),
-//             Err(other_serial) if other_serial > serial => {
-//                 self.insert(index, insert_node);
-//             }
-//             Err(other_serial) if other_serial <= serial => {
-//                 panic!(
-//                     "NodeSet::insert: serial conflict: {} vs {}",
-//                     serial, other_serial
-//                 );
-//             }
-//             _ => unreachable!(),
-//         };
-//     }
-
-//     fn to_vec(&self) -> Vec<StrideNodeId<AF>> {
-//         self.as_slice()
-//             .iter()
-//             .map(|p| {
-//                 let index = (p.index.load(Ordering::Relaxed).into(), 0);
-//                 let serial = p.serial.load(Ordering::Relaxed);
-//                 StrideNodeId(
-//                     p.stride_type,
-//                     if serial == 0 { None } else { Some(index) },
-//                 )
-//             })
-//             .collect()
-//     }
-
-//     fn as_slice(&self) -> &[AtomicStrideNodeId<AF>] {
-//         // let idx = self
-//         //     .0
-//         //     .as_ref()
-//         //     .binary_search_by(|n| {
-//         //         if n.is_empty() {
-//         //             std::cmp::Ordering::Greater
-//         //         } else {
-//         //             std::cmp::Ordering::Less
-//         //         }
-//         //     })
-//         //     .unwrap_or_else(|x| x);
-//         &self.0[..]
-//     }
-
-//     fn empty() -> Self {
-//         let iter = std::ops::Range {
-//             start: 0,
-//             end: ARRAYSIZE,
-//         };
-//         NodeSet(
-//             array_init::from_iter(iter.map(|_| AtomicStrideNodeId::empty()))
-//                 .unwrap(),
-//             PhantomData,
-//         )
-//     }
-// }
-
-// impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize>
-//     for NodeSet<AF, ARRAYSIZE>
-// {
-//     type Output = AtomicStrideNodeId<AF>;
-
-//     fn index(&self, idx: usize) -> &AtomicStrideNodeId<AF> {
-//         &self.0[idx as usize]
-//     }
-// }
-
-// impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
-//     for NodeSet<AF, ARRAYSIZE>
-// {
-//     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-//         &mut self.0[idx as usize]
-//     }
-// }
-
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub enum StrideType {
     Stride3,
     Stride4,
     Stride5,
-    // Stride6,
-    // Stride7,
-    // Stride8,
 }
-
-// impl StrideType {
-//     pub(crate) fn len(&self) -> u8 {
-//         match self {
-//             StrideType::Stride3 => 3,
-//             StrideType::Stride4 => 4,
-//             StrideType::Stride5 => 5,
-//             // StrideType::Stride6 => 6,
-//             // StrideType::Stride7 => 7,
-//             // StrideType::Stride8 => 8,
-//         }
-//     }
-// }
 
 impl From<u8> for StrideType {
     fn from(level: u8) -> Self {
@@ -630,9 +414,6 @@ impl From<u8> for StrideType {
             3 => StrideType::Stride3,
             4 => StrideType::Stride4,
             5 => StrideType::Stride5,
-            // 6 => StrideType::Stride6,
-            // 7 => StrideType::Stride7,
-            // 8 => StrideType::Stride8,
             _ => panic!("Invalid stride level"),
         }
     }
@@ -644,9 +425,6 @@ impl std::fmt::Display for StrideType {
             StrideType::Stride3 => write!(f, "S3"),
             StrideType::Stride4 => write!(f, "S4"),
             StrideType::Stride5 => write!(f, "S5"),
-            // StrideType::Stride6 => write!(f, "S6"),
-            // StrideType::Stride7 => write!(f, "S7"),
-            // StrideType::Stride8 => write!(f, "S8"),
         }
     }
 }
@@ -686,9 +464,6 @@ where
             StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
             StrideStats::new(SizedStride::Stride4, strides.len() as u8), // 1
             StrideStats::new(SizedStride::Stride5, strides.len() as u8), // 2
-                                                                         // StrideStats::new(SizedStride::Stride6, strides.len() as u8), // 3
-                                                                         // StrideStats::new(SizedStride::Stride7, strides.len() as u8), // 4
-                                                                         // StrideStats::new(SizedStride::Stride8, strides.len() as u8), // 5
         ];
 
         let root_node: SizedStrideNode<<Store as StorageBackend>::AF>;
@@ -725,36 +500,6 @@ where
                 });
                 stride_stats[2].inc(0);
             }
-            // 6 => {
-            //     node = SizedStrideNode::Stride6(TreeBitMapNode {
-            //         ptrbitarr: 0,
-            //         pfxbitarr: 0,
-            //         ptr_vec: NodeSet::empty(),
-            //         pfx_vec: NodeSet::empty(),
-            //         _af: PhantomData,
-            //     });
-            //     stride_stats[3].inc(0);
-            // }
-            // 7 => {
-            //     node = SizedStrideNode::Stride7(TreeBitMapNode {
-            //         ptrbitarr: 0,
-            //         pfxbitarr: U256(0, 0),
-            //         ptr_vec: NodeSet::empty(),
-            //         pfx_vec: NodeSet::empty(),
-            //         _af: PhantomData,
-            //     });
-            //     stride_stats[4].inc(0);
-            // }
-            // 8 => {
-            //     node = SizedStrideNode::Stride8(TreeBitMapNode {
-            //         ptrbitarr: U256(0, 0),
-            //         pfxbitarr: U512(0, 0, 0, 0),
-            //         ptr_vec: NodeSet::empty(),
-            //         pfx_vec: NodeSet::empty(),
-            //         _af: PhantomData,
-            //     });
-            //     stride_stats[5].inc(0);
-            // }
             _ => {
                 panic!("unknown stride size encountered in STRIDES array");
             }
@@ -836,9 +581,6 @@ where
                 Stride3; 0,
                 Stride4; 1,
                 Stride5; 2
-                // Stride6; 3,
-                // Stride7; 4,
-                // Stride8; 5
             ];
 
             if let Some(i) = next_node_idx {
@@ -891,11 +633,8 @@ where
         &mut self,
         next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
-        // let id = self.prefixes.len() as u32;
-        // let id = next_node.net << (Store::AF::BITS - next_node.len) as usize;
         self.store
             .store_prefix(PrefixId::from(next_node.clone()), next_node)
-        // id
     }
 
     fn update_prefix_meta(
@@ -983,36 +722,7 @@ where
                         );
                     }
                 }
-            } // SizedStrideNode::Stride6(n) => {
-              //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
-
-              //     for nn in n.ptr_vec.as_slice().iter() {
-              //         self.get_all_more_specifics_for_node(
-              //             &self.retrieve_node(*nn).unwrap(),
-              //             found_pfx_vec,
-              //         );
-              //     }
-              // }
-              // SizedStrideNode::Stride7(n) => {
-              //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
-
-              //     for nn in n.ptr_vec.as_slice().iter() {
-              //         self.get_all_more_specifics_for_node(
-              //             &self.retrieve_node(*nn).unwrap(),
-              //             found_pfx_vec,
-              //         );
-              //     }
-              // }
-              // SizedStrideNode::Stride8(n) => {
-              //     found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
-
-              //     for nn in n.ptr_vec.as_slice().iter() {
-              //         self.get_all_more_specifics_for_node(
-              //             &self.retrieve_node(*nn).unwrap(),
-              //             found_pfx_vec,
-              //         );
-              //     }
-              // }
+            }
         }
     }
 

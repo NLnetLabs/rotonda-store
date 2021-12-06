@@ -365,21 +365,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         StrideNodeId::dangerously_new_with_id_as_is(addr_bits, len)
     }
 
-    // fn get_root_node_mut(
-    //     &mut self,
-    //     stride_size: u8,
-    // ) -> Option<SizedStrideNode<Self::AF, Self::NodeType>> {
-    //     match stride_size {
-    //         3 => Some(SizedStrideNode::Stride3(self.nodes3[0])),
-    //         4 => Some(SizedStrideNode::Stride4(self.nodes4[0])),
-    //         5 => Some(SizedStrideNode::Stride5(self.nodes5[0])),
-    //         // 6 => Some(SizedStrideNode::Stride6(self.nodes6[0])),
-    //         // 7 => Some(SizedStrideNode::Stride7(self.nodes7[0])),
-    //         // 8 => Some(SizedStrideNode::Stride8(self.nodes8[0])),
-    //         _ => panic!("invalid stride size"),
-    //     }
-    // }
-
     fn get_nodes_len(&self) -> usize {
         self.nodes3.len() + self.nodes4.len() + self.nodes5.len()
         // + self.nodes6.len()
@@ -390,7 +375,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn acquire_new_prefix_id(
         &self,
         prefix: &InternalPrefixRecord<Self::AF, Self::Meta>,
-        // sort: &<<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
     ) -> PrefixId<AF> {
         // The return value the StrideType doesn't matter here,
         // because we store all prefixes in one huge vec (unlike the nodes,

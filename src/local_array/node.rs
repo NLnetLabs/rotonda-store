@@ -4,7 +4,6 @@ pub use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
 use num::Zero;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
-// use crate::synth_int::{Zero, U256, U512};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
@@ -56,7 +55,6 @@ where
         f.debug_struct("TreeBitMapNode")
             .field("ptrbitarr", &self.ptrbitarr.load())
             .field("pfxbitarr", &self.pfxbitarr.load())
-            // .field("ptr_vec", &self.ptr_vec)
             .field("pfx_vec", &self.pfx_vec)
             .finish()
     }
@@ -77,7 +75,6 @@ where
             "TreeBitMapNode {{ ptrbitarr: {:?}, pfxbitarr: {:?}, pfx_vec: {:?} }}",
             self.ptrbitarr.load(),
             self.pfxbitarr.load(),
-            // self.ptr_vec.as_slice(),
             self.pfx_vec.as_slice()
         )
     }
@@ -222,33 +219,6 @@ where
                             _af: PhantomData,
                         });
                     }
-                    // 6_u8 => {
-                    //     new_node = SizedStrideNode::Stride6(TreeBitMapNode {
-                    //         ptrbitarr: <Stride6 as Stride>::PtrSize::zero(),
-                    //         pfxbitarr: Stride6::zero(),
-                    //         pfx_vec: NodeSet::empty(),
-                    //         ptr_vec: NodeSet::empty(),
-                    //         _af: PhantomData,
-                    //     });
-                    // }
-                    // 7_u8 => {
-                    //     new_node = SizedStrideNode::Stride7(TreeBitMapNode {
-                    //         ptrbitarr: 0_u128,
-                    //         pfxbitarr: U256(0_u128, 0_u128),
-                    //         pfx_vec: NodeSet::empty(),
-                    //         ptr_vec: NodeSet::empty(),
-                    //         _af: PhantomData,
-                    //     });
-                    // }
-                    // 8_u8 => {
-                    //     new_node = SizedStrideNode::Stride8(TreeBitMapNode {
-                    //         ptrbitarr: U256(0_u128, 0_u128),
-                    //         pfxbitarr: U512(0_u128, 0_u128, 0_u128, 0_u128),
-                    //         pfx_vec: NodeSet::empty(),
-                    //         ptr_vec: NodeSet::empty(),
-                    //         _af: PhantomData,
-                    //     });
-                    // }
                     _ => {
                         panic!("can't happen");
                     }
@@ -488,8 +458,6 @@ where
             // There's another child, we won't return the found_pfx, since we're not
             // at the last nibble and we want an exact match only.
             false => (
-                // Some(self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)]), /* The node that has children the next stride */
-                // Some(S::into_node_id(base_prefix.get_id().0, start_bit + nibble_len)),
                 Some(StrideNodeId::new_with_cleaned_id(search_pfx.net, start_bit + nibble_len)),
                 None,
             ),
@@ -504,7 +472,6 @@ where
         nibble_len: u8,
         base_prefix: StrideNodeId<AF>,
     ) -> (
-        // Option<NodeId>, /* the node with children in the next stride  */
         Vec<StrideNodeId<AF>>, /* child nodes with more more-specifics in this stride */
         Vec<PrefixId<AF>>, /* more-specific prefixes in this stride */
     ) {
@@ -525,9 +492,6 @@ where
             )
         {
             found_child = Some(
-                // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
-                // S::into_node_id(prefix_id.get_id().0, prefix_id.get_id().1),
-                // StrideNodeId::dang(base_prefix.get_id().0, base_prefix.get_id().1 + nibble_len)
                 base_prefix.add_nibble(nibble, nibble_len)
             );
         }
