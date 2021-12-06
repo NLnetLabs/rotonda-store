@@ -6,7 +6,7 @@ use std::fmt::Debug;
 
 use crate::{
     af::AddressFamily,
-    local_array::node::{PrefixId, StrideNodeId, StrideType},
+    local_array::node::PrefixId
 };
 use routecore::record::{MergeUpdate, Meta};
 

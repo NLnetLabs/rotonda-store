@@ -234,8 +234,10 @@ impl std::ops::BitAnd<Self> for U512 {
 
 //------------ Atomic U128 Synthetic Integer Type -------------------------------------
 
+#[allow(dead_code)]
 pub struct AtomicU128(pub AtomicU64, pub AtomicU64);
 
+#[allow(dead_code)]
 impl AtomicU128 {
     pub fn new(value: u128) -> Self {
         let (hi, lo) =
@@ -278,6 +280,7 @@ impl Debug for AtomicU128 {
 
 //------------ Atomic U256 Synthetic Integer Type -------------------------------------
 
+#[allow(dead_code)]
 pub struct AtomicU256(
     pub AtomicU64,
     pub AtomicU64,
@@ -285,6 +288,7 @@ pub struct AtomicU256(
     pub AtomicU64,
 );
 
+#[allow(dead_code)]
 impl AtomicU256 {
     pub fn new(value: U256) -> Self {
         let (hihi, hilo, lohi, lolo) = (
@@ -341,6 +345,7 @@ impl AtomicU256 {
 
 //------------ Atomic U512 Synthetic Integer Type -------------------------------------
 
+#[allow(dead_code)]
 pub struct AtomicU512(
     pub AtomicU64,
     pub AtomicU64,
@@ -352,6 +357,7 @@ pub struct AtomicU512(
     pub AtomicU64,
 );
 
+#[allow(dead_code)]
 impl AtomicU512 {
     pub fn new(value: U512) -> Self {
         let (hihihi, hihilo, hilohi, hilolo, lohihi, lohilo, lolohi, lololo) = (

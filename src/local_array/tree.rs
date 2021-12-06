@@ -677,7 +677,6 @@ where
         let mut strides = vec![];
         let mut len_to_stride_size: [StrideType; 128] =
             [StrideType::Stride3; 128];
-        let start_stride_type: StrideType;
         let mut strides_sum = 0;
         for s in strides_vec.iter().cycle() {
             strides.push(*s);
@@ -710,7 +709,6 @@ where
                     pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
-                // start_stride_type = StrideType::Stride3;
                 stride_stats[0].inc(0);
             }
             4 => {
@@ -733,7 +731,6 @@ where
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
-                start_stride_type = StrideType::Stride5;
             }
             // 6 => {
             //     node = SizedStrideNode::Stride6(TreeBitMapNode {
@@ -852,7 +849,6 @@ where
             println!("pfx.net: {:032b}", pfx.net);
             println!("nibble   {:032b}", nibble);
             
-            let stride_start = stride_end - stride;
             let next_node_idx = match_node_for_strides![
                 // applicable to the whole outer match in the macro
                 self;

@@ -29,6 +29,9 @@ pub(crate) type SizedNodeRefResult<'a, AF> =
     Result<SizedStrideRefMut<'a, AF>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
 
+pub(crate) type PrefixHashMap<AF, Meta> =
+    HashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>;
+
 pub(crate) trait StorageBackend {
     type AF: AddressFamily;
     type Meta: Meta + MergeUpdate;
@@ -105,10 +108,7 @@ pub(crate) trait StorageBackend {
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
     fn get_prefixes(
         &self,
-    ) -> &HashMap<
-        PrefixId<Self::AF>,
-        InternalPrefixRecord<Self::AF, Self::Meta>,
-    >;
+    ) -> &PrefixHashMap<Self::AF, Self::Meta>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(&self) -> PrefixIterResult<'_, Self::AF, Self::Meta>;
     #[cfg(feature = "dynamodb")]
@@ -197,7 +197,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             StrideType::Stride4 => 4,
             StrideType::Stride5 => 5,
         };
-        store.store_node(store.get_root_node_id(first_stride_type), root_node);
+        store
+            .store_node(store.get_root_node_id(first_stride_type), root_node);
         store
     }
 
@@ -461,10 +462,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn get_prefixes(
         &self,
-    ) -> &HashMap<
-        PrefixId<Self::AF>,
-        InternalPrefixRecord<Self::AF, Self::Meta>,
-    > {
+    ) -> &PrefixHashMap<Self::AF, Self::Meta> {
         &self.prefixes
     }
 

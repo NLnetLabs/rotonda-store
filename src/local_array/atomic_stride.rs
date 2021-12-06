@@ -1,5 +1,4 @@
 use std::fmt::{Binary, Debug};
-use std::ops::BitAnd;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };

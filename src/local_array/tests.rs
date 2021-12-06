@@ -1,13 +1,12 @@
 #[cfg(test)]
 use std::error::Error;
 
-use crate::AddressFamily;
-
 //------------ AddressFamily bit flippers -----------------------------------
 #[test]
 fn test_af_1() -> Result<(), Box<dyn Error>> {
     use crate::local_array::tree::StrideNodeId;
     use crate::IPv4;
+    use crate::AddressFamily;
 
     let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111;
     let base_prefix =
