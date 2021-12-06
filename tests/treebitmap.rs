@@ -1,5 +1,5 @@
 #[cfg(test)]
-mod test {
+mod tests {
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
     };
