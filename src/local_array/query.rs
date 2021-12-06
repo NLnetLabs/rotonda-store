@@ -82,7 +82,6 @@ where
         // `post-processing` section.
 
         for stride in self.strides.iter() {
-            print!("xxx start search at root node");
             stride_end += stride;
 
             let last_stride = search_pfx.len < stride_end;
