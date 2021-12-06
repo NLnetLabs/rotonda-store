@@ -102,52 +102,51 @@ where
 {
     // create a vec of all child nodes id
     //
+    // we don't have a collection of local nodes anymore, since the id of the
+    // node are deterministically generated, as the prefix+len they represent
+    // in the treebitmap. This has both the advantage of using less memory,
+    // and being easier to use in a concurrently updated tree. The
+    // disadvantage is that we have to look up the child nodes on the fly
+    // when we want to iterate over all children of a node.
+    //
     // ptr child nodes only exist at the last nibble of the stride size
     // (`child_len`). Since children  in the first nibbles are leaf nodes.
     // leaf nodes will only be prefixes. So if we have a first stride of
     // size 5, all ptr nodes wil have StrideNodeIds with len = 5.
     //
-    // OTDO TOD TOTO DOT TODO: this still goes over all nibble lengths!!!
-    // While you're here:
-    // - calling AF::clean() is done way to many times. Come up with a
-    // strategy to duplicating that call. (not only in this function but
-    // everywhere).
+    // Ex.:
+    //
+    // Stride no.          1       2       3      4       5       6       7       8      9
+    // StrideSize          5       5       4      3       3       3       3       3      3
+    // child pfxs len      /1-5   /5-10    /10-14 /15-17  /18-20  /21-23  /24-26  /27-29 /30-32
+    // child Nodes len     /5      /10     /14    /17     /20     /23     /26     /29    /32
+    //
     pub(crate) fn ptr_vec(
         &self,
         base_prefix: StrideNodeId<AF>,
     ) -> Vec<StrideNodeId<AF>> {
         let mut child_node_ids = Vec::with_capacity(PTRARRAYSIZE);
-        // let nibble = base_addr.get_id().0 >> (AF::BITS - base_addr.get_id().1) as usize;
-        // let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
-        println!("pseudo-vec started for {} ({})...", base_prefix.get_id().0.into_ipaddr(), base_prefix);
-        println!("no of positions {}", 1 << S::STRIDE_LEN);
-        println!("ptrbitarr: {:032b}", self.ptrbitarr.load());
+        // CRITICAL SECTION ALERT
         let ptrbitarr = self.ptrbitarr.load();
+        // iterate over all the possible values for this `nibble_len`,
+        // e.g. two bits can have 4 different values.
+        for nibble in 0..(1 << S::STRIDE_LEN) {
+            // move the nibble left with the amount of bits we're going to loop over.
+            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
+            // then it will iterate over ...1100,...1101,...1110,...1111
+            let bit_pos = S::get_bit_pos(nibble, S::STRIDE_LEN);
 
-        for nibble_len in 1..S::STRIDE_LEN + 1 {
-            // iterate over all the possible values for this `nibble_len`,
-            // e.g. two bits can have 4 different values.
-            for nibble in 0..(1 << nibble_len) {
-                // move the nibble left with the amount of bits we're going to loop over.
-                // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
-                // then it will iterate over ...1100,...1101,...1110,...1111
-                // let nibble = (base_prefix.get_id().0
-                //     << (AF::BITS - base_prefix.get_id().1 - nibble_len) as usize)
-                //     .dangerously_truncate_to_u32();
-                let bit_pos = S::get_bit_pos(nibble, nibble_len);
+            // println!("nibble_len: {}", nibble_len);
+            // println!("nibble:    {:08b}", nibble);
+            // println!("bit_pos:   {:032b}", bit_pos);
+            // println!("ptrbitarr: {:032b}", ptrbitarr);
 
-                // println!("nibble_len: {}", nibble_len);
-                // println!("nibble:    {:08b}", nibble);
-                // println!("bit_pos:   {:032b}", bit_pos);
-                // println!("ptrbitarr: {:032b}", ptrbitarr);
-
-                // CRITICAL SECTION ALERT!
-                if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
-                {
-                    child_node_ids.push(
-                        base_prefix.add_nibble(nibble, nibble_len)
-                    );
-                }
+            // CRITICAL SECTION ALERT!
+            if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+            {
+                child_node_ids.push(
+                    base_prefix.add_nibble(nibble, S::STRIDE_LEN)
+                );
             }
         }
 
