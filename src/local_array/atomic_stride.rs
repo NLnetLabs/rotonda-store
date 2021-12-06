@@ -367,39 +367,44 @@ where
         len: u8,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
-    // Clear the bitmap to the right of the pointer and count the number of ones.
-    // This numbder represents the index to the corresponding prefix in the pfx_vec.
+    // Clear the bitmap to the right of the pointer and count the number of
+    // ones. This numbder represents the index to the corresponding prefix in
+    // the pfx_vec.
 
-    // Clearing is performed by shifting to the right until we have the nibble
-    // all the way at the right.
+    // Clearing is performed by shifting to the right until we have the
+    // nibble all the way at the right.
 
     // `(<Self as Stride>::BITS >> 1)`
     // The end of the bitmap (this bitmap is half the size of the pfx bitmap)
 
     // `nibble`
-    // The bit position relative to the offset for the nibble length, this index
-    // is only used at the last (relevant) stride, so the offset is always 0.
+    // The bit position relative to the offset for the nibble length, this
+    // index is only used at the last (relevant) stride, so the offset is 
+    // always 0.
 
     // get_pfx_index only needs nibble and len for fixed-layout bitarrays,
     // since the index can be deducted from them.
     fn get_pfx_index(nibble: u32, len: u8) -> usize;
 
-    // Clear the bitmap to the right of the pointer and count the number of ones.
-    // This number represents the index to the corresponding child node in the ptr_vec.
+    // Clear the bitmap to the right of the pointer and count the number of 
+    // ones. This number represents the index to the corresponding child node
+    // in the ptr_vec.
 
-    // Clearing is performed by shifting to the right until we have the nibble
-    // all the way at the right.
+    // Clearing is performed by shifting to the right until we have the
+    // nibble all the way at the right.
 
-    // For ptrbitarr the only index we want is the one for a full-length nibble
-    // (stride length) at the last stride, so we don't need the length of the nibble
+    // For ptrbitarr the only index we want is the one for a full-length 
+    // nibble (stride length) at the last stride, so we don't need the length
+    //  of the nibble.
 
     // `(<Self as Stride>::BITS >> 1)`
-    // The end of the bitmap (this bitmap is half the size of the pfx bitmap),
-    // ::BITS is the size of the pfx bitmap.
+    // The end of the bitmap (this bitmap is half the size of the pfx bitmap)
+    // AF::BITS is the size of the pfx bitmap.
 
     // `nibble`
-    // The bit position relative to the offset for the nibble length, this index
-    // is only used at the last (relevant) stride, so the offset is always 0.
+    // The bit position relative to the offset for the nibble length, this
+    // index is only used at the last (relevant) stride, so the offset is 
+    // always 0.
     fn get_ptr_index(
         bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
         nibble: u32,
@@ -421,10 +426,10 @@ where
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
     // Convert a pfxbitarr sized bitmap into a ptrbitarr sized
-    // Note that bitwise operators align bits of unsigend types with different
-    // sizes to the right, so we don't have to do anything to pad the smaller sized
-    // type. We do have to shift one bit to the left, to accomodate the unused pfxbitarr's
-    // last bit.
+    // Note that bitwise operators align bits of unsigend types with
+    // different sizes to the right, so we don't have to do anything to pad 
+    // the smaller sized type. We do have to shift one bit to the left, to 
+    // accomodate the unused pfxbitarr's last bit.
     fn into_ptrbitarr_size(
         bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
     ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;

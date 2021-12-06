@@ -429,7 +429,7 @@ impl std::fmt::Display for StrideType {
     }
 }
 
-//--------------------- TreeBitMap -------------------------------------------
+//--------------------- TreeBitMap ------------------------------------------
 
 pub(crate) struct TreeBitMap<Store>
 where
@@ -726,8 +726,10 @@ where
         }
     }
 
-    // This function assembles the prefixes of a child node starting on a specified bit position in a ptr_vec of
-    // `current_node` into a vec, then adds all prefixes of these children recursively into a vec and returns that.
+    // This function assembles the prefixes of a child node starting on a
+    // specified bit position in a ptr_vec of `current_node` into a vec, 
+    // then adds all prefixes of these children recursively into a vec and 
+    // returns that.
     pub(crate) fn get_all_more_specifics_from_nibble<
         S: Stride,
         const PFXARRAYSIZE: usize,

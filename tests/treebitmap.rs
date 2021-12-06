@@ -1,9 +1,9 @@
 #[cfg(test)]
 mod tests {
+    use rotonda_store::AddressFamily;
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
     };
-    use rotonda_store::AddressFamily;
     use routecore::addr::Prefix;
     use routecore::record::NoMeta;
 

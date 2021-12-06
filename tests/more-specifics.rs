@@ -10,7 +10,7 @@ mod tests {
     fn test_more_specifics() -> Result<(), Box<dyn Error>> {
         let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
             vec![4, 4, 3, 3, 3, 3, 3, 3, 3, 3],
-            vec![4]
+            vec![4],
         );
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24), // 0

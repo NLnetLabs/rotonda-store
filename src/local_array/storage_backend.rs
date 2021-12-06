@@ -157,29 +157,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             TreeBitMapNode<AF, Stride5, 62, 32>,
         >>::new();
 
-        // let mut nodes6 = vec![];
-        // let mut nodes7 = vec![];
-        // let mut nodes8 = vec![];
-        // match stride_type {
-        //     StrideType::Stride3 => {
-        //         nodes3.insert(start_node, TreeBitMapNode::default());
-        //     }
-        //     StrideType::Stride4 => {
-        //         nodes4.insert(start_node, TreeBitMapNode::default());
-        //     }
-        //     StrideType::Stride5 => {
-        //         nodes5.insert(start_node, TreeBitMapNode::default());
-        //     } // SizedStrideNode::Stride6(nodes) => {
-        //       //     nodes6 = vec![nodes];
-        //       // }
-        //       // SizedStrideNode::Stride7(nodes) => {
-        //       //     nodes7 = vec![nodes];
-        //       // }
-        //       // SizedStrideNode::Stride8(nodes) => {
-        //       //     nodes8 = vec![nodes];
-        //       // }
-        // }
-
         let mut store = InMemStorage {
             nodes3,
             nodes4,
@@ -206,41 +183,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         (prefix_net, sub_prefix_len): (Self::AF, u8),
     ) -> StrideNodeId<AF> {
         StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
-
-        // match level {
-        //     3 => StrideNodeId::new((
-        //         (prefix_net
-        //             >> (Self::AF::BITS - sub_prefix_len - level) as usize)
-        //             << (Self::AF::BITS - sub_prefix_len - level) as usize,
-        //         sub_prefix_len,
-        //     )),
-        //     4 => StrideNodeId::new((
-        //         (prefix_net
-        //             >> (Self::AF::BITS - sub_prefix_len - level) as usize)
-        //             << (Self::AF::BITS - sub_prefix_len - level) as usize,
-        //         sub_prefix_len,
-        //     )),
-        //     5 => StrideNodeId::new((
-        //         (prefix_net
-        //             >> (Self::AF::BITS - sub_prefix_len - level) as usize)
-        //             << (Self::AF::BITS - sub_prefix_len - level) as usize,
-        //         sub_prefix_len,
-        //     )),
-
-        // 6 => InMemStrideNodeId::new(
-        //     &sort,
-        //     &StrideNodeId(StrideType::Stride6, self.nodes6.len() as u32),
-        // ),
-        // 7 => InMemStrideNodeId::new(
-        //     &sort,
-        //     &StrideNodeId(StrideType::Stride7, self.nodes7.len() as u32),
-        // ),
-        // 8 => InMemStrideNodeId::new(
-        //     &sort,
-        //     &StrideNodeId(StrideType::Stride8, self.nodes8.len() as u32),
-        // ),
-        // _ => panic!("Invalid level"),
-        // }
     }
 
     fn store_node(
@@ -275,24 +217,12 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         match updated_node {
             SizedStrideNode::Stride3(node) => {
                 let _default_val = self.nodes3.insert(current_node_id, node);
-                // std::mem::replace(
-                //     self.nodes3.get_mut(&current_node_id).unwrap(),
-                //     node,
-                // );
             }
             SizedStrideNode::Stride4(node) => {
                 let _default_val = self.nodes4.insert(current_node_id, node);
-                // std::mem::replace(
-                //     self.nodes4.get_mut(&current_node_id).unwrap(),
-                //     node,
-                // );
             }
             SizedStrideNode::Stride5(node) => {
                 let _default_val = self.nodes5.insert(current_node_id, node);
-                // std::mem::replace(
-                //     self.nodes5.get_mut(&current_node_id).unwrap(),
-                //     node,
-                // );
             }
         }
     }

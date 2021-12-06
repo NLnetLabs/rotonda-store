@@ -133,7 +133,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "ipv6 nodes :\t{}",
                                     tree_bitmap.nodes_v6_len()
                                 );
-                                println!("{:#?}", tree_bitmap.nodes_v4_iter().collect::<Vec<_>>());                            }
+                                println!(
+                                    "{:#?}",
+                                    tree_bitmap
+                                        .nodes_v4_iter()
+                                        .collect::<Vec<_>>()
+                                );
+                            }
                             _ => {
                                 println!(
                                     "Error: unknown command {:?}",

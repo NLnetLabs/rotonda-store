@@ -318,22 +318,22 @@ impl AtomicU256 {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let hihi = u64::from_be_bytes(
-            [bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
-            bytes[6], bytes[7]],
-        );
-        let hilo = u64::from_be_bytes(
-            [bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
-            bytes[14], bytes[15]],
-        );
-        let lohi = u64::from_be_bytes(
-            [bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21],
-            bytes[22], bytes[23]],
-        );
-        let lolo = u64::from_be_bytes(
-            [bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29],
-            bytes[30], bytes[31]],
-        );
+        let hihi = u64::from_be_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+            bytes[6], bytes[7],
+        ]);
+        let hilo = u64::from_be_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
+            bytes[14], bytes[15],
+        ]);
+        let lohi = u64::from_be_bytes([
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21],
+            bytes[22], bytes[23],
+        ]);
+        let lolo = u64::from_be_bytes([
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29],
+            bytes[30], bytes[31],
+        ]);
         AtomicU256(
             AtomicU64::new(hihi),
             AtomicU64::new(hilo),
@@ -379,7 +379,7 @@ impl AtomicU512 {
             AtomicU64::new(lohilo),
             AtomicU64::new(lolohi),
             AtomicU64::new(lololo),
-        )  
+        )
     }
 
     pub fn into_be_bytes(self) -> [u8; 64] {
@@ -399,38 +399,38 @@ impl AtomicU512 {
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Self {
-        let hihihi = u64::from_be_bytes(
-            [bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
-            bytes[6], bytes[7]],
-        );
-        let hihilo = u64::from_be_bytes(
-            [bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
-            bytes[14], bytes[15]],
-        );
-        let hilohi = u64::from_be_bytes(
-            [bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21],
-            bytes[22], bytes[23]],
-        );
-        let hilolo = u64::from_be_bytes(
-            [bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29],
-            bytes[30], bytes[31]],
-        );
-        let lohihi = u64::from_be_bytes(
-            [bytes[32], bytes[33], bytes[34], bytes[35], bytes[36], bytes[37],
-            bytes[38], bytes[39]],
-        );
-        let lohilo = u64::from_be_bytes(
-            [bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45],
-            bytes[46], bytes[47]],
-        );
-        let lolohi = u64::from_be_bytes(
-            [bytes[48], bytes[49], bytes[50], bytes[51], bytes[52], bytes[53],
-            bytes[54], bytes[55]],
-        );
-        let lololo = u64::from_be_bytes(
-            [bytes[56], bytes[57], bytes[58], bytes[59], bytes[60], bytes[61],
-            bytes[62], bytes[63]],
-        );
+        let hihihi = u64::from_be_bytes([
+            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5],
+            bytes[6], bytes[7],
+        ]);
+        let hihilo = u64::from_be_bytes([
+            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13],
+            bytes[14], bytes[15],
+        ]);
+        let hilohi = u64::from_be_bytes([
+            bytes[16], bytes[17], bytes[18], bytes[19], bytes[20], bytes[21],
+            bytes[22], bytes[23],
+        ]);
+        let hilolo = u64::from_be_bytes([
+            bytes[24], bytes[25], bytes[26], bytes[27], bytes[28], bytes[29],
+            bytes[30], bytes[31],
+        ]);
+        let lohihi = u64::from_be_bytes([
+            bytes[32], bytes[33], bytes[34], bytes[35], bytes[36], bytes[37],
+            bytes[38], bytes[39],
+        ]);
+        let lohilo = u64::from_be_bytes([
+            bytes[40], bytes[41], bytes[42], bytes[43], bytes[44], bytes[45],
+            bytes[46], bytes[47],
+        ]);
+        let lolohi = u64::from_be_bytes([
+            bytes[48], bytes[49], bytes[50], bytes[51], bytes[52], bytes[53],
+            bytes[54], bytes[55],
+        ]);
+        let lololo = u64::from_be_bytes([
+            bytes[56], bytes[57], bytes[58], bytes[59], bytes[60], bytes[61],
+            bytes[62], bytes[63],
+        ]);
         AtomicU512(
             AtomicU64::new(hihihi),
             AtomicU64::new(hihilo),
@@ -441,5 +441,5 @@ impl AtomicU512 {
             AtomicU64::new(lolohi),
             AtomicU64::new(lololo),
         )
-    }   
+    }
 }

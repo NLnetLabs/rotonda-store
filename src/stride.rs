@@ -1,4 +1,4 @@
-use crate::{impl_primitive_stride};
+use crate::impl_primitive_stride;
 use crate::synth_int::{U256, U512};
 use std::fmt::{Binary, Debug};
 
@@ -9,7 +9,9 @@ pub type Stride6 = u128;
 pub type Stride7 = U256;
 pub type Stride8 = U512;
 
-pub trait Stride: Sized + Debug + Binary + Eq + PartialOrd + PartialEq + Copy {
+pub trait Stride:
+    Sized + Debug + Binary + Eq + PartialOrd + PartialEq + Copy
+{
     type PtrSize;
     const BITS: u8;
     const STRIDE_LEN: u8;
@@ -110,7 +112,9 @@ impl Stride for Stride7 {
             // ...1011_1010... >> 2 => ...0010_111010...
             //    ____ ====                 -- --====
             n if n < 128 => {
-                bitmap.0.count_ones() as usize + (bitmap.1 >> n).count_ones() as usize - 1
+                bitmap.0.count_ones() as usize
+                    + (bitmap.1 >> n).count_ones() as usize
+                    - 1
             }
             // if we move more than 128 bits to the right,
             // all of bitmap.1 wil be shifted out of sight,
@@ -120,7 +124,9 @@ impl Stride for Stride7 {
     }
 
     fn get_ptr_index(bitmap: Self::PtrSize, nibble: u32) -> usize {
-        (bitmap >> ((256 >> 1) - nibble as u16 - 1) as usize).count_ones() as usize - 1
+        (bitmap >> ((256 >> 1) - nibble as u16 - 1) as usize).count_ones()
+            as usize
+            - 1
     }
 
     fn into_stride_size(bitmap: Self::PtrSize) -> Self {
@@ -185,7 +191,9 @@ impl Stride for Stride8 {
             }
 
             n if n < 384 => {
-                bitmap.0.count_ones() as usize + (bitmap.1 >> (n - 256)).count_ones() as usize - 1
+                bitmap.0.count_ones() as usize
+                    + (bitmap.1 >> (n - 256)).count_ones() as usize
+                    - 1
             }
 
             // if we move more than 384 bits to the right, all of bitmap.
@@ -204,7 +212,9 @@ impl Stride for Stride8 {
             // ...1011_1010... >> 2 => ...0010_111010...
             //    ____ ====                 -- --====
             n if n < 128 => {
-                bitmap.0.count_ones() as usize + (bitmap.1 >> n).count_ones() as usize - 1
+                bitmap.0.count_ones() as usize
+                    + (bitmap.1 >> n).count_ones() as usize
+                    - 1
             }
             // if we move more than 256 bits to the right, all of bitmap.1
             // wil be shifted out of sight, so we only have to count bitmap.0

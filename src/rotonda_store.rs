@@ -1,6 +1,9 @@
 use std::{fmt, slice};
 
-use crate::{local_array::node::PrefixId, prefix_record::InternalPrefixRecord, stats::StrideStats};
+use crate::{
+    local_array::node::PrefixId, prefix_record::InternalPrefixRecord,
+    stats::StrideStats,
+};
 
 use routecore::{
     addr::Prefix,
@@ -139,11 +142,23 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
 
 #[derive(Debug)]
 pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
-    pub(crate) v4: Option<std::collections::hash_map::Values<'a, PrefixId<IPv4>, InternalPrefixRecord<IPv4, Meta>>>,
-    pub(crate) v6: std::collections::hash_map::Values<'a, PrefixId<IPv6>, InternalPrefixRecord<IPv6, Meta>>,
+    pub(crate) v4: Option<
+        std::collections::hash_map::Values<
+            'a,
+            PrefixId<IPv4>,
+            InternalPrefixRecord<IPv4, Meta>,
+        >,
+    >,
+    pub(crate) v6: std::collections::hash_map::Values<
+        'a,
+        PrefixId<IPv6>,
+        InternalPrefixRecord<IPv6, Meta>,
+    >,
 }
 
-impl <'a, Meta: routecore::record::Meta + 'a> Iterator for HashMapPrefixRecordIterator<'a, Meta> {
+impl<'a, Meta: routecore::record::Meta + 'a> Iterator
+    for HashMapPrefixRecordIterator<'a, Meta>
+{
     type Item = PrefixRecord<'a, Meta>;
 
     fn next(&mut self) -> Option<Self::Item> {
