@@ -4,11 +4,11 @@ use std::{
     marker::PhantomData,
 };
 
+use crate::af::Zero;
 use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
 use crate::impl_primitive_stride;
 use crate::match_node_for_strides;
 use crate::synth_int::{U256, U512};
-use crate::af::Zero;
 
 type Stride3 = u16;
 type Stride4 = u32;
@@ -62,7 +62,7 @@ pub trait Stride:
     // always 0.
     fn get_pfx_index(bitmap: Self, nibble: u32, len: u8) -> usize;
 
-    // Clear the bitmap to the right of the pointer and count the number of 
+    // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding child node
     // in the ptr_vec.
 
@@ -74,12 +74,12 @@ pub trait Stride:
     //  of the nibble
 
     // `(<Self as Stride>::BITS >> 1)`
-    // The end of the bitmap (this bitmap is half the size of the pfx 
+    // The end of the bitmap (this bitmap is half the size of the pfx
     // bitmap), ::BITS is the size of the pfx bitmap.
 
     // `nibble`
     // The bit position relative to the offset for the nibble length, this
-    // index is only used at the last (relevant) stride, so the offset is 
+    // index is only used at the last (relevant) stride, so the offset is
     // always 0.
     fn get_ptr_index(bitmap: Self::PtrSize, nibble: u32) -> usize;
 
@@ -731,7 +731,7 @@ impl<'a, AF: 'static + AddressFamily, Meta: Debug> std::ops::Deref
 
 enum NewNodeOrIndex<AF: AddressFamily, NodeId: SortableNodeId + Copy> {
     // New Node and bit_id of the new node
-    NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort), 
+    NewNode(SizedStrideNode<AF, NodeId>, NodeId::Sort),
     ExistingNode(NodeId),
     NewPrefix,
     ExistingPrefix(NodeId::Part),
@@ -849,7 +849,7 @@ where
                 };
 
                 // we can return bit_pos.leading_zeros() since bit_pos is the
-                // bitmap that points to the current bit in ptrbitarr (it's 
+                // bitmap that points to the current bit in ptrbitarr (it's
                 // **not** the prefix of the node!), so the number of zeros
                 // in front of it should always be unique and describes the
                 // index of this node in the ptrbitarr.
@@ -951,7 +951,7 @@ where
         // we found.
         (
             /* The node that has children the next stride */
-            Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]), 
+            Some(self.ptr_vec[S::get_ptr_index(self.ptrbitarr, nibble)]),
             found_pfx,
         )
     }
@@ -995,7 +995,7 @@ where
             }
             // We're not at the last nibble.
             false => {
-                // Check for a child node at the right position, i.e. 
+                // Check for a child node at the right position, i.e.
                 // consider the complete nibble.
                 if (S::into_stride_size(self.ptrbitarr) & bit_pos) > S::zero()
                 {
@@ -1009,8 +1009,8 @@ where
 
         (
             found_child, /* The node that has children in the next stride,
-                            if any */
-            found_pfx,   /* The exactly matching prefix, if any */
+                         if any */
+            found_pfx, /* The exactly matching prefix, if any */
         )
     }
 
@@ -1544,7 +1544,7 @@ where
 
     // This function assembles the prefixes of a child node starting on a
     // specified bit position in a ptr_vec of `current_node` into a vec,
-    // then adds all prefixes of these children recursively into a vec and 
+    // then adds all prefixes of these children recursively into a vec and
     // returns that.
     pub fn get_all_more_specifics_from_nibble<S: Stride>(
         &self,
