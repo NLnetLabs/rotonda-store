@@ -27,7 +27,7 @@ mod rotonda_store;
 
 /// Statistics for the two trees (IPv4 and IPv6).
 pub mod stats;
-pub use rotonda_store::*;
+pub use crate::rotonda_store::*;
 
 // re-exports
 pub use routecore::*;

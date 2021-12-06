@@ -20,7 +20,7 @@ pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
     fn default() -> Self {
-        Self::new(vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![8])
+        Self::new(vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![4])
     }
 }
 
@@ -32,15 +32,17 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     ///
     /// The stride-sizes can be any of [3,4,5,6,7,8], and they should add up
     /// to the total number of bits in the address family (32 for IPv4 and
-    /// 128 for IPv6).
+    /// 128 for IPv6). Stride sizes in the array will be repeated if the sum
+    /// of them falls short of the total number of bits for the address
+    /// family.
     ///
     /// # Example
     /// ```
     /// use rotonda_store::MultiThreadedStore;
-    /// use routecore::bgp::PrefixAs;
+    /// use rotonda_store::PrefixAs;
     ///
     /// let store = MultiThreadedStore::<PrefixAs>::new(
-    ///     vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![8]
+    ///     vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![5,4,3,4]
     /// );
     /// ```
     pub fn new(v4_strides: Vec<u8>, v6_strides: Vec<u8>) -> Self {
