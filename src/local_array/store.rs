@@ -112,7 +112,6 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     pub fn nodes_v4_iter(
         &'a self,
     ) -> impl Iterator<Item = SizedStrideRef<'a, IPv4>> + 'a {
-        println!("{:?}", self.v4.store.nodes5.keys());
         self.v4
             .store
             .nodes3

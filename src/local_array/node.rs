@@ -262,39 +262,24 @@ where
                 // In a stride3 (ptrbitarr length is 8):
                 // bit_pos 0001 0000
                 // so this is the fourth bit, so points to index = 3       
-                println!("create new node {:?}", new_node);         
                 return NewNodeOrIndex::NewNode(
                     new_node
                 );
             }
         } else {
-            println!("checking for existing prefix");
             // only at the last stride do we create the bit in the prefix bitmap,
             // and only if it doesn't exist already
             if pfxbitarr & bit_pos
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
             {
-                println!("creating new prefix");
                 // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
                 let _res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
-            println!("found existing prefix");
             return NewNodeOrIndex::ExistingPrefix(
                 self.pfx_vec.to_vec()[S::get_pfx_index(nibble, nibble_len)],            );
         }
-
-        println!("found existing node");
-        println!("ptrbitarr:   {:032b}", ptrbitarr);
-        println!("base_prefix: {:032b}/{}", base_prefix.get_id().0, base_prefix.get_id().1);
-        println!("nibble+len:  {:032b}/{}", nibble, nibble_len);
-        println!("new node:    {:032b}/{}", base_prefix.add_nibble(nibble,nibble_len).get_id().0, base_prefix.add_nibble(nibble,nibble_len).get_id().1);
-         // (stride_type,
-        //     S::into_node_id(
-        //         prefix_id.get_id().0 | ((ms_nibble << (AF::BITS - prefix_id.get_id().1 - ms_nibble_len)) as u32).into(),
-        //     prefix_id.get_id().1 + ms_nibble_len)
-        //     )
 
         NewNodeOrIndex::ExistingNode(
             base_prefix.truncate_to_len()
@@ -321,7 +306,6 @@ where
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
         let mut found_pfx = None;
 
-        println!("Longest Match. start bit {}..", start_bit);
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
             nibble =
@@ -353,51 +337,23 @@ where
         }
 
         let base_prefix = StrideNodeId::new_with_cleaned_id(search_pfx.net, start_bit);
-        println!(
-            "base_prefix/start_bit
-             {:?} {}/{}",
-            base_prefix,
-            base_prefix.get_id().0.into_ipaddr(),
-            base_prefix.get_id().1
-        );
-        println!("zz {} <= {}+{}", search_pfx.len, base_prefix.get_id().1, nibble_len);
-        println!("cond {}", (S::into_stride_size(ptrbitarr) & bit_pos) == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero());
-        println!("{:032b} ptrbitarr", S::into_stride_size(ptrbitarr));
-        println!("{:032b} bit_pos", bit_pos);
-
+     
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
         if search_pfx.len <= start_bit + nibble_len
             || (S::into_stride_size(ptrbitarr) & bit_pos) == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
         // No children or at the end, return the definitive LMP we found.
         {
-            println!("done");
-            println!("found preliminary: {:?}", found_pfx);
             return (
                 None,      /* no more children */
                 found_pfx, /* The definitive LMP if any */
             );
         }
 
-        // (stride_type,
-        //     S::into_node_id(
-        //         prefix_id.get_id().0 | ((ms_nibble << (AF::BITS - prefix_id.get_id().1 - ms_nibble_len)) as u32).into(),
-        //     prefix_id.get_id().1 + ms_nibble_len)
-        //     )
-
-
-        println!("prefix_id: {:032b}/{}", base_prefix.get_id().0, base_prefix.get_id().1);
-        println!("clean_id:  {:?}", base_prefix.truncate_to_len());
-
         // There's another child, return it together with the preliminary LMP we found.
         (
             // The identifier of the node that has children of the next stride
             Some(
-                // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
-                // (
-                //     stride_type,
-                //     S::into_node_id(prefix_id.0, start_bit + nibble_len),
-                // ),
                 base_prefix.add_nibble(nibble, nibble_len)
             ),
             found_pfx,
@@ -568,7 +524,6 @@ where
             > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero(
             )
         {
-            println!("ff {}", base_prefix);
             found_child = Some(
                 // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
                 // S::into_node_id(prefix_id.get_id().0, prefix_id.get_id().1),
@@ -577,9 +532,6 @@ where
             );
         }
 
-        println!("gg {} ({})", base_prefix.get_id().0.into_ipaddr(), base_prefix);
-        println!("nibble {}", nibble);
-        println!("nibble_len {}", nibble_len);
         if let Some(child) = found_child {
             found_children_with_more_specifics.push(child);
         }
@@ -611,30 +563,9 @@ where
                     (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
                 bit_pos = S::get_bit_pos(ms_nibble, ms_nibble_len);
 
-                println!("nibble:    {:032b}", ms_nibble);
-                println!(
-                    "ptrbitarr: {:032b}",
-                    S::into_stride_size(self.ptrbitarr.load())
-                );
-                println!("bitpos:    {:032b}", bit_pos);
-                println!("prefix_id: {:032b}", base_prefix.get_id().0);
-
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
-                    
-                    println!("nibble_ad: {:032b}", (ms_nibble << (AF::BITS - base_prefix.get_id().1 - ms_nibble_len)) as u32);
-                    println!("ppefix_id: {:032b}", base_prefix.get_id().0 | ((ms_nibble << (AF::BITS - base_prefix.get_id().1 - ms_nibble_len)) as u32).into());
-                    
                     found_children_with_more_specifics.push(
-                        // self.ptr_vec.to_vec()
-                        //     [S::get_ptr_index(ptrbitarr, ms_nibble)],
-
-                    //     let nibble = (base_addr.get_id().0
-                    // << (AF::BITS - nibble_len) as usize)
-                    // // .dangerously_truncate_to_u32()
-                    //     S::into_node_id(
-                    //         prefix_id.get_id().0 | ((ms_nibble << (AF::BITS - prefix_id.get_id().1 - ms_nibble_len)) as u32).into(),
-                    //     prefix_id.get_id().1 + ms_nibble_len)
                     base_prefix.add_nibble(ms_nibble, ms_nibble_len)
                     );
                 }

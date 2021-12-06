@@ -39,9 +39,7 @@ where
         let mut stride_end = 0;
         let mut level: usize = 0;
 
-        let mut node = self
-            .retrieve_node(self.get_root_node_id())
-            .unwrap();
+        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
         let mut nibble;
         let mut nibble_len;
 
@@ -104,8 +102,6 @@ where
                 nibble_len,
             );
 
-            println!("root_node: {:?}", node);
-            println!("start bit: {}", stride_end);
             match node {
                 SizedStrideRef::Stride3(current_node) => {
                     let search_fn = match options.match_type {
@@ -135,7 +131,6 @@ where
                     // hold the prefixes found along the way, in the cases
                     // where `include_less_specifics` was requested by the
                     // user.
-                    println!("start bit#2: {}", stride_end - stride);
                     match search_fn(
                         current_node,
                         search_pfx,
@@ -345,7 +340,6 @@ where
                     }
                 }
                 SizedStrideRef::Stride5(current_node) => {
-                    println!("process stride 5 search..");
                     let search_fn = match options.match_type {
                         MatchType::ExactMatch => {
                             if options.include_less_specifics {
@@ -370,11 +364,9 @@ where
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            println!("found a node & a pfx {:?}", pfx_idx);
                             match_prefix_idx = Some(pfx_idx);
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
-                                println!("last stride");
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
@@ -391,10 +383,6 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            println!("found a node, but no pfx");
-                            println!("nn {:?}", n);
-                            println!("level: {}", level);
-                            println!("{:?}", self.store.get_nodes());
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
@@ -413,7 +401,6 @@ where
                             }
                         }
                         (None, Some(pfx_idx)) => {
-                            println!("found no node, but a pfx");
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
@@ -430,12 +417,8 @@ where
                             break;
                         }
                         (None, None) => {
-                            println!("found nothing");
-                            println!("option match type {}", options.match_type);
-                            println!("node {}", current_node);
                             match options.match_type {
                                 MatchType::EmptyMatch => {
-                                    println!("now go get_all_more_specifics_from_nibble");
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
@@ -450,11 +433,8 @@ where
                                     match_prefix_idx = None;
                                     break;
                                 }
-                                MatchType::LongestMatch => {
-                                    println!("longest match done");
-                                }
+                                MatchType::LongestMatch => {}
                                 MatchType::ExactMatch => {
-                                    println!("exact match done");
                                     match_prefix_idx = None;
                                 }
                             }

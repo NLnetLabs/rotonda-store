@@ -106,9 +106,7 @@ pub(crate) trait StorageBackend {
         &self,
         index: StrideNodeId<Self::AF>,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
-    fn get_prefixes(
-        &self,
-    ) -> &PrefixHashMap<Self::AF, Self::Meta>;
+    fn get_prefixes(&self) -> &PrefixHashMap<Self::AF, Self::Meta>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(&self) -> PrefixIterResult<'_, Self::AF, Self::Meta>;
     #[cfg(feature = "dynamodb")]
@@ -207,25 +205,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         (prefix_net, sub_prefix_len): (Self::AF, u8),
     ) -> StrideNodeId<AF> {
-        // We're ignoring the part parameter here, because we want to store
-        // the index into the global self.nodes vec in the local vec.
-        println!(
-            "Stride {} {} {:032b} ({}) {} -> \t{:032b} {}/{} ({})",
-            self.len_to_stride_size[sub_prefix_len as usize],
-            sub_prefix_len,
-            prefix_net,
-            prefix_net,
-            prefix_net.into_ipaddr(),
-            (prefix_net >> (Self::AF::BITS - sub_prefix_len) as usize)
-                << (Self::AF::BITS - sub_prefix_len) as usize,
-            ((prefix_net >> (Self::AF::BITS - sub_prefix_len) as usize)
-                << (Self::AF::BITS - sub_prefix_len) as usize)
-                .into_ipaddr(),
-            sub_prefix_len,
-            ((prefix_net >> (Self::AF::BITS - sub_prefix_len) as usize)
-                << (Self::AF::BITS - sub_prefix_len) as usize)
-        );
-
         StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
 
         // match level {
@@ -339,13 +318,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         &'_ mut self,
         id: StrideNodeId<AF>,
     ) -> SizedNodeResult<'_, Self::AF> {
-        println!(
-            "retrieve mut {}/{} ({}) in stride {}",
-            id.get_id().0.into_ipaddr(),
-            id.get_id().1,
-            id.get_id().0,
-            self.len_to_stride_size[id.get_id().1 as usize]
-        );
         match self.len_to_stride_size[id.get_id().1 as usize] {
             StrideType::Stride3 => Ok(self
                 .nodes3
@@ -375,9 +347,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     }
 
     fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>> {
-        println!("NODES3 {:?}", self.nodes3);
-        println!("NODES4 {:?}", self.nodes4);
-        println!("NODES5 {:?}", self.nodes5);
         self.nodes3
             .iter()
             .map(|n| SizedStrideRef::Stride3(n.1))
@@ -460,9 +429,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         panic!("nOt ImPlEmEnTed for InMemNode");
     }
 
-    fn get_prefixes(
-        &self,
-    ) -> &PrefixHashMap<Self::AF, Self::Meta> {
+    fn get_prefixes(&self) -> &PrefixHashMap<Self::AF, Self::Meta> {
         &self.prefixes
     }
 

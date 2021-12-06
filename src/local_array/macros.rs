@@ -37,9 +37,6 @@ macro_rules! match_node_for_strides {
                     // get a new identifier for the node we're going to create.
                     let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len));
 
-                    // store the node identifier in the local ptr array
-                    // current_node.ptr_vec.insert(bit_id, new_id);
-
                     // store the node in the global store
                     let i = $self.store_node(new_id, n).unwrap();
 
@@ -50,44 +47,22 @@ macro_rules! match_node_for_strides {
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-                    println!("Existing node {:?}", i);
-                    // let _default_val = std::mem::replace(
-                    //     $self.retrieve_node_mut($cur_i).unwrap(),
-                    //     SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix(sort_id) => {
-
-                    // let pfx_len = $pfx.len.clone();
-                    // let pfx_net = $pfx.net.clone();
-                    // let i = $self.store_prefix($pfx)?;
-                    // Construct the SortKey by default from the nibble and
-                    // nibble_len, so that nibble_len determines the base
-                    // position (2^nibble_len) and then nibble is the offset
-                    // from the base position.
-                    // let new_id = $self.store.acquire_new_prefix_id(&((1 << ($nibble_len - 1)) + $nibble as u16).into());
-                    println!("np#1");
+                    // acquire_new_prefix_id is deterministic, so we can use it
+                    // always.
                     let new_id = $self.store.acquire_new_prefix_id(&$pfx);
                     $self.stats[$stats_level].inc_prefix_count($level);
 
-                    println!("np#2");
                     current_node
                         .pfx_vec
                         .insert(sort_id, new_id);
-                    // current_node.pfx_vec.sort();
 
-
-                    println!("np#3 {}", $pfx);
                     $self.store_prefix($pfx)?;
 
-                    println!("np#4");
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
-                    println!("np#5 {}", $cur_i);
-                    // let _default_val = std::mem::replace(
-                    //     $self.retrieve_node_mut($cur_i).unwrap(),
-                    //     SizedStrideNode::$variant(current_node),
-                    // );
                     break Ok(());
                 }
                 NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
@@ -97,12 +72,6 @@ macro_rules! match_node_for_strides {
                     // since the compiler can't figure out that it will happen only once.
                     if let Some(meta) = $pfx.meta { $self.update_prefix_meta(pfx_idx, meta)? };
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-
-                    // let _default_val = std::mem::replace(
-                    //     $self.retrieve_node_mut($cur_i).unwrap(),
-                    //     // expands into SizedStrideNode::Stride[3-8](current_node)
-                    //     SizedStrideNode::$variant(current_node),
-                    // );
                     break Ok(());
                 }
             }
@@ -220,12 +189,6 @@ macro_rules! impl_primitive_atomic_stride {
 
                 }
                 fn get_ptr_index(_bitmap: $ptrsize, nibble: u32) -> usize {
-                    // (
-                    //     bitmap >> (
-                    //     (<Self as Stride>::BITS >> 1) - nibble as u8 - 1) as usize
-                    // ).count_ones() as usize
-                    // - 1
-                    // ((<Self as Stride>::BITS >> 1) - nibble as u8 - 1) as usize
                     (nibble as u16).into()
                 }
 
@@ -234,8 +197,6 @@ macro_rules! impl_primitive_atomic_stride {
                     len: u8
                 ) -> crate::local_array::node::StrideNodeId<AF> {
                     let id = crate::local_array::node::StrideNodeId::new_with_cleaned_id(addr_bits, len);
-                    println!("search {}/{}", id.get_id().0.into_ipaddr(), len);
-                    println!("sub-search {} {}/{}", id, id.get_id().0.into_ipaddr(), len);
                     id
                 }
 
