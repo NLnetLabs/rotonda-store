@@ -84,7 +84,7 @@ impl AtomicBitmap for AtomicStride2 {
     }
 }
 
-impl crate::af::Zero for AtomicStride2 {
+impl Zero for AtomicStride2 {
     fn zero() -> Self {
         AtomicStride2(AtomicU8::new(0))
     }
@@ -129,7 +129,7 @@ impl AtomicBitmap for AtomicStride3 {
     }
 }
 
-impl crate::af::Zero for AtomicStride3 {
+impl Zero for AtomicStride3 {
     fn zero() -> Self {
         AtomicStride3(AtomicU16::new(0))
     }
@@ -174,7 +174,7 @@ impl AtomicBitmap for AtomicStride4 {
     }
 }
 
-impl crate::af::Zero for AtomicStride4 {
+impl Zero for AtomicStride4 {
     fn zero() -> Self {
         AtomicStride4(AtomicU32::new(0))
     }
@@ -219,7 +219,7 @@ impl AtomicBitmap for AtomicStride5 {
     }
 }
 
-impl crate::af::Zero for AtomicStride5 {
+impl Zero for AtomicStride5 {
     fn zero() -> Self {
         AtomicStride5(AtomicU64::new(0))
     }
@@ -297,7 +297,7 @@ impl AtomicBitmap for AtomicStride6 {
     }
 }
 
-impl crate::af::Zero for AtomicStride6 {
+impl Zero for AtomicStride6 {
     fn zero() -> Self {
         AtomicStride6(AtomicU128::new(0))
     }
