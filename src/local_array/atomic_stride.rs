@@ -3,9 +3,9 @@ use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };
 
+use crate::af::Zero;
 use crate::synth_int::AtomicU128;
 use crate::{impl_primitive_atomic_stride, AddressFamily};
-use crate::af::Zero;
 
 pub type Stride3 = u16;
 pub type Stride4 = u32;
@@ -387,11 +387,25 @@ impl From<(Result<u64, u64>, Result<u64, u64>)> for CasResult<u128> {
     }
 }
 pub trait Stride:
-    Sized + Debug + Eq + Binary + PartialOrd + PartialEq + crate::af::Zero
+    Sized
+    + Debug
+    + Eq
+    + Binary
+    + PartialOrd
+    + PartialEq
+    + Zero
+    + std::ops::BitAnd<Output = Self>
+    + std::ops::BitOr<Output = Self>
 where
     Self::AtomicPtrSize: AtomicBitmap,
     Self::AtomicPfxSize: AtomicBitmap,
-    Self::PtrSize: Zero,
+    Self::PtrSize: Zero
+        + Binary
+        + Copy
+        + Debug
+        + std::ops::BitAnd<Output = Self::PtrSize>
+        + PartialOrd
+        + Zero,
 {
     type AtomicPfxSize;
     type AtomicPtrSize;

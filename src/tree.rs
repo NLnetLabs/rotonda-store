@@ -202,11 +202,6 @@ impl Stride for Stride7 {
         (bitmap.0 << 127 | bitmap.1 >> 1) as u128
     }
 
-    // #[inline]
-    // fn zero() -> Self {
-    //     U256(0, 0)
-    // }
-
     #[inline]
     fn one() -> Self {
         U256(0, 1)
@@ -313,11 +308,6 @@ impl Stride for Stride8 {
             (bitmap.2 << 127 | bitmap.3 >> 1) as u128,
         )
     }
-
-    // #[inline]
-    // fn zero() -> Self {
-    //     U512(0, 0, 0, 0)
-    // }
 
     #[inline]
     fn one() -> Self {

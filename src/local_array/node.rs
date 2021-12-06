@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
-    fmt::{Binary, Debug},
+    fmt::Debug,
     marker::PhantomData,
 };
 
@@ -23,9 +23,6 @@ pub struct TreeBitMapNode<
 > where
     Self: Sized,
     S: Stride,
-    <S as Stride>::PtrSize: Debug,
-    <S as Stride>::AtomicPfxSize: AtomicBitmap,
-    <S as Stride>::AtomicPtrSize: AtomicBitmap,
     AF: AddressFamily,
 {
     pub ptrbitarr: <S as Stride>::AtomicPtrSize,
@@ -45,9 +42,6 @@ impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Debug
 where
     AF: AddressFamily,
     S: Stride,
-    <S as Stride>::PtrSize: Debug + Binary + Copy,
-    <S as Stride>::AtomicPtrSize: AtomicBitmap,
-    <S as Stride>::AtomicPfxSize: AtomicBitmap,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeBitMapNode")
@@ -62,10 +56,7 @@ impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
     std::fmt::Display for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
-    S: Stride,
-    <S as Stride>::PtrSize: Debug + Binary + Copy,
-    <S as Stride>::AtomicPfxSize: AtomicBitmap,
-    <S as Stride>::AtomicPtrSize: AtomicBitmap,
+    S: Stride
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -83,17 +74,6 @@ impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
 where
     AF: AddressFamily,
     S: Stride
-        + std::ops::BitAnd<Output = S>
-        + std::ops::BitOr<Output = S>
-        + Zero,
-    <S as Stride>::PtrSize: Debug
-        + Binary
-        + Copy
-        + std::ops::BitAnd<Output = S::PtrSize>
-        + PartialOrd
-        + Zero,
-    <S as Stride>::AtomicPfxSize: AtomicBitmap,
-    <S as Stride>::AtomicPtrSize: AtomicBitmap,
 {
     // create a vec of all child nodes id
     //

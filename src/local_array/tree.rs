@@ -3,11 +3,11 @@ use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 use std::{
-    fmt::{Binary, Debug},
+    fmt::Debug,
     marker::PhantomData,
 };
 
-use crate::af::{AddressFamily, Zero};
+use crate::af::AddressFamily;
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
@@ -50,10 +50,7 @@ impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Default
     for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
-    S: Stride,
-    <S as Stride>::PtrSize: Debug + Binary + Copy,
-    <S as Stride>::AtomicPfxSize: AtomicBitmap,
-    <S as Stride>::AtomicPtrSize: AtomicBitmap,
+    S: Stride
 {
     fn default() -> Self {
         Self {
@@ -748,17 +745,6 @@ where
     ) -> Option<Vec<PrefixId<Store::AF>>>
     where
         S: Stride
-            + std::ops::BitAnd<Output = S>
-            + std::ops::BitOr<Output = S>
-            + Zero,
-        <S as Stride>::PtrSize: Debug
-            + Binary
-            + Copy
-            + std::ops::BitAnd<Output = S::PtrSize>
-            + PartialOrd
-            + Zero,
-        <S as Stride>::AtomicPfxSize: AtomicBitmap,
-        <S as Stride>::AtomicPtrSize: AtomicBitmap,
     {
         let (cnvec, mut msvec) = current_node.add_more_specifics_at(
             nibble,
