@@ -3,10 +3,9 @@ use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };
 
-use num::{PrimInt, Zero};
-
 use crate::synth_int::AtomicU128;
 use crate::{impl_primitive_atomic_stride, AddressFamily};
+use crate::af::Zero;
 
 pub type Stride3 = u16;
 pub type Stride4 = u32;
@@ -27,7 +26,13 @@ impl<InnerType> CasResult<InnerType> {
 }
 
 pub trait AtomicBitmap {
-    type InnerType: Binary + Debug + PrimInt + Zero;
+    type InnerType: Binary
+        + Copy
+        + Debug
+        + Zero
+        + PartialOrd
+        + std::ops::BitAnd<Output = Self::InnerType>
+        + std::ops::BitOr<Output = Self::InnerType>;
 
     fn new() -> Self;
     fn inner(self) -> Self::InnerType;
@@ -79,6 +84,16 @@ impl AtomicBitmap for AtomicStride2 {
     }
 }
 
+impl crate::af::Zero for AtomicStride2 {
+    fn zero() -> Self {
+        AtomicStride2(AtomicU8::new(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.load(Ordering::SeqCst) == 0
+    }
+}
+
 impl AtomicBitmap for AtomicStride3 {
     type InnerType = u16;
 
@@ -111,6 +126,16 @@ impl AtomicBitmap for AtomicStride3 {
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl crate::af::Zero for AtomicStride3 {
+    fn zero() -> Self {
+        AtomicStride3(AtomicU16::new(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.load(Ordering::SeqCst) == 0
     }
 }
 
@@ -149,6 +174,16 @@ impl AtomicBitmap for AtomicStride4 {
     }
 }
 
+impl crate::af::Zero for AtomicStride4 {
+    fn zero() -> Self {
+        AtomicStride4(AtomicU32::new(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.load(Ordering::SeqCst) == 0
+    }
+}
+
 impl AtomicBitmap for AtomicStride5 {
     type InnerType = u64;
 
@@ -181,6 +216,16 @@ impl AtomicBitmap for AtomicStride5 {
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
+    }
+}
+
+impl crate::af::Zero for AtomicStride5 {
+    fn zero() -> Self {
+        AtomicStride5(AtomicU64::new(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0.load(Ordering::SeqCst) == 0
     }
 }
 
@@ -249,6 +294,17 @@ impl AtomicBitmap for AtomicStride6 {
             hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
             lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
         ])
+    }
+}
+
+impl crate::af::Zero for AtomicStride6 {
+    fn zero() -> Self {
+        AtomicStride6(AtomicU128::new(0))
+    }
+
+    fn is_zero(&self) -> bool {
+        self.0 .0.load(Ordering::SeqCst) == 0
+            && self.0 .1.load(Ordering::SeqCst) == 0
     }
 }
 
@@ -330,13 +386,12 @@ impl From<(Result<u64, u64>, Result<u64, u64>)> for CasResult<u128> {
         }
     }
 }
-
 pub trait Stride:
-    Sized + Debug + Eq + Binary + PartialOrd + PartialEq + Zero
+    Sized + Debug + Eq + Binary + PartialOrd + PartialEq + crate::af::Zero
 where
     Self::AtomicPtrSize: AtomicBitmap,
     Self::AtomicPfxSize: AtomicBitmap,
-    Self::PtrSize: num::Zero,
+    Self::PtrSize: Zero,
 {
     type AtomicPfxSize;
     type AtomicPtrSize;
@@ -379,21 +434,21 @@ where
 
     // `nibble`
     // The bit position relative to the offset for the nibble length, this
-    // index is only used at the last (relevant) stride, so the offset is 
+    // index is only used at the last (relevant) stride, so the offset is
     // always 0.
 
     // get_pfx_index only needs nibble and len for fixed-layout bitarrays,
     // since the index can be deducted from them.
     fn get_pfx_index(nibble: u32, len: u8) -> usize;
 
-    // Clear the bitmap to the right of the pointer and count the number of 
+    // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding child node
     // in the ptr_vec.
 
     // Clearing is performed by shifting to the right until we have the
     // nibble all the way at the right.
 
-    // For ptrbitarr the only index we want is the one for a full-length 
+    // For ptrbitarr the only index we want is the one for a full-length
     // nibble (stride length) at the last stride, so we don't need the length
     //  of the nibble.
 
@@ -403,7 +458,7 @@ where
 
     // `nibble`
     // The bit position relative to the offset for the nibble length, this
-    // index is only used at the last (relevant) stride, so the offset is 
+    // index is only used at the last (relevant) stride, so the offset is
     // always 0.
     fn get_ptr_index(
         bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
@@ -427,8 +482,8 @@ where
 
     // Convert a pfxbitarr sized bitmap into a ptrbitarr sized
     // Note that bitwise operators align bits of unsigend types with
-    // different sizes to the right, so we don't have to do anything to pad 
-    // the smaller sized type. We do have to shift one bit to the left, to 
+    // different sizes to the right, so we don't have to do anything to pad
+    // the smaller sized type. We do have to shift one bit to the left, to
     // accomodate the unused pfxbitarr's last bit.
     fn into_ptrbitarr_size(
         bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,

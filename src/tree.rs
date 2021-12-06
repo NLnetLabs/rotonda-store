@@ -1,12 +1,14 @@
-use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
-use crate::impl_primitive_stride;
-use crate::match_node_for_strides;
-use crate::synth_int::{U256, U512};
 use std::io::{Error, ErrorKind};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
 };
+
+use crate::common::{AddressFamily, MergeUpdate, NoMeta, Prefix};
+use crate::impl_primitive_stride;
+use crate::match_node_for_strides;
+use crate::synth_int::{U256, U512};
+use crate::af::Zero;
 
 type Stride3 = u16;
 type Stride4 = u32;

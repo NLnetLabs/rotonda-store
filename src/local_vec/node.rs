@@ -1,13 +1,13 @@
-use num::Zero;
-use crate::node_id::SortableNodeId;
-use crate::prefix_record::InternalPrefixRecord;
-pub use crate::stride::*;
-use crate::synth_int::{U256, U512};
-
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
 };
+
+use crate::af::Zero;
+use crate::node_id::SortableNodeId;
+use crate::prefix_record::InternalPrefixRecord;
+pub use crate::stride::*;
+use crate::synth_int::{U256, U512};
 
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
 
@@ -60,13 +60,13 @@ where
     S: Stride
         + std::ops::BitAnd<Output = S>
         + std::ops::BitOr<Output = S>
-        + num::Zero,
+        + Zero,
     <S as Stride>::PtrSize: Debug
         + Binary
         + Copy
         + std::ops::BitAnd<Output = S::PtrSize>
         + PartialOrd
-        + num::Zero,
+        + Zero,
     NodeId: SortableNodeId + Copy,
 {
     // Inspects the stride (nibble, nibble_len) to see it there's

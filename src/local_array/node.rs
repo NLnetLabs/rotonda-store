@@ -1,16 +1,17 @@
-pub use super::atomic_stride::*;
-pub use crate::local_array::query::*;
-pub use crate::local_array::tree::*;
-use crate::prefix_record::InternalPrefixRecord;
-use num::Zero;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
 };
 
-use crate::af::AddressFamily;
 use routecore::record::NoMeta;
+
+pub use super::atomic_stride::*;
+pub use crate::local_array::query::*;
+pub use crate::local_array::tree::*;
+use crate::prefix_record::InternalPrefixRecord;
+use crate::af::Zero;
+use crate::af::AddressFamily;
 
 //------------ TreeBitMap Node ----------------------------------------------
 

@@ -1,7 +1,13 @@
 use std::hash::Hash;
+use std::sync::atomic::{
+    AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
+};
+use std::{
+    fmt::{Binary, Debug},
+    marker::PhantomData,
+};
 
-use crate::af::AddressFamily;
-
+use crate::af::{AddressFamily, Zero};
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
@@ -15,13 +21,7 @@ use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
 
-use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
-};
-use std::{
-    fmt::{Binary, Debug},
-    marker::PhantomData,
-};
+
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
@@ -750,13 +750,13 @@ where
         S: Stride
             + std::ops::BitAnd<Output = S>
             + std::ops::BitOr<Output = S>
-            + num::Zero,
+            + Zero,
         <S as Stride>::PtrSize: Debug
             + Binary
             + Copy
             + std::ops::BitAnd<Output = S::PtrSize>
             + PartialOrd
-            + num::Zero,
+            + Zero,
         <S as Stride>::AtomicPfxSize: AtomicBitmap,
         <S as Stride>::AtomicPtrSize: AtomicBitmap,
     {

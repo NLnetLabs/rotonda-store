@@ -3,6 +3,8 @@ use std::convert::TryInto;
 use std::fmt::{Binary, Debug};
 use std::sync::atomic::AtomicU64;
 
+use crate::af::Zero;
+
 //------------ U256 synthetic integer type ----------------------------------
 
 #[derive(Copy, Clone)]
@@ -50,7 +52,7 @@ impl std::ops::Add for U256 {
     }
 }
 
-impl num::Zero for U256 {
+impl Zero for U256 {
     fn zero() -> Self {
         U256(0_u128, 0_u128)
     }
@@ -187,7 +189,7 @@ impl std::ops::Add for U512 {
     }
 }
 
-impl num::Zero for U512 {
+impl Zero for U512 {
     fn zero() -> Self {
         U512(0_u128, 0_u128, 0_u128, 0_u128)
     }

@@ -1,6 +1,3 @@
-use num::PrimInt;
-use std::fmt::Debug;
-
 //------------ AddressFamily (trait) ----------------------------------------
 /// The address family of an IP address as a Trait.
 ///
@@ -9,13 +6,20 @@ use std::fmt::Debug;
 /// trees with large amounts of addresses/prefixes. Used by rotonda-store for
 /// this purpose.
 pub trait AddressFamily:
-    PrimInt
-    + std::fmt::Binary
-    + Debug
+    std::fmt::Binary
+    + std::fmt::Debug
     + std::hash::Hash
     + std::fmt::Display
     + From<u32>
     + From<u16>
+    + Eq
+    + std::ops::BitAnd<Output = Self>
+    + std::ops::BitOr<Output = Self>
+    + std::ops::Shr<usize, Output = Self>
+    + std::ops::Shl<Output = Self>
+    + crate::af::Zero
+    + Copy
+    + Ord
 {
     /// The byte representation of the family filled with 1s.
     const BITMASK: Self;
@@ -132,7 +136,7 @@ impl AddressFamily for IPv6 {
         if (128 - len) == 0 {
             0
         } else {
-            (self >> ((128 - len) as usize)) << (128 - len) as usize
+            (self >> (128 - len)) << (128 - len)
         }
     }
 
@@ -158,5 +162,62 @@ impl AddressFamily for IPv6 {
     fn dangerously_truncate_to_usize(self) -> usize {
         // this will chop off the high bits.
         self as usize
+    }
+}
+
+// ----------- Zero Trait ---------------------------------------------------
+
+pub trait Zero {
+    fn zero() -> Self;
+    fn is_zero(&self) -> bool;
+}
+
+impl Zero for u128 {
+    fn zero() -> Self {
+        0
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+}
+
+impl Zero for u64 {
+    fn zero() -> Self {
+        0
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+}
+
+impl Zero for u32 {
+    fn zero() -> Self {
+        0
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+}
+
+impl Zero for u16 {
+    fn zero() -> Self {
+        0
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == 0
+    }
+}
+
+impl Zero for u8 {
+    fn zero() -> Self {
+        0
+    }
+
+    fn is_zero(&self) -> bool {
+        *self == 0
     }
 }
