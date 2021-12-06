@@ -180,7 +180,7 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     }
 
     #[inline]
-    pub fn clean(self) -> Self {
+    pub fn truncate_to_len(self) -> Self {
         let (addr_bits, len) = self.0.unwrap();
         StrideNodeId::new_with_cleaned_id(addr_bits, len)
     }

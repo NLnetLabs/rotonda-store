@@ -145,10 +145,7 @@ where
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
                     child_node_ids.push(
-                        // self.ptr_vec.to_vec()
-                        //     [S::get_ptr_index(ptrbitarr, ms_nibble)],
-                        // S::into_node_id(base_prefix.get_id().0 + (n_l as u32).into(), base_prefix.get_id().1 + n_l)
-                        base_prefix.clean().add_nibble(nibble, nibble_len)
+                        base_prefix.add_nibble(nibble, nibble_len)
                     );
                 }
             }
@@ -301,11 +298,7 @@ where
         //     )
 
         NewNodeOrIndex::ExistingNode(
-            // self.ptr_vec.to_vec()[S::get_ptr_index(ptrbitarr, nibble)],
-            // S::into_node_id(prefix_id.0, prefix_id.1),
-            base_prefix.clean() //.add_nibble(nibble, nibble_len)
-                        // S::into_node_id(prefix_id.get_id().0 | ((nibble << (AF::BITS - prefix_id.get_id().1 - nibble_len)) as u32).into(),
-                    //  prefix_id.get_id().1 + nibble_len)
+            base_prefix.truncate_to_len()
             )
     }
 
@@ -395,7 +388,7 @@ where
 
 
         println!("prefix_id: {:032b}/{}", base_prefix.get_id().0, base_prefix.get_id().1);
-        println!("clean_id:  {:?}", base_prefix.clean());
+        println!("clean_id:  {:?}", base_prefix.truncate_to_len());
 
         // There's another child, return it together with the preliminary LMP we found.
         (
@@ -406,7 +399,7 @@ where
                 //     stride_type,
                 //     S::into_node_id(prefix_id.0, start_bit + nibble_len),
                 // ),
-                base_prefix.clean().add_nibble(nibble, nibble_len)
+                base_prefix.add_nibble(nibble, nibble_len)
             ),
             found_pfx,
         )
