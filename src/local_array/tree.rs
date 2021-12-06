@@ -1,4 +1,3 @@
-use num::Zero;
 use std::hash::Hash;
 
 use crate::af::AddressFamily;
@@ -129,7 +128,7 @@ pub(crate) trait NodeWrapper<AF: AddressFamily> {
 }
 
 pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
-    NewNode(SizedStrideNode<AF>, u16), // New Node and bit_id of the new node
+    NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
     NewPrefix(u16),
     ExistingPrefix(PrefixId<AF>),
@@ -618,18 +617,18 @@ pub enum StrideType {
     // Stride8,
 }
 
-impl StrideType {
-    pub(crate) fn len(&self) -> u8 {
-        match self {
-            StrideType::Stride3 => 3,
-            StrideType::Stride4 => 4,
-            StrideType::Stride5 => 5,
-            // StrideType::Stride6 => 6,
-            // StrideType::Stride7 => 7,
-            // StrideType::Stride8 => 8,
-        }
-    }
-}
+// impl StrideType {
+//     pub(crate) fn len(&self) -> u8 {
+//         match self {
+//             StrideType::Stride3 => 3,
+//             StrideType::Stride4 => 4,
+//             StrideType::Stride5 => 5,
+//             // StrideType::Stride6 => 6,
+//             // StrideType::Stride7 => 7,
+//             // StrideType::Stride8 => 8,
+//         }
+//     }
+// }
 
 impl From<u8> for StrideType {
     fn from(level: u8) -> Self {

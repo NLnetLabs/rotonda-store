@@ -142,9 +142,6 @@ where
                         nibble,
                         nibble_len,
                         stride_end - stride,
-                        *stride,
-                        // self.strides[level].into(),
-                        // stride_end - stride,
                         &mut less_specifics_vec,
                     ) {
                         // This and the next match will handle all
@@ -263,10 +260,7 @@ where
                         search_pfx,
                         nibble,
                         nibble_len,
-                        // StrideNodeId::new_with_cleaned_id(search_pfx.net, stride_end),
-                        // self.strides[level].into(),
                         stride_end - stride,
-                        *stride,
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
@@ -372,10 +366,7 @@ where
                         search_pfx,
                         nibble,
                         nibble_len,
-                        // StrideNodeId::new_with_cleaned_id(search_pfx.net, stride_end),
-                        // self.strides[level].into(),
                         stride_end - stride,
-                        *stride,
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {

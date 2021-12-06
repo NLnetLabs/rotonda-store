@@ -268,8 +268,7 @@ where
                 // so this is the fourth bit, so points to index = 3       
                 println!("create new node {:?}", new_node);         
                 return NewNodeOrIndex::NewNode(
-                    new_node,
-                    nibble as u16,
+                    new_node
                 );
             }
         } else {
@@ -322,9 +321,7 @@ where
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
-        // base_prefix: StrideNodeId<AF>,
         start_bit: u8,
-        stride_size: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
@@ -426,8 +423,6 @@ where
         nibble: u32,
         nibble_len: u8,
         start_bit: u8,
-        stride_size: u8,
-        // base_prefix: StrideNodeId<AF>,
         _: &mut Option<Vec<PrefixId<AF>>>,
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
@@ -484,9 +479,7 @@ where
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
-        // base_prefix: StrideNodeId<AF>,
         start_bit: u8,
-        stride_size: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();

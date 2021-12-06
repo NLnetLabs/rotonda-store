@@ -7,7 +7,6 @@ use crate::{QueryResult, Stats, Strides};
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
 
-use std::collections::HashMap;
 use std::fmt;
 
 use super::node::SizedStrideRef;

@@ -30,7 +30,7 @@ macro_rules! match_node_for_strides {
                 $self.strides.get(($level + 1) as usize),
                 $is_last_stride,
             ) {
-                NewNodeOrIndex::NewNode(n, bit_id) => {
+                NewNodeOrIndex::NewNode(n) => {
                     // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
                     $self.stats[$stats_level].inc($level);
 
