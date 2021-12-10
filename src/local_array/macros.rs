@@ -169,6 +169,7 @@ macro_rules! impl_primitive_atomic_stride {
                     (Self::get_bit_pos(nibble, len).leading_zeros() - 1) as usize
 
                 }
+                
                 fn get_ptr_index(_bitmap: $ptrsize, nibble: u32) -> usize {
                     (nibble as u16).into()
                 }
