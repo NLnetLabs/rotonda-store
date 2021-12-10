@@ -2,10 +2,7 @@ use std::hash::Hash;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-};
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
 use crate::local_array::storage_backend::StorageBackend;
@@ -20,8 +17,6 @@ use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
-
-
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
@@ -50,7 +45,7 @@ impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Default
     for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
 where
     AF: AddressFamily,
-    S: Stride
+    S: Stride,
 {
     fn default() -> Self {
         Self {
@@ -106,22 +101,35 @@ pub(crate) trait NodeWrapper<AF: AddressFamily> {
     type UnsizedRef: UnsizedNode<AF>;
 }
 
-pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
+pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
     NewPrefix(u16),
-    ExistingPrefix(PrefixId<AF>),
+    ExistingPrefix(&'a mut (PrefixId<AF>, AtomicUsize)),
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct PrefixId<AF: AddressFamily>(pub Option<(AF, u8)>);
+pub struct PrefixId<AF: AddressFamily>(pub Option<(AF, u8, usize)>);
 
 impl<AF: AddressFamily> PrefixId<AF> {
     pub fn new(net: AF, len: u8) -> Self {
-        PrefixId(Some((net, len)))
+        PrefixId(Some((net, len, 1)))
     }
     pub fn is_empty(&self) -> bool {
         self.0.is_none()
+    }
+
+    pub fn set_serial(mut self, serial: usize) -> Self {
+        self.0.as_mut().unwrap().2 = serial;
+        self
+    }
+
+    pub fn get_net(&self) -> AF {
+        self.0.unwrap().0
+    }
+
+    pub fn get_len(&self) -> u8 {
+        self.0.unwrap().1
     }
 }
 
@@ -183,19 +191,19 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     }
 }
 
-impl<AF: AddressFamily> Default for StrideNodeId<AF> {
-    fn default() -> Self {
-        Self(None)
-    }
-}
+// impl<AF: AddressFamily> Default for StrideNodeId<AF> {
+//     fn default() -> Self {
+//         Self(None)
+//     }
+// }
 
-impl<AF: AddressFamily + From<u32> + From<u16>> std::convert::From<u16>
-    for StrideNodeId<AF>
-{
-    fn from(id: u16) -> Self {
-        Self(Some((id.into(), 0)))
-    }
-}
+// impl<AF: AddressFamily + From<u32> + From<u16>> std::convert::From<u16>
+//     for StrideNodeId<AF>
+// {
+//     fn from(id: u16) -> Self {
+//         Self(Some((id.into(), 0)))
+//     }
+// }
 
 impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -351,7 +359,7 @@ pub trait NodeCollection<AF: AddressFamily> {
 
 #[derive(Debug)]
 pub struct PrefixSet<AF: AddressFamily, const ARRAYSIZE: usize>(
-    [PrefixId<AF>; ARRAYSIZE],
+    [(PrefixId<AF>, AtomicUsize); ARRAYSIZE],
 );
 
 impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display
@@ -364,19 +372,52 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display
 
 impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
     pub(crate) fn insert(&mut self, index: u16, insert_node: PrefixId<AF>) {
-        self[index as usize] = insert_node;
+        let n = self.0.get_mut(index as usize);
+        if n.is_some() {
+            self[index as usize] = insert_node;
+        }
+        else {
+            println!("Can't find node with index {} in local array for {:?}", index, insert_node);
+        }
+        // self[index as usize] = insert_node;
     }
 
     pub(crate) fn to_vec(&self) -> Vec<PrefixId<AF>> {
-        self.0.to_vec()
+        self.0.iter().map(|p| p.0).collect()
     }
 
-    pub(crate) fn as_slice(&self) -> &[PrefixId<AF>] {
+    pub(crate) fn as_slice(&self) -> &[(PrefixId<AF>, AtomicUsize)] {
         &self.0[..]
     }
 
     pub(crate) fn empty() -> Self {
-        PrefixSet([<PrefixId<AF>>::default(); ARRAYSIZE])
+        let arr: [(PrefixId<AF>, AtomicUsize); ARRAYSIZE] =
+            array_init::array_init(|_| {
+                (PrefixId::default(), AtomicUsize::new(0))
+            });
+        PrefixSet(arr)
+    }
+
+    pub(crate) fn get_prefix_with_serial_at(
+        &mut self,
+        index: usize,
+    ) -> &mut (PrefixId<AF>, AtomicUsize) {
+        &mut self.0[index as usize]
+    }
+
+    pub(crate) fn atomically_load_serial_at(
+        &self,
+        index: usize,
+    ) -> Option<usize> {
+        self.0
+            .get(index as usize)
+            .map(|p| p.1.load(Ordering::Relaxed))
+    }
+
+    pub(crate) fn atomically_update_serial_at(self, index: usize) -> usize {
+        self.0
+            .get(index as usize)
+            .map_or(0, |p| p.1.fetch_add(1, Ordering::Relaxed))
     }
 }
 
@@ -386,7 +427,7 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize>
     type Output = PrefixId<AF>;
 
     fn index(&self, idx: usize) -> &PrefixId<AF> {
-        &self.0[idx as usize]
+        &self.0[idx as usize].0
     }
 }
 
@@ -394,7 +435,7 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
     for PrefixSet<AF, ARRAYSIZE>
 {
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-        &mut self.0[idx as usize]
+        &mut self.0[idx as usize].0
     }
 }
 
@@ -634,25 +675,38 @@ where
             .store_prefix(PrefixId::from(next_node.clone()), next_node)
     }
 
+    // Upserts the meta-data in the global store.
+    //
+    // When updating an existing prefix the MergeUpdate trait implmented
+    // for the meta-data type will be used. Creates a new prefix entry
+    // in the global store with the serial number `new_serial`.
     fn update_prefix_meta(
         &mut self,
-        update_node_idx: PrefixId<Store::AF>,
-        meta: Store::Meta,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        match self.store.retrieve_prefix_mut(update_node_idx) {
-            Some(update_pfx) => match update_pfx.meta.as_mut() {
-                Some(exist_meta) => {
-                    <Store::Meta>::merge_update(exist_meta, meta)
-                }
-                None => {
-                    update_pfx.meta = Some(meta);
-                    Ok(())
-                }
-            },
-            // TODO
-            // Use/create proper error types
-            None => Err("Prefix not found".into()),
-        }
+        update_prefix_idx: PrefixId<Store::AF>,
+        new_serial: usize,
+        merge_meta: &Store::Meta,
+    ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
+        // Create a clone of the meta-data of the current prefix, since we
+        // don't want to mutate the current entry in the store. Instead
+        // we want to create a new entry with the same prefix, but with
+        // the merged meta-data and a new serial number.
+        let new_meta = match self.store.retrieve_prefix(update_prefix_idx) {
+            Some(update_prefix) => update_prefix
+                .meta
+                .as_ref()
+                .unwrap()
+                .clone_merge_update(merge_meta)?,
+            None => return Err(format!("Prefix {}/{} not found", update_prefix_idx.get_net().into_ipaddr(), update_prefix_idx.get_len()).into()),
+        };
+        let new_prefix = InternalPrefixRecord::new_with_meta(
+            update_prefix_idx.get_net(),
+            update_prefix_idx.get_len(),
+            new_meta,
+        );
+        self.store.store_prefix(
+            update_prefix_idx.set_serial(new_serial),
+            new_prefix,
+        )
     }
 
     #[inline]
@@ -682,7 +736,7 @@ where
     ) {
         match self.retrieve_node(start_node_id).unwrap() {
             SizedStrideRef::Stride3(n) => {
-                found_pfx_vec.extend_from_slice(n.pfx_vec.as_slice());
+                found_pfx_vec.extend(n.pfx_vec.to_vec());
                 found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for child_node in n.ptr_vec(start_node_id) {
@@ -724,8 +778,8 @@ where
     }
 
     // This function assembles the prefixes of a child node starting on a
-    // specified bit position in a ptr_vec of `current_node` into a vec, 
-    // then adds all prefixes of these children recursively into a vec and 
+    // specified bit position in a ptr_vec of `current_node` into a vec,
+    // then adds all prefixes of these children recursively into a vec and
     // returns that.
     pub(crate) fn get_all_more_specifics_from_nibble<
         S: Stride,
@@ -744,7 +798,7 @@ where
         base_prefix: StrideNodeId<Store::AF>,
     ) -> Option<Vec<PrefixId<Store::AF>>>
     where
-        S: Stride
+        S: Stride,
     {
         let (cnvec, mut msvec) = current_node.add_more_specifics_at(
             nibble,

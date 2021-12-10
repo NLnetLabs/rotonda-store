@@ -133,6 +133,6 @@ where
     T: Meta,
 {
     fn from(record: InternalPrefixRecord<AF, T>) -> Self {
-        Self(Some((record.net, record.len)))
+        Self(Some((record.net, record.len, 1)))
     }
 }

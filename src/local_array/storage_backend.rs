@@ -102,6 +102,10 @@ pub(crate) trait StorageBackend {
         &mut self,
         index: PrefixId<Self::AF>,
     ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>>;
+    fn remove_prefix(
+        &mut self,
+        index: PrefixId<Self::AF>,
+    ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn retrieve_prefix_with_guard(
         &self,
         index: StrideNodeId<Self::AF>,
@@ -313,6 +317,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         PrefixId::<AF>::new(prefix.net, prefix.len)
     }
 
+    // Actually, this is for creating a new prefix only, hence the
+    // 1 as serial.
     fn store_prefix(
         &mut self,
         id: PrefixId<Self::AF>,
@@ -334,6 +340,16 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         part_id: PrefixId<Self::AF>,
     ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>> {
         self.prefixes.get_mut(&part_id)
+    }
+
+    fn remove_prefix(
+        &mut self,
+        id: PrefixId<Self::AF>,
+    ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>> {
+        match id.is_empty() {
+            false => self.prefixes.remove(&id),
+            true => None,
+        }
     }
 
     fn retrieve_prefix_with_guard(

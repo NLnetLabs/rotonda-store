@@ -98,6 +98,16 @@ impl MergeUpdate for PrefixAs {
         self.0 = update_record.0;
         Ok(())
     }
+
+    fn clone_merge_update(
+        &self,
+        update_meta: &Self,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: std::marker::Sized,
+    {
+        Ok(PrefixAs(self.0.max(update_meta.0)))
+    }
 }
 
 impl fmt::Display for PrefixAs {

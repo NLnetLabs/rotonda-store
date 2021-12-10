@@ -51,28 +51,80 @@ macro_rules! match_node_for_strides {
                 },
                 NewNodeOrIndex::NewPrefix(sort_id) => {
                     // acquire_new_prefix_id is deterministic, so we can use it
-                    // always.
+                    // in all threads concurrently.
+                    println!("sort_id {}", sort_id);
                     let new_id = $self.store.acquire_new_prefix_id(&$pfx);
                     $self.stats[$stats_level].inc_prefix_count($level);
 
-                    current_node
-                        .pfx_vec
-                        .insert(sort_id, new_id);
+                    current_node.pfx_vec.insert(sort_id, new_id);
 
                     $self.store_prefix($pfx)?;
-
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     break Ok(());
                 }
-                NewNodeOrIndex::ExistingPrefix(pfx_idx) => {
-                    // ExistingPrefix is guaranteed to only happen at the last stride,
-                    // so we can return from here.
-                    // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
-                    // since the compiler can't figure out that it will happen only once.
-                    if let Some(meta) = $pfx.meta { $self.update_prefix_meta(pfx_idx, meta)? };
-                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-                    break Ok(());
+                NewNodeOrIndex::ExistingPrefix((pfx_idx, serial)) => {
+                    // THE CRITICAL SECTION
+                    //
+                    // UPDATING EXISTING METADATA
+                    //
+                    // We're going through this section useing Read-Copy-Update (RCU).
+                    // 1. We're incrementing the serial number of the prefix in the local array
+                    //    by one atomically.
+                    // 2. We're reading the meta-data of the prefix from the global store.
+                    // 3. We're updating a Copy of that meta-data with the our new meta-data.
+                    // 4. We're writing the updated meta-data back to the global store as a new
+                    //    new entry with the new serial number.
+                    // 5. We're reading the serial number in the local array atomically, this
+                    //    serial number could be either the old serial number plus one (we've
+                    //    updated it). Or it could be a higher number.
+                    // 6. If it's the old serial number plus one, write the node to the global
+                    //    store and remove the prefix entry in the global store with the old
+                    //    serial number.
+                    // 7. If it's a higher number, we're repeating the Read-Copy-Update cycle.
+                    //
+                    // fetch_add returns the old serial number, not the result!
+                    let mut old_serial = serial.fetch_add(1, Ordering::Acquire);
+                    let new_serial = old_serial + 1;
+
+                    if let Some(ref new_meta) = $pfx.meta {
+                        // This needs to go in an unsafe block, probably.
+                        $self.update_prefix_meta(*pfx_idx, new_serial, new_meta)?;
+
+                        loop {
+                            // Try updating the atomic serial number in the
+                            // pfx_vec array of the current node
+                            match serial.load(Ordering::Acquire) {
+                                    // SUCCESS (Step 6) !
+                                    // Nobody messed with our prefix meta-data in between us loading the
+                                    // serial and creating the entry with that serial. Update the ptrbitarr
+                                    // in the current node in the global store and be done with it.
+                                    cur_serial if cur_serial == new_serial => {
+                                        let pfx_idx_clone = pfx_idx.clone();
+                                        $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+                                        $self.store.remove_prefix(pfx_idx_clone.set_serial(old_serial));
+
+                                        return Ok(());
+                                    },
+                                    // FAILURE (Step 7)
+                                    // Some other thread messed it up. Try again by upping a newly-read serial once
+                                    // more, reading the newly-current meta-data, updating it with our meta-data and
+                                    // see if it works then. rince-repeat.
+                                    newer_serial => {
+                                        println!("contention for {:?} with serial {} -> {}", pfx_idx, old_serial, newer_serial);
+                                        old_serial = serial.fetch_add(1, Ordering::Acquire);
+                                        $self.store.retrieve_prefix(pfx_idx.set_serial(old_serial)).unwrap();
+                                        $self.update_prefix_meta(*pfx_idx, newer_serial, &new_meta)?;
+                                    }
+                            };
+                        }
+                    };
+                    // ExistingPrefix is guaranteed to only happen at the
+                    // last stride, so we can return from here. If we don't
+                    // then we cannot move pfx.meta into the
+                    // update_prefix_meta function, since the compiler can't
+                    // figure out that it will happen only once.
+                    return Ok(());
                 }
             }
             }
@@ -80,7 +132,6 @@ macro_rules! match_node_for_strides {
         }
     };
 }
-
 
 #[macro_export]
 // This macro only works for stride with bitmaps that are <= u128,

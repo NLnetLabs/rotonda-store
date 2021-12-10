@@ -1428,9 +1428,7 @@ where
         <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         Box<dyn std::error::Error>,
     > {
-        // let id = self.prefixes.len() as u32;
         self.store.store_prefix(next_node)
-        // id
     }
 
     fn update_prefix_meta(
