@@ -68,7 +68,7 @@ macro_rules! match_node_for_strides {
                     //
                     // UPDATING EXISTING METADATA
                     //
-                    // We're going through this section useing Read-Copy-Update (RCU).
+                    // We're going through this section using Read-Copy-Update (RCU).
                     // 1. We're incrementing the serial number of the prefix in the local array
                     //    by one atomically.
                     // 2. We're reading the meta-data of the prefix from the global store.
@@ -103,7 +103,6 @@ macro_rules! match_node_for_strides {
                                         let pfx_idx_clone = pfx_idx.clone();
                                         $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
                                         $self.store.remove_prefix(pfx_idx_clone.set_serial(old_serial));
-
                                         return Ok(());
                                     },
                                     // FAILURE (Step 7)
@@ -169,7 +168,7 @@ macro_rules! impl_primitive_atomic_stride {
                     (Self::get_bit_pos(nibble, len).leading_zeros() - 1) as usize
 
                 }
-                
+
                 fn get_ptr_index(_bitmap: $ptrsize, nibble: u32) -> usize {
                     (nibble as u16).into()
                 }
