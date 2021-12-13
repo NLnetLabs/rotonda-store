@@ -26,10 +26,19 @@ where
     // not search for prefixes with length 0 (which would always match).
     // So for matching a nibble 1010, we have to search for 1, 10, 101 and
     // 1010 on resp. position 1, 5, 12 and 25:
-    //                       ↓          ↓                         ↓                                                              ↓
-    // pfx bit arr (u32)   0 1 2  3  4  5  6   7   8   9  10  11  12  13  14   15   16   17   18   19   20   21   22   23   24   25   26   27   28   29   30   31
-    // nibble              * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1110 1111    x
-    // nibble len offset   0 1    2            3                                4
+    //                       ↓          ↓                         ↓
+    // nibble              * 0 1 00 01 10 11 000 001 010 011 100 101 110 111
+    // nibble len offset   0 1    2            3
+    //
+    // (contd.)
+    // pfx bit arr (u32)     15   16   17   18   19   20   21   22   23   24
+    // nibble              0000 0001 0010 0011 0100 0101 0110 0111 1000 1001
+    // nibble len offset      4
+    //
+    // (contd.)               ↓
+    // pfx bit arr (u32)     25   26   27   28   29   30   31
+    // nibble              1010 1011 1100 1101 1110 1111    x
+    // nibble len offset      4(contd.)
 
     pub(crate) fn match_prefix(
         &'a self,
