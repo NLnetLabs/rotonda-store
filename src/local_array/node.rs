@@ -210,7 +210,6 @@ where
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
-            println!("get_pfx_index: {}", <S as Stride>::get_pfx_index(nibble, nibble_len));
             return NewNodeOrIndex::ExistingPrefix(
                 self.pfx_vec.get_prefix_with_serial_at(<S as Stride>::get_pfx_index(nibble, nibble_len))
             );

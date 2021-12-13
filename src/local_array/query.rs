@@ -1,4 +1,4 @@
-use crate::af::AddressFamily;
+use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
 use routecore::record::NoMeta;
@@ -45,6 +45,51 @@ where
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta> {
+        
+        
+        // --- The Default Prefix ------------------------------------------
+
+        // The Default Prefix unfortunately does not fit in tree as we have
+        // it. There's no room for it in the pfxbitarr of the root node,
+        // since that can only contain serial numbers for prefixes that are
+        // children of the root node. We, however, want the default prefix
+        // which lives on the root node itself! We are *not* going to return
+        // all of the prefixes in the tree as more-specifics.
+        if search_pfx.len == 0 {
+            match self.store.load_default_route_prefix_serial() {
+                0 => {
+                    return QueryResult {
+                        prefix: None,
+                        prefix_meta: None,
+                        match_type: MatchType::EmptyMatch,
+                        less_specifics: None,
+                        more_specifics: None,
+                    };
+                }
+                serial => {
+                    return QueryResult {
+                        prefix: Prefix::new(
+                            search_pfx.net.into_ipaddr(),
+                            search_pfx.len,
+                        )
+                        .ok(),
+                        prefix_meta: self
+                            .store
+                            .retrieve_prefix(PrefixId::new(
+                                Store::AF::zero(),
+                                0,
+                            ).set_serial(serial))
+                            .unwrap()
+                            .meta
+                            .as_ref(),
+                        match_type: MatchType::ExactMatch,
+                        less_specifics: None,
+                        more_specifics: None,
+                    }
+                }
+            }
+        }
+
         let mut stride_end = 0;
 
         let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
@@ -464,6 +509,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
+            println!("prefix {:?}", pfx_idx);
             prefix = self.retrieve_prefix(pfx_idx);
             match_type = if prefix.unwrap().len == search_pfx.len {
                 MatchType::ExactMatch

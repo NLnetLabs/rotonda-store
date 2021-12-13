@@ -4,7 +4,7 @@ use std::sync::atomic::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::af::AddressFamily;
+use crate::af::{AddressFamily, Zero};
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
@@ -105,7 +105,8 @@ pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
     NewPrefix(u16),
-    ExistingPrefix(&'a mut (PrefixId<AF>, AtomicUsize)),
+    // (index in pfx_vec, (prefix_id, serial))
+    ExistingPrefix((u16, &'a mut(PrefixId<AF>, AtomicUsize))),
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
@@ -375,9 +376,11 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
         let n = self.0.get_mut(index as usize);
         if n.is_some() {
             self[index as usize] = insert_node;
-        }
-        else {
-            println!("Can't find node with index {} in local array for {:?}", index, insert_node);
+        } else {
+            println!(
+                "Can't find node with index {} in local array for {:?}",
+                index, insert_node
+            );
         }
         // self[index as usize] = insert_node;
     }
@@ -401,8 +404,8 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
     pub(crate) fn get_prefix_with_serial_at(
         &mut self,
         index: usize,
-    ) -> &mut (PrefixId<AF>, AtomicUsize) {
-        &mut self.0[index as usize]
+    ) -> (u16, &mut (PrefixId<AF>, AtomicUsize)) {
+        (index as u16, &mut self.0[index as usize])
     }
 
     pub(crate) fn atomically_load_serial_at(
@@ -585,6 +588,13 @@ where
         &mut self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        if pfx.len == 0 {
+            let _res =
+                self.update_default_route_prefix_meta(pfx.meta.unwrap());
+            println!("--");
+            return Ok(());
+        }
+
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id(self.strides[0]);
         let mut level: u8 = 0;
@@ -675,6 +685,97 @@ where
             .store_prefix(PrefixId::from(next_node.clone()), next_node)
     }
 
+    // Yes, we're hating this. But, the root node has no room for a serial
+    // of the prefix 0/0 (the default route), which doesn't even matter,
+    // unless, UNLESS, somwbody want to store a default route. So we have
+    // to store a serial for this prefix. The normal place for a serial of
+    // any prefix is on the pfxvec of its paren. But, hey, guess what, the
+    // default-route-prefix lives *on* the root node, and, you know, the
+    // root node doesn't have a parent. We can:
+    // - Create a type RootTreeBitmapNode with a ptrbitarr with a size one
+    //   bigger than a "normal" TreeBitMapNod for the first stride size.
+    //   no we have to iterate over the rootnode type in all matches on
+    //   stride_size, just because we have exactly one instance of the
+    //   RootTreeBitmapNode. So no.
+    // - Make the `get_pfx_index` method on the implementations of the
+    //   `Stride` trait check for a length of zero and branch if it is and
+    //   return the serial of the root node. Now each and every call to this
+    //   method will have to check a condition for exactly one instance of
+    //   RootTreeBitmapNode. So again, no.
+    // - The root node only gets used at the beginning of a seach query or
+    //   an insert. So if we provide two speciliased methods that will now
+    //   how to search for the default-route prefix and now how to set serial
+    //  for that prefix and make sure we start searching/inserting with one
+    //   of those specialized methods we're good to go.
+    fn update_default_route_prefix_meta(
+        &mut self,
+        new_meta: Store::Meta,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        println!("Updating the default route...");
+        let mut old_serial =
+            self.store.increment_default_route_prefix_serial();
+        let new_serial = old_serial + 1;
+        let df_pfx_id = PrefixId::new(Store::AF::zero(), 0).set_serial(old_serial);
+
+        // self.update_prefix_meta(df_pfx_id, new_serial, &new_meta)?;
+
+        loop {
+            match old_serial {
+                0 => {
+                    println!(
+                        "No default route prefix found, creating one..."
+                    );
+                    self.store_prefix(InternalPrefixRecord {
+                        net: Store::AF::zero(),
+                        len: 0,
+                        meta: Some(new_meta),
+                    })?;
+                    return Ok(());
+                }
+                // SUCCESS (Step 6) !
+                // Nobody messed with our prefix meta-data in between us loading the
+                // serial and creating the entry with that serial. Update the ptrbitarr
+                // in the current node in the global store and be done with it.
+                old_serial if old_serial == new_serial - 1 => {
+                    println!("Found default route prefix with serial {}, updating it to {}...", df_pfx_id.0.unwrap().2, new_serial);
+                    let pfx_idx_clone = df_pfx_id.clone();
+                    self.update_prefix_meta(
+                        pfx_idx_clone,
+                        new_serial,
+                        &new_meta,
+                    )?;
+                    println!(
+                        "removing old default route prefix with serial {}...",
+                        old_serial
+                    );
+                    self.store
+                        .remove_prefix(pfx_idx_clone.set_serial(old_serial));
+                    return Ok(());
+                }
+                // FAILURE (Step 7)
+                // Some other thread messed it up. Try again by upping a newly-read serial once
+                // more, reading the newly-current meta-data, updating it with our meta-data and
+                // see if it works then. rince-repeat.
+                newer_serial => {
+                    println!(
+                        "contention for {:?} with serial {} -> {}",
+                        df_pfx_id, old_serial, newer_serial
+                    );
+                    old_serial =
+                        self.store.increment_default_route_prefix_serial();
+                    self.store
+                        .retrieve_prefix(df_pfx_id.set_serial(old_serial))
+                        .unwrap();
+                    self.update_prefix_meta(
+                        df_pfx_id,
+                        newer_serial,
+                        &new_meta,
+                    )?;
+                }
+            };
+        }
+    }
+
     // Upserts the meta-data in the global store.
     //
     // When updating an existing prefix the MergeUpdate trait implmented
@@ -696,7 +797,22 @@ where
                 .as_ref()
                 .unwrap()
                 .clone_merge_update(merge_meta)?,
-            None => return Err(format!("Prefix {}/{} not found", update_prefix_idx.get_net().into_ipaddr(), update_prefix_idx.get_len()).into()),
+            None => {
+                println!("-");
+                // panic!(
+                //     "panic: {}/{} with serial {} not found.",
+                //     update_prefix_idx.get_net().into_ipaddr(),
+                //     update_prefix_idx.get_len(),
+                //     new_serial
+                // );
+                return Err(format!(
+                    "-Prefix {}/{} (serial {}) not found",
+                    update_prefix_idx.get_net().into_ipaddr(),
+                    update_prefix_idx.get_len(),
+                    new_serial
+                )
+                .into());
+            }
         };
         let new_prefix = InternalPrefixRecord::new_with_meta(
             update_prefix_idx.get_net(),
@@ -715,6 +831,17 @@ where
         index: PrefixId<Store::AF>,
     ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
+    }
+
+    pub(crate) fn retrieve_default_route_prefix(
+        &self,
+    ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
+        match self.store.load_default_route_prefix_serial() {
+            0 => None,
+            serial => self.store.retrieve_prefix(
+                PrefixId::new(Store::AF::zero(), 0).set_serial(serial),
+            ),
+        }
     }
 
     #[inline]

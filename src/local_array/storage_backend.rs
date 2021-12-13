@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+use std::{
+    collections::HashMap,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use crate::local_array::tree::*;
 
@@ -24,7 +27,7 @@ pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<
 >;
 
 pub(crate) type SizedNodeResult<'a, AF> =
-    Result<SizedStrideRefMut<'a, AF>, Box<dyn std::error::Error>>;
+    Result<SizedStrideNode<AF>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeRefResult<'a, AF> =
     Result<SizedStrideRefMut<'a, AF>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
@@ -46,11 +49,11 @@ pub(crate) trait StorageBackend {
         //
         sub_prefix: (Self::AF, u8),
     ) -> StrideNodeId<Self::AF>;
-    // store_node should return an index with the associated type `Part` of the associated type
-    // of this trait.
-    // `id` is optional, since a vec uses the indexes as the ids of the nodes,
-    // other storage data-structures may use unordered lists, where the id is in the
-    // record, e.g., dynamodb
+    // store_node should return an index with the associated type `Part` of
+    // the associated type of this trait.
+    // `id` is optional, since a vec uses the indexes as the ids of the
+    // nodes, other storage data-structures may use unordered lists, where
+    // the id is in the record, e.g., dynamodb
     fn store_node(
         &mut self,
         id: StrideNodeId<Self::AF>,
@@ -68,13 +71,15 @@ pub(crate) trait StorageBackend {
     fn retrieve_node_mut(
         &mut self,
         index: StrideNodeId<Self::AF>,
-    ) -> SizedNodeResult<Self::AF>;
+    ) -> SizedNodeRefResult<Self::AF>;
     fn retrieve_node_with_guard(
         &self,
         index: StrideNodeId<Self::AF>,
     ) -> CacheGuard<Self::AF>;
     fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>>;
     fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId<Self::AF>;
+    fn load_default_route_prefix_serial(&self) -> usize;
+    fn increment_default_route_prefix_serial(&mut self) -> usize;
     // fn get_root_node_mut(
     //     &mut self,
     //     stride_size: u8,
@@ -136,6 +141,7 @@ pub(crate) struct InMemStorage<
     // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, 510, 256>>,
     pub prefixes: HashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     len_to_stride_size: [StrideType; 128],
+    pub default_route_prefix_serial: AtomicUsize,
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
@@ -165,19 +171,19 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             nodes3,
             nodes4,
             nodes5,
-            // nodes6,
-            // nodes7,
-            // nodes8,
             prefixes: HashMap::new(),
             len_to_stride_size,
+            default_route_prefix_serial: AtomicUsize::new(0),
         };
-        let first_stride_type = match len_to_stride_size[0] {
-            StrideType::Stride3 => 3,
-            StrideType::Stride4 => 4,
-            StrideType::Stride5 => 5,
-        };
-        store
-            .store_node(store.get_root_node_id(first_stride_type), root_node);
+        // let first_stride_type = match len_to_stride_size[0] {
+        //     StrideType::Stride3 => 3,
+        //     StrideType::Stride4 => 4,
+        //     StrideType::Stride5 => 5,
+        // };
+        store.store_node(
+            StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
+            root_node,
+        );
         store
     }
 
@@ -251,7 +257,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn retrieve_node_mut(
         &'_ mut self,
         id: StrideNodeId<AF>,
-    ) -> SizedNodeResult<'_, Self::AF> {
+    ) -> SizedNodeRefResult<'_, Self::AF> {
         match self.len_to_stride_size[id.get_id().1 as usize] {
             StrideType::Stride3 => Ok(self
                 .nodes3
@@ -314,11 +320,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         // because we store all prefixes in one huge vec (unlike the nodes,
         // which are stored in separate vec for each stride size).
         // We'll return the index to the end of the vec.
-        PrefixId::<AF>::new(prefix.net, prefix.len)
+        PrefixId::<AF>::new(prefix.net, prefix.len).set_serial(1)
     }
 
-    // Actually, this is for creating a new prefix only, hence the
-    // 1 as serial.
     fn store_prefix(
         &mut self,
         id: PrefixId<Self::AF>,
@@ -350,6 +354,16 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             false => self.prefixes.remove(&id),
             true => None,
         }
+    }
+
+    fn load_default_route_prefix_serial(&self) -> usize {
+        self.default_route_prefix_serial.load(Ordering::Acquire)
+    }
+
+    // returns the *old* serial in analogy with basic atomic operations
+    fn increment_default_route_prefix_serial(&mut self) -> usize {
+        self.default_route_prefix_serial
+            .fetch_add(1, Ordering::Acquire)
     }
 
     fn retrieve_prefix_with_guard(
