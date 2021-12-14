@@ -407,21 +407,6 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
     ) -> (u16, &mut (PrefixId<AF>, AtomicUsize)) {
         (index as u16, &mut self.0[index as usize])
     }
-
-    pub(crate) fn atomically_load_serial_at(
-        &self,
-        index: usize,
-    ) -> Option<usize> {
-        self.0
-            .get(index as usize)
-            .map(|p| p.1.load(Ordering::Relaxed))
-    }
-
-    pub(crate) fn atomically_update_serial_at(self, index: usize) -> usize {
-        self.0
-            .get(index as usize)
-            .map_or(0, |p| p.1.fetch_add(1, Ordering::Relaxed))
-    }
 }
 
 impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize>
@@ -716,8 +701,6 @@ where
             self.store.increment_default_route_prefix_serial();
         let new_serial = old_serial + 1;
         let df_pfx_id = PrefixId::new(Store::AF::zero(), 0).set_serial(old_serial);
-
-        // self.update_prefix_meta(df_pfx_id, new_serial, &new_meta)?;
 
         loop {
             match old_serial {
