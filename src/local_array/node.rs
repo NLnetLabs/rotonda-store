@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
 use std::{
     fmt::Debug,
     marker::PhantomData,
@@ -64,7 +64,7 @@ where
             "TreeBitMapNode {{ ptrbitarr: {:?}, pfxbitarr: {:?}, pfx_vec: {:?} }}",
             self.ptrbitarr.load(),
             self.pfxbitarr.load(),
-            self.pfx_vec.as_slice()
+            self.pfx_vec
         )
     }
 }
@@ -124,6 +124,7 @@ where
         child_node_ids
     }
 
+
     // Inspects the stride (nibble, nibble_len) to see it there's already a 
     // child node (if not at the last stride) or a prefix (if it's the last
     // stride).
@@ -138,6 +139,7 @@ where
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<AF>, // prefix with bits set beyond its length!
+        stride_len: u8,
         next_stride: Option<&u8>,
         is_last_stride: bool,
     ) -> NewNodeOrIndex<AF> {
@@ -210,12 +212,21 @@ where
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
+            // (base_prefix.add_nibble(nibble, nibble_len).into(), &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)])
+            println!("existing base_prefix {}", base_prefix);
+            println!("nibble len {}", nibble_len);
+            let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
             return NewNodeOrIndex::ExistingPrefix(
-                self.pfx_vec.get_prefix_with_serial_at(<S as Stride>::get_pfx_index(nibble, nibble_len))
+                (<S as Stride>::get_pfx_index(nibble, nibble_len) as u16, (
+                    // A prefix exists at the base prefix.
+                    PrefixId::new(pfx.get_net(), pfx.get_len()), &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)]))
             );
         }
 
-        NewNodeOrIndex::ExistingNode(base_prefix.truncate_to_len())
+        println!("existing node {} {}", base_prefix, nibble_len);
+        // Nodes always live at the last length of a stride (i.e. the last nibble), so we add the stride length
+        // to the length of the base_prefix (which is always the start length of the stride).
+        NewNodeOrIndex::ExistingNode(base_prefix.add_to_len(stride_len).truncate_to_len())
     }
 
     //-------- Search nibble functions --------------------------------------
@@ -251,8 +262,8 @@ where
             // Check it there's a prefix matching in this bitmap for this 
             // nibble.
             if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
-                let f_pfx = self.pfx_vec.to_vec()
-                    [S::get_pfx_index(nibble, n_l)];
+                let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l)
+                .set_serial(self.pfx_vec[S::get_pfx_index(nibble, n_l)].load(Ordering::Acquire));
 
                 // Receiving a less_specifics_vec means that the user wants
                 // to have all the last-specific prefixes returned, so add
@@ -326,12 +337,14 @@ where
                 // Check for an actual prefix at the right position, i.e. 
                 // consider the complete nibble.
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
-                    found_pfx = Some(
-                        self.pfx_vec.to_vec()[S::get_pfx_index(
-                            nibble,
-                            nibble_len,
-                        )],
-                    );
+                    found_pfx = Some(PrefixId::new(search_pfx.net.truncate_to_len(start_bit + nibble_len), start_bit + nibble_len).set_serial(
+                        self.pfx_vec[S::get_pfx_index(nibble, nibble_len)].load(Ordering::Acquire),
+                    ));
+                        // self.pfx_vec.to_vec()[S::get_pfx_index(
+                        //     nibble,
+                        //     nibble_len,
+                        // )],
+                    // );
                 }
             }
             // We're not at the last nibble.
@@ -374,7 +387,8 @@ where
 
         let ls_vec = less_specifics_vec
             .as_mut()
-            .expect("You shouldn't call this function without a `less_specifics_vec` buffer. Supply one when calling this function or use `search_stride_for_exact_match_at`");
+            .expect(concat!("You shouldn't call this function without",
+            "a `less_specifics_vec` buffer. Supply one when calling this function or use `search_stride_for_exact_match_at`"));
 
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
@@ -393,17 +407,21 @@ where
                 // field only if we're exactly at the last bit of the nibble
                 if n_l == nibble_len {
                     found_pfx = Some(
-                        self.pfx_vec.to_vec()
-                            [S::get_pfx_index(nibble, n_l)],
+                        PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l)
+                            .set_serial(self.pfx_vec[S::get_pfx_index(nibble, n_l)].load(std::sync::atomic::Ordering::Acquire)),
                     );
+                        // self.pfx_vec.to_vec()
+                            // [S::get_pfx_index(nibble, n_l)],
+                    // );
                 }
 
                 // Receiving a less_specifics_vec means that the user wants to
                 // have all the last-specific prefixes returned, so add the
                 // found prefix.
                 ls_vec.push(
-                    self.pfx_vec.to_vec()[S::get_pfx_index(nibble, n_l)],
-                );
+                    PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l).set_serial(self.pfx_vec[S::get_pfx_index(nibble,n_l)].load(Ordering::Acquire)))
+                    // self.pfx_vec.to_vec()[S::get_pfx_index(nibble, n_l)],
+                // );
             }
         }
 
@@ -504,10 +522,17 @@ where
 
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
-                        self.pfx_vec.to_vec()[S::get_pfx_index(
-                            ms_nibble,
-                            ms_nibble_len,
-                        )],
+                        PrefixId::new(
+                            base_prefix.get_id().0
+                            .add_nibble(
+                                base_prefix.get_id().1, ms_nibble, ms_nibble_len
+                            ).0, 
+                            base_prefix.get_id().1 + ms_nibble_len)
+                            .set_serial(self.pfx_vec[S::get_pfx_index(ms_nibble, ms_nibble_len)].load(Ordering::Acquire))
+                        // self.pfx_vec.to_vec()[S::get_pfx_index(
+                        //     ms_nibble,
+                        //     ms_nibble_len,
+                        // )],
                     );
                 }
             }

@@ -509,7 +509,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            println!("prefix {:?}", pfx_idx);
+            println!("prefix {}/{} serial {}", pfx_idx.get_net().into_ipaddr(), pfx_idx.get_len(), pfx_idx.0.unwrap().2);
             prefix = self.retrieve_prefix(pfx_idx);
             match_type = if prefix.unwrap().len == search_pfx.len {
                 MatchType::ExactMatch

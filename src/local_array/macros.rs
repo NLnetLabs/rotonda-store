@@ -11,6 +11,7 @@ macro_rules! match_node_for_strides {
         $is_last_stride: expr;
         $pfx: ident;
         $truncate_len: ident;
+        $stride_len: ident;
         $cur_i: expr;
         $level: expr;
         // $enum: ident;
@@ -27,6 +28,7 @@ macro_rules! match_node_for_strides {
                 $nibble,
                 $nibble_len,
                 StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
+                $stride_len,
                 $self.strides.get(($level + 1) as usize),
                 $is_last_stride,
             ) {
@@ -35,7 +37,7 @@ macro_rules! match_node_for_strides {
                     $self.stats[$stats_level].inc($level);
 
                     // get a new identifier for the node we're going to create.
-                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len));
+                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
 
                     // store the node in the global store
                     let i = $self.store_node(new_id, n).unwrap();
@@ -50,22 +52,23 @@ macro_rules! match_node_for_strides {
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix(sort_id) => {
+                    println!("creating prefix {}...", $pfx);
                     // acquire_new_prefix_id is deterministic, so we can use it
                     // in all threads concurrently.
                     let new_id = $self.store.acquire_new_prefix_id(&$pfx);
                     // println!("insert new prefix {:?}", new_id);
                     $self.stats[$stats_level].inc_prefix_count($level);
 
-                    current_node.pfx_vec.insert(sort_id, new_id);
+                    // current_node.pfx_vec.insert(sort_id, new_id);
 
                     $self.store_prefix($pfx)?;
-                    let (_index, (_prefix, serial)) = current_node.pfx_vec.get_prefix_with_serial_at(sort_id as usize);
+                    let serial = current_node.pfx_vec.get_serial_at(sort_id as usize);
                     serial.fetch_add(1, Ordering::Acquire);
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     break Ok(());
                 }
-                NewNodeOrIndex::ExistingPrefix((pfx_vec_index, (pfx_idx, serial))) => {
+                NewNodeOrIndex::ExistingPrefix((_pfx_vec_index, (pfx_idx, serial))) => {
                     // THE CRITICAL SECTION
                     //
                     // UPDATING EXISTING METADATA
@@ -91,7 +94,7 @@ macro_rules! match_node_for_strides {
 
                     if let Some(ref new_meta) = $pfx.meta {
                         // This needs to go in an unsafe block, probably.
-                        // println!("{:?} {:?} {}", pfx_idx, serial, old_serial);
+                        println!("{:?} {:?} {}", pfx_idx, serial, old_serial);
                         $self.update_prefix_meta(pfx_idx.set_serial(old_serial), new_serial, new_meta)?;
                         print!("{}/{}({})|",$pfx.net.into_ipaddr(), $pfx.len, new_serial);
 
@@ -109,7 +112,7 @@ macro_rules! match_node_for_strides {
                                     cur_serial if cur_serial == new_serial => {
                                         println!("Found prefix with serial {}, updating it to {}...", pfx_idx.0.unwrap().2, new_serial);
                                         let pfx_idx_clone = pfx_idx.clone();
-                                        current_node.pfx_vec.insert(pfx_vec_index, pfx_idx_clone.set_serial(new_serial));
+                                        // current_node.pfx_vec.insert(pfx_vec_index, pfx_idx_clone.set_serial(new_serial));
                                         $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
                                         println!(
                                             "removing old prefix with serial {}...",
@@ -127,7 +130,7 @@ macro_rules! match_node_for_strides {
                                         println!("Contention for {:?} with serial {} -> {}", pfx_idx, old_serial, newer_serial);
                                         old_serial = serial.fetch_add(1, Ordering::Acquire);
                                         $self.store.retrieve_prefix(pfx_idx.set_serial(old_serial)).unwrap();
-                                        $self.update_prefix_meta(*pfx_idx, newer_serial, &new_meta)?;
+                                        $self.update_prefix_meta(pfx_idx, newer_serial, &new_meta)?;
                                     }
                             };
                         }
