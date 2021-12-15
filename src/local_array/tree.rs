@@ -377,19 +377,19 @@ pub trait NodeCollection<AF: AddressFamily> {
 //------------ PrefixSet ----------------------------------------------------
 
 #[derive(Debug)]
-pub struct PrefixSet<AF: AddressFamily, const ARRAYSIZE: usize>(
-    [(PhantomData<AF>, AtomicUsize); ARRAYSIZE],
+pub struct PrefixSet<const ARRAYSIZE: usize>(
+    [AtomicUsize; ARRAYSIZE],
 );
 
-impl<AF: AddressFamily, const ARRAYSIZE: usize> std::fmt::Display
-    for PrefixSet<AF, ARRAYSIZE>
+impl<const ARRAYSIZE: usize> std::fmt::Display
+    for PrefixSet<ARRAYSIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
+impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
     // pub(crate) fn insert(&mut self, index: u16, insert_node: PrefixId<AF>) {
     //     let n = self.0.get_mut(index as usize);
     //     if n.is_some() {
@@ -403,7 +403,7 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
     //     // self[index as usize] = insert_node;
     // }
 
-    pub(crate) fn to_vec(
+    pub(crate) fn to_vec<AF: AddressFamily> (
         &self,
         base_prefix: StrideNodeId<AF>,
     ) -> Vec<PrefixId<AF>> {
@@ -412,7 +412,7 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
         let mut nibble_len = 1;
         while i < ARRAYSIZE {
             for nibble in 0..1 << nibble_len {
-                match self.0[i].1.load(Ordering::Relaxed) {
+                match self.0[i].load(Ordering::Relaxed) {
                     0 => (),
                     serial => vec.push(
                         PrefixId::<AF>::new(
@@ -450,30 +450,30 @@ impl<AF: AddressFamily, const ARRAYSIZE: usize> PrefixSet<AF, ARRAYSIZE> {
 
     pub(crate) fn empty() -> Self {
         let arr =
-            array_init::array_init(|_| (PhantomData, AtomicUsize::new(0)));
+            array_init::array_init(|_| AtomicUsize::new(0));
         PrefixSet(arr)
     }
 
     pub(crate) fn get_serial_at(&mut self, index: usize) -> &mut AtomicUsize {
-        &mut self.0[index as usize].1
+        &mut self.0[index as usize]
     }
 }
 
-impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::Index<usize>
-    for PrefixSet<AF, ARRAYSIZE>
+impl<const ARRAYSIZE: usize> std::ops::Index<usize>
+    for PrefixSet<ARRAYSIZE>
 {
     type Output = AtomicUsize;
 
     fn index(&self, idx: usize) -> &AtomicUsize {
-        &self.0[idx as usize].1
+        &self.0[idx as usize]
     }
 }
 
-impl<AF: AddressFamily, const ARRAYSIZE: usize> std::ops::IndexMut<usize>
-    for PrefixSet<AF, ARRAYSIZE>
+impl<const ARRAYSIZE: usize> std::ops::IndexMut<usize>
+    for PrefixSet<ARRAYSIZE>
 {
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-        &mut self.0[idx as usize].1
+        &mut self.0[idx as usize]
     }
 }
 

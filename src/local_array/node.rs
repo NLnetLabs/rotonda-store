@@ -30,7 +30,7 @@ pub struct TreeBitMapNode<
     // The vec of prefixes hosted by this node, referenced by (bit_id, global
     // prefix index). This is the exact same type as for the NodeIds, so we
     // reuse that.
-    pub pfx_vec: PrefixSet<AF, PFXARRAYSIZE>,
+    pub pfx_vec: PrefixSet<PFXARRAYSIZE>,
     // The vec of child nodes hosted by this node, referenced by
     // (ptrbitarr_index, global vec index). We need the u16 (ptrbitarr_index)
     // to sort the vec that's stored in the node.
