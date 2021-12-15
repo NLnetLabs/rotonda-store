@@ -218,7 +218,7 @@ where
             {
                 // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, 
                 // HERE WE NEED TO CAS THE BITMAP
-                let _res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
+                self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
@@ -227,7 +227,7 @@ where
             // it off at that point.
             let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
             return NewNodeOrIndex::ExistingPrefix(
-                    PrefixId::new(pfx.get_net(), pfx.get_len()), 
+                    pfx, 
                     &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)]
                 );
         }
