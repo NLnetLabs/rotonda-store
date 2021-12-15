@@ -376,6 +376,15 @@ pub trait NodeCollection<AF: AddressFamily> {
 
 //------------ PrefixSet ----------------------------------------------------
 
+// The PrefixSet is the type that powers pfx_vec, the ARRAY that holds all
+// the child prefixes in a node. Since we are storing these prefixes in the
+// global store in a HashMap that is keyed on the tuple (addr_bits, len,
+// serial number) we can get away with storing ONLY THE SERIAL NUMBER in the
+// pfx_vec: The addr_bits and len are implied in the position in the array a
+// serial numher has. A PrefixSet doesn't know anything about the node it is
+// contained in, so it needs a base address to be able to calculate the
+// complete prefix of a child prefix.
+
 #[derive(Debug)]
 pub struct PrefixSet<const ARRAYSIZE: usize>(
     [AtomicUsize; ARRAYSIZE],
@@ -390,19 +399,10 @@ impl<const ARRAYSIZE: usize> std::fmt::Display
 }
 
 impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
-    // pub(crate) fn insert(&mut self, index: u16, insert_node: PrefixId<AF>) {
-    //     let n = self.0.get_mut(index as usize);
-    //     if n.is_some() {
-    //         self[index as usize] = insert_node;
-    //     } else {
-    //         println!(
-    //             "Can't find node with index {} in local array for {:?}",
-    //             index, insert_node
-    //         );
-    //     }
-    //     // self[index as usize] = insert_node;
-    // }
-
+    // Collect all PrefixIds int a vec. Since the net and len of the
+    // PrefixIds are implied by the position in the pfx_vec we can
+    // calculate them with if we know the base address of the node
+    // this PrefixSet lives in.
     pub(crate) fn to_vec<AF: AddressFamily> (
         &self,
         base_prefix: StrideNodeId<AF>,
@@ -434,19 +434,8 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
             }
             nibble_len += 1;
         }
-        // println!(". ");
-        // for p in vec.iter() {
-        //     if !p.is_empty() {
-        //         print!("{}/{}:", p.get_net().into_ipaddr(), p.get_len());
-        //     }
-        // }
         vec
-        // self.0.iter().map(|p| p.0).collect()
     }
-
-    // pub(crate) fn as_slice(&self) -> &[(PrefixId<AF>, AtomicUsize)] {
-    //     &self.0[..]
-    // }
 
     pub(crate) fn empty() -> Self {
         let arr =
