@@ -60,6 +60,8 @@ macro_rules! match_node_for_strides {
                     $self.stats[$stats_level].inc_prefix_count($level);
 
                     // THE CRITICAL SECTION
+                    //
+                    // CREATING A NEW PREFIX
 
                     // Store the prefix in the global, well, store. The serial number for
                     // this prefix will be set to 1.
@@ -97,17 +99,19 @@ macro_rules! match_node_for_strides {
                     //    serial number.
                     // 7. If it's a higher number, we're repeating the Read-Copy-Update cycle.
                     //
-                    // fetch_add returns the old serial number, not the result!
+                    // Try updating the atomic serial number in the pfx_vec
+                    // array of the current node fetch_add returns the old
+                    // serial number, not the result!
                     let mut old_serial = serial.fetch_add(1, Ordering::Acquire);
                     let new_serial = old_serial + 1;
 
                     if let Some(ref new_meta) = $pfx.meta {
-                        // This needs to go in an unsafe block, probably.
+
+                        // RCU the prefix meta-data in the global store
                         $self.update_prefix_meta(found_prefix_id.set_serial(old_serial), new_serial, new_meta)?;
 
                         loop {
-                            // Try updating the atomic serial number in the
-                            // pfx_vec array of the current node
+
                             match serial.load(Ordering::Acquire) {
                                     1 => {
                                         panic!("So-called existing prefix {}/{} does not exist?", found_prefix_id.get_net().into_ipaddr(), found_prefix_id.get_len());
