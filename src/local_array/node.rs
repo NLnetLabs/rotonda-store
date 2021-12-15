@@ -91,11 +91,16 @@ where
     //
     // Ex.:
     //
-    // Stride no.          1       2       3      4       5       6       7       8      9
-    // StrideSize          5       5       4      3       3       3       3       3      3
-    // child pfxs len      /1-5   /5-10    /10-14 /15-17  /18-20  /21-23  /24-26  /27-29 /30-32
-    // child Nodes len     /5      /10     /14    /17     /20     /23     /26     /29    /32
+    // Stride no.          1       2       3      4       5       6       7       
+    // StrideSize          5       5       4      3       3       3       3      
+    // child pfxs len      /1-5   /5-10    /10-14 /15-17  /18-20  /21-23  /24-26
+    // child Nodes len     /5      /10     /14    /17     /20     /23     /26 
     //
+    // Stride no.          8      9
+    // StrideSize          3      3
+    // child pfxs len      /27-29 /30-32
+    // child Nodes len     /29    /32
+
     pub(crate) fn ptr_vec(
         &self,
         base_prefix: StrideNodeId<AF>,
@@ -108,8 +113,9 @@ where
         for nibble in 0..(1 << S::STRIDE_LEN) {
             // move the nibble left with the amount of bits we're going to
             // loop over.
-            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
-            // then it will iterate over ...1100,...1101,...1110,...1111
+            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
+            // becomes 0000 0000 0000 1100, then it will iterate over 
+            // ...1100,...1101,...1110,...1111
             let bit_pos = S::get_bit_pos(nibble, S::STRIDE_LEN);
 
             // CRITICAL SECTION ALERT!
@@ -138,7 +144,9 @@ where
         &mut self,
         nibble: u32,
         nibble_len: u8,
-        base_prefix: StrideNodeId<AF>, // prefix with bits set beyond its length!
+        // all the bits of the search prefix, but with the length set to
+        // the length of this stride. So bits are set beyond its length.
+        base_prefix: StrideNodeId<AF>,
         stride_len: u8,
         next_stride: Option<&u8>,
         is_last_stride: bool,
@@ -161,7 +169,8 @@ where
             // Check it the ptr bit is already set in this position
             if (S::into_stride_size(ptrbitarr) & bit_pos) == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType>::zero() {
                 // Nope, set it and create a child node
-                // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
+                // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION,
+                // HERE WE NEED TO CAS THE BITMAP
                 self.ptrbitarr.compare_exchange(ptrbitarr,
                     S::into_ptrbitarr_size(
                     bit_pos | S::into_stride_size(ptrbitarr),
@@ -202,31 +211,31 @@ where
                 );
             }
         } else {
-            // only at the last stride do we create the bit in the prefix bitmap,
-            // and only if it doesn't exist already
+            // only at the last stride do we create the bit in the prefix
+            // bitmap, and only if it doesn't exist already
             if pfxbitarr & bit_pos
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
             {
-                // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, HERE WE NEED TO CAS THE BITMAP
+                // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, 
+                // HERE WE NEED TO CAS THE BITMAP
                 let _res = self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
-            // (base_prefix.add_nibble(nibble, nibble_len).into(), &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)])
-            println!("existing base_prefix {}", base_prefix);
-            println!("nibble len {}", nibble_len);
+            // A prefix exists as a child of the base_prefix, so create the
+            // PrefixId with the right offset from the base prefix and cut
+            // it off at that point.
             let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
             return NewNodeOrIndex::ExistingPrefix(
-                // (<S as Stride>::get_pfx_index(nibble, nibble_len) as u16, (
-                    // A prefix exists at the base prefix.
                     PrefixId::new(pfx.get_net(), pfx.get_len()), 
                     &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)]
                 );
         }
 
         println!("existing node {} {}", base_prefix, nibble_len);
-        // Nodes always live at the last length of a stride (i.e. the last nibble), so we add the stride length
-        // to the length of the base_prefix (which is always the start length of the stride).
+        // Nodes always live at the last length of a stride (i.e. the last 
+        // nibble), so we add the stride length to the length of the
+        // base_prefix (which is always the start length of the stride).
         NewNodeOrIndex::ExistingNode(base_prefix.add_to_len(stride_len).truncate_to_len())
     }
 
@@ -341,11 +350,6 @@ where
                     found_pfx = Some(PrefixId::new(search_pfx.net.truncate_to_len(start_bit + nibble_len), start_bit + nibble_len).set_serial(
                         self.pfx_vec[S::get_pfx_index(nibble, nibble_len)].load(Ordering::Acquire),
                     ));
-                        // self.pfx_vec.to_vec()[S::get_pfx_index(
-                        //     nibble,
-                        //     nibble_len,
-                        // )],
-                    // );
                 }
             }
             // We're not at the last nibble.
@@ -507,9 +511,10 @@ where
             // iterate over all the possible values for this `ms_nibble_len`,
             // e.g. two bits can have 4 different values.
             for n_l in 0..(1 << (ms_nibble_len - nibble_len)) {
-                // move the nibble left with the amount of bits we're going to loop over.
-                // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011 becomes 0000 0000 0000 1100
-                // then it will iterate over ...1100,...1101,...1110,...1111
+                // move the nibble left with the amount of bits we're going
+                // to loop over. e.g. a stride of size 4 with a nibble 0000
+                // 0000 0000 0011 becomes 0000 0000 0000 1100, then it will
+                // iterate over ...1100,...1101,...1110,...1111
                 let ms_nibble =
                     (nibble << (ms_nibble_len - nibble_len)) + n_l as u32;
                 bit_pos = S::get_bit_pos(ms_nibble, ms_nibble_len);
@@ -530,10 +535,6 @@ where
                             ).0, 
                             base_prefix.get_id().1 + ms_nibble_len)
                             .set_serial(self.pfx_vec[S::get_pfx_index(ms_nibble, ms_nibble_len)].load(Ordering::Acquire))
-                        // self.pfx_vec.to_vec()[S::get_pfx_index(
-                        //     ms_nibble,
-                        //     ms_nibble_len,
-                        // )],
                     );
                 }
             }
