@@ -36,10 +36,6 @@ pub trait AtomicBitmap {
 
     fn new() -> Self;
     fn inner(self) -> Self::InnerType;
-    // fn fetch_update<F: FnMut(Self::InnerType) -> Option<Self::InnerType>>(
-    //     &self,
-    //     f: F,
-    // ) -> CasResult<Self::InnerType>;
     fn is_set(&self, index: usize) -> bool;
     fn compare_exchange(
         &self,
@@ -61,12 +57,6 @@ impl AtomicBitmap for AtomicStride2 {
     fn is_set(&self, bit: usize) -> bool {
         self.load() & (1 << bit) != 0
     }
-    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
-    // where
-    //     F: FnMut(u8) -> Option<u8>,
-    // {
-    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
-    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -106,12 +96,6 @@ impl AtomicBitmap for AtomicStride3 {
     fn is_set(&self, bit: usize) -> bool {
         self.load() & (1 << bit) != 0
     }
-    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
-    // where
-    //     F: FnMut(u16) -> Option<u16>,
-    // {
-    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
-    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -124,6 +108,7 @@ impl AtomicBitmap for AtomicStride3 {
             Ordering::SeqCst,
         ))
     }
+
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
     }
@@ -151,12 +136,6 @@ impl AtomicBitmap for AtomicStride4 {
     fn is_set(&self, bit: usize) -> bool {
         self.load() & (1 << bit) != 0
     }
-    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
-    // where
-    //     F: FnMut(u32) -> Option<u32>,
-    // {
-    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
-    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -196,12 +175,6 @@ impl AtomicBitmap for AtomicStride5 {
     fn is_set(&self, bit: usize) -> bool {
         self.load() & (1 << bit) != 0
     }
-    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
-    // where
-    //     F: FnMut(u64) -> Option<u64>,
-    // {
-    //     CasResult(self.0.fetch_update(Ordering::SeqCst, Ordering::SeqCst, f))
-    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -247,21 +220,6 @@ impl AtomicBitmap for AtomicStride6 {
     fn is_set(&self, bit: usize) -> bool {
         self.load() & (1 << bit) != 0
     }
-    // fn fetch_update<F>(&self, f: F) -> CasResult<Self::InnerType>
-    // where
-    //     F: FnMut(u128) -> Option<u128>,
-    // {
-    //     let hi: AtomicU64 = self.0 .0;
-    //     (
-    //         self.0
-    //              .0
-    //             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, f),
-    //         self.0
-    //              .1
-    //             .fetch_update(Ordering::SeqCst, Ordering::SeqCst, f),
-    //     )
-    //         .into()
-    // }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
