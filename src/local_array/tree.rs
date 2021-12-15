@@ -900,41 +900,32 @@ where
         match self.retrieve_node(start_node_id).unwrap() {
             SizedStrideRef::Stride3(n) => {
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
-                found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for child_node in n.ptr_vec(start_node_id) {
-                    if !child_node.is_empty() {
-                        self.get_all_more_specifics_for_node(
-                            child_node,
-                            found_pfx_vec,
-                        );
-                    }
+                    self.get_all_more_specifics_for_node(
+                        child_node,
+                        found_pfx_vec,
+                    );
                 }
             }
             SizedStrideRef::Stride4(n) => {
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
-                found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for child_node in n.ptr_vec(start_node_id) {
-                    if !child_node.is_empty() {
-                        self.get_all_more_specifics_for_node(
-                            child_node,
-                            found_pfx_vec,
-                        );
-                    }
+                    self.get_all_more_specifics_for_node(
+                        child_node,
+                        found_pfx_vec,
+                    );
                 }
             }
             SizedStrideRef::Stride5(n) => {
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
-                found_pfx_vec.retain(|&x| !x.is_empty());
 
                 for child_node in n.ptr_vec(start_node_id) {
-                    if !child_node.is_empty() {
-                        self.get_all_more_specifics_for_node(
-                            child_node,
-                            found_pfx_vec,
-                        );
-                    }
+                    self.get_all_more_specifics_for_node(
+                        child_node,
+                        found_pfx_vec,
+                    );
                 }
             }
         }
