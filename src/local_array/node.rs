@@ -151,6 +151,18 @@ where
         next_stride: Option<&u8>,
         is_last_stride: bool,
     ) -> NewNodeOrIndex<AF> {
+
+        // THE CRIICAL SECTION
+        //
+        // UPDATING ptrbitarr & pfxbitarr
+        //
+        // This section is not as critical as creating/updating a
+        // a prefix. We need to set one bit only, and if somebody
+        // beat us to it that's fine, we'll figure that out when
+        // we try to write the prefix's serial number later on.
+        // The one thing that can go wrong here is that we are
+        // using an old ptrbitarr and overwrite bits set in the
+        // meantime elsewhere in the bitarray.
         let ptrbitarr = self.ptrbitarr.load();
         let pfxbitarr = self.pfxbitarr.load();
         let bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -165,17 +177,12 @@ where
         // reverse is *not* true, i.e. a full nibble can also be the last
         // stride. Hence the `is_last_stride` argument
         if !is_last_stride {
+
             // We are not at the last stride
             // Check it the ptr bit is already set in this position
             if (S::into_stride_size(ptrbitarr) & bit_pos) == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType>::zero() {
                 // Nope, set it and create a child node
-                // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION,
-                // HERE WE NEED TO CAS THE BITMAP
-                self.ptrbitarr.compare_exchange(ptrbitarr,
-                    S::into_ptrbitarr_size(
-                    bit_pos | S::into_stride_size(ptrbitarr),
-                ));
-                // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
+
                 match next_stride.unwrap() {
                     3_u8 => {
                         new_node = SizedStrideNode::Stride3(TreeBitMapNode {
@@ -205,7 +212,35 @@ where
                         panic!("can't happen");
                     }
                 };
-      
+
+
+
+                // THE CRIICAL SECTION
+                //
+                // UPDATING pfxbitarr
+                //
+                // preventing using an old ptrbitarr and overwrite bits set
+                // in the meantime elsewhere in the bitarray.
+                let mut a_ptrbitarr = self.ptrbitarr.compare_exchange(ptrbitarr,
+                    S::into_ptrbitarr_size(
+                    bit_pos | S::into_stride_size(ptrbitarr),
+                ));
+                loop {
+                    match a_ptrbitarr {
+                        CasResult(Ok(_)) => {
+                            break;
+                        }
+                        CasResult(Err(newer_array)) => {
+                            // Someone beat us to it, so we need to use the
+                            // newer array.
+                            a_ptrbitarr = self.ptrbitarr.compare_exchange(newer_array,
+                                S::into_ptrbitarr_size(
+                                bit_pos | S::into_stride_size(newer_array),
+                            ));
+                        }
+                    };
+                }
+
                 return NewNodeOrIndex::NewNode(
                     new_node
                 );
@@ -216,9 +251,33 @@ where
             if pfxbitarr & bit_pos
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
             {
-                // TODO TODO, THIS IS A VITAL PART OF THE CRITICAL SECTION, 
-                // HERE WE NEED TO CAS THE BITMAP
-                self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
+                
+                // THE CRIICAL SECTION
+                //
+                // UPDATING pfxbitarr
+                //
+                // preventing using an old pfxbitarr and overwrite bits set
+                // in the meantime elsewhere in the bitarray.
+                let mut a_pfxbitarr = 
+                self.pfxbitarr.compare_exchange(
+                    pfxbitarr, bit_pos | pfxbitarr
+                );
+                loop {
+                    match a_pfxbitarr {
+                        CasResult(Ok(_)) => {
+                            break;
+                        }
+                        CasResult(Err(newer_array)) => {
+                            // Someone beat us to it, so we need to use the
+                            // newer array.
+                            a_pfxbitarr = self.pfxbitarr.compare_exchange(
+                                newer_array, bit_pos | newer_array
+                            );
+                        }
+                    };
+                }
+
+                // self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix(<S as Stride>::get_pfx_index(nibble, nibble_len) as u16);
             }
@@ -232,7 +291,6 @@ where
                 );
         }
 
-        println!("existing node {} {}", base_prefix, nibble_len);
         // Nodes always live at the last length of a stride (i.e. the last 
         // nibble), so we add the stride length to the length of the
         // base_prefix (which is always the start length of the stride).
@@ -412,8 +470,10 @@ where
                 // field only if we're exactly at the last bit of the nibble
                 if n_l == nibble_len {
                     found_pfx = Some(
-                        PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l)
-                            .set_serial(self.pfx_vec[S::get_pfx_index(nibble, n_l)].load(std::sync::atomic::Ordering::Acquire)),
+                        PrefixId::new(
+                            search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l
+                        )
+                        .set_serial(self.pfx_vec[S::get_pfx_index(nibble, n_l)].load(std::sync::atomic::Ordering::Acquire)),
                     );
                         // self.pfx_vec.to_vec()
                             // [S::get_pfx_index(nibble, n_l)],
@@ -505,7 +565,8 @@ where
         // Iteration:
         // ms_nibble_len=1,n_l=0: 10, n_l=1: 11
         // ms_nibble_len=2,n_l=0: 100, n_l=1: 101, n_l=2: 110, n_l=3: 111
-        // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ..., n_l=7: 1111
+        // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ..., 
+        // n_l=7: 1111
 
         for ms_nibble_len in nibble_len + 1..S::STRIDE_LEN + 1 {
             // iterate over all the possible values for this `ms_nibble_len`,
