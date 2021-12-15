@@ -55,7 +55,7 @@ macro_rules! match_node_for_strides {
                     println!("creating prefix {}...", $pfx);
                     // acquire_new_prefix_id is deterministic, so we can use it
                     // in all threads concurrently.
-                    let new_id = $self.store.acquire_new_prefix_id(&$pfx);
+                    // let new_id = $self.store.acquire_new_prefix_id(&$pfx);
                     // println!("insert new prefix {:?}", new_id);
                     $self.stats[$stats_level].inc_prefix_count($level);
 
@@ -68,7 +68,7 @@ macro_rules! match_node_for_strides {
 
                     break Ok(());
                 }
-                NewNodeOrIndex::ExistingPrefix((_pfx_vec_index, (pfx_idx, serial))) => {
+                NewNodeOrIndex::ExistingPrefix(found_prefix_id, serial) => {
                     // THE CRITICAL SECTION
                     //
                     // UPDATING EXISTING METADATA
@@ -94,31 +94,28 @@ macro_rules! match_node_for_strides {
 
                     if let Some(ref new_meta) = $pfx.meta {
                         // This needs to go in an unsafe block, probably.
-                        println!("{:?} {:?} {}", pfx_idx, serial, old_serial);
-                        $self.update_prefix_meta(pfx_idx.set_serial(old_serial), new_serial, new_meta)?;
-                        print!("{}/{}({})|",$pfx.net.into_ipaddr(), $pfx.len, new_serial);
+                        $self.update_prefix_meta(found_prefix_id.set_serial(old_serial), new_serial, new_meta)?;
 
                         loop {
                             // Try updating the atomic serial number in the
                             // pfx_vec array of the current node
                             match serial.load(Ordering::Acquire) {
                                     1 => {
-                                        panic!("So-called existing prefix {}/{} does not exist?", pfx_idx.get_net().into_ipaddr(), pfx_idx.get_len());
+                                        panic!("So-called existing prefix {}/{} does not exist?", found_prefix_id.get_net().into_ipaddr(), found_prefix_id.get_len());
                                     },
                                     // SUCCESS (Step 6) !
                                     // Nobody messed with our prefix meta-data in between us loading the
                                     // serial and creating the entry with that serial. Update the ptrbitarr
                                     // in the current node in the global store and be done with it.
                                     cur_serial if cur_serial == new_serial => {
-                                        println!("Found prefix with serial {}, updating it to {}...", pfx_idx.0.unwrap().2, new_serial);
-                                        let pfx_idx_clone = pfx_idx.clone();
-                                        // current_node.pfx_vec.insert(pfx_vec_index, pfx_idx_clone.set_serial(new_serial));
+                                        let found_prefix_id_clone = found_prefix_id.clone();
+                                        // current_node.pfx_vec.insert(pfx_vec_index, found_prefix_id_clone.set_serial(new_serial));
                                         $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
                                         println!(
                                             "removing old prefix with serial {}...",
                                             old_serial
                                         );
-                                        $self.store.remove_prefix(pfx_idx_clone.set_serial(old_serial));
+                                        $self.store.remove_prefix(found_prefix_id_clone.set_serial(old_serial));
                                         // println!("current_node.pfx_vec {:?}", current_node.pfx_vec);
                                         return Ok(());
                                     },
@@ -127,10 +124,10 @@ macro_rules! match_node_for_strides {
                                     // more, reading the newly-current meta-data, updating it with our meta-data and
                                     // see if it works then. rince-repeat.
                                     newer_serial => {
-                                        println!("Contention for {:?} with serial {} -> {}", pfx_idx, old_serial, newer_serial);
+                                        println!("Contention for {:?} with serial {} -> {}", found_prefix_id, old_serial, newer_serial);
                                         old_serial = serial.fetch_add(1, Ordering::Acquire);
-                                        $self.store.retrieve_prefix(pfx_idx.set_serial(old_serial)).unwrap();
-                                        $self.update_prefix_meta(pfx_idx, newer_serial, &new_meta)?;
+                                        $self.store.retrieve_prefix(found_prefix_id.set_serial(old_serial)).unwrap();
+                                        $self.update_prefix_meta(found_prefix_id, newer_serial, &new_meta)?;
                                     }
                             };
                         }

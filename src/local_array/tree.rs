@@ -105,8 +105,7 @@ pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
     NewPrefix(u16),
-    // (index in pfx_vec, (prefix_id, serial))
-    ExistingPrefix((u16, (PrefixId<AF>, &'a mut AtomicUsize))),
+    ExistingPrefix(PrefixId<AF>, &'a mut AtomicUsize),
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]

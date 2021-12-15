@@ -217,10 +217,11 @@ where
             println!("nibble len {}", nibble_len);
             let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
             return NewNodeOrIndex::ExistingPrefix(
-                (<S as Stride>::get_pfx_index(nibble, nibble_len) as u16, (
+                // (<S as Stride>::get_pfx_index(nibble, nibble_len) as u16, (
                     // A prefix exists at the base prefix.
-                    PrefixId::new(pfx.get_net(), pfx.get_len()), &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)]))
-            );
+                    PrefixId::new(pfx.get_net(), pfx.get_len()), 
+                    &mut self.pfx_vec[<S as Stride>::get_pfx_index(nibble, nibble_len)]
+                );
         }
 
         println!("existing node {} {}", base_prefix, nibble_len);
