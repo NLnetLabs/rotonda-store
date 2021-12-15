@@ -7,12 +7,12 @@ macro_rules! match_node_for_strides {
     (
         $self: ident;
         $nibble_len: expr;
-        $nibble: expr;
+        $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
         $is_last_stride: expr;
-        $pfx: ident;
-        $truncate_len: ident;
-        $stride_len: ident;
-        $cur_i: expr;
+        $pfx: ident; // the whole search prefix
+        $truncate_len: ident; // the start of the length of this stride
+        $stride_len: ident; // the length of this stride
+        $cur_i: expr; // the current node in this stride
         $level: expr;
         // $enum: ident;
         // The strides to generate match arms for,
@@ -27,8 +27,12 @@ macro_rules! match_node_for_strides {
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
+                // All the bits of the search prefix, but with a length set to
+                // the start of the current stride.
                 StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
+                // the length of THIS stride
                 $stride_len,
+                // the length of the next stride
                 $self.strides.get(($level + 1) as usize),
                 $is_last_stride,
             ) {
@@ -52,18 +56,23 @@ macro_rules! match_node_for_strides {
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix(sort_id) => {
-                    println!("creating prefix {}...", $pfx);
-                    // acquire_new_prefix_id is deterministic, so we can use it
-                    // in all threads concurrently.
-                    // let new_id = $self.store.acquire_new_prefix_id(&$pfx);
-                    // println!("insert new prefix {:?}", new_id);
+                    // Log
                     $self.stats[$stats_level].inc_prefix_count($level);
 
-                    // current_node.pfx_vec.insert(sort_id, new_id);
+                    // THE CRITICAL SECTION
 
+                    // Store the prefix in the global, well, store. The serial number for
+                    // this prefix will be set to 1.
                     $self.store_prefix($pfx)?;
+
+                    // acquire the Atomic Serial mutably from the local pfx_vec.
                     let serial = current_node.pfx_vec.get_serial_at(sort_id as usize);
+
+                    // increment the serial number without checking anything
                     serial.fetch_add(1, Ordering::Acquire);
+
+                    // update the ptrbitarr bitarray in the current node in
+                    // the global store.
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     break Ok(());
