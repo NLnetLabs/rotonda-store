@@ -34,10 +34,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     println!("[");
     let strides_vec = [
-        vec![8],
-        vec![4],
-        vec![6, 6, 6, 6, 4, 4],
-        vec![3, 4, 4, 6, 7, 8],
+        vec![4, 4, 4, 4, 4, 4, 4, 4],
+        vec![3, 4, 5, 4]
     ];
 
     for strides in strides_vec.iter().enumerate() {
@@ -46,7 +44,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
             let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
                 strides.1.to_owned(),
-                Vec::from([]),
+                strides.1.to_owned(),
             );
 
             if let Err(err) = load_prefixes(&mut pfxs) {
@@ -71,19 +69,20 @@ fn main() -> Result<(), Box<dyn Error>> {
             for i_net in 0..inet_max {
                 for s_len in 0..len_max {
                     for ii_net in 0..inet_max {
-                        let pfx = Prefix::new(
+                        if let Ok(pfx) = Prefix::new(
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
                                 .into(),
                             s_len,
-                        )?;
-                        tree_bitmap.match_prefix(
-                            &pfx,
-                            &MatchOptions {
-                                match_type: MatchType::LongestMatch,
-                                include_less_specifics: false,
-                                include_more_specifics: false,
-                            },
-                        );
+                        ) {
+                            tree_bitmap.match_prefix(
+                                &pfx,
+                                &MatchOptions {
+                                    match_type: MatchType::LongestMatch,
+                                    include_less_specifics: false,
+                                    include_more_specifics: false,
+                                },
+                            );
+                        }
                     }
                 }
             }
