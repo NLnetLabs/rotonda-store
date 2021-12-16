@@ -18,6 +18,9 @@ num = "^0.3"
 routecore = { version = "0.0.2-dev", features = ["serde"] }
 rustyline = {version = "8.0.0", optional = true}
 
+[build-dependencies]
+rustc_version = "^0.4"
+
 [features]
 cli = ["csv", "ansi_term", "rustyline"]
 default = []
