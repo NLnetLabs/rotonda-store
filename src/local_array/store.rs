@@ -29,7 +29,7 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     /// You'll have to provide the stride sizes per address family and the
     /// meta-data type. Some meta-data type are included with this crate.
     ///
-    /// The stride-sizes can be any of [3,4,5,6,7,8], and they should add up
+    /// The stride-sizes can be any of [3,4,5], and they should add up
     /// to the total number of bits in the address family (32 for IPv4 and
     /// 128 for IPv6). Stride sizes in the array will be repeated if the sum
     /// of them falls short of the total number of bits for the address
