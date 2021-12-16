@@ -858,17 +858,6 @@ where
         self.store.retrieve_prefix(index)
     }
 
-    pub(crate) fn retrieve_default_route_prefix(
-        &self,
-    ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
-        match self.store.load_default_route_prefix_serial() {
-            0 => None,
-            serial => self.store.retrieve_prefix(
-                PrefixId::new(Store::AF::zero(), 0).set_serial(serial),
-            ),
-        }
-    }
-
     #[inline]
     #[cfg(feature = "dynamodb")]
     pub(crate) fn retrieve_prefix_mut(

@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering};
 use std::{
     fmt::Debug,
     marker::PhantomData,
@@ -251,7 +251,7 @@ where
             if pfxbitarr & bit_pos
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
             {
-                
+
                 // THE CRIICAL SECTION
                 //
                 // UPDATING pfxbitarr

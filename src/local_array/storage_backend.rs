@@ -26,8 +26,6 @@ pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<
     Box<dyn std::error::Error>,
 >;
 
-pub(crate) type SizedNodeResult<'a, AF> =
-    Result<SizedStrideNode<AF>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeRefResult<'a, AF> =
     Result<SizedStrideRefMut<'a, AF>, Box<dyn std::error::Error>>;
 pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
