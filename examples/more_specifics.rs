@@ -1,7 +1,7 @@
 use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
-use routecore::addr::AddressFamily;
+use rotonda_store::AddressFamily;
 use routecore::addr::Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

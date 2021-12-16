@@ -6,7 +6,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::{MatchOptions, MatchType};
 use crate::QueryResult;
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
 use routecore::record::NoMeta;

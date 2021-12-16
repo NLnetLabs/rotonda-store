@@ -1,12 +1,17 @@
 use std::{fmt, slice};
 
-use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
+use crate::{
+    local_array::node::PrefixId, prefix_record::InternalPrefixRecord,
+    stats::StrideStats,
+};
 
 use routecore::{
-    addr::{AddressFamily, IPv4, IPv6, Prefix},
+    addr::Prefix,
     bgp::{PrefixRecord, RecordSet},
     record::{MergeUpdate, Record},
 };
+
+pub use crate::af::{AddressFamily, IPv4, IPv6};
 
 //------------ The publicly available Rotonda Stores ------------------------
 
@@ -93,6 +98,16 @@ impl MergeUpdate for PrefixAs {
         self.0 = update_record.0;
         Ok(())
     }
+
+    fn clone_merge_update(
+        &self,
+        update_meta: &Self,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: std::marker::Sized,
+    {
+        Ok(PrefixAs(self.0.max(update_meta.0)))
+    }
 }
 
 impl fmt::Display for PrefixAs {
@@ -133,6 +148,51 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
+//------------ HashMapPrefixRecordIterator ----------------------------------
+
+#[derive(Debug)]
+pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
+    pub(crate) v4: Option<
+        std::collections::hash_map::Values<
+            'a,
+            PrefixId<IPv4>,
+            InternalPrefixRecord<IPv4, Meta>,
+        >,
+    >,
+    pub(crate) v6: std::collections::hash_map::Values<
+        'a,
+        PrefixId<IPv6>,
+        InternalPrefixRecord<IPv6, Meta>,
+    >,
+}
+
+impl<'a, Meta: routecore::record::Meta + 'a> Iterator
+    for HashMapPrefixRecordIterator<'a, Meta>
+{
+    type Item = PrefixRecord<'a, Meta>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // V4 is already done.
+        if self.v4.is_none() {
+            return self.v6.next().map(|res| {
+                PrefixRecord::new(
+                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                    res.meta.as_ref().unwrap(),
+                )
+            });
+        }
+
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
+            return Some(PrefixRecord::new(
+                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                res.meta.as_ref().unwrap(),
+            ));
+        }
+        self.v4 = None;
+        self.next()
+    }
+}
+
 //------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
@@ -170,30 +230,30 @@ impl<'a, Meta: routecore::record::Meta> Iterator
     }
 }
 
-impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
-    for PrefixRecordIter<'a, Meta>
-{
-    fn next_back(&mut self) -> Option<Self::Item> {
-        // V4 is already done.
-        if self.v4.is_none() {
-            return self.v6.next_back().map(|res| {
-                PrefixRecord::new(
-                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    res.meta.as_ref().unwrap(),
-                )
-            });
-        }
+// impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
+//     for PrefixRecordIter<'a, Meta>
+// {
+//     fn next_back(&mut self) -> Option<Self::Item> {
+//         // V4 is already done.
+//         if self.v4.is_none() {
+//             return self.v6.next_back().map(|res| {
+//                 PrefixRecord::new(
+//                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+//                     res.meta.as_ref().unwrap(),
+//                 )
+//             });
+//         }
 
-        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
-            return Some(PrefixRecord::new(
-                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                res.meta.as_ref().unwrap(),
-            ));
-        }
-        self.v4 = None;
-        self.next_back()
-    }
-}
+//         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
+//             return Some(PrefixRecord::new(
+//                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+//                 res.meta.as_ref().unwrap(),
+//             ));
+//         }
+//         self.v4 = None;
+//         self.next_back()
+//     }
+// }
 
 //------------- QueryResult -------------------------------------------------
 

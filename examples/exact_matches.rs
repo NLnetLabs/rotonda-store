@@ -1,5 +1,6 @@
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
-use routecore::addr::AddressFamily;
+use rotonda_store::{
+    AddressFamily, MatchOptions, MatchType, MultiThreadedStore,
+};
 use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 

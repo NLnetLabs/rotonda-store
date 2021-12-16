@@ -1,10 +1,10 @@
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
-use routecore::{addr::AddressFamily, addr::Prefix, record::NoMeta};
+use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, AddressFamily};
+use routecore::{addr::Prefix, record::NoMeta};
 
 type Prefix4<'a> = Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut tree_bitmap = MultiThreadedStore::new(vec![4], vec![8]);
+    let mut tree_bitmap = MultiThreadedStore::new(vec![4], vec![4]);
     let pfxs = vec![
         Prefix::new(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

@@ -56,8 +56,8 @@ fn load_prefixes(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
     let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-        vec![8, 3, 3, 3, 3, 3, 3, 3, 3],
-        vec![8],
+        vec![5, 5, 4, 3, 3, 3, 3, 3, 3],
+        vec![4],
     );
 
     if let Err(err) = load_prefixes(&mut pfxs) {
@@ -105,7 +105,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "ipv6 prefixes :\t{}",
                                     tree_bitmap.prefixes_v6_len()
                                 );
-                                // println!("{:#?}", tree_bitmap.prefixes());
+                                println!(
+                                    "{:#?}",
+                                    tree_bitmap.prefixes_iter()
+                                );
                             }
                             "n" => {
                                 // if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
@@ -129,6 +132,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "ipv6 nodes :\t{}",
                                     tree_bitmap.nodes_v6_len()
+                                );
+                                println!(
+                                    "{:#?}",
+                                    tree_bitmap
+                                        .nodes_v4_iter()
+                                        .collect::<Vec<_>>()
                                 );
                             }
                             _ => {

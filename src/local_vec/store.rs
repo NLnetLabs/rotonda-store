@@ -6,7 +6,7 @@ use crate::QueryResult;
 use crate::{MatchOptions, Stats, Strides};
 
 use routecore::addr::Prefix;
-use routecore::addr::{IPv4, IPv6};
+use crate::af::{IPv4, IPv6};
 use routecore::record::{MergeUpdate, NoMeta};
 
 use super::tree::SizedStrideNode;

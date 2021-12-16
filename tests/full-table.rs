@@ -1,7 +1,7 @@
 #![cfg(feature = "csv")]
 #[cfg(test)]
 
-mod test {
+mod tests {
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
     };
@@ -48,15 +48,15 @@ mod test {
 
         let strides_vec = [
             // vec![8],
-            // vec![4],
+            vec![4],
             // vec![6, 6, 6, 6, 4, 4],
-            vec![3, 4, 4, 6, 7, 8],
+            // vec![3, 4, 4, 6, 7, 8],
         ];
         for strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
             let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
                 strides.1.to_owned(),
-                vec![8],
+                vec![4],
             );
 
             if let Err(err) = load_prefixes(&mut pfxs) {

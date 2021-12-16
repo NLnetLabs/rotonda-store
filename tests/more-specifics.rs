@@ -1,5 +1,5 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
-mod test {
+mod tests {
     use rotonda_store::PrefixAs;
     use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
     use routecore::addr::Prefix;
@@ -8,8 +8,10 @@ mod test {
 
     #[test]
     fn test_more_specifics() -> Result<(), Box<dyn Error>> {
-        let mut tree_bitmap =
-            MultiThreadedStore::<PrefixAs>::new(vec![4], vec![8]);
+        let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
+            vec![4, 4, 3, 3, 3, 3, 3, 3, 3, 3],
+            vec![4],
+        );
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24), // 0
             //

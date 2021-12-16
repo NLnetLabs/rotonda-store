@@ -1,16 +1,17 @@
-use routecore::addr::AddressFamily;
+use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;
-use routecore::record::NoMeta;
 use routecore::bgp::RecordSet;
+use routecore::record::NoMeta;
 
 use crate::local_array::storage_backend::*;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
 
 use crate::local_array::node::TreeBitMapNode;
-use crate::local_array::tree::{SizedStrideNode, TreeBitMap};
-use crate::node_id::SortableNodeId;
+use crate::local_array::tree::TreeBitMap;
 use crate::{MatchOptions, MatchType};
+
+use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
 
 //------------ Longest Matching Prefix  -------------------------------------
 
@@ -25,17 +26,70 @@ where
     // not search for prefixes with length 0 (which would always match).
     // So for matching a nibble 1010, we have to search for 1, 10, 101 and
     // 1010 on resp. position 1, 5, 12 and 25:
-    //                       ↓          ↓                         ↓                                                              ↓
-    // pfx bit arr (u32)   0 1 2  3  4  5  6   7   8   9  10  11  12  13  14   15   16   17   18   19   20   21   22   23   24   25   26   27   28   29   30   31
-    // nibble              * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 0000 0001 0010 0011 0100 0101 0110 0111 1000 1001 1010 1011 1100 1101 1110 1111    x
-    // nibble len offset   0 1    2            3                                4
+    //                       ↓          ↓                         ↓
+    // nibble              * 0 1 00 01 10 11 000 001 010 011 100 101 110 111
+    // nibble len offset   0 1    2            3
+    //
+    // (contd.)
+    // pfx bit arr (u32)     15   16   17   18   19   20   21   22   23   24
+    // nibble              0000 0001 0010 0011 0100 0101 0110 0111 1000 1001
+    // nibble len offset      4
+    //
+    // (contd.)               ↓
+    // pfx bit arr (u32)     25   26   27   28   29   30   31
+    // nibble              1010 1011 1100 1101 1110 1111    x
+    // nibble len offset      4(contd.)
 
     pub(crate) fn match_prefix(
         &'a self,
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
-    ) -> QueryResult<'a, Store::Meta>
-    {
+    ) -> QueryResult<'a, Store::Meta> {
+        
+        
+        // --- The Default Prefix ------------------------------------------
+
+        // The Default Prefix unfortunately does not fit in tree as we have
+        // it. There's no room for it in the pfxbitarr of the root node,
+        // since that can only contain serial numbers for prefixes that are
+        // children of the root node. We, however, want the default prefix
+        // which lives on the root node itself! We are *not* going to return
+        // all of the prefixes in the tree as more-specifics.
+        if search_pfx.len == 0 {
+            match self.store.load_default_route_prefix_serial() {
+                0 => {
+                    return QueryResult {
+                        prefix: None,
+                        prefix_meta: None,
+                        match_type: MatchType::EmptyMatch,
+                        less_specifics: None,
+                        more_specifics: None,
+                    };
+                }
+                serial => {
+                    return QueryResult {
+                        prefix: Prefix::new(
+                            search_pfx.net.into_ipaddr(),
+                            search_pfx.len,
+                        )
+                        .ok(),
+                        prefix_meta: self
+                            .store
+                            .retrieve_prefix(PrefixId::new(
+                                Store::AF::zero(),
+                                0,
+                            ).set_serial(serial))
+                            .unwrap()
+                            .meta
+                            .as_ref(),
+                        match_type: MatchType::ExactMatch,
+                        less_specifics: None,
+                        more_specifics: None,
+                    }
+                }
+            }
+        }
+
         let mut stride_end = 0;
 
         let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
@@ -51,20 +105,18 @@ where
         // QueryResult is computed at the end.
 
         // The final prefix
-        let mut match_prefix_idx: Option<
-            <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-        > = None;
+        let mut match_prefix_idx: Option<PrefixId<Store::AF>> = None;
 
         // The indexes of the less-specifics
         let mut less_specifics_vec = if options.include_less_specifics {
-            Some(Vec::<Store::NodeType>::new())
+            Some(Vec::<PrefixId<Store::AF>>::new())
         } else {
             None
         };
 
         // The indexes of the more-specifics.
         let mut more_specifics_vec = if options.include_more_specifics {
-            Some(Vec::<Store::NodeType>::new())
+            Some(Vec::<PrefixId<Store::AF>>::new())
         } else {
             None
         };
@@ -84,6 +136,7 @@ where
 
         for stride in self.strides.iter() {
             stride_end += stride;
+
             let last_stride = search_pfx.len < stride_end;
 
             nibble_len = if last_stride {
@@ -101,7 +154,7 @@ where
             );
 
             match node {
-                SizedStrideNode::Stride3(current_node) => {
+                SizedStrideRef::Stride3(current_node) => {
                     let search_fn = match options.match_type {
                         MatchType::ExactMatch => {
                             if options.include_less_specifics {
@@ -130,7 +183,7 @@ where
                     // where `include_less_specifics` was requested by the
                     // user.
                     match search_fn(
-                        &current_node,
+                        current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -141,15 +194,19 @@ where
                         // intermediary nodes, but they might also handle
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             node = self.store.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
                                 }
                                 break;
@@ -161,9 +218,13 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
                                 }
                                 break;
@@ -176,12 +237,16 @@ where
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
-                                        &current_node,
+                                        current_node,
                                         nibble,
                                         nibble_len,
+                                        StrideNodeId::new_with_cleaned_id(
+                                            search_pfx.net,
+                                            stride_end - stride,
+                                        ),
                                     );
                             }
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         // This handles cases where there's no prefix (and no
@@ -197,9 +262,13 @@ where
                                     // early here.
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
 
                                     match_prefix_idx = None;
@@ -216,7 +285,7 @@ where
                 }
                 //---- From here only repetitions for all strides -----------
                 // For comments see the code above for the Stride3 arm.
-                SizedStrideNode::Stride4(current_node) => {
+                SizedStrideRef::Stride4(current_node) => {
                     let search_fn = match options.match_type {
                         MatchType::ExactMatch => {
                             if options.include_less_specifics {
@@ -233,7 +302,7 @@ where
                         }
                     };
                     match search_fn(
-                        &current_node,
+                        current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -241,15 +310,19 @@ where
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
                                 }
                                 break;
@@ -261,9 +334,13 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
                                 }
                                 break;
@@ -273,12 +350,16 @@ where
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
-                                        &current_node,
+                                        current_node,
                                         nibble,
                                         nibble_len,
+                                        StrideNodeId::new_with_cleaned_id(
+                                            search_pfx.net,
+                                            stride_end - stride,
+                                        ),
                                     );
                             }
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         (None, None) => {
@@ -288,9 +369,13 @@ where
                                     // return early here.
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
 
                                     match_prefix_idx = None;
@@ -305,7 +390,7 @@ where
                         }
                     }
                 }
-                SizedStrideNode::Stride5(current_node) => {
+                SizedStrideRef::Stride5(current_node) => {
                     let search_fn = match options.match_type {
                         MatchType::ExactMatch => {
                             if options.include_less_specifics {
@@ -322,7 +407,7 @@ where
                         }
                     };
                     match search_fn(
-                        &current_node,
+                        current_node,
                         search_pfx,
                         nibble,
                         nibble_len,
@@ -330,15 +415,19 @@ where
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             node = self.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
                                 }
                                 break;
@@ -350,9 +439,13 @@ where
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
                                 }
                                 break;
@@ -362,12 +455,16 @@ where
                             if options.include_more_specifics {
                                 more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
-                                        &current_node,
+                                        current_node,
                                         nibble,
                                         nibble_len,
+                                        StrideNodeId::new_with_cleaned_id(
+                                            search_pfx.net,
+                                            stride_end - stride,
+                                        ),
                                     );
                             }
-                            match_prefix_idx = Some(pfx_idx.get_part());
+                            match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         (None, None) => {
@@ -375,273 +472,13 @@ where
                                 MatchType::EmptyMatch => {
                                     more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
-                                            &current_node,
+                                            current_node,
                                             nibble,
                                             nibble_len,
-                                        );
-
-                                    match_prefix_idx = None;
-                                    break;
-                                }
-                                MatchType::LongestMatch => {}
-                                MatchType::ExactMatch => {
-                                    match_prefix_idx = None;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-                SizedStrideNode::Stride6(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                        MatchType::EmptyMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-
-                    match search_fn(
-                        &current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            if last_stride {
-                                if options.include_more_specifics {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-                                }
-                                break;
-                            }
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            if last_stride {
-                                if options.include_more_specifics {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-                                }
-                                break;
-                            }
-                        }
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                more_specifics_vec = self
-                                    .get_all_more_specifics_from_nibble(
-                                        &current_node,
-                                        nibble,
-                                        nibble_len,
-                                    );
-                            }
-                            match_prefix_idx = Some(pfx_idx.get_part());
-                            break;
-                        }
-                        (None, None) => {
-                            match options.match_type {
-                                MatchType::EmptyMatch => {
-                                    // To make sure we don't process this match arm more then once, we
-                                    // return early here.
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-
-                                    match_prefix_idx = None;
-                                    break;
-                                }
-                                MatchType::LongestMatch => {}
-                                MatchType::ExactMatch => {
-                                    match_prefix_idx = None;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-                SizedStrideNode::Stride7(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                        MatchType::EmptyMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-                    match search_fn(
-                        &current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            if last_stride {
-                                if options.include_more_specifics {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-                                }
-                                break;
-                            }
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            if last_stride {
-                                if options.include_more_specifics {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-                                }
-                                break;
-                            }
-                        }
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                more_specifics_vec = self
-                                    .get_all_more_specifics_from_nibble(
-                                        &current_node,
-                                        nibble,
-                                        nibble_len,
-                                    );
-                            }
-                            match_prefix_idx = Some(pfx_idx.get_part());
-                            break;
-                        }
-                        (None, None) => {
-                            match options.match_type {
-                                MatchType::EmptyMatch => {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-
-                                    match_prefix_idx = None;
-                                    break;
-                                }
-                                MatchType::LongestMatch => {}
-                                MatchType::ExactMatch => {
-                                    match_prefix_idx = None;
-                                }
-                            }
-                            break;
-                        }
-                    }
-                }
-                SizedStrideNode::Stride8(current_node) => {
-                    let search_fn = match options.match_type {
-                        MatchType::ExactMatch => {
-                            if options.include_less_specifics {
-                                TreeBitMapNode::search_stride_for_exact_match_with_less_specifics_at
-                            } else {
-                                TreeBitMapNode::search_stride_for_exact_match_at
-                            }
-                        }
-                        MatchType::LongestMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                        MatchType::EmptyMatch => {
-                            TreeBitMapNode::search_stride_for_longest_match_at
-                        }
-                    };
-                    match search_fn(
-                        &current_node,
-                        search_pfx,
-                        nibble,
-                        nibble_len,
-                        stride_end - stride,
-                        &mut less_specifics_vec,
-                    ) {
-                        (Some(n), Some(pfx_idx)) => {
-                            match_prefix_idx = Some(pfx_idx.get_part());
-                            node = self.retrieve_node(n).unwrap();
-                            if last_stride {
-                                if options.include_more_specifics {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-                                }
-                                break;
-                            }
-                        }
-                        (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
-                            if last_stride {
-                                if options.include_more_specifics {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
-                                        );
-                                }
-                                break;
-                            }
-                        }
-                        (None, Some(pfx_idx)) => {
-                            if options.include_more_specifics {
-                                more_specifics_vec = self
-                                    .get_all_more_specifics_from_nibble(
-                                        &current_node,
-                                        nibble,
-                                        nibble_len,
-                                    );
-                            }
-                            match_prefix_idx = Some(pfx_idx.get_part());
-                            break;
-                        }
-                        (None, None) => {
-                            match options.match_type {
-                                MatchType::EmptyMatch => {
-                                    more_specifics_vec = self
-                                        .get_all_more_specifics_from_nibble(
-                                            &current_node,
-                                            nibble,
-                                            nibble_len,
+                                            StrideNodeId::new_with_cleaned_id(
+                                                search_pfx.net,
+                                                stride_end - stride,
+                                            ),
                                         );
 
                                     match_prefix_idx = None;
@@ -672,6 +509,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
+            println!("prefix {}/{} serial {}", pfx_idx.get_net().into_ipaddr(), pfx_idx.get_len(), pfx_idx.0.unwrap().2);
             prefix = self.retrieve_prefix(pfx_idx);
             match_type = if prefix.unwrap().len == search_pfx.len {
                 MatchType::ExactMatch
@@ -695,7 +533,7 @@ where
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
                     vec.iter()
-                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                        .map(|p| self.retrieve_prefix(*p).unwrap())
                         .collect::<RecordSet<'a, Store::Meta>>()
                 })
             } else {
@@ -704,7 +542,7 @@ where
             more_specifics: if options.include_more_specifics {
                 more_specifics_vec.map(|vec| {
                     vec.iter()
-                        .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
+                        .map(|p| self.retrieve_prefix(*p).unwrap())
                         .collect()
                 })
             } else {

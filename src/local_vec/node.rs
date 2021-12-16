@@ -1,16 +1,17 @@
-use crate::node_id::SortableNodeId;
-use crate::prefix_record::InternalPrefixRecord;
-pub use crate::stride::*;
-use crate::synth_int::{Zero, U256, U512};
-
 use std::{
     fmt::{Binary, Debug},
     marker::PhantomData,
 };
 
+use crate::af::Zero;
+use crate::node_id::SortableNodeId;
+use crate::prefix_record::InternalPrefixRecord;
+pub use crate::stride::*;
+use crate::synth_int::{U256, U512};
+
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
 
-use routecore::addr::AddressFamily;
+use crate::af::AddressFamily;
 use routecore::record::NoMeta;
 
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
