@@ -49,7 +49,6 @@ fn load_prefixes(
 fn main() -> Result<(), Box<dyn Error>> {
     let strides_vec = [
         vec![4, 4, 4, 4, 4, 4, 4, 4],
-        vec![6, 6, 6, 6, 4, 4],
     ];
 
     for strides in strides_vec.iter() {
