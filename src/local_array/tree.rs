@@ -272,7 +272,7 @@ impl From<u8> for StrideType {
             6 => StrideType::Stride6,
             7 => StrideType::Stride7,
             8 => StrideType::Stride8,
-            _ => panic!("Invalid stride level"),
+            _ => panic!("Invalid stride level {}", level),
         }
     }
 }
