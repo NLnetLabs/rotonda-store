@@ -132,7 +132,7 @@ macro_rules! match_node_for_strides {
                                             // FAILURE (Step 7)
                                             // Some other thread messed it up. Try again by upping a newly-read serial once
                                             // more, reading the newly-current meta-data, updating it with our meta-data and
-                                            // see if it works then. rince-repeat.
+                                            // see if it works then. rinse-repeat.
                                             even_newer_serial => {
                                                 println!("Contention for {:?} with serial {} -> {}", found_prefix_id, newer_serial, even_newer_serial);
                                                 let old_serial = serial.fetch_add(1, Ordering::Acquire);
@@ -209,7 +209,7 @@ macro_rules! match_node_for_strides {
                                     // FAILURE (Step 7)
                                     // Some other thread messed it up. Try again by upping a newly-read serial once
                                     // more, reading the newly-current meta-data, updating it with our meta-data and
-                                    // see if it works then. rince-repeat.
+                                    // see if it works then. rinse-repeat.
                                     newer_serial => {
                                         println!("Contention for {:?} with serial {} -> {}", found_prefix_id, old_serial, newer_serial);
                                         old_serial = serial.fetch_add(1, Ordering::Acquire);

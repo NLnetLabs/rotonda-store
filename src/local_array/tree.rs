@@ -780,7 +780,7 @@ where
                 // FAILURE (Step 7)
                 // Some other thread messed it up. Try again by upping a newly-read serial once
                 // more, reading the newly-current meta-data, updating it with our meta-data and
-                // see if it works then. rince-repeat.
+                // see if it works then. rinse-repeat.
                 newer_serial => {
                     println!(
                         "contention for {:?} with serial {} -> {}",
