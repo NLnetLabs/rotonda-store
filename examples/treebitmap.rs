@@ -156,16 +156,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             4,
         ),
         Prefix::new(
-            0b1000_0011_1000_1111_0000_0000_0000_0000_u32.into_ipaddr(),
+            0b1000_0011_1000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
             11,
         ),
         Prefix::new(
-            0b1000_0010_0101_0111_1111_1000_0000_0000_u32.into_ipaddr(),
+            0b1000_0010_0101_0000_0000_0000_0000_0000_u32.into_ipaddr(),
             13,
         ),
         Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24),
         Prefix::new(
-            0b1111_1111_0000_0001_0000_0000_0000_0000_u32.into_ipaddr(),
+            0b1111_1111_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
             12,
         ),
         Prefix::new(
@@ -265,11 +265,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             0b0100_0001_0000_0000_0000_0000_1111_1111_u32.into_ipaddr(),
             32,
         ),
-        Prefix4::new(std::net::Ipv4Addr::new(1, 0, 100, 10).into(), 16),
-        Prefix4::new(std::net::Ipv4Addr::new(131, 143, 0, 0).into(), 11),
+        Prefix4::new(std::net::Ipv4Addr::new(1, 0, 0, 0).into(), 16),
+        Prefix4::new(std::net::Ipv4Addr::new(131, 128, 0, 0).into(), 11),
         Prefix4::new(std::net::Ipv4Addr::new(12, 0, 0, 34).into(), 32),
         Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24),
-        Prefix::new(std::net::Ipv4Addr::new(193, 0, 3, 0).into(), 23),
+        Prefix::new(std::net::Ipv4Addr::new(193, 0, 2, 0).into(), 23),
         Prefix::new(std::net::Ipv4Addr::new(193, 0, 10, 0).into(), 23),
         Prefix::new(
             0b0111_0111_1000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
