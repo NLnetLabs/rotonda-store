@@ -48,16 +48,14 @@ fn load_prefixes(
 
 fn main() -> Result<(), Box<dyn Error>> {
     let strides_vec = [
-        vec![8],
-        vec![4],
+        vec![4, 4, 4, 4, 4, 4, 4, 4],
         vec![6, 6, 6, 6, 4, 4],
-        vec![3, 4, 4, 6, 7, 8],
     ];
 
-    for strides in strides_vec.iter().enumerate() {
+    for strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
         let mut tree_bitmap =
-            MultiThreadedStore::new(strides.1.to_owned(), vec![8]);
+            MultiThreadedStore::new(strides.clone(), strides.clone());
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);
