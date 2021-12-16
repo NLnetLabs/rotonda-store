@@ -298,7 +298,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             3 => (AF::zero(), 0),
             4 => (AF::zero(), 0),
             5 => (AF::zero(), 0),
-            _ => panic!("Invalid stride size"),
+            _ => panic!("Invalid stride size {}", first_stride_size),
         };
         StrideNodeId::dangerously_new_with_id_as_is(addr_bits, len)
     }
