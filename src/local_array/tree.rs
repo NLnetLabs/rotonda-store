@@ -25,8 +25,6 @@ use routecore::record::MergeUpdate;
 
 //------------------- Unsized Node Enums ------------------------------------
 
-pub(crate) trait UnsizedNode<AF: AddressFamily> {}
-
 // No, no, NO, NO, no, no! We're not going to Box this, because that's slow!
 // This enum is never used to store nodes/prefixes, it's only to be used in
 // generic code.
@@ -56,8 +54,6 @@ where
         }
     }
 }
-
-impl<AF: AddressFamily> UnsizedNode<AF> for SizedStrideNode<AF> {}
 
 impl<AF> Default for SizedStrideNode<AF>
 where
@@ -92,13 +88,6 @@ pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
     // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
     // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
-}
-
-impl<'a, AF: AddressFamily> UnsizedNode<AF> for SizedStrideRef<'a, AF> {}
-
-pub(crate) trait NodeWrapper<AF: AddressFamily> {
-    type Unsized: UnsizedNode<AF>;
-    type UnsizedRef: UnsizedNode<AF>;
 }
 
 pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
@@ -252,11 +241,9 @@ impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
     }
 }
 
-impl<AF: AddressFamily> std::convert::Into<PrefixId<AF>>
-    for StrideNodeId<AF>
-{
-    fn into(self) -> PrefixId<AF> {
-        let (addr_bits, len) = self.0.unwrap();
+impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>> for PrefixId<AF> {
+    fn from(id: StrideNodeId<AF>) -> Self {
+        let (addr_bits, len) = id.0.unwrap();
         PrefixId::new(addr_bits, len)
     }
 }
