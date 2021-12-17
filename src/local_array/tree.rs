@@ -552,8 +552,8 @@ where
                 });
                 stride_stats[2].inc(0);
             }
-            _ => {
-                panic!("unknown stride size encountered in STRIDES array");
+            unknown_stride_size => {
+                panic!("unknown stride size {} encountered in STRIDES array", unknown_stride_size);
             }
         };
 
