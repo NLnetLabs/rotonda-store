@@ -23,7 +23,7 @@ use ansi_term::Colour;
 
 use routecore::record::MergeUpdate;
 
-//------------------- Unsized Node Enums ------------------------------------
+//------------------- Sized Node Enums ------------------------------------
 
 // No, no, NO, NO, no, no! We're not going to Box this, because that's slow!
 // This enum is never used to store nodes/prefixes, it's only to be used in
