@@ -525,7 +525,6 @@ where
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-                    // ptr_vec: NodeSet::empty(),
                     pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
@@ -535,18 +534,15 @@ where
                 root_node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
-                    // ptr_vec: NodeSet::empty(),
                     pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
-                // start_stride_type = StrideType::Stride4;
             }
             5 => {
                 root_node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
-                    // ptr_vec: NodeSet::empty(),
                     pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
