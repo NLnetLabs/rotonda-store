@@ -763,7 +763,7 @@ where
                 // in the current node in the global store and be done with it.
                 old_serial if old_serial == new_serial - 1 => {
                     println!("Found default route prefix with serial {}, updating it to {}...", df_pfx_id.0.unwrap().2, new_serial);
-                    let pfx_idx_clone = df_pfx_id.clone();
+                    let pfx_idx_clone = df_pfx_id;
                     self.update_prefix_meta(
                         pfx_idx_clone,
                         new_serial,
