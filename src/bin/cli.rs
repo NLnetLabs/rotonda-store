@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap.prefixes_v6_len()
                                 );
                                 println!(
-                                    "{:#?}",
+                                    "{}",
                                     tree_bitmap.prefixes_iter()
                                 );
                             }

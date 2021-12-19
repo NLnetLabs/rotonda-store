@@ -13,7 +13,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::local_array::CacheGuard;
 
 pub(crate) use super::atomic_stride::*;
-use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult};
+use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult, StrideStore};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -606,6 +606,7 @@ where
         let mut cur_i = self.store.get_root_node_id(self.strides[0]);
         let mut level: u8 = 0;
 
+        println!("....");
         loop {
             let stride = self.strides[level as usize];
             stride_end += stride;
@@ -678,13 +679,13 @@ where
         self.store.get_root_node_id(self.strides[0])
     }
 
-    #[inline]
-    pub(crate) fn retrieve_node_mut(
-        &'a mut self,
-        index: StrideNodeId<Store::AF>,
-    ) -> SizedNodeRefResult<'a, Store::AF> {
-        self.store.retrieve_node_mut(index)
-    }
+    // #[inline]
+    // pub(crate) fn retrieve_node_mut(
+    //     &'a self,
+    //     index: StrideNodeId<Store::AF>,
+    // ) -> SizedNodeRefResult<'a, Store::AF> {
+    //     self.store.retrieve_node_mut(index)
+    // }
 
     pub(crate) fn store_prefix(
         &mut self,

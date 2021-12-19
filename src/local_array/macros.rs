@@ -20,10 +20,11 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match $self.retrieve_node_mut($cur_i)? {
+        match $self.store.get_stride_for_id($cur_i) {
             $(
-            SizedStrideRefMut::$variant(node) => {
-            let mut current_node = std::mem::take(node);
+            (node, StrideStore::$variant(node_store)) => {
+            let mut n_node = node_store.get_mut(&node).unwrap(); //.value_mut();
+            let mut current_node = std::mem::take(n_node.value_mut());
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
@@ -47,6 +48,7 @@ macro_rules! match_node_for_strides {
                     let i = $self.store_node(new_id, n).unwrap();
 
                     // update ptrbitarr in the current node
+                    // node_store.alter(&$cur_i, |_, n| { n });
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     Some(i)
@@ -91,7 +93,7 @@ macro_rules! match_node_for_strides {
                         }
                         // STEP 4
                         //
-                        // This is basically the same code as the 
+                        // This is basically the same code as the
                         // ExistingPrefix case, we're repeating the code here
                         // to avoid starting all over again with fetching the
                         // prefix node by node.
@@ -103,14 +105,14 @@ macro_rules! match_node_for_strides {
                             // No need to set a serial here, it's not going to be used without
                             // it being explicitly set.
                             let found_prefix_id = PrefixId::new($pfx.net, $pfx.len);
-        
+
                             if let Some(ref new_meta) = $pfx.meta {
-        
+
                                 // RCU the prefix meta-data in the global store
                                 $self.update_prefix_meta(found_prefix_id.set_serial(newer_serial), new_serial, new_meta)?;
-        
+
                                 loop {
-        
+
                                     match serial.load(Ordering::Acquire) {
                                             1 => {
                                                 panic!("So-called existing prefix {}/{} does not exist?", found_prefix_id.get_net().into_ipaddr(), found_prefix_id.get_len());
