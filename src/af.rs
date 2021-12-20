@@ -30,6 +30,7 @@ pub trait AddressFamily:
     // `start_bit + len` and shifted to the right.
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
 
+    /// Treat self as a prefix and append the given nibble to it.
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8);
 
     fn truncate_to_len(self, len: u8) -> Self;
@@ -79,6 +80,37 @@ impl AddressFamily for IPv4 {
         }
     }
 
+    /// Treat self as a prefix and append the given nibble to it.
+    /// 
+    /// Shifts the rightmost `nibble_len` bits of `nibble` to the left to a
+    /// position `len` bits from the left, then ORs the result into self.
+    /// 
+    /// For example:
+    /// 
+    /// ```
+    /// # use rotonda_store::IPv4;
+    /// # use rotonda_store::AddressFamily;
+    /// let prefix = 0b10101010_00000000_00000000_00000000_u32; // 8-bit prefix
+    /// let nibble = 0b1100110_u32;                             // 7-bit nibble
+    /// let (new_prefix, new_len) = prefix.add_nibble(8, nibble, 7);
+    /// assert_eq!(new_len, 8 + 7);
+    /// assert_eq!(new_prefix, 0b10101010_11001100_00000000_00000000);
+    /// //                       ^^^^^^^^ ^^^^^^^
+    /// //                       prefix   nibble
+    /// ```
+    ///
+    /// # Panics
+    /// 
+    /// Will panic if there is insufficient space to add the given nibble,
+    /// i.e. if `len + nibble_len >= 32`.
+    /// 
+    /// ```should_panic
+    /// # use rotonda_store::IPv4;
+    /// # use rotonda_store::AddressFamily;
+    /// let prefix = 0b10101010_00000000_00000000_00000100_u32; // 30-bit prefix
+    /// let nibble = 0b1100110_u32;                             // 7-bit nibble
+    /// let (new_prefix, new_len) = prefix.add_nibble(30, nibble, 7);
+    /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (u32, u8) {
         let res =
             self | ((nibble << (32 - len - nibble_len) as usize) as u32);
@@ -126,9 +158,40 @@ impl AddressFamily for IPv6 {
         ((net << start_bit) >> ((128 - len) % 128)) as u32
     }
 
+    /// Treat self as a prefix and append the given nibble to it.
+    /// 
+    /// Shifts the rightmost `nibble_len` bits of `nibble` to the left to a
+    /// position `len` bits from the left, then ORs the result into self.
+    /// 
+    /// For example:
+    /// 
+    /// ```
+    /// # use rotonda_store::IPv6;
+    /// # use rotonda_store::AddressFamily;
+    /// let prefix = 0xF0F0F0F0_F0000000_00000000_00000000u128; // 36-bit prefix
+    /// let nibble = 0xA8A8_u32;                                // 16-bit nibble
+    /// let (new_prefix, new_len) = prefix.add_nibble(36, nibble, 16);
+    /// assert_eq!(new_len, 36 + 16);
+    /// assert_eq!(new_prefix, 0xF0F0F0F0F_A8A8000_00000000_00000000u128);
+    /// //                       ^^^^^^^^^ ^^^^
+    /// //                       prefix    nibble
+    /// ```
+    ///
+    /// # Panics
+    /// 
+    /// Will panic if there is insufficient space to add the given nibble,
+    /// i.e. if `len + nibble_len >= 128`.
+    /// 
+    /// ```should_panic
+    /// # use rotonda_store::IPv6;
+    /// # use rotonda_store::AddressFamily;
+    /// let prefix = 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFF0000u128; // 112-bit prefix
+    /// let nibble = 0xF00FF00F_u32;                            // 32-bit nibble
+    /// let (new_prefix, new_len) = prefix.add_nibble(112, nibble, 32);
+    /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8) {
         let res =
-            self | ((nibble << (128 - len - nibble_len) as usize) as u128);
+            self | (((nibble as u128) << (128 - len - nibble_len) as usize) as u128);
         (res, len + nibble_len)
     }
 
