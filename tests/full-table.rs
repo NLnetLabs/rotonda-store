@@ -72,6 +72,7 @@ mod tests {
             let inet_max = 255;
             let len_max = 32;
 
+            let locks = tree_bitmap.acquire_prefixes_rwlock_read();
             let mut found_counter = 0_u32;
             let mut not_found_counter = 0_u32;
             (0..inet_max).into_iter().for_each(|i_net| {
@@ -84,6 +85,7 @@ mod tests {
                         );
                         print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
                         let res = tree_bitmap.match_prefix(
+                            (&locks.0, &locks.1),
                             &pfx.unwrap(),
                             &MatchOptions {
                                 match_type: MatchType::LongestMatch,

@@ -13,7 +13,9 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::local_array::CacheGuard;
 
 pub(crate) use super::atomic_stride::*;
-use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult, StrideStore};
+use super::storage_backend::{
+    StrideReadStore, StrideWriteStore
+};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -79,16 +81,16 @@ pub enum SizedStrideRef<'a, AF: AddressFamily> {
     // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
-
-#[derive(Debug)]
-pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
-    Stride3(&'a mut TreeBitMapNode<AF, Stride3, 14, 8>),
-    Stride4(&'a mut TreeBitMapNode<AF, Stride4, 30, 16>),
-    Stride5(&'a mut TreeBitMapNode<AF, Stride5, 62, 32>),
-    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
-}
+// 
+// #[derive(Debug)]
+// pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
+//     Stride3(&'a mut TreeBitMapNode<AF, Stride3, 14, 8>),
+//     Stride4(&'a mut TreeBitMapNode<AF, Stride4, 30, 16>),
+//     Stride5(&'a mut TreeBitMapNode<AF, Stride5, 62, 32>),
+//     // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+//     // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+//     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+// }
 
 pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
@@ -241,7 +243,9 @@ impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
     }
 }
 
-impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>> for PrefixId<AF> {
+impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
+    for PrefixId<AF>
+{
     fn from(id: StrideNodeId<AF>) -> Self {
         let (addr_bits, len) = id.0.unwrap();
         PrefixId::new(addr_bits, len)
@@ -373,13 +377,9 @@ pub trait NodeCollection<AF: AddressFamily> {
 // complete prefix of a child prefix.
 
 #[derive(Debug)]
-pub struct PrefixSet<const ARRAYSIZE: usize>(
-    [AtomicUsize; ARRAYSIZE],
-);
+pub struct PrefixSet<const ARRAYSIZE: usize>([AtomicUsize; ARRAYSIZE]);
 
-impl<const ARRAYSIZE: usize> std::fmt::Display
-    for PrefixSet<ARRAYSIZE>
-{
+impl<const ARRAYSIZE: usize> std::fmt::Display for PrefixSet<ARRAYSIZE> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self)
     }
@@ -390,7 +390,7 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
     // PrefixIds are implied by the position in the pfx_vec we can
     // calculate them with if we know the base address of the node
     // this PrefixSet lives in.
-    pub(crate) fn to_vec<AF: AddressFamily> (
+    pub(crate) fn to_vec<AF: AddressFamily>(
         &self,
         base_prefix: StrideNodeId<AF>,
     ) -> Vec<PrefixId<AF>> {
@@ -425,8 +425,7 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
     }
 
     pub(crate) fn empty() -> Self {
-        let arr =
-            array_init::array_init(|_| AtomicUsize::new(0));
+        let arr = array_init::array_init(|_| AtomicUsize::new(0));
         PrefixSet(arr)
     }
 
@@ -435,9 +434,7 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
     }
 }
 
-impl<const ARRAYSIZE: usize> std::ops::Index<usize>
-    for PrefixSet<ARRAYSIZE>
-{
+impl<const ARRAYSIZE: usize> std::ops::Index<usize> for PrefixSet<ARRAYSIZE> {
     type Output = AtomicUsize;
 
     fn index(&self, idx: usize) -> &AtomicUsize {
@@ -549,7 +546,10 @@ where
                 stride_stats[2].inc(0);
             }
             unknown_stride_size => {
-                panic!("unknown stride size {} encountered in STRIDES array", unknown_stride_size);
+                panic!(
+                    "unknown stride size {} encountered in STRIDES array",
+                    unknown_stride_size
+                );
             }
         };
 
@@ -592,13 +592,12 @@ where
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
     pub(crate) fn insert(
-        &mut self,
+        &self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if pfx.len == 0 {
             let _res =
                 self.update_default_route_prefix_meta(pfx.meta.unwrap());
-            println!("--");
             return Ok(());
         }
 
@@ -606,7 +605,6 @@ where
         let mut cur_i = self.store.get_root_node_id(self.strides[0]);
         let mut level: u8 = 0;
 
-        println!("....");
         loop {
             let stride = self.strides[level as usize];
             stride_end += stride;
@@ -651,20 +649,20 @@ where
     }
 
     fn store_node(
-        &mut self,
+        &self,
         id: StrideNodeId<Store::AF>,
         next_node: SizedStrideNode<Store::AF>,
     ) -> Option<StrideNodeId<Store::AF>> {
         self.store.store_node(id, next_node)
     }
 
-    #[inline]
-    pub(crate) fn retrieve_node(
-        &self,
-        id: StrideNodeId<Store::AF>,
-    ) -> SizedNodeRefOption<Store::AF> {
-        self.store.retrieve_node(id)
-    }
+    // #[inline]
+    // pub(crate) fn retrieve_node(
+    //     &self,
+    //     id: StrideNodeId<Store::AF>,
+    // ) -> SizedNodeRefOption<Store::AF> {
+    //     self.store.retrieve_node(id)
+    // }
 
     #[inline]
     #[cfg(feature = "dynamodb")]
@@ -688,7 +686,7 @@ where
     // }
 
     pub(crate) fn store_prefix(
-        &mut self,
+        &self,
         next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
         self.store
@@ -718,10 +716,10 @@ where
     //  for that prefix and make sure we start searching/inserting with one
     //   of those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
-        &mut self,
+        &self,
         new_meta: Store::Meta,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Updating the default route...");
+        // println!("Updating the default route...");
         let mut old_serial =
             self.store.increment_default_route_prefix_serial();
         let new_serial = old_serial + 1;
@@ -731,9 +729,9 @@ where
         loop {
             match old_serial {
                 0 => {
-                    println!(
-                        "No default route prefix found, creating one..."
-                    );
+                    // println!(
+                    //     "No default route prefix found, creating one..."
+                    // );
                     self.store_prefix(InternalPrefixRecord {
                         net: Store::AF::zero(),
                         len: 0,
@@ -746,17 +744,12 @@ where
                 // serial and creating the entry with that serial. Update the ptrbitarr
                 // in the current node in the global store and be done with it.
                 old_serial if old_serial == new_serial - 1 => {
-                    println!("Found default route prefix with serial {}, updating it to {}...", df_pfx_id.0.unwrap().2, new_serial);
                     let pfx_idx_clone = df_pfx_id;
                     self.update_prefix_meta(
                         pfx_idx_clone,
                         new_serial,
                         &new_meta,
                     )?;
-                    println!(
-                        "removing old default route prefix with serial {}...",
-                        old_serial
-                    );
                     self.store
                         .remove_prefix(pfx_idx_clone.set_serial(old_serial));
                     return Ok(());
@@ -773,8 +766,8 @@ where
                     old_serial =
                         self.store.increment_default_route_prefix_serial();
                     self.store
-                        .retrieve_prefix(df_pfx_id.set_serial(old_serial))
-                        .unwrap();
+                        .get_prefixes().get(&df_pfx_id.set_serial(old_serial));
+
                     self.update_prefix_meta(
                         df_pfx_id,
                         newer_serial,
@@ -791,7 +784,7 @@ where
     // for the meta-data type will be used. Creates a new prefix entry
     // in the global store with the serial number `new_serial`.
     fn update_prefix_meta(
-        &mut self,
+        &self,
         update_prefix_idx: PrefixId<Store::AF>,
         new_serial: usize,
         merge_meta: &Store::Meta,
@@ -800,14 +793,13 @@ where
         // don't want to mutate the current entry in the store. Instead
         // we want to create a new entry with the same prefix, but with
         // the merged meta-data and a new serial number.
-        let new_meta = match self.store.retrieve_prefix(update_prefix_idx) {
+        let new_meta = match self.store.get_prefixes().get(&update_prefix_idx) {
             Some(update_prefix) => update_prefix
                 .meta
                 .as_ref()
                 .unwrap()
                 .clone_merge_update(merge_meta)?,
             None => {
-                println!("-");
                 // panic!(
                 //     "panic: {}/{} with serial {} not found.",
                 //     update_prefix_idx.get_net().into_ipaddr(),
@@ -834,13 +826,13 @@ where
         )
     }
 
-    #[inline]
-    pub(crate) fn retrieve_prefix(
-        &self,
-        index: PrefixId<Store::AF>,
-    ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
-        self.store.retrieve_prefix(index)
-    }
+    // #[inline]
+    // pub(crate) fn retrieve_prefix(
+    //     &self,
+    //     index: PrefixId<Store::AF>,
+    // ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
+    //     self.store.get_prefixes().get(&index)
+    // }
 
     #[inline]
     #[cfg(feature = "dynamodb")]
@@ -859,8 +851,11 @@ where
         start_node_id: StrideNodeId<Store::AF>,
         found_pfx_vec: &mut Vec<PrefixId<Store::AF>>,
     ) {
-        match self.retrieve_node(start_node_id).unwrap() {
-            SizedStrideRef::Stride3(n) => {
+        // match self.retrieve_node(start_node_id).unwrap() {
+        // let (id , store) = self.store.get_stride_for_id(start_node_id);
+        match self.store.get_stride_for_id_with_read_store(start_node_id) {
+            (id, StrideReadStore::Stride3(store)) => {
+                let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
@@ -870,7 +865,8 @@ where
                     );
                 }
             }
-            SizedStrideRef::Stride4(n) => {
+            (id, StrideReadStore::Stride4(store)) => {
+                let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
@@ -880,7 +876,8 @@ where
                     );
                 }
             }
-            SizedStrideRef::Stride5(n) => {
+            (id, StrideReadStore::Stride5(store)) => {
+                let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {

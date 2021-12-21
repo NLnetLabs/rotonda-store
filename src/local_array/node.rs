@@ -331,7 +331,7 @@ where
             // nibble.
             if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                 let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l)
-                .set_serial(self.pfx_vec[S::get_pfx_index(nibble, n_l)].load(Ordering::Acquire));
+                .set_serial(self.pfx_vec[S::get_pfx_index(nibble, n_l)].load(Ordering::Relaxed));
 
                 // Receiving a less_specifics_vec means that the user wants
                 // to have all the last-specific prefixes returned, so add

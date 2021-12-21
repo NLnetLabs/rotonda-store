@@ -20,11 +20,10 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match $self.store.get_stride_for_id($cur_i) {
+        match $self.store.get_stride_for_id_with_write_store($cur_i) {
             $(
-            (node, StrideStore::$variant(node_store)) => {
-            let mut n_node = node_store.get_mut(&node).unwrap(); //.value_mut();
-            let mut current_node = std::mem::take(n_node.value_mut());
+            (node, StrideWriteStore::$variant(mut node_store)) => {
+            let mut current_node = std::mem::take(node_store.get_mut(&node).unwrap());
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
@@ -39,27 +38,39 @@ macro_rules! match_node_for_strides {
             ) {
                 NewNodeOrIndex::NewNode(n) => {
                     // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    $self.stats[$stats_level].inc($level);
+                    // $self.stats[$stats_level].inc($level);
 
                     // get a new identifier for the node we're going to create.
                     let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
 
-                    // store the node in the global store
-                    let i = $self.store_node(new_id, n).unwrap();
+                    // store the new node in the global store
+                    // let i: StrideNodeId<Store::AF>;
+                    // if $self.strides[($level + 1) as usize] != $stride_len {
+                    drop(node_store);
+                    let mut new_store = $self.store.get_stride_for_id_with_write_store(new_id).1;
+                    let i = $self.store.store_node_in_store(&mut new_store, new_id, n).unwrap();
+                    drop(new_store);
+                        // drop(node_store);
+                    // }
+                    // else {
+                        // i = $self.store.store_node_in_store(&mut StrideStore::$variant(node_store), new_id, n).unwrap();
+                    // }
+                    // let i = node_store.insert(new_id, n).unwrap();
 
-                    // update ptrbitarr in the current node
+                    // update ptrbitarr in the current node and move it back into the store
                     // node_store.alter(&$cur_i, |_, n| { n });
-                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+                    let node_store = &mut $self.store.get_stride_for_id_with_write_store($cur_i).1;
+                    $self.store.update_node_in_store(node_store, $cur_i,SizedStrideNode::$variant(current_node));
 
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
-                    $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+                    $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix(sort_id) => {
                     // Log
-                    $self.stats[$stats_level].inc_prefix_count($level);
+                    // $self.stats[$stats_level].inc_prefix_count($level);
 
                     // THE CRITICAL SECTION
                     //
@@ -89,7 +100,7 @@ macro_rules! match_node_for_strides {
                             // STEP 3
                             // update the ptrbitarr bitarray in the current node in
                             // the global store.
-                            $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
+                            $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                         }
                         // STEP 4
                         //
@@ -123,11 +134,11 @@ macro_rules! match_node_for_strides {
                                             // in the current node in the global store and be done with it.
                                             cur_serial if cur_serial == new_serial => {
                                                 let found_prefix_id_clone = found_prefix_id.clone();
-                                                $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-                                                println!(
-                                                    "removing old prefix with serial {}...",
-                                                    newer_serial
-                                                );
+                                                $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
+                                                // println!(
+                                                //     "removing old prefix with serial {}...",
+                                                //     newer_serial
+                                                // );
                                                 $self.store.remove_prefix(found_prefix_id_clone.set_serial(newer_serial));
                                                 return Ok(());
                                             },
@@ -138,7 +149,7 @@ macro_rules! match_node_for_strides {
                                             even_newer_serial => {
                                                 println!("Contention for {:?} with serial {} -> {}", found_prefix_id, newer_serial, even_newer_serial);
                                                 let old_serial = serial.fetch_add(1, Ordering::Acquire);
-                                                $self.store.retrieve_prefix(found_prefix_id.set_serial(old_serial)).unwrap();
+                                                $self.store.get_prefixes().get(&found_prefix_id.set_serial(old_serial));
                                                 $self.update_prefix_meta(found_prefix_id, even_newer_serial, &new_meta)?;
                                             }
                                     };
@@ -199,11 +210,7 @@ macro_rules! match_node_for_strides {
                                     cur_serial if cur_serial == new_serial => {
                                         let found_prefix_id_clone = found_prefix_id.clone();
                                         // current_node.pfx_vec.insert(pfx_vec_index, found_prefix_id_clone.set_serial(new_serial));
-                                        $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-                                        println!(
-                                            "removing old prefix with serial {}...",
-                                            old_serial
-                                        );
+                                        $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                                         $self.store.remove_prefix(found_prefix_id_clone.set_serial(old_serial));
                                         // println!("current_node.pfx_vec {:?}", current_node.pfx_vec);
                                         return Ok(());
@@ -215,7 +222,7 @@ macro_rules! match_node_for_strides {
                                     newer_serial => {
                                         println!("Contention for {:?} with serial {} -> {}", found_prefix_id, old_serial, newer_serial);
                                         old_serial = serial.fetch_add(1, Ordering::Acquire);
-                                        $self.store.retrieve_prefix(found_prefix_id.set_serial(old_serial)).unwrap();
+                                        $self.store.get_prefixes().get(&found_prefix_id.set_serial(old_serial));
                                         $self.update_prefix_meta(found_prefix_id, newer_serial, &new_meta)?;
                                     }
                             };

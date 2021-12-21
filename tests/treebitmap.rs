@@ -24,7 +24,10 @@ mod tests {
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
         );
+
+        let locks = trie.acquire_prefixes_rwlock_read();
         let res = trie.match_prefix(
+            (&locks.0, &locks.1),
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
@@ -41,12 +44,18 @@ mod tests {
             std::net::Ipv4Addr::new(255, 255, 255, 255).into(),
             32,
         );
+
+        drop(locks);
         trie.insert(&max_pfx?, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(255, 255, 255, 255).into(),
             32,
         );
+
+
+        let locks = trie.acquire_prefixes_rwlock_read();
         let res = trie.match_prefix(
+            (&locks.0, &locks.1),
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
@@ -293,9 +302,18 @@ mod tests {
             tree_bitmap.insert(&pfx?, PrefixAs(666))?;
         }
 
-        for pfx in tree_bitmap.prefixes_iter() {
+        let (store_v4, store_v6) = tree_bitmap.acquire_prefixes_rwlock_read();
+        let prefixes_iter = rotonda_store::HashMapPrefixRecordIterator {
+            v4: Some(store_v4.values()),
+            v6: store_v6.values(),
+        };
+        
+        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+
+        for pfx in prefixes_iter {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
+                (&locks.0, &locks.1),                
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
@@ -308,6 +326,7 @@ mod tests {
         }
 
         let res = tree_bitmap.match_prefix(
+            (&locks.0, &locks.1),
             &Prefix::new_relaxed(
                 std::net::Ipv4Addr::new(192, 0, 1, 0).into(),
                 24,
@@ -377,12 +396,14 @@ mod tests {
                     i_len_s,
                 );
 
+                let locks = tree_bitmap.acquire_prefixes_rwlock_read();
                 for s_len in i_len_s..32 {
                     let pfx = Prefix::new_relaxed(
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
                         s_len,
                     )?;
                     let res = tree_bitmap.match_prefix(
+                        (&locks.0, &locks.1),
                         &pfx,
                         &MatchOptions {
                             match_type: MatchType::LongestMatch,

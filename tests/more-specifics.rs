@@ -100,6 +100,7 @@ mod tests {
         }
         println!("------ end of inserts\n");
 
+        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
         for spfx in &[
             (
                 &Prefix::new(
@@ -161,6 +162,7 @@ mod tests {
         ] {
             println!("search for: {}", (*spfx.0)?);
             let found_result = tree_bitmap.match_prefix(
+                (&locks.0, &locks.1),
                 &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::ExactMatch,

@@ -78,6 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     tree_bitmap.print_funky_stats();
+    let locks = tree_bitmap.acquire_prefixes_rwlock_read();
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
@@ -105,10 +106,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "ipv6 prefixes :\t{}",
                                     tree_bitmap.prefixes_v6_len()
                                 );
-                                println!(
-                                    "{}",
-                                    tree_bitmap.prefixes_iter()
-                                );
+
+                                tree_bitmap
+                                    .prefixes_iter(
+                                        locks.0.values(),
+                                        locks.1.values(),
+                                    )
+                                    .for_each(|pfx| {
+                                        println!("{} {}", pfx.prefix, pfx.meta);
+                                    });
                             }
                             "n" => {
                                 // if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
@@ -133,12 +139,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "ipv6 nodes :\t{}",
                                     tree_bitmap.nodes_v6_len()
                                 );
-                                println!(
-                                    "{:#?}",
-                                    tree_bitmap
-                                        .nodes_v4_iter()
-                                        .collect::<Vec<_>>()
-                                );
+                                // println!(
+                                //     "{:#?}",
+                                //     tree_bitmap
+                                //         .nodes_v4_iter()
+                                //         .collect::<Vec<_>>()
+                                // );
                             }
                             _ => {
                                 println!(
@@ -179,6 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
+                                        (&locks.0, &locks.1),
                                         &p,
                                         &MatchOptions {
                                             match_type: MatchType::EmptyMatch,
@@ -195,6 +202,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
+                                        (&locks.0, &locks.1),
                                         &Prefix::new_relaxed(ip.into(), len)?,
                                         &MatchOptions {
                                             match_type: MatchType::EmptyMatch,

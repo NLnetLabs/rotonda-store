@@ -8,7 +8,7 @@ use routecore::record::{MergeUpdate, Meta};
 //------------ InternalPrefixRecord -----------------------------------------
 
 #[derive(Clone, Copy)]
-pub(crate) struct InternalPrefixRecord<AF, T>
+pub struct InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily,

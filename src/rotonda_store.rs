@@ -150,15 +150,16 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
 
 //------------ HashMapPrefixRecordIterator ----------------------------------
 
+#[derive(Debug)]
 pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
-    pub(crate) v4: Option<
-        dashmap::iter::Iter<
+    pub v4: Option<
+        std::collections::hash_map::Values<
             'a,
             PrefixId<IPv4>,
             InternalPrefixRecord<IPv4, Meta>,
         >,
     >,
-    pub(crate) v6: dashmap::iter::Iter<
+    pub v6: std::collections::hash_map::Values<
         'a,
         PrefixId<IPv6>,
         InternalPrefixRecord<IPv6, Meta>,
@@ -173,7 +174,7 @@ impl<'a, Meta: routecore::record::Meta + 'a> Iterator
     fn next(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {
-            return self.v6.next().map(|ref res| {
+            return self.v6.next().map(|res| {
                 PrefixRecord::new_with_local_meta(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                     res.meta.clone().unwrap(),
@@ -181,7 +182,7 @@ impl<'a, Meta: routecore::record::Meta + 'a> Iterator
             });
         }
 
-        if let Some(ref res) = self.v4.as_mut().and_then(|v4| v4.next()) {
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
             return Some(PrefixRecord::new_with_local_meta(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                 res.meta.clone().unwrap(),
@@ -192,11 +193,23 @@ impl<'a, Meta: routecore::record::Meta + 'a> Iterator
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + 'a> std::fmt::Display for HashMapPrefixRecordIterator<'a, Meta> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "some kind of prefixes iterator")
-    }
-}
+// impl<'a, Meta: routecore::record::Meta + 'a> std::fmt::Display
+//     for HashMapPrefixRecordIterator<'a, Meta>
+// {
+//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+//         write!(f, "some kind of prefixes iterator")
+//     }
+// }
+
+// impl<'a, Meta: routecore::record::Meta + 'a> std::iter::FromIterator<routecore::bgp::PrefixRecord<'a, Meta>> for HashMapPrefixRecordIterator<'a, Meta> {
+//     fn from_iter<
+//         I: IntoIterator<Item = routecore::bgp::PrefixRecord<'a, Meta>>,
+//     >(
+//         iter: I,
+//     ) -> Self {
+        
+//     }
+// }
 
 //------------ PrefixRecordIter ---------------------------------------------
 
@@ -279,7 +292,7 @@ impl<'a, Meta: routecore::record::Meta> fmt::Display
             Some(pfx) => format!("{}", pfx),
             None => "".to_string(),
         };
-        let pfx_meta_str = match self.prefix_meta {
+        let pfx_meta_str = match &self.prefix_meta {
             Some(pfx_meta) => format!("{}", pfx_meta),
             None => "".to_string(),
         };

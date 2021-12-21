@@ -217,20 +217,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(&p, PrefixAs(666))?;
     }
     println!("------ end of inserts\n");
-    println!(
-        "{:#?}",
-        tree_bitmap
-            .prefixes_iter()
-            .enumerate()
-            .collect::<Vec<(usize, _)>>()
-    );
-    println!(
-        "{:#?}",
-        tree_bitmap
-            .prefixes_iter()
-            .enumerate()
-            .collect::<Vec<(usize, _)>>()
-    );
+    // println!(
+    //     "{:#?}",
+    //     tree_bitmap
+    //         .prefixes_iter()
+    //         .enumerate()
+    //         .collect::<Vec<(usize, _)>>()
+    // );
+    // println!(
+    //     "{:#?}",
+    //     tree_bitmap
+    //         .prefixes_iter()
+    //         .enumerate()
+    //         .collect::<Vec<(usize, _)>>()
+    // );
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 
@@ -275,7 +275,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
+        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
         let s_spfx = tree_bitmap.match_prefix(
+            (&locks.0, &locks.1),
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::ExactMatch,

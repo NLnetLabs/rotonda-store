@@ -33,10 +33,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("[");
-    let strides_vec = [
-        vec![4, 4, 4, 4, 4, 4, 4, 4],
-        vec![3, 4, 5, 4]
-    ];
+    let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
     for strides in strides_vec.iter().enumerate() {
         println!("[");
@@ -66,6 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let len_max = 32;
 
             let start = std::time::Instant::now();
+            let locks = tree_bitmap.acquire_prefixes_rwlock_read();
             for i_net in 0..inet_max {
                 for s_len in 0..len_max {
                     for ii_net in 0..inet_max {
@@ -75,6 +73,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                             s_len,
                         ) {
                             tree_bitmap.match_prefix(
+                                (&locks.0, &locks.1),
                                 &pfx,
                                 &MatchOptions {
                                     match_type: MatchType::LongestMatch,

@@ -4,12 +4,16 @@ use crate::local_array::tree::TreeBitMap;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
 use crate::{QueryResult, Stats, Strides};
+use parking_lot::RwLockReadGuard;
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
 
+use std::collections::hash_map::Values;
+use std::collections::HashMap;
 use std::fmt;
 
-use super::node::SizedStrideRef;
+use super::node::PrefixId;
+use super::storage_backend::PrefixHashMap;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
@@ -55,11 +59,16 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     pub fn match_prefix(
         &'a self,
+        prefix_store_locks: (
+            &'a RwLockReadGuard<'a, PrefixHashMap<IPv4, Meta>>,
+            &'a RwLockReadGuard<'a, PrefixHashMap<IPv6, Meta>>,
+        ),
         search_pfx: &Prefix,
         options: &MatchOptions,
     ) -> QueryResult<'a, Meta> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
+                prefix_store_locks.0,
                 &InternalPrefixRecord::<IPv4, NoMeta>::new(
                     addr.into(),
                     search_pfx.len(),
@@ -67,6 +76,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
                 options,
             ),
             std::net::IpAddr::V6(addr) => self.v6.match_prefix(
+                prefix_store_locks.1,
                 &InternalPrefixRecord::<IPv6, NoMeta>::new(
                     addr.into(),
                     search_pfx.len(),
@@ -99,74 +109,113 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    pub fn prefixes_iter(&self) -> HashMapPrefixRecordIterator<Meta> {
-        let rs4 = self.v4.store.prefixes.iter();
-        let rs6 = self.v6.store.prefixes.iter();
+    pub fn prefixes_iter(
+        &'a self,
+        store_v4: Values<
+            'a,
+            PrefixId<IPv4>,
+            InternalPrefixRecord<IPv4, Meta>,
+        >,
+        store_v6: Values<
+            'a,
+            PrefixId<IPv6>,
+            InternalPrefixRecord<IPv6, Meta>,
+        >,
+    ) -> HashMapPrefixRecordIterator<'_, Meta> {
+        // let (store_v4, store_v6) = self.acquire_prefixes_rwlock_read();
 
         crate::HashMapPrefixRecordIterator::<Meta> {
-            v4: Some(rs4),
-            v6: rs6,
+            v4: Some(store_v4),
+            v6: store_v6,
         }
     }
 
-    pub fn nodes_v4_iter(
+    pub fn acquire_prefixes_rwlock_read(
         &'a self,
-    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv4>> + 'a {
-        self.v4
-            .store
-            .nodes3
-            .iter()
-            .map(|n| SizedStrideRef::Stride3(n.value()))
-            .chain(
-                self.v4
-                    .store
-                    .nodes4
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride4(n.value())),
-            )
-            .chain(
-                self.v4
-                    .store
-                    .nodes5
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride5(n.value())),
-            )
+    ) -> (
+        RwLockReadGuard<
+            'a,
+            HashMap<PrefixId<IPv4>, InternalPrefixRecord<IPv4, Meta>>,
+        >,
+        RwLockReadGuard<
+            'a,
+            HashMap<PrefixId<IPv6>, InternalPrefixRecord<IPv6, Meta>>,
+        >,
+    ) {
+        (self.v4.store.prefixes.read(), self.v6.store.prefixes.read())
     }
 
-    pub fn nodes_v6_iter(
-        &'a self,
-    ) -> impl Iterator<Item = SizedStrideRef<'a, IPv6>> + 'a {
-        self.v6
-            .store
-            .nodes3
-            .iter()
-            .map(|n| SizedStrideRef::Stride3(n.value()))
-            .chain(
-                self.v6
-                    .store
-                    .nodes4
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride4(n.value())),
-            )
-            .chain(
-                self.v6
-                    .store
-                    .nodes5
-                    .iter()
-                    .map(|n| SizedStrideRef::Stride5(n.value())),
-            )
-    }
+    // pub fn nodes_v4_iter(
+    //     &'a self,
+    // ) -> impl Iterator<Item = SizedStrideRef<'a, IPv4>> + 'a {
+    //     self.v4
+    //         .store
+    //         .nodes3
+    //         .read()
+    //         .unwrap()
+    //         .values()
+    //         .map(|n| SizedStrideRef::Stride3(n))
+    //         .chain(
+    //             self.v4
+    //                 .store
+    //                 .nodes4
+    //                 .read()
+    //                 .unwrap()
+    //                 .iter()
+    //                 .map(|n| SizedStrideRef::Stride4(n.1)),
+    //         )
+    //         .chain(
+    //             self.v4
+    //                 .store
+    //                 .nodes5
+    //                 .read()
+    //                 .unwrap()
+    //                 .iter()
+    //                 .map(|n| SizedStrideRef::Stride5(n.1)),
+    //         )
+    // }
+
+    // pub fn nodes_v6_iter(
+    //     &'a self,
+    // ) -> impl Iterator<Item = SizedStrideRef<'a, IPv6>> + 'a {
+    //     self.v6
+    //         .store
+    //         .nodes3
+    //         .read()
+    //         .unwrap()
+    //         .iter()
+    //         .map(|n| SizedStrideRef::Stride3(n.value()))
+    //         .chain(
+    //             self.v6
+    //                 .store
+    //                 .nodes4
+    //                 .read()
+    //                 .unwrap()
+    //                 .iter()
+    //                 .map(|n| SizedStrideRef::Stride4(n.value())),
+    //         )
+    //         .chain(
+    //             self.v6
+    //                 .store
+    //                 .nodes5
+    //                 .read()
+    //                 .unwrap()
+    //                 .iter()
+    //                 .map(|n| SizedStrideRef::Stride5(n.value())),
+    //         )
+    // }
 
     pub fn prefixes_len(&self) -> usize {
-        self.v4.store.prefixes.len() + self.v6.store.prefixes.len()
+        self.v4.store.prefixes.read().len()
+            + self.v6.store.prefixes.read().len()
     }
 
     pub fn prefixes_v4_len(&self) -> usize {
-        self.v4.store.prefixes.len()
+        self.v4.store.prefixes.read().len()
     }
 
     pub fn prefixes_v6_len(&self) -> usize {
-        self.v6.store.prefixes.len()
+        self.v6.store.prefixes.read().len()
     }
 
     pub fn nodes_len(&self) -> usize {

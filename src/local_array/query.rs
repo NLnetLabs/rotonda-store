@@ -1,7 +1,8 @@
 use crate::af::{AddressFamily, Zero};
+use parking_lot::RwLockReadGuard;
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
-use routecore::record::NoMeta;
+use routecore::record::{NoMeta, Record};
 
 use crate::local_array::storage_backend::*;
 use crate::prefix_record::InternalPrefixRecord;
@@ -42,11 +43,18 @@ where
 
     pub(crate) fn match_prefix(
         &'a self,
+        prefix_store: &'a RwLockReadGuard<
+            'a,
+            PrefixHashMap<Store::AF, Store::Meta>,
+        >,
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta> {
-        
-        
+        // let prefixes1 = self.store.get_prefixes();
+        // let prefixes2 = self.store.get_prefixes();
+        let nodes3 = self.store.nodes3_read();
+        let nodes4 = self.store.nodes4_read();
+        let nodes5 = self.store.nodes5_read();
         // --- The Default Prefix ------------------------------------------
 
         // The Default Prefix unfortunately does not fit in tree as we have
@@ -66,33 +74,49 @@ where
                         more_specifics: None,
                     };
                 }
+
                 serial => {
+                    let prefix_meta = prefix_store
+                        .get(
+                            &PrefixId::new(Store::AF::zero(), 0)
+                                .set_serial(serial),
+                        )
+                        .unwrap()
+                        .meta
+                        .as_ref();
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.net.into_ipaddr(),
                             search_pfx.len,
                         )
                         .ok(),
-                        prefix_meta: self
-                            .store
-                            .retrieve_prefix(PrefixId::new(
-                                Store::AF::zero(),
-                                0,
-                            ).set_serial(serial))
-                            .unwrap()
-                            .meta
-                            .as_ref(),
+                        prefix_meta,
+                        // .meta
+                        // .as_ref(),
                         match_type: MatchType::ExactMatch,
                         less_specifics: None,
                         more_specifics: None,
-                    }
+                    };
                 }
             }
         }
 
         let mut stride_end = 0;
 
-        let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
+        // let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
+        let root_node_id = self.get_root_node_id();
+        let mut node = match self.store.get_stride_for_id(root_node_id) {
+            super::node::StrideType::Stride3 => {
+                SizedStrideRef::Stride3(nodes3.get(&root_node_id).unwrap())
+            }
+            super::node::StrideType::Stride4 => {
+                SizedStrideRef::Stride4(nodes4.get(&root_node_id).unwrap())
+            }
+            super::node::StrideType::Stride5 => {
+                SizedStrideRef::Stride5(nodes5.get(&root_node_id).unwrap())
+            }
+        };
+
         let mut nibble;
         let mut nibble_len;
 
@@ -195,7 +219,27 @@ where
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            // node = SizedStrideRef::Stride3(
+                            //     nodes3.get(&n).unwrap(),
+                            // );
+                            match self.store.get_stride_for_id(n) {
+                                super::node::StrideType::Stride3 => {
+                                    node = SizedStrideRef::Stride3(
+                                        nodes3.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride4 => {
+                                    node = SizedStrideRef::Stride4(
+                                        nodes4.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride5 => {
+                                    node = SizedStrideRef::Stride5(
+                                        nodes5.get(&n).unwrap(),
+                                    );
+                                }
+                            }
+                            // node = self.store.retrieve_node(n).unwrap();
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -213,7 +257,27 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
+                            // node = self.retrieve_node(n).unwrap();
+                            // node = SizedStrideRef::Stride3(
+                            //     nodes3.get(&n).unwrap(),
+                            // );
+                            match self.store.get_stride_for_id(n) {
+                                super::node::StrideType::Stride3 => {
+                                    node = SizedStrideRef::Stride3(
+                                        nodes3.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride4 => {
+                                    node = SizedStrideRef::Stride4(
+                                        nodes4.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride5 => {
+                                    node = SizedStrideRef::Stride5(
+                                        nodes5.get(&n).unwrap(),
+                                    );
+                                }
+                            }
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -311,7 +375,27 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.retrieve_node(n).unwrap();
+                            // node = self.retrieve_node(n).unwrap();
+                            // node = SizedStrideRef::Stride4(
+                            //     nodes4.get(&n).unwrap(),
+                            // );
+                            match self.store.get_stride_for_id(n) {
+                                super::node::StrideType::Stride3 => {
+                                    node = SizedStrideRef::Stride3(
+                                        nodes3.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride4 => {
+                                    node = SizedStrideRef::Stride4(
+                                        nodes4.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride5 => {
+                                    node = SizedStrideRef::Stride5(
+                                        nodes5.get(&n).unwrap(),
+                                    );
+                                }
+                            }
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -329,7 +413,27 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
+                            // node = self.retrieve_node(n).unwrap();
+                            // node = SizedStrideRef::Stride4(
+                            //     nodes4.get(&n).unwrap(),
+                            // );
+                            match self.store.get_stride_for_id(n) {
+                                super::node::StrideType::Stride3 => {
+                                    node = SizedStrideRef::Stride3(
+                                        nodes3.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride4 => {
+                                    node = SizedStrideRef::Stride4(
+                                        nodes4.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride5 => {
+                                    node = SizedStrideRef::Stride5(
+                                        nodes5.get(&n).unwrap(),
+                                    );
+                                }
+                            }
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -416,7 +520,33 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.retrieve_node(n).unwrap();
+                            // node = self.retrieve_node(n).unwrap();
+                            println!("node {}", n);
+                            println!("{:?}", nodes4.get(&n));
+                            println!(
+                                "Stride {}",
+                                self.store.get_stride_for_id(n)
+                            );
+                            // node = SizedStrideRef::Stride5(
+                            //     nodes5.get(&n).unwrap(),
+                            // );
+                            match self.store.get_stride_for_id(n) {
+                                super::node::StrideType::Stride3 => {
+                                    node = SizedStrideRef::Stride3(
+                                        nodes3.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride4 => {
+                                    node = SizedStrideRef::Stride4(
+                                        nodes4.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride5 => {
+                                    node = SizedStrideRef::Stride5(
+                                        nodes5.get(&n).unwrap(),
+                                    );
+                                }
+                            }
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -434,7 +564,29 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.retrieve_node(n).unwrap();
+                            // println!("nodes5 {:?}", nodes5);
+                            // println!("nodes4 {:?}", nodes4);
+                            // node = self.retrieve_node(n).unwrap();
+                            // node = SizedStrideRef::Stride5(
+                            //     nodes5.get(&n).unwrap(),
+                            // );
+                            match self.store.get_stride_for_id(n) {
+                                super::node::StrideType::Stride3 => {
+                                    node = SizedStrideRef::Stride3(
+                                        nodes3.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride4 => {
+                                    node = SizedStrideRef::Stride4(
+                                        nodes4.get(&n).unwrap(),
+                                    );
+                                }
+                                super::node::StrideType::Stride5 => {
+                                    node = SizedStrideRef::Stride5(
+                                        nodes5.get(&n).unwrap(),
+                                    );
+                                }
+                            }
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -509,8 +661,13 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            println!("prefix {}/{} serial {}", pfx_idx.get_net().into_ipaddr(), pfx_idx.get_len(), pfx_idx.0.unwrap().2);
-            prefix = self.retrieve_prefix(pfx_idx);
+            println!(
+                "prefix {}/{} serial {}",
+                pfx_idx.get_net().into_ipaddr(),
+                pfx_idx.get_len(),
+                pfx_idx.0.unwrap().2
+            );
+            prefix = prefix_store.get(&pfx_idx);
             match_type = if prefix.unwrap().len == search_pfx.len {
                 MatchType::ExactMatch
             } else {
@@ -533,7 +690,7 @@ where
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
                     vec.iter()
-                        .map(|p| self.retrieve_prefix(*p).unwrap())
+                        .map(move |p| prefix_store.get(p).unwrap())
                         .collect::<RecordSet<'a, Store::Meta>>()
                 })
             } else {
@@ -541,13 +698,47 @@ where
             },
             more_specifics: if options.include_more_specifics {
                 more_specifics_vec.map(|vec| {
-                    vec.iter()
-                        .map(|p| self.retrieve_prefix(*p).unwrap())
+                    vec.into_iter()
+                        .map(|p| prefix_store.get(&p).unwrap())
                         .collect()
                 })
             } else {
                 None
             },
         }
+    }
+}
+
+impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
+    std::iter::FromIterator<InternalPrefixRecord<AF, Meta>>
+    for RecordSet<'a, Meta>
+{
+    fn from_iter<I: IntoIterator<Item = InternalPrefixRecord<AF, Meta>>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let addr = pfx.net.into_ipaddr();
+            match addr {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(
+                        routecore::bgp::PrefixRecord::new_with_local_meta(
+                            Prefix::new(addr, pfx.len).unwrap(),
+                            pfx.meta.unwrap(),
+                        ),
+                    );
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(
+                        routecore::bgp::PrefixRecord::new_with_local_meta(
+                            Prefix::new(addr, pfx.len).unwrap(),
+                            pfx.meta.unwrap(),
+                        ),
+                    );
+                }
+            }
+        }
+        Self { v4, v6 }
     }
 }
