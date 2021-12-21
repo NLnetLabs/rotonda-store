@@ -108,10 +108,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
 
                                 tree_bitmap
-                                    .prefixes_iter(
-                                        locks.0.values(),
-                                        locks.1.values(),
-                                    )
+                                    .prefixes_iter()
                                     .for_each(|pfx| {
                                         println!("{} {}", pfx.prefix, pfx.meta);
                                     });

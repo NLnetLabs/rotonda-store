@@ -22,8 +22,8 @@ macro_rules! match_node_for_strides {
     ) => {
         match $self.store.get_stride_for_id_with_write_store($cur_i) {
             $(
-            (node, StrideWriteStore::$variant(mut node_store)) => {
-            let mut current_node = std::mem::take(node_store.get_mut(&node).unwrap());
+            (node, StrideWriteStore::$variant(node_store)) => {
+            let mut current_node = std::mem::take(node_store.get_mut(&node).unwrap().value_mut());
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
@@ -46,10 +46,10 @@ macro_rules! match_node_for_strides {
                     // store the new node in the global store
                     // let i: StrideNodeId<Store::AF>;
                     // if $self.strides[($level + 1) as usize] != $stride_len {
-                    drop(node_store);
+                    // drop(node_store);
                     let mut new_store = $self.store.get_stride_for_id_with_write_store(new_id).1;
                     let i = $self.store.store_node_in_store(&mut new_store, new_id, n).unwrap();
-                    drop(new_store);
+                    // drop(new_store);
                         // drop(node_store);
                     // }
                     // else {
