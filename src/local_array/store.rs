@@ -116,20 +116,20 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
             .store
             .nodes3
             .values()
-            .map(|n| SizedStrideRef::Stride3(n))
+            .map(SizedStrideRef::Stride3)
             .chain(
                 self.v4
                     .store
                     .nodes4
                     .values()
-                    .map(|n| SizedStrideRef::Stride4(n)),
+                    .map(SizedStrideRef::Stride4),
             )
             .chain(
                 self.v4
                     .store
                     .nodes5
                     .values()
-                    .map(|n| SizedStrideRef::Stride5(n)),
+                    .map(SizedStrideRef::Stride5),
             )
     }
 
@@ -140,20 +140,20 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
             .store
             .nodes3
             .values()
-            .map(|n| SizedStrideRef::Stride3(n))
+            .map(SizedStrideRef::Stride3)
             .chain(
                 self.v6
                     .store
                     .nodes4
                     .values()
-                    .map(|n| SizedStrideRef::Stride4(n)),
+                    .map(SizedStrideRef::Stride4),
             )
             .chain(
                 self.v6
                     .store
                     .nodes5
                     .values()
-                    .map(|n| SizedStrideRef::Stride5(n)),
+                    .map(SizedStrideRef::Stride5),
             )
     }
 
