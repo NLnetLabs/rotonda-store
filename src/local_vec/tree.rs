@@ -16,6 +16,8 @@ use crate::stats::{SizedStride, StrideStats};
 use crate::af::{AddressFamily, Zero};
 
 #[cfg(feature = "cli")]
+use crate::node_id::InMemNodeId;
+#[cfg(feature = "cli")]
 use ansi_term::Colour;
 
 #[derive(Debug)]
