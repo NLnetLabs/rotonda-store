@@ -26,5 +26,5 @@ jobs:
       run: rustup component add clippy
     - if: matrix.rust == 'stable'
       run: cargo clippy -- -D warnings
-    - run: cargo build --verbose --locked ${{ matrix.args }}
+    - run: cargo build --verbose ${{ matrix.args }}
     - run: cargo test --verbose ${{ matrix.args }}
