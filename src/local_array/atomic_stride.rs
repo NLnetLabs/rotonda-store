@@ -437,6 +437,7 @@ where
         nibble: u32,
     ) -> usize;
 
+    #[allow(clippy::wrong_self_convention)]
     fn into_node_id<AF: AddressFamily>(
         addr_bits: AF,
         len: u8,
@@ -448,6 +449,7 @@ where
     // Since the last bit in the pfxbitarr isn't used, but the
     // full ptrbitarr *is* used, the prtbitarr should be shifted
     // one bit to the left.
+    #[allow(clippy::wrong_self_convention)]
     fn into_stride_size(
         bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
@@ -457,6 +459,7 @@ where
     // different sizes to the right, so we don't have to do anything to pad
     // the smaller sized type. We do have to shift one bit to the left, to
     // accomodate the unused pfxbitarr's last bit.
+    #[allow(clippy::wrong_self_convention)]
     fn into_ptrbitarr_size(
         bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
     ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;

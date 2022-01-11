@@ -74,6 +74,7 @@ pub trait Stride:
     // Since the last bit in the pfxbitarr isn't used, but the
     // full ptrbitarr *is* used, the prtbitarr should be shifted
     // one bit to the left.
+    #[allow(clippy::wrong_self_convention)]
     fn into_stride_size(bitmap: Self::PtrSize) -> Self;
 
     // Convert a pfxbitarr sized bitmap into a ptrbitarr sized
