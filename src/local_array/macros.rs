@@ -122,10 +122,10 @@ macro_rules! match_node_for_strides {
                                             cur_serial if cur_serial == new_serial => {
                                                 let found_prefix_id_clone = found_prefix_id.clone();
                                                 $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-                                                println!(
-                                                    "removing old prefix with serial {}...",
-                                                    newer_serial
-                                                );
+                                                // println!(
+                                                //     "removing old prefix with serial {}...",
+                                                //     newer_serial
+                                                // );
                                                 $self.store.remove_prefix(found_prefix_id_clone.set_serial(newer_serial));
                                                 return Ok(());
                                             },
@@ -198,10 +198,10 @@ macro_rules! match_node_for_strides {
                                         let found_prefix_id_clone = found_prefix_id.clone();
                                         // current_node.pfx_vec.insert(pfx_vec_index, found_prefix_id_clone.set_serial(new_serial));
                                         $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
-                                        println!(
-                                            "removing old prefix with serial {}...",
-                                            old_serial
-                                        );
+                                        // println!(
+                                        //     "removing old prefix with serial {}...",
+                                        //     old_serial
+                                        // );
                                         $self.store.remove_prefix(found_prefix_id_clone.set_serial(old_serial));
                                         // println!("current_node.pfx_vec {:?}", current_node.pfx_vec);
                                         return Ok(());

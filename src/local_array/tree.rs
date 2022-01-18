@@ -752,10 +752,10 @@ where
                         new_serial,
                         &new_meta,
                     )?;
-                    println!(
-                        "removing old default route prefix with serial {}...",
-                        old_serial
-                    );
+                    // println!(
+                    //     "removing old default route prefix with serial {}...",
+                    //     old_serial
+                    // );
                     self.store
                         .remove_prefix(pfx_idx_clone.set_serial(old_serial));
                     return Ok(());
