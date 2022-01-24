@@ -6,7 +6,7 @@ use std::{
 use routecore::record::MergeUpdate;
 
 use crate::match_node_for_strides_with_local_vec;
-use crate::node_id::{InMemNodeId, SortableNodeId};
+use crate::node_id::SortableNodeId;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::stride::*;
 use crate::synth_int::{U256, U512};
@@ -15,6 +15,8 @@ use crate::local_vec::storage_backend::StorageBackend;
 use crate::stats::{SizedStride, StrideStats};
 use crate::af::{AddressFamily, Zero};
 
+#[cfg(feature = "cli")]
+use crate::node_id::InMemNodeId;
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
 

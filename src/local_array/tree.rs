@@ -90,6 +90,7 @@ pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
+#[allow(clippy::large_enum_variant)]
 pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
@@ -896,6 +897,12 @@ where
     // specified bit position in a ptr_vec of `current_node` into a vec,
     // then adds all prefixes of these children recursively into a vec and
     // returns that.
+    //
+    // Silence Clippy about unnecessarily returning an Option as all of
+    // the many call sites would instead have to wrap the result in Some
+    // making the code there more verbose and harder to read, this is 
+    // perhaps preferable.
+    #[allow(clippy::unnecessary_wraps)]
     pub(crate) fn get_all_more_specifics_from_nibble<
         S: Stride,
         const PFXARRAYSIZE: usize,
