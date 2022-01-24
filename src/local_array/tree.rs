@@ -3,8 +3,10 @@ use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 use std::{fmt::Debug, marker::PhantomData};
+use crossbeam_epoch::{self as epoch};
 
 use crate::af::{AddressFamily, Zero};
+use crate::local_array::custom_alloc::NodeSet;
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
@@ -13,9 +15,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::local_array::CacheGuard;
 
 pub(crate) use super::atomic_stride::*;
-use super::storage_backend::{
-    StrideReadStore, StrideWriteStore
-};
+use super::storage_backend::{StrideReadStore, StrideWriteStore};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -33,16 +33,16 @@ use routecore::record::MergeUpdate;
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
 pub(crate) enum SizedStrideNode<AF: AddressFamily> {
-    Stride3(TreeBitMapNode<AF, Stride3, 14, 8>),
-    Stride4(TreeBitMapNode<AF, Stride4, 30, 16>),
-    Stride5(TreeBitMapNode<AF, Stride5, 62, 32>),
+    Stride3(TreeBitMapNode<AF, Stride3>),
+    Stride4(TreeBitMapNode<AF, Stride4>),
+    Stride5(TreeBitMapNode<AF, Stride5>),
     // Stride6(TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
     // Stride7(TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
     // Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
-impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Default
-    for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S> Default
+    for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride,
@@ -51,7 +51,7 @@ where
         Self {
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
             pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
-            pfx_vec: PrefixSet::empty(),
+            pfx_vec: PrefixSet::empty(S::BITS),
             _af: PhantomData,
         }
     }
@@ -65,7 +65,7 @@ where
         SizedStrideNode::Stride3(TreeBitMapNode {
             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-            pfx_vec: PrefixSet::empty(),
+            pfx_vec: PrefixSet::empty(14),
             _af: PhantomData,
         })
     }
@@ -74,23 +74,23 @@ where
 // Used to create a public iterator over all nodes.
 #[derive(Debug)]
 pub enum SizedStrideRef<'a, AF: AddressFamily> {
-    Stride3(&'a TreeBitMapNode<AF, Stride3, 14, 8>),
-    Stride4(&'a TreeBitMapNode<AF, Stride4, 30, 16>),
-    Stride5(&'a TreeBitMapNode<AF, Stride5, 62, 32>),
+    Stride3(&'a TreeBitMapNode<AF, Stride3>),
+    Stride4(&'a TreeBitMapNode<AF, Stride4>),
+    Stride5(&'a TreeBitMapNode<AF, Stride5>),
     // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
     // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
-// 
-// #[derive(Debug)]
-// pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
-//     Stride3(&'a mut TreeBitMapNode<AF, Stride3, 14, 8>),
-//     Stride4(&'a mut TreeBitMapNode<AF, Stride4, 30, 16>),
-//     Stride5(&'a mut TreeBitMapNode<AF, Stride5, 62, 32>),
-//     // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-//     // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-//     // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
-// }
+//
+#[derive(Debug)]
+pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
+    Stride3(&'a mut TreeBitMapNode<AF, Stride3>),
+    Stride4(&'a mut TreeBitMapNode<AF, Stride4>),
+    Stride5(&'a mut TreeBitMapNode<AF, Stride5>),
+    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
+    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
+    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+}
 
 pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
@@ -377,15 +377,15 @@ pub trait NodeCollection<AF: AddressFamily> {
 // complete prefix of a child prefix.
 
 #[derive(Debug)]
-pub struct PrefixSet<const ARRAYSIZE: usize>([AtomicUsize; ARRAYSIZE]);
+pub struct PrefixSet(Box<[AtomicUsize]>, u8);
 
-impl<const ARRAYSIZE: usize> std::fmt::Display for PrefixSet<ARRAYSIZE> {
+impl std::fmt::Display for PrefixSet {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}", self)
     }
 }
 
-impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
+impl PrefixSet {
     // Collect all PrefixIds int a vec. Since the net and len of the
     // PrefixIds are implied by the position in the pfx_vec we can
     // calculate them with if we know the base address of the node
@@ -397,7 +397,7 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
         let mut vec = vec![];
         let mut i: usize = 0;
         let mut nibble_len = 1;
-        while i < ARRAYSIZE {
+        while i < self.0.len() {
             for nibble in 0..1 << nibble_len {
                 match self.0[i].load(Ordering::Relaxed) {
                     0 => (),
@@ -424,9 +424,9 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
         vec
     }
 
-    pub(crate) fn empty() -> Self {
-        let arr = array_init::array_init(|_| AtomicUsize::new(0));
-        PrefixSet(arr)
+    pub(crate) fn empty(len: u8) -> Self {
+        // let arr = array_init::array_init(|_| AtomicUsize::new(0));
+        PrefixSet(Vec::with_capacity(len as usize).into_boxed_slice(), len)
     }
 
     pub(crate) fn get_serial_at(&mut self, index: usize) -> &mut AtomicUsize {
@@ -434,7 +434,7 @@ impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
     }
 }
 
-impl<const ARRAYSIZE: usize> std::ops::Index<usize> for PrefixSet<ARRAYSIZE> {
+impl std::ops::Index<usize> for PrefixSet {
     type Output = AtomicUsize;
 
     fn index(&self, idx: usize) -> &AtomicUsize {
@@ -442,9 +442,7 @@ impl<const ARRAYSIZE: usize> std::ops::Index<usize> for PrefixSet<ARRAYSIZE> {
     }
 }
 
-impl<const ARRAYSIZE: usize> std::ops::IndexMut<usize>
-    for PrefixSet<ARRAYSIZE>
-{
+impl std::ops::IndexMut<usize> for PrefixSet {
     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
         &mut self.0[idx as usize]
     }
@@ -522,7 +520,7 @@ where
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-                    pfx_vec: PrefixSet::empty(),
+                    pfx_vec: PrefixSet::empty(14),
                     _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
@@ -531,7 +529,7 @@ where
                 root_node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
-                    pfx_vec: PrefixSet::empty(),
+                    pfx_vec: PrefixSet::empty(30),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
@@ -540,7 +538,7 @@ where
                 root_node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
-                    pfx_vec: PrefixSet::empty(),
+                    pfx_vec: PrefixSet::empty(62),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
@@ -592,7 +590,7 @@ where
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
     pub(crate) fn insert(
-        &self,
+        &mut self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if pfx.len == 0 {
@@ -621,10 +619,12 @@ where
             );
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
+            let guard = &epoch::pin();
 
             let next_node_idx = match_node_for_strides![
                 // applicable to the whole outer match in the macro
                 self;
+                guard;
                 nibble_len;
                 nibble;
                 is_last_stride;
@@ -646,14 +646,6 @@ where
                 return Ok(());
             }
         }
-    }
-
-    fn store_node(
-        &self,
-        id: StrideNodeId<Store::AF>,
-        next_node: SizedStrideNode<Store::AF>,
-    ) -> Option<StrideNodeId<Store::AF>> {
-        self.store.store_node(id, next_node)
     }
 
     // #[inline]
@@ -766,7 +758,8 @@ where
                     old_serial =
                         self.store.increment_default_route_prefix_serial();
                     self.store
-                        .get_prefixes().get(&df_pfx_id.set_serial(old_serial));
+                        .get_prefixes()
+                        .get(&df_pfx_id.set_serial(old_serial));
 
                     self.update_prefix_meta(
                         df_pfx_id,
@@ -793,7 +786,8 @@ where
         // don't want to mutate the current entry in the store. Instead
         // we want to create a new entry with the same prefix, but with
         // the merged meta-data and a new serial number.
-        let new_meta = match self.store.get_prefixes().get(&update_prefix_idx) {
+        let new_meta = match self.store.get_prefixes().get(&update_prefix_idx)
+        {
             Some(update_prefix) => update_prefix
                 .meta
                 .as_ref()
@@ -895,17 +889,10 @@ where
     // then adds all prefixes of these children recursively into a vec and
     // returns that.
     pub(crate) fn get_all_more_specifics_from_nibble<
-        S: Stride,
-        const PFXARRAYSIZE: usize,
-        const PTRARRAYSIZE: usize,
+        S: Stride
     >(
         &self,
-        current_node: &TreeBitMapNode<
-            Store::AF,
-            S,
-            PFXARRAYSIZE,
-            PTRARRAYSIZE,
-        >,
+        current_node: &TreeBitMapNode<Store::AF, S>,
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<Store::AF>,

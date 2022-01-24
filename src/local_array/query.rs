@@ -47,10 +47,10 @@ where
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta> {
         // let prefixes1 = self.store.get_prefixes();
-        // let prefixes2 = self.store.get_prefixes();
-        let nodes3 = self.store.nodes3_read();
-        let nodes4 = self.store.nodes4_read();
-        let nodes5 = self.store.nodes5_read();
+        // // let prefixes2 = self.store.get_prefixes();
+        // let nodes3 = self.store.nodes3_read();
+        // let nodes4 = self.store.nodes4_read();
+        // let nodes5 = self.store.nodes5_read();
         // --- The Default Prefix ------------------------------------------
 
         // The Default Prefix unfortunately does not fit in tree as we have

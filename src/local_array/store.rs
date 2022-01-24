@@ -1,5 +1,6 @@
 use crate::af::{IPv4, IPv6};
-use crate::local_array::storage_backend::{InMemStorage, StorageBackend};
+use crate::local_array::storage_backend::StorageBackend;
+use crate::local_array::custom_alloc::CustomAllocStorage;
 use crate::local_array::tree::TreeBitMap;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
@@ -8,8 +9,6 @@ use dashmap::DashMap;
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
 
-use std::collections::hash_map::Values;
-use std::collections::HashMap;
 use std::fmt;
 
 use super::node::PrefixId;
@@ -17,8 +16,8 @@ use super::storage_backend::PrefixHashMap;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
-    v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
-    v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    v4: TreeBitMap<CustomAllocStorage<IPv4, Meta>>,
+    v6: TreeBitMap<CustomAllocStorage<IPv6, Meta>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
@@ -256,17 +255,17 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
-    for InMemStorage<IPv4, Meta>
+    for CustomAllocStorage<IPv4, Meta>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "InMemStorage<u32, {}>", std::any::type_name::<Meta>())
+        write!(f, "CustomAllocStorage<u32, {}>", std::any::type_name::<Meta>())
     }
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
-    for InMemStorage<IPv6, Meta>
+    for CustomAllocStorage<IPv6, Meta>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "InMemStorage<u128, {}>", std::any::type_name::<Meta>())
+        write!(f, "CustomAllocStorage<u128, {}>", std::any::type_name::<Meta>())
     }
 }

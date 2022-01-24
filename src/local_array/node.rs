@@ -4,9 +4,11 @@ use std::{
     marker::PhantomData,
 };
 
+use crossbeam_epoch::{Atomic, Pointable};
 use routecore::record::NoMeta;
 
 pub use super::atomic_stride::*;
+use super::custom_alloc::{NodeSet, StoredNode};
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
@@ -18,8 +20,6 @@ use crate::af::AddressFamily;
 pub struct TreeBitMapNode<
     AF,
     S,
-    const PFXARRAYSIZE: usize,
-    const PTRARRAYSIZE: usize,
 > where
     Self: Sized,
     S: Stride,
@@ -30,15 +30,15 @@ pub struct TreeBitMapNode<
     // The vec of prefixes hosted by this node, referenced by (bit_id, global
     // prefix index). This is the exact same type as for the NodeIds, so we
     // reuse that.
-    pub pfx_vec: PrefixSet<PFXARRAYSIZE>,
+    pub pfx_vec: PrefixSet,
     // The vec of child nodes hosted by this node, referenced by
     // (ptrbitarr_index, global vec index). We need the u16 (ptrbitarr_index)
     // to sort the vec that's stored in the node.
     pub _af: PhantomData<AF>,
 }
 
-impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Debug
-    for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S> Debug
+    for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride,
@@ -52,8 +52,8 @@ where
     }
 }
 
-impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
-    std::fmt::Display for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S>
+    std::fmt::Display for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride
@@ -69,8 +69,8 @@ where
     }
 }
 
-impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize>
-    TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S>
+    TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride
@@ -105,7 +105,7 @@ where
         &self,
         base_prefix: StrideNodeId<AF>,
     ) -> Vec<StrideNodeId<AF>> {
-        let mut child_node_ids = Vec::with_capacity(PTRARRAYSIZE);
+        let mut child_node_ids = Vec::new();
         // CRITICAL SECTION ALERT
         let ptrbitarr = self.ptrbitarr.load();
         // iterate over all the possible values for this `nibble_len`, e.g.
@@ -188,7 +188,7 @@ where
                         new_node = SizedStrideNode::Stride3(TreeBitMapNode {
                             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-                            pfx_vec: PrefixSet::empty(),
+                            pfx_vec: PrefixSet::empty(14),
                             _af: PhantomData,
                         });
                     }
@@ -196,7 +196,7 @@ where
                         new_node = SizedStrideNode::Stride4(TreeBitMapNode {
                             ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                             pfxbitarr: AtomicStride4(AtomicU32::new(0)),
-                            pfx_vec: PrefixSet::empty(),
+                            pfx_vec: PrefixSet::empty(30),
                             _af: PhantomData,
                         });
                     }
@@ -204,7 +204,7 @@ where
                         new_node = SizedStrideNode::Stride5(TreeBitMapNode {
                             ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                             pfxbitarr: AtomicStride5(AtomicU64::new(0)),
-                            pfx_vec: PrefixSet::empty(),
+                            pfx_vec: PrefixSet::empty(62),
                             _af: PhantomData,
                         });
                     }

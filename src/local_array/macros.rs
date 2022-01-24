@@ -6,6 +6,7 @@
 macro_rules! match_node_for_strides {
     (
         $self: ident;
+        $guard: ident;
         $nibble_len: expr;
         $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
         $is_last_stride: expr;
@@ -20,10 +21,22 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match $self.store.get_stride_for_id_with_write_store($cur_i) {
+        match $self.store.retrieve_node_with_guard($cur_i, $guard).expect(
+                format!(
+                    "\x1b[91mCouldn't load id {} from store node{}\x1b[0m",
+                    $cur_i,
+                    $self.strides[$level as usize]
+                ).as_str()) {
             $(
-            (node, StrideWriteStore::$variant(node_store)) => {
-            let mut current_node = std::mem::take(node_store.get_mut(&node).unwrap().value_mut());
+            SizedStrideRefMut::$variant(current_node) => {
+            // let mut current_node = std::mem::take(node_store.get_mut(&node).unwrap().value_mut());
+            // let cn = node_store.get(&node).expect(
+            //     format!(
+            //         "\x1b[91mCouldn't load id {} from store node{}\x1b[0m",
+            //         $cur_i,
+            //         $self.strides[$level as usize]
+            //     ).as_str());
+            // let mut current_node = cn;
             match current_node.eval_node_or_prefix_at(
                 $nibble,
                 $nibble_len,
@@ -47,8 +60,8 @@ macro_rules! match_node_for_strides {
                     // let i: StrideNodeId<Store::AF>;
                     // if $self.strides[($level + 1) as usize] != $stride_len {
                     // drop(node_store);
-                    let mut new_store = $self.store.get_stride_for_id_with_write_store(new_id).1;
-                    let i = $self.store.store_node_in_store(&mut new_store, new_id, n).unwrap();
+                    // let mut new_store = $self.store.get_stride_for_id_with_write_store(new_id).1;
+                    let i = $self.store.store_node(new_id, n).unwrap();
                     // drop(new_store);
                         // drop(node_store);
                     // }
@@ -59,13 +72,13 @@ macro_rules! match_node_for_strides {
 
                     // update ptrbitarr in the current node and move it back into the store
                     // node_store.alter(&$cur_i, |_, n| { n });
-                    let node_store = &mut $self.store.get_stride_for_id_with_write_store($cur_i).1;
-                    $self.store.update_node_in_store(node_store, $cur_i,SizedStrideNode::$variant(current_node));
+                    // let node_store = &mut $self.store.get_stride_for_id_with_write_store($cur_i).1;
+                    // $self.store.update_node_in_store(node_store, $cur_i,SizedStrideNode::$variant(current_node));
 
                     Some(i)
                 }
                 NewNodeOrIndex::ExistingNode(i) => {
-                    $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
+                    // $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                     Some(i)
                 },
                 NewNodeOrIndex::NewPrefix(sort_id) => {
@@ -100,7 +113,7 @@ macro_rules! match_node_for_strides {
                             // STEP 3
                             // update the ptrbitarr bitarray in the current node in
                             // the global store.
-                            $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
+                            // $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                         }
                         // STEP 4
                         //
@@ -134,7 +147,7 @@ macro_rules! match_node_for_strides {
                                             // in the current node in the global store and be done with it.
                                             cur_serial if cur_serial == new_serial => {
                                                 let found_prefix_id_clone = found_prefix_id.clone();
-                                                $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
+                                                // $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                                                 // println!(
                                                 //     "removing old prefix with serial {}...",
                                                 //     newer_serial
@@ -210,7 +223,7 @@ macro_rules! match_node_for_strides {
                                     cur_serial if cur_serial == new_serial => {
                                         let found_prefix_id_clone = found_prefix_id.clone();
                                         // current_node.pfx_vec.insert(pfx_vec_index, found_prefix_id_clone.set_serial(new_serial));
-                                        $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
+                                        // $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                                         $self.store.remove_prefix(found_prefix_id_clone.set_serial(old_serial));
                                         // println!("current_node.pfx_vec {:?}", current_node.pfx_vec);
                                         return Ok(());
@@ -304,6 +317,164 @@ macro_rules! impl_primitive_atomic_stride {
                     self.leading_zeros()
                 }
             }
+        )*
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! impl_search_level {
+    (
+        $(
+            $stride: ident;
+            $id: ident;
+        ),
+    * ) => {
+        $(
+            SearchLevel {
+                f: &|search_level: &SearchLevel<AF, $stride>,
+                    nodes,
+                    bits_division: [u8; 10],
+                    mut level: u8,
+                    guard| {
+                        // Aaaaand, this is all of our hashing function.
+                        // I'll explain later.
+                        let index = $id.get_id().0.dangerously_truncate_to_usize()
+                            >> (AF::BITS - bits_division[level as usize]);
+
+                        // Read the node from the block pointed to by the
+                        // Atomic pointer.
+                        // let guard = &epoch::pin();
+                        let this_node = unsafe {
+                            &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
+                        };
+                        match unsafe { this_node.assume_init_mut() } {
+                            // No node exists, here
+                            StoredNode::Empty => None,
+                            // A node exists, but since we're not using perfect
+                            // hashing everywhere, this may be very well a node
+                            // we're not searching for, so check that.
+                            StoredNode::NodeWithRef((node_id, node, node_set)) => {
+                                if &$id == node_id {
+                                    // YES, It's the one we're looking for!
+                                    return Some(SizedStrideRefMut::$stride(node));
+                                };
+                                // Meh, it's not, but we can a go to the next level
+                                // and see if it lives there.
+                                level += 1;
+                                match bits_division.get((level) as usize) {
+                                    // on to the next level!
+                                    Some(next_bit_shift) if next_bit_shift > &0 => {
+                                        (search_level.f)(
+                                            search_level,
+                                            node_set,
+                                            // new_node,
+                                            bits_division,
+                                            level,
+                                            // result_node,
+                                            guard,
+                                        )
+                                    }
+                                    // There's no next level, we found nothing.
+                                    _ => None,
+                                }
+                            }
+                        }
+                    }
+            }
+        )*
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! impl_write_level {
+    (
+        $(
+            $stride: ident;
+            $id: ident;
+        ),
+    * ) => {
+        $(
+            SearchLevel {
+                f: &|search_level: &SearchLevel<AF, $stride>,
+                     nodes,
+                     new_node: TreeBitMapNode<AF, $stride>,
+                     bits_division: [u8; 10],
+                     mut level: u8| {
+                    let index = $id.get_id().0.dangerously_truncate_to_usize()
+                        >> (AF::BITS - bits_division[level as usize]);
+                    let guard = &epoch::pin();
+                    let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
+                    let node_ref =
+                        unsafe { &mut unwrapped_nodes.deref_mut()[index] };
+                    match unsafe { node_ref.assume_init_mut() } {
+                        // No node exists, so we crate one here.
+                        StoredNode::Empty => {
+                            std::mem::swap(
+                                node_ref,
+                                &mut MaybeUninit::new(StoredNode::NodeWithRef((
+                                    $id,
+                                    new_node,
+                                    NodeSet(Atomic::null()),
+                                ))),
+                            );
+                            // ABA Baby!
+                            match nodes.0.compare_exchange(
+                                unwrapped_nodes,
+                                unwrapped_nodes,
+                                Ordering::SeqCst,
+                                Ordering::SeqCst,
+                                guard,
+                            ) {
+                                Ok(_) => Some($id),
+                                Err(_) => {
+                                    // TODO: This needs some kind of backoff,
+                                    // I guess.
+                                    loop {
+                                        match nodes.0.compare_exchange(
+                                            unwrapped_nodes,
+                                            unwrapped_nodes,
+                                            Ordering::SeqCst,
+                                            Ordering::SeqCst,
+                                            guard,
+                                        ) {
+                                            Ok(_) => { return None; },
+                                            Err(_) => {}
+                                        };
+                                    };
+                                },
+                            };
+                            Some($id)
+                        }
+                        // A node exists, since `store_node` only creates new
+                        // nodes, we will silently abort insertion if the
+                        // specified node, already exists.
+                        StoredNode::NodeWithRef((node_id, _node, node_set)) => {
+                            if $id == *node_id {
+                                // Node already exists, nothing to do
+                                return Some($id);
+                            };
+                            level += 1;
+                            match bits_division.get((level) as usize) {
+                                // on to the next level!
+                                Some(next_bit_shift) if next_bit_shift > &0 => {
+                                    (search_level.f)(
+                                        search_level,
+                                        node_set,
+                                        new_node,
+                                        bits_division,
+                                        level,
+                                    )
+                                }
+                                // There's no next level, we're done.
+                                _ => Some($id),
+                            }
+                        }
+                    }
+                }
+            }
+        
         )*
     };
 }

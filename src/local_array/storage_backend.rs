@@ -1,5 +1,9 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{
+    ops::Add,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
+use crossbeam_epoch::{Atomic, Guard};
 use dashmap::DashMap;
 
 use crate::local_array::tree::*;
@@ -44,27 +48,15 @@ pub(crate) type PrefixHashMap<AF, Meta> =
     DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>;
 
 pub(crate) enum StrideReadStore<'a, AF: AddressFamily> {
-    Stride3(
-        &'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3, 14, 8>>,
-    ),
-    Stride4(
-        &'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4, 30, 16>>,
-    ),
-    Stride5(
-        &'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5, 62, 32>>,
-    ),
+    Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
+    Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
+    Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
 }
 
 pub(crate) enum StrideWriteStore<'a, AF: AddressFamily> {
-    Stride3(
-        &'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3, 14, 8>>,
-    ),
-    Stride4(
-        &'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4, 30, 16>>,
-    ),
-    Stride5(
-        &'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5, 62, 32>>,
-    ),
+    Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
+    Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
+    Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
 }
 
 pub(crate) trait StorageBackend {
@@ -87,12 +79,13 @@ pub(crate) trait StorageBackend {
     // nodes, other storage data-structures may use unordered lists, where
     // the id is in the record, e.g., dynamodb
     fn store_node(
-        &self,
+        &mut self,
         id: StrideNodeId<Self::AF>,
         next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<Self::AF>>;
+    // This is for storing child nodes (which may be in a different node
+    // than its parent, that's why you have to specify the store).
     fn store_node_in_store(
-        &self,
         store: &mut StrideWriteStore<Self::AF>,
         id: StrideNodeId<Self::AF>,
         next_node: SizedStrideNode<Self::AF>,
@@ -116,46 +109,37 @@ pub(crate) trait StorageBackend {
     //     &self,
     //     index: StrideNodeId<Self::AF>,
     // ) -> SizedNodeRefResult<Self::AF>;
-    fn retrieve_node_with_guard(
-        &self,
-        index: StrideNodeId<Self::AF>,
-    ) -> CacheGuard<Self::AF>;
-    fn nodes3_read(
-        &self,
-    ) -> &DashMap<
-        StrideNodeId<Self::AF>,
-        TreeBitMapNode<Self::AF, Stride3, 14, 8>,
-    >;
-    fn nodes3_write(
-        &self,
-    ) -> &DashMap<
-        StrideNodeId<Self::AF>,
-        TreeBitMapNode<Self::AF, Stride3, 14, 8>,
-    >;
-    fn nodes4_read(
-        &self,
-    ) -> &DashMap<
-        StrideNodeId<Self::AF>,
-        TreeBitMapNode<Self::AF, Stride4, 30, 16>,
-    >;
-    fn nodes4_write(
-        &self,
-    ) -> &DashMap<
-        StrideNodeId<Self::AF>,
-        TreeBitMapNode<Self::AF, Stride4, 30, 16>,
-    >;
-    fn nodes5_read(
-        &self,
-    ) -> &DashMap<
-        StrideNodeId<Self::AF>,
-        TreeBitMapNode<Self::AF, Stride5, 62, 32>,
-    >;
-    fn nodes5_write(
-        &self,
-    ) -> &DashMap<
-        StrideNodeId<Self::AF>,
-        TreeBitMapNode<Self::AF, Stride5, 62, 32>,
-    >;
+    fn retrieve_node_with_guard<'a>(
+        &'a self,
+        id: StrideNodeId<Self::AF>,
+        // result_ref: SizedNodeRefOption<'a, Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<SizedStrideRefMut<'a, Self::AF>>;
+    fn store_node_with_guard<'a>(
+        &'a self,
+        current_node: SizedNodeRefOption<'a, Self::AF>,
+        next_node: SizedStrideNode<Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<StrideNodeId<Self::AF>>;
+
+    // fn nodes3_read(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride3>>;
+    // fn nodes3_write(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride3>>;
+    // fn nodes4_read(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride4>>;
+    // fn nodes4_write(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride4>>;
+    // fn nodes5_read(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride5>>;
+    // fn nodes5_write(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride5>>;
     // fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>>;
     fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId<Self::AF>;
     fn load_default_route_prefix_serial(&self) -> usize;
@@ -191,10 +175,6 @@ pub(crate) trait StorageBackend {
         &self,
         index: PrefixId<Self::AF>,
     ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>>;
-    fn retrieve_prefix_with_guard(
-        &self,
-        index: StrideNodeId<Self::AF>,
-    ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
     fn get_prefixes(&'_ self) -> &'_ PrefixHashMap<Self::AF, Self::Meta>;
     fn get_prefixes_clear(&self) -> &PrefixHashMap<Self::AF, Self::Meta>;
     fn get_prefixes_len(&self) -> usize;
@@ -224,13 +204,11 @@ pub(crate) struct InMemStorage<
 > {
     // each stride in its own vec avoids having to store SizedStrideNode, an enum, that will have
     // the size of the largest variant as its memory footprint (Stride8).
-    pub nodes3: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3, 14, 8>>,
+    pub nodes3: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>,
 
-    pub nodes4:
-        DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4, 30, 16>>,
+    pub nodes4: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>,
 
-    pub nodes5:
-        DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5, 62, 32>>,
+    pub nodes5: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>,
     // pub nodes6: Vec<TreeBitMapNode<AF, Stride6, 126, 64>>,
     // pub nodes7: Vec<TreeBitMapNode<AF, Stride7, 254, 128>>,
     // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, 510, 256>>,
@@ -249,20 +227,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> InMemStorage<Self::AF, Self::Meta> {
-        let nodes3 = DashMap::<
-            StrideNodeId<AF>,
-            TreeBitMapNode<AF, Stride3, 14, 8>,
-        >::new();
-        let nodes4 = DashMap::<
-            StrideNodeId<AF>,
-            TreeBitMapNode<AF, Stride4, 30, 16>,
-        >::new();
-        let nodes5 = DashMap::<
-            StrideNodeId<AF>,
-            TreeBitMapNode<AF, Stride5, 62, 32>,
-        >::new();
+        let nodes3 =
+            DashMap::<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>::new();
+        let nodes4 =
+            DashMap::<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>::new();
+        let nodes5 =
+            DashMap::<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>::new();
 
-        let store = InMemStorage {
+        let mut store = InMemStorage {
             nodes3,
             nodes4,
             nodes5,
@@ -291,11 +263,11 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     }
 
     fn store_node(
-        &self,
+        &mut self,
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<AF>> {
-        let nn = match next_node {
+        match next_node {
             SizedStrideNode::Stride3(node) => {
                 // let id = self.nodes3.len() as u32;
                 // let nodes = self.nodes3;
@@ -314,17 +286,15 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 self.nodes5.insert(id, node);
                 Some(id)
             }
-        };
-        nn
+        }
     }
 
     fn store_node_in_store(
-        &self,
         store: &mut StrideWriteStore<Self::AF>,
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<AF>> {
-        let nn = match next_node {
+        match next_node {
             SizedStrideNode::Stride3(node) => {
                 if let StrideWriteStore::Stride3(n_store) = store {
                     let _default_val = (*n_store).insert(id, node);
@@ -343,45 +313,44 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 }
                 Some(id)
             }
-        };
-        nn
+        }
     }
 
-    fn nodes3_read(
-        &self,
-    ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3, 14, 8>> {
-        &self.nodes3
-    }
+    // fn nodes3_read(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>> {
+    //     &self.nodes3
+    // }
 
-    fn nodes3_write(
-        &self,
-    ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3, 14, 8>> {
-        &self.nodes3
-    }
+    // fn nodes3_write(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>> {
+    //     &self.nodes3
+    // }
 
-    fn nodes4_read(
-        &self,
-    ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4, 30, 16>> {
-        &self.nodes4
-    }
+    // fn nodes4_read(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>> {
+    //     &self.nodes4
+    // }
 
-    fn nodes4_write(
-        &self,
-    ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4, 30, 16>> {
-        &self.nodes4
-    }
+    // fn nodes4_write(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>> {
+    //     &self.nodes4
+    // }
 
-    fn nodes5_read(
-        &self,
-    ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5, 62, 32>> {
-        &self.nodes5
-    }
+    // fn nodes5_read(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>> {
+    //     &self.nodes5
+    // }
 
-    fn nodes5_write(
-        &self,
-    ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5, 62, 32>> {
-        &self.nodes5
-    }
+    // fn nodes5_write(
+    //     &self,
+    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>> {
+    //     &self.nodes5
+    // }
 
     fn get_stride_for_id(
         &self,
@@ -495,6 +464,24 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         }
     }
 
+    fn retrieve_node_with_guard<'a>(
+        &self,
+        _id: StrideNodeId<Self::AF>,
+        // result_ref: SizedNodeRefOption<'a, Self::AF>,
+        _guard: &'a Guard,
+    ) -> Option<SizedStrideRefMut<'a, Self::AF>> {
+        unimplemented!()
+    }
+
+    fn store_node_with_guard<'a>(
+        &'a self,
+        current_node: SizedNodeRefOption<'a, Self::AF>,
+        next_node: SizedStrideNode<Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<StrideNodeId<Self::AF>> {
+        unimplemented!()
+    }
+
     // fn retrieve_node_mut(
     //     &self,
     //     id: StrideNodeId<AF>,
@@ -517,15 +504,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     //             .unwrap_or_else(|| panic!("Node not found"))),
     //     }
     // }
-
-    // Don't use this function, this is just a placeholder and a really
-    // inefficient implementation.
-    fn retrieve_node_with_guard(
-        &self,
-        _id: StrideNodeId<AF>,
-    ) -> CacheGuard<Self::AF> {
-        panic!("Not Implemented for InMeMStorage");
-    }
 
     // fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>> {
     //     self.nodes3
@@ -591,8 +569,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         self.prefixes.get(&part_id).map(|p| p.value())
     }
 
-    
-
     // fn retrieve_prefix_mut(
     //     &mut self,
     //     part_id: PrefixId<Self::AF>,
@@ -618,13 +594,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn increment_default_route_prefix_serial(&self) -> usize {
         self.default_route_prefix_serial
             .fetch_add(1, Ordering::Acquire)
-    }
-
-    fn retrieve_prefix_with_guard(
-        &self,
-        _index: StrideNodeId<AF>,
-    ) -> PrefixCacheGuard<Self::AF, Self::Meta> {
-        panic!("nOt ImPlEmEnTed for InMemNode");
     }
 
     fn get_prefixes(&'_ self) -> &'_ PrefixHashMap<Self::AF, Self::Meta> {
