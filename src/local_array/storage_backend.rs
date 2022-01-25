@@ -484,17 +484,17 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn store_node_with_guard<'a>(
         &'a self,
-        current_node: SizedNodeRefOption<'a, Self::AF>,
-        next_node: SizedStrideNode<Self::AF>,
-        guard: &'a Guard,
+        _current_node: SizedNodeRefOption<'a, Self::AF>,
+        _next_node: SizedStrideNode<Self::AF>,
+        _guard: &'a Guard,
     ) -> Option<StrideNodeId<Self::AF>> {
         unimplemented!()
     }
 
     fn retrieve_node_with_guard<'a>(
         &'a self,
-        id: StrideNodeId<Self::AF>,
-        guard: &'a Guard,
+        _id: StrideNodeId<Self::AF>,
+        _guard: &'a Guard,
     ) -> Option<SizedStrideRef<'a, Self::AF>> {
         unimplemented!()
     }

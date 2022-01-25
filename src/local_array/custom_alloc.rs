@@ -6,7 +6,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 use dashmap::DashMap;
-use epoch::{Guard, Owned, Shared};
+use epoch::{Guard, Owned};
 
 use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::tree::*;
@@ -15,7 +15,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
 
 use crate::af::AddressFamily;
-use routecore::record::{MergeUpdate, Meta};
+use routecore::record::{MergeUpdate};
 
 use super::storage_backend::{
     PrefixHashMap, SizedNodeRefOption, StrideReadStore, StrideWriteStore,
@@ -245,9 +245,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     }
 
     fn store_node_in_store(
-        store: &mut StrideWriteStore<Self::AF>,
-        id: StrideNodeId<Self::AF>,
-        next_node: SizedStrideNode<Self::AF>,
+        _store: &mut StrideWriteStore<Self::AF>,
+        _id: StrideNodeId<Self::AF>,
+        _next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<Self::AF>> {
         todo!()
     }
@@ -322,9 +322,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn update_node_in_store(
         &self,
-        store: &mut StrideWriteStore<Self::AF>,
-        current_node_id: StrideNodeId<Self::AF>,
-        updated_node: SizedStrideNode<Self::AF>,
+        _store: &mut StrideWriteStore<Self::AF>,
+        _current_node_id: StrideNodeId<Self::AF>,
+        _updated_node: SizedStrideNode<Self::AF>,
     ) {
         todo!()
     }
@@ -513,9 +513,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn store_node_with_guard(
         &self,
-        current_node: SizedNodeRefOption<Self::AF>,
-        next_node: SizedStrideNode<AF>,
-        guard: &epoch::Guard,
+        _current_node: SizedNodeRefOption<Self::AF>,
+        _next_node: SizedStrideNode<AF>,
+        _guard: &epoch::Guard,
     ) -> Option<StrideNodeId<Self::AF>> {
         todo!()
     }
