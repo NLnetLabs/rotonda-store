@@ -15,7 +15,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
 
 use crate::af::AddressFamily;
-use routecore::record::{MergeUpdate};
+use routecore::record::MergeUpdate;
 
 use super::storage_backend::{
     PrefixHashMap, SizedNodeRefOption, StrideReadStore, StrideWriteStore,
@@ -78,16 +78,16 @@ pub(crate) struct CustomAllocStorage<
     pub(crate) prefixes:
         DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     pub(crate) len_to_stride_size: [StrideType; 128],
-    pub(crate) len_to_store_bits: LenToBits,
+    // pub(crate) len_to_store_bits: LenToBits,
     pub default_route_prefix_serial: AtomicUsize,
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     CustomAllocStorage<AF, Meta>
 {
-    pub(crate) fn len_to_store_bits() -> LenToBits {
+    pub(crate) fn len_to_store_bits(len: u8) -> [u8; 10] {
         // (hor x vert) = level x len -> number of bits
-        LenToBits([
+        [
             [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 0
             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 1
             [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 2
@@ -121,7 +121,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             [4, 8, 12, 16, 20, 24, 28, 30, 0, 0], // 30
             [4, 8, 12, 16, 20, 24, 28, 31, 0, 0], // 31
             [4, 8, 12, 16, 20, 24, 28, 32, 0, 0], // 32
-        ])
+        ][len as usize]
     }
 }
 
@@ -145,7 +145,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             l.into()
         }
         println!("init");
-        let len_to_store_bits = Self::len_to_store_bits();
+        // let len_to_store_bits = Self::len_to_store_bits();
         let mut l0 = Owned::<[MaybeUninit<StoredNode<AF, Stride5>>]>::init(1);
         l0[0] = MaybeUninit::new(StoredNode::Empty);
 
@@ -161,7 +161,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             l29: NodeSet(init_level(1 << 4)),
             prefixes: DashMap::new(),
             len_to_stride_size,
-            len_to_store_bits,
+            // len_to_store_bits,
             default_route_prefix_serial: AtomicUsize::new(0),
         };
 
@@ -194,7 +194,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 &SearchLevel<AF, S>,
                 &mut NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
-                [u8; 10],
+                // [u8; 10],
                 u8,
             ) -> Option<StrideNodeId<AF>>,
         }
@@ -217,7 +217,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                     _ => panic!("unexpected sub prefix length {} in stride size 3 ({})", id.get_id().1, id),
                 },
                 new_node,
-                self.len_to_store_bits.0[id.get_id().1 as usize],
+                // Self::len_to_store_bits(id.get_id().1),
                 0,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
@@ -227,7 +227,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                     _ => panic!("unexpected sub prefix length {} in stride size 4 ({})", id.get_id().1, id),
                 },
                 new_node,
-                self.len_to_store_bits.0[id.get_id().1 as usize],
+                // Self::len_to_store_bits(id.get_id().1),
                 0,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
@@ -238,7 +238,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                     _ => panic!("unexpected sub prefix length {} in stride stride 5 ({})", id.get_id().1, id),
                 },
                 new_node,
-                self.len_to_store_bits.0[id.get_id().1 as usize],
+                // Self::len_to_store_bits(id.get_id().1),
                 0,
             ),
         }
@@ -262,7 +262,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 &SearchLevel<AF, S>,
                 &mut NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
-                [u8; 10],
+                // [u8; 10],
                 u8,
             ) -> Option<StrideNodeId<AF>>,
         }
@@ -286,7 +286,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         _ => panic!("unexpected sub prefix length"),
                     },
                     new_node,
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                 )
             }
@@ -299,7 +299,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         _ => panic!("unexpected sub prefix length"),
                     },
                     new_node,
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                 )
             }
@@ -313,7 +313,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         _ => panic!("unexpected sub prefix length"),
                     },
                     new_node,
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                 )
             }
@@ -345,7 +345,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
-                [u8; 10],
+                // [u8; 10],
                 u8,
                 &'a Guard,
             )
@@ -361,7 +361,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 println!(
                     "store id: {:?}",
-                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                    Self::len_to_store_bits(id.get_id().1),
                 );
                 (search_level_3.f)(
                     &search_level_3,
@@ -374,7 +374,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         29 => &self.l29,
                         _ => panic!("unexpected sub prefix length"),
                     },
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                     // result_node,
                     guard,
@@ -385,7 +385,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 println!(
                     "store id: {:?}",
-                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                    Self::len_to_store_bits(id.get_id().1),
                 );
                 println!("{:?}", self.l0);
                 (search_level_4.f)(
@@ -394,7 +394,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         10 => &self.l10,
                         _ => panic!("unexpected sub prefix length"),
                     },
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                     // result_node,
                     guard,
@@ -404,7 +404,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 println!(
                     "store id: {:?}",
-                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                    Self::len_to_store_bits(id.get_id().1),
                 );
                 println!("{:?}", self.l0);
                 (search_level_5.f)(
@@ -414,7 +414,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         5 => &self.l5,
                         _ => panic!("unexpected sub prefix length"),
                     },
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                     // result_node,
                     guard,
@@ -433,7 +433,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
-                [u8; 10],
+                // [u8; 10],
                 u8,
                 &'a Guard,
             )
@@ -449,7 +449,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 println!(
                     "store id: {:?}",
-                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                    Self::len_to_store_bits(id.get_id().1),
                 );
                 (search_level_3.f)(
                     &search_level_3,
@@ -462,7 +462,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         29 => &self.l29,
                         _ => panic!("unexpected sub prefix length"),
                     },
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                     // result_node,
                     guard,
@@ -473,7 +473,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 println!(
                     "store id: {:?}",
-                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                    Self::len_to_store_bits(id.get_id().1),
                 );
                 println!("{:?}", self.l0);
                 (search_level_4.f)(
@@ -482,7 +482,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         10 => &self.l10,
                         _ => panic!("unexpected sub prefix length"),
                     },
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                     // result_node,
                     guard,
@@ -492,7 +492,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 println!(
                     "store id: {:?}",
-                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                    Self::len_to_store_bits(id.get_id().1),
                 );
                 println!("{:?}", self.l0);
                 (search_level_5.f)(
@@ -502,7 +502,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                         5 => &self.l5,
                         _ => panic!("unexpected sub prefix length"),
                     },
-                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    // Self::len_to_store_bits(id.get_id().1),
                     0,
                     // result_node,
                     guard,
