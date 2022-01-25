@@ -91,9 +91,9 @@ pub(crate) trait StorageBackend {
         next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<Self::AF>>;
     fn update_node(
-        &self,
+        &mut self,
         current_node_id: StrideNodeId<Self::AF>,
-        updated_node: SizedStrideNode<Self::AF>,
+        updated_node: SizedStrideRefMut<Self::AF>,
     );
     fn update_node_in_store(
         &self,
@@ -109,12 +109,18 @@ pub(crate) trait StorageBackend {
     //     &self,
     //     index: StrideNodeId<Self::AF>,
     // ) -> SizedNodeRefResult<Self::AF>;
-    fn retrieve_node_with_guard<'a>(
+    fn retrieve_node_mut_with_guard<'a>(
         &'a self,
         id: StrideNodeId<Self::AF>,
         // result_ref: SizedNodeRefOption<'a, Self::AF>,
         guard: &'a Guard,
     ) -> Option<SizedStrideRefMut<'a, Self::AF>>;
+    fn retrieve_node_with_guard<'a>(
+        &'a self,
+        id: StrideNodeId<Self::AF>,
+        // result_ref: SizedNodeRefOption<'a, Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<SizedStrideRef<'a, Self::AF>>;
     fn store_node_with_guard<'a>(
         &'a self,
         current_node: SizedNodeRefOption<'a, Self::AF>,
@@ -396,18 +402,21 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     }
 
     fn update_node(
-        &self,
+        &mut self,
         current_node_id: StrideNodeId<AF>,
-        updated_node: SizedStrideNode<AF>,
+        updated_node: SizedStrideRefMut<AF>,
     ) {
         match updated_node {
-            SizedStrideNode::Stride3(node) => {
+            SizedStrideRefMut::Stride3(node) => {
+                let node = std::mem::take(node);
                 let _default_val = self.nodes3.insert(current_node_id, node);
             }
-            SizedStrideNode::Stride4(node) => {
+            SizedStrideRefMut::Stride4(node) => {
+                let node = std::mem::take(node);
                 let _default_val = self.nodes4.insert(current_node_id, node);
             }
-            SizedStrideNode::Stride5(node) => {
+            SizedStrideRefMut::Stride5(node) => {
+                let node = std::mem::take(node);
                 let _default_val = self.nodes5.insert(current_node_id, node);
             }
         }
@@ -464,8 +473,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         }
     }
 
-    fn retrieve_node_with_guard<'a>(
-        &self,
+    fn retrieve_node_mut_with_guard<'a>(
+        &'a self,
         _id: StrideNodeId<Self::AF>,
         // result_ref: SizedNodeRefOption<'a, Self::AF>,
         _guard: &'a Guard,
@@ -479,6 +488,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         next_node: SizedStrideNode<Self::AF>,
         guard: &'a Guard,
     ) -> Option<StrideNodeId<Self::AF>> {
+        unimplemented!()
+    }
+
+    fn retrieve_node_with_guard<'a>(
+        &'a self,
+        id: StrideNodeId<Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<SizedStrideRef<'a, Self::AF>> {
         unimplemented!()
     }
 

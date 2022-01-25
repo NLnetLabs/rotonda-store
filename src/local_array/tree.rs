@@ -1,9 +1,9 @@
+use crossbeam_epoch::{self as epoch};
 use std::hash::Hash;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 use std::{fmt::Debug, marker::PhantomData};
-use crossbeam_epoch::{self as epoch};
 
 use crate::af::{AddressFamily, Zero};
 use crate::local_array::custom_alloc::NodeSet;
@@ -41,8 +41,7 @@ pub(crate) enum SizedStrideNode<AF: AddressFamily> {
     // Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
-impl<AF, S> Default
-    for TreeBitMapNode<AF, S>
+impl<AF, S> Default for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride,
@@ -426,7 +425,11 @@ impl PrefixSet {
 
     pub(crate) fn empty(len: u8) -> Self {
         // let arr = array_init::array_init(|_| AtomicUsize::new(0));
-        PrefixSet(Vec::with_capacity(len as usize).into_boxed_slice(), len)
+        let mut v: Vec<AtomicUsize> = Vec::new();
+        for _ in 0..len {
+            v.push(AtomicUsize::new(0));
+        }
+        PrefixSet(v.into_boxed_slice(), len)
     }
 
     pub(crate) fn get_serial_at(&mut self, index: usize) -> &mut AtomicUsize {
@@ -847,9 +850,10 @@ where
     ) {
         // match self.retrieve_node(start_node_id).unwrap() {
         // let (id , store) = self.store.get_stride_for_id(start_node_id);
-        match self.store.get_stride_for_id_with_read_store(start_node_id) {
-            (id, StrideReadStore::Stride3(store)) => {
-                let n = store.get(&id).unwrap();
+        let guard = &epoch::pin();
+        match self.store.retrieve_node_with_guard(start_node_id, guard) {
+            Some(SizedStrideRef::Stride3(n)) => {
+                // let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
@@ -859,8 +863,8 @@ where
                     );
                 }
             }
-            (id, StrideReadStore::Stride4(store)) => {
-                let n = store.get(&id).unwrap();
+            Some(SizedStrideRef::Stride4(n)) => {
+                // let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
@@ -870,8 +874,8 @@ where
                     );
                 }
             }
-            (id, StrideReadStore::Stride5(store)) => {
-                let n = store.get(&id).unwrap();
+            Some(SizedStrideRef::Stride5(n)) => {
+                // let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
@@ -880,6 +884,9 @@ where
                         found_pfx_vec,
                     );
                 }
+            }
+            _ => {
+                panic!("can't find node {}", start_node_id);
             }
         }
     }
@@ -888,9 +895,7 @@ where
     // specified bit position in a ptr_vec of `current_node` into a vec,
     // then adds all prefixes of these children recursively into a vec and
     // returns that.
-    pub(crate) fn get_all_more_specifics_from_nibble<
-        S: Stride
-    >(
+    pub(crate) fn get_all_more_specifics_from_nibble<S: Stride>(
         &self,
         current_node: &TreeBitMapNode<Store::AF, S>,
         nibble: u32,

@@ -1,3 +1,5 @@
+use crossbeam_epoch::{self as epoch};
+
 use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
@@ -102,15 +104,16 @@ where
 
         // let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
         let root_node_id = self.get_root_node_id();
+        let guard = &epoch::pin();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
             super::node::StrideType::Stride3 => {
-                self.store.retrieve_node(root_node_id).unwrap()
+                self.store.retrieve_node_with_guard(root_node_id, guard).unwrap()
             }
             super::node::StrideType::Stride4 => {
-                self.store.retrieve_node(root_node_id).unwrap()
+                self.store.retrieve_node_with_guard(root_node_id, guard).unwrap()
             }
             super::node::StrideType::Stride5 => {
-                self.store.retrieve_node(root_node_id).unwrap()
+                self.store.retrieve_node_with_guard(root_node_id, guard).unwrap()
             }
         };
 
@@ -216,7 +219,7 @@ where
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
                             // node = SizedStrideRef::Stride3(
                             //     nodes3.get(&n).unwrap(),
                             // );
@@ -258,7 +261,7 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
                             // node = SizedStrideRef::Stride3(
                             //     nodes3.get(&n).unwrap(),
                             // );
@@ -376,7 +379,7 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
                             // node = SizedStrideRef::Stride4(
                             //     nodes4.get(&n).unwrap(),
                             // );
@@ -414,7 +417,7 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
                             // node = SizedStrideRef::Stride4(
                             //     nodes4.get(&n).unwrap(),
                             // );
@@ -521,7 +524,7 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
                             // println!("node {}", n);
                             // println!(
                             //     "Stride {}",
@@ -566,7 +569,7 @@ where
                         (Some(n), None) => {
                             // println!("nodes5 {:?}", nodes5);
                             // println!("nodes4 {:?}", nodes4);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
                             // node = SizedStrideRef::Stride5(
                             //     nodes5.get(&n).unwrap(),
                             // );

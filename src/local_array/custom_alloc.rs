@@ -6,13 +6,13 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 use dashmap::DashMap;
-use epoch::Guard;
+use epoch::{Guard, Owned, Shared};
 
 use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::tree::*;
 
-use crate::{impl_search_level, impl_write_level};
 use crate::prefix_record::InternalPrefixRecord;
+use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
 
 use crate::af::AddressFamily;
 use routecore::record::{MergeUpdate, Meta};
@@ -29,12 +29,6 @@ use super::storage_backend::{
 #[derive(Debug)]
 pub(crate) struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<StoredNode<AF, S>>]>,
-)
-where
-    MaybeNode<AF, S>: Sized;
-
-pub(crate) struct MaybeNode<AF: AddressFamily, S: Stride>(
-    MaybeUninit<StoredNode<AF, S>>,
 );
 
 #[derive(Debug)]
@@ -54,22 +48,33 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
     }
 }
 
+impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
+    fn init(size: usize) -> Self {
+        let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
+        for i in 0..size {
+            l[i] = MaybeUninit::new(StoredNode::Empty);
+        }
+        NodeSet(l.into())
+    }
+}
+
 #[derive(Debug)]
-pub(crate) struct LenToBits([[u8; 10]; 32]);
+pub(crate) struct LenToBits([[u8; 10]; 33]);
 
 #[derive(Debug)]
 pub(crate) struct CustomAllocStorage<
     AF: AddressFamily,
     Meta: routecore::record::Meta,
 > {
+    pub(crate) l0: NodeSet<AF, Stride5>,
     pub(crate) l5: NodeSet<AF, Stride5>,
-    pub(crate) l10: NodeSet<AF, Stride5>,
-    pub(crate) l14: NodeSet<AF, Stride4>,
+    pub(crate) l10: NodeSet<AF, Stride4>,
+    pub(crate) l14: NodeSet<AF, Stride3>,
     pub(crate) l17: NodeSet<AF, Stride3>,
     pub(crate) l20: NodeSet<AF, Stride3>,
-    pub(crate) l24: NodeSet<AF, Stride3>,
-    pub(crate) l28: NodeSet<AF, Stride3>,
-    pub(crate) l32: NodeSet<AF, Stride3>,
+    pub(crate) l23: NodeSet<AF, Stride3>,
+    pub(crate) l26: NodeSet<AF, Stride3>,
+    pub(crate) l29: NodeSet<AF, Stride3>,
     pub(crate) prefixes:
         DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     pub(crate) len_to_stride_size: [StrideType; 128],
@@ -83,38 +88,39 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     pub(crate) fn len_to_store_bits() -> LenToBits {
         // (hor x vert) = level x len -> number of bits
         LenToBits([
-            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0], // len 1
-            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0], // len 2
-            [3, 0, 0, 0, 0, 0, 0, 0, 0, 0], // len 3
-            [4, 0, 0, 0, 0, 0, 0, 0, 0, 0], // etc.
-            [5, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [6, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [7, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [8, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [9, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [10, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [11, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 1, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 2, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 3, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 4, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 5, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 6, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 7, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 8, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 9, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 10, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 11, 0, 0, 0, 0, 0, 0, 0, 0],
-            [12, 12, 0, 0, 0, 0, 0, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 1, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 2, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 3, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 4, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 5, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 6, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 7, 0, 0, 0],
-            [4, 4, 4, 4, 4, 4, 4, 4, 0, 0],
+            [0, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 0
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 1
+            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 2
+            [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 3
+            [4, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 4
+            [5, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 5
+            [6, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 6
+            [7, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 7
+            [8, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 8
+            [9, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 9
+            [10, 0, 0, 0, 0, 0, 0, 0, 0, 0],      // 10
+            [11, 0, 0, 0, 0, 0, 0, 0, 0, 0],      // 11
+            [12, 0, 0, 0, 0, 0, 0, 0, 0, 0],      // 12
+            [12, 13, 0, 0, 0, 0, 0, 0, 0, 0],     // 13
+            [12, 14, 0, 0, 0, 0, 0, 0, 0, 0],     // 14
+            [12, 15, 0, 0, 0, 0, 0, 0, 0, 0],     // 15
+            [12, 16, 0, 0, 0, 0, 0, 0, 0, 0],     // 16
+            [12, 17, 0, 0, 0, 0, 0, 0, 0, 0],     // 17
+            [12, 18, 0, 0, 0, 0, 0, 0, 0, 0],     // 18
+            [12, 19, 0, 0, 0, 0, 0, 0, 0, 0],     // 19
+            [12, 20, 0, 0, 0, 0, 0, 0, 0, 0],     // 20
+            [12, 21, 0, 0, 0, 0, 0, 0, 0, 0],     // 21
+            [12, 22, 0, 0, 0, 0, 0, 0, 0, 0],     // 22
+            [12, 23, 0, 0, 0, 0, 0, 0, 0, 0],     // 23
+            [12, 24, 0, 0, 0, 0, 0, 0, 0, 0],     // 24
+            [12, 24, 1, 0, 0, 0, 0, 0, 0, 0],     // 25
+            [4, 8, 12, 16, 20, 24, 26, 0, 0, 0],  // 26
+            [4, 8, 12, 16, 20, 24, 27, 0, 0, 0],  // 27
+            [4, 8, 12, 16, 20, 24, 28, 0, 0, 0],  // 28
+            [4, 8, 12, 16, 20, 24, 28, 29, 0, 0], // 29
+            [4, 8, 12, 16, 20, 24, 28, 30, 0, 0], // 30
+            [4, 8, 12, 16, 20, 24, 28, 31, 0, 0], // 31
+            [4, 8, 12, 16, 20, 24, 28, 32, 0, 0], // 32
         ])
     }
 }
@@ -129,21 +135,36 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self {
+        fn init_level<AF: AddressFamily, S: Stride>(
+            size: usize,
+        ) -> Atomic<[MaybeUninit<StoredNode<AF, S>>]> {
+            let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
+            for i in 0..size {
+                l[i] = MaybeUninit::new(StoredNode::Empty);
+            }
+            l.into()
+        }
+        println!("init");
         let len_to_store_bits = Self::len_to_store_bits();
+        let mut l0 = Owned::<[MaybeUninit<StoredNode<AF, Stride5>>]>::init(1);
+        l0[0] = MaybeUninit::new(StoredNode::Empty);
+
         let mut store = CustomAllocStorage {
-            l5: NodeSet(Atomic::init(1 << 5)),
-            l10: NodeSet(Atomic::init(1 << 10)),
-            l14: NodeSet(Atomic::init(1 << 12)),
-            l17: NodeSet(Atomic::init(1 << 12)),
-            l20: NodeSet(Atomic::init(1 << 12)),
-            l24: NodeSet(Atomic::init(1 << 12)),
-            l28: NodeSet(Atomic::init(1 << 4)),
-            l32: NodeSet(Atomic::init(1 << 4)),
+            l0: NodeSet(init_level(1 << 5)),
+            l5: NodeSet(init_level(1 << 10)),
+            l10: NodeSet(init_level(1 << 12)),
+            l14: NodeSet(init_level(1 << 12)),
+            l17: NodeSet(init_level(1 << 12)),
+            l20: NodeSet(init_level(1 << 12)),
+            l23: NodeSet(init_level(1 << 12)),
+            l26: NodeSet(init_level(1 << 4)),
+            l29: NodeSet(init_level(1 << 4)),
             prefixes: DashMap::new(),
             len_to_stride_size,
             len_to_store_bits,
             default_route_prefix_serial: AtomicUsize::new(0),
         };
+
         store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
@@ -182,16 +203,18 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         let search_level_4 = impl_write_level![Stride4; id;];
         let search_level_5 = impl_write_level![Stride5; id;];
 
+        println!("insert node {}: {:?}", id, next_node);
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
                 match id.get_id().1 {
+                    14 => &mut self.l14,
                     17 => &mut self.l17,
                     20 => &mut self.l20,
-                    24 => &mut self.l24,
-                    28 => &mut self.l28,
-                    32 => &mut self.l32,
-                    _ => panic!("unexpected sub prefix length"),
+                    23 => &mut self.l23,
+                    26 => &mut self.l26,
+                    29 => &mut self.l29,
+                    _ => panic!("unexpected sub prefix length {} in stride size 3 ({})", id.get_id().1, id),
                 },
                 new_node,
                 self.len_to_store_bits.0[id.get_id().1 as usize],
@@ -200,8 +223,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
                 match id.get_id().1 {
-                    14 => &mut self.l14,
-                    _ => panic!("unexpected sub prefix length"),
+                    10 => &mut self.l10,
+                    _ => panic!("unexpected sub prefix length {} in stride size 4 ({})", id.get_id().1, id),
                 },
                 new_node,
                 self.len_to_store_bits.0[id.get_id().1 as usize],
@@ -210,9 +233,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
                 match id.get_id().1 {
+                    0 => &mut self.l0,
                     5 => &mut self.l5,
-                    10 => &mut self.l10,
-                    _ => panic!("unexpected sub prefix length"),
+                    _ => panic!("unexpected sub prefix length {} in stride stride 5 ({})", id.get_id().1, id),
                 },
                 new_node,
                 self.len_to_store_bits.0[id.get_id().1 as usize],
@@ -230,11 +253,71 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     }
 
     fn update_node(
-        &self,
-        current_node_id: StrideNodeId<Self::AF>,
-        updated_node: SizedStrideNode<Self::AF>,
+        &mut self,
+        id: StrideNodeId<AF>,
+        updated_node: SizedStrideRefMut<AF>,
     ) {
-        todo!()
+        struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
+            f: &'s dyn Fn(
+                &SearchLevel<AF, S>,
+                &mut NodeSet<AF, S>,
+                TreeBitMapNode<AF, S>,
+                [u8; 10],
+                u8,
+            ) -> Option<StrideNodeId<AF>>,
+        }
+
+        let search_level_3 = impl_write_level![Stride3; id;];
+        let search_level_4 = impl_write_level![Stride4; id;];
+        let search_level_5 = impl_write_level![Stride5; id;];
+
+        match updated_node {
+            SizedStrideRefMut::Stride3(new_node) => {
+                let new_node = std::mem::take(new_node);
+                (search_level_3.f)(
+                    &search_level_3,
+                    match id.get_id().1 {
+                        14 => &mut self.l14,
+                        17 => &mut self.l17,
+                        20 => &mut self.l20,
+                        23 => &mut self.l23,
+                        26 => &mut self.l26,
+                        29 => &mut self.l29,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    new_node,
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                )
+            }
+            SizedStrideRefMut::Stride4(new_node) => {
+                let new_node = std::mem::take(new_node);
+                (search_level_4.f)(
+                    &search_level_4,
+                    match id.get_id().1 {
+                        10 => &mut self.l10,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    new_node,
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                )
+            }
+            SizedStrideRefMut::Stride5(new_node) => {
+                let new_node = std::mem::take(new_node);
+                (search_level_5.f)(
+                    &search_level_5,
+                    match id.get_id().1 {
+                        0 => &mut self.l0,
+                        5 => &mut self.l5,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    new_node,
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                )
+            }
+        };
     }
 
     fn update_node_in_store(
@@ -256,6 +339,93 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn retrieve_node_with_guard<'a>(
         &'a self,
         id: StrideNodeId<Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<SizedStrideRef<'a, Self::AF>> {
+        struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
+            f: &'s dyn for<'a> Fn(
+                &SearchLevel<AF, S>,
+                &NodeSet<AF, S>,
+                [u8; 10],
+                u8,
+                &'a Guard,
+            )
+                -> Option<SizedStrideRef<'a, AF>>,
+        }
+
+        let search_level_3 = impl_search_level![Stride3; id;];
+        let search_level_4 = impl_search_level![Stride4; id;];
+        let search_level_5 = impl_search_level![Stride5; id;];
+
+        match self.get_stride_for_id(id) {
+            StrideType::Stride3 => {
+                println!("retrieve node {} from l{}", id, id.get_id().1);
+                println!(
+                    "store id: {:?}",
+                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                );
+                (search_level_3.f)(
+                    &search_level_3,
+                    match id.get_id().1 {
+                        14 => &self.l14,
+                        17 => &self.l17,
+                        20 => &self.l20,
+                        23 => &self.l23,
+                        26 => &self.l26,
+                        29 => &self.l29,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                    // result_node,
+                    guard,
+                )
+            }
+
+            StrideType::Stride4 => {
+                println!("retrieve node {} from l{}", id, id.get_id().1);
+                println!(
+                    "store id: {:?}",
+                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                );
+                println!("{:?}", self.l0);
+                (search_level_4.f)(
+                    &search_level_4,
+                    match id.get_id().1 {
+                        10 => &self.l10,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                    // result_node,
+                    guard,
+                )
+            }
+            StrideType::Stride5 => {
+                println!("retrieve node {} from l{}", id, id.get_id().1);
+                println!(
+                    "store id: {:?}",
+                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                );
+                println!("{:?}", self.l0);
+                (search_level_5.f)(
+                    &search_level_5,
+                    match id.get_id().1 {
+                        0 => &self.l0,
+                        5 => &self.l5,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                    // result_node,
+                    guard,
+                )
+            }
+        }
+    }
+
+    fn retrieve_node_mut_with_guard<'a>(
+        &'a self,
+        id: StrideNodeId<Self::AF>,
         // result_ref: SizedNodeRefOption<'_, Self::AF>,
         guard: &'a Guard,
     ) -> Option<SizedStrideRefMut<'a, Self::AF>> {
@@ -266,206 +436,78 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 [u8; 10],
                 u8,
                 &'a Guard,
-            ) -> Option<SizedStrideRefMut<'a, AF>>,
+            )
+                -> Option<SizedStrideRefMut<'a, AF>>,
         }
 
-        let search_level_3 = impl_search_level![Stride3; id;];
-        let search_level_4 = impl_search_level![Stride4; id;];
-        let search_level_5 = impl_search_level![Stride5; id;];
+        let search_level_3 = impl_search_level_mut![Stride3; id;];
+        let search_level_4 = impl_search_level_mut![Stride4; id;];
+        let search_level_5 = impl_search_level_mut![Stride5; id;];
 
-        // let search_level_3 = SearchLevel {
-        //     f: &|search_level: &SearchLevel<AF, Stride3>,
-        //          nodes,
-        //          bits_division: [u8; 10],
-        //          mut level: u8,
-        //          guard| {
-        //         // Aaaaand, this is all of our hashing function.
-        //         // I'll explain later.
-        //         let index = id.get_id().0.dangerously_truncate_to_usize()
-        //             >> (AF::BITS - bits_division[level as usize]);
-
-        //         // Read the node from the block pointed to by the
-        //         // Atomic pointer.
-        //         // let guard = &epoch::pin();
-        //         let this_node = unsafe {
-        //             &nodes.0.load(Ordering::SeqCst, guard).deref()[index]
-        //         };
-        //         match unsafe { this_node.assume_init_ref() } {
-        //             // No node exists, here
-        //             StoredNode::Empty => None,
-        //             // A node exists, but since we're not using perfect
-        //             // hashing everywhere, this may be very well a node
-        //             // we're not searching for, so check that.
-        //             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-        //                 if &id == node_id {
-        //                     // YES, It's the one we're looking for!
-        //                     return Some(SizedStrideRef::Stride3(node))
-        //                 };
-        //                 // Meh, it's not, but we can a go to the next level
-        //                 // and see if it lives there.
-        //                 level += 1;
-        //                 match bits_division.get((level) as usize) {
-        //                     // on to the next level!
-        //                     Some(next_bit_shift) if next_bit_shift > &0 => {
-        //                         (search_level.f)(
-        //                             search_level,
-        //                             node_set,
-        //                             // new_node,
-        //                             bits_division,
-        //                             level,
-        //                             // result_node,
-        //                             guard,
-        //                         )
-        //                     }
-        //                     // There's no next level, we found nothing.
-        //                     _ => None,
-        //                 }
-        //             }
-        //         }
-        //     },
-        // };
-        // let search_level_4 = SearchLevel {
-        //     f: &|search_level: &SearchLevel<AF, Stride4>,
-        //          nodes,
-        //          bits_division: [u8; 10],
-        //          mut level: u8,
-        //          guard| {
-        //         // Aaaaand, this is all of our hashing function.
-        //         // I'll explain later.
-        //         let index = id.get_id().0.dangerously_truncate_to_usize()
-        //             >> (AF::BITS - bits_division[level as usize]);
-
-        //         // Read the node from the block pointed to by the
-        //         // Atomic pointer.
-        //         // let guard = &epoch::pin();
-        //         let this_node = unsafe {
-        //             &nodes.0.load(Ordering::SeqCst, guard).deref()[index]
-        //         };
-        //         match unsafe { this_node.assume_init_ref() } {
-        //             // No node exists, here
-        //             StoredNode::Empty => None,
-        //             // A node exists, but since we're not using perfect
-        //             // hashing everywhere, this may be very well a node
-        //             // we're not searching for, so check that.
-        //             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-        //                 if &id == node_id {
-        //                     // YES, It's the one we're looking for!
-        //                     return Some(SizedStrideRef::Stride4(node));
-        //                 };
-        //                 // Meh, it's not, but we can a go to the next level
-        //                 // and see if it lives there.
-        //                 level += 1;
-        //                 match bits_division.get((level) as usize) {
-        //                     // on to the next level!
-        //                     Some(next_bit_shift) if next_bit_shift > &0 => {
-        //                         (search_level.f)(
-        //                             search_level,
-        //                             node_set,
-        //                             // new_node,
-        //                             bits_division,
-        //                             level,
-        //                             // result_node,
-        //                             guard,
-        //                         )
-        //                     }
-        //                     // There's no next level, we found nothing.
-        //                     _ => None,
-        //                 }
-        //             }
-        //         }
-        //     },
-        // };
-        // let search_level_5 = SearchLevel {
-        //     f: &|search_level: &SearchLevel<AF, Stride5>,
-        //          nodes,
-        //          bits_division: [u8; 10],
-        //          mut level: u8,
-        //          guard| {
-        //         // Aaaaand, this is all of our hashing function.
-        //         // I'll explain later.
-        //         let index = id.get_id().0.dangerously_truncate_to_usize()
-        //             >> (AF::BITS - bits_division[level as usize]);
-
-        //         // Read the node from the block pointed to by the
-        //         // Atomic pointer.
-        //         // let guard = &epoch::pin();
-        //         let this_node = unsafe {
-        //             &nodes.0.load(Ordering::SeqCst, guard).deref()[index]
-        //         };
-        //         match unsafe { this_node.assume_init_ref() } {
-        //             // No node exists, here
-        //             StoredNode::Empty => None,
-        //             // A node exists, but since we're not using perfect
-        //             // hashing everywhere, this may be very well a node
-        //             // we're not searching for, so check that.
-        //             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-        //                 if &id == node_id {
-        //                     // YES, It's the one we're looking for!
-        //                     return Some(SizedStrideRef::Stride5(node));
-        //                 };
-        //                 // Meh, it's not, but we can a go to the next level
-        //                 // and see if it lives there.
-        //                 level += 1;
-        //                 match bits_division.get((level) as usize) {
-        //                     // on to the next level!
-        //                     Some(next_bit_shift) if next_bit_shift > &0 => {
-        //                         (search_level.f)(
-        //                             search_level,
-        //                             node_set,
-        //                             // new_node,
-        //                             bits_division,
-        //                             level,
-        //                             // result_node,
-        //                             guard,
-        //                         )
-        //                     }
-        //                     // There's no next level, we found nothing.
-        //                     _ => None,
-        //                 }
-        //             }
-        //         }
-        //     },
-        // };
         match self.get_stride_for_id(id) {
-            StrideType::Stride3 => (search_level_3.f)(
-                &search_level_3,
-                match id.get_id().1 {
-                    17 => &self.l17,
-                    20 => &self.l20,
-                    24 => &self.l24,
-                    28 => &self.l28,
-                    32 => &self.l32,
-                    _ => panic!("unexpected sub prefix length"),
-                },
-                self.len_to_store_bits.0[id.get_id().1 as usize],
-                0,
-                // result_node,
-                guard,
-            ),
+            StrideType::Stride3 => {
+                println!("retrieve node {} from l{}", id, id.get_id().1);
+                println!(
+                    "store id: {:?}",
+                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                );
+                (search_level_3.f)(
+                    &search_level_3,
+                    match id.get_id().1 {
+                        14 => &self.l14,
+                        17 => &self.l17,
+                        20 => &self.l20,
+                        23 => &self.l23,
+                        26 => &self.l26,
+                        29 => &self.l29,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                    // result_node,
+                    guard,
+                )
+            }
 
-            StrideType::Stride4 => (search_level_4.f)(
-                &search_level_4,
-                match id.get_id().1 {
-                    14 => &self.l14,
-                    _ => panic!("unexpected sub prefix length"),
-                },
-                self.len_to_store_bits.0[id.get_id().1 as usize],
-                0,
-                // result_node,
-                guard,
-            ),
-            StrideType::Stride5 => (search_level_5.f)(
-                &search_level_5,
-                match id.get_id().1 {
-                    5 => &self.l5,
-                    10 => &self.l10,
-                    _ => panic!("unexpected sub prefix length"),
-                },
-                self.len_to_store_bits.0[id.get_id().1 as usize],
-                0,
-                // result_node,
-                guard,
-            ),
+            StrideType::Stride4 => {
+                println!("retrieve node {} from l{}", id, id.get_id().1);
+                println!(
+                    "store id: {:?}",
+                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                );
+                println!("{:?}", self.l0);
+                (search_level_4.f)(
+                    &search_level_4,
+                    match id.get_id().1 {
+                        10 => &self.l10,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                    // result_node,
+                    guard,
+                )
+            }
+            StrideType::Stride5 => {
+                println!("retrieve node {} from l{}", id, id.get_id().1);
+                println!(
+                    "store id: {:?}",
+                    self.len_to_store_bits.0[id.get_id().1 as usize]
+                );
+                println!("{:?}", self.l0);
+                (search_level_5.f)(
+                    &search_level_5,
+                    match id.get_id().1 {
+                        0 => &self.l0,
+                        5 => &self.l5,
+                        _ => panic!("unexpected sub prefix length"),
+                    },
+                    self.len_to_store_bits.0[id.get_id().1 as usize],
+                    0,
+                    // result_node,
+                    guard,
+                )
+            }
         }
     }
 
@@ -545,7 +587,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         &self,
         id: StrideNodeId<Self::AF>,
     ) -> crate::local_array::tree::StrideType {
-        todo!()
+        self.len_to_stride_size[id.get_id().1 as usize]
     }
 
     fn get_stride_for_id_with_read_store(

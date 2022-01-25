@@ -2,6 +2,7 @@ use crate::af::{IPv4, IPv6};
 use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::custom_alloc::CustomAllocStorage;
 use crate::local_array::tree::TreeBitMap;
+use crate::local_array::storage_backend::InMemStorage;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
 use crate::{QueryResult, Stats, Strides};
@@ -17,7 +18,7 @@ use super::storage_backend::PrefixHashMap;
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
     v4: TreeBitMap<CustomAllocStorage<IPv4, Meta>>,
-    v6: TreeBitMap<CustomAllocStorage<IPv6, Meta>>,
+    v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
