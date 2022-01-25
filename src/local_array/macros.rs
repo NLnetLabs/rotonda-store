@@ -343,7 +343,7 @@ macro_rules! impl_search_level {
                         // Aaaaand, this is all of our hashing function.
                         // I'll explain later.
                         let index = $id.get_id().0.dangerously_truncate_to_usize()
-                            >> (AF::BITS - Self::len_to_store_bits($id.get_id().1)[level as usize]);
+                            >> (AF::BITS - Self::len_to_store_bits($id.get_id().1,level).unwrap());
 
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
@@ -369,7 +369,7 @@ macro_rules! impl_search_level {
                                 // Meh, it's not, but we can a go to the next level
                                 // and see if it lives there.
                                 level += 1;
-                                match Self::len_to_store_bits($id.get_id().1).get((level) as usize) {
+                                match Self::len_to_store_bits($id.get_id().1, level) {
                                     // on to the next level!
                                     Some(next_bit_shift) if next_bit_shift > &0 => {
                                         (search_level.f)(
@@ -412,7 +412,7 @@ macro_rules! impl_search_level_mut {
                         // Aaaaand, this is all of our hashing function.
                         // I'll explain later.
                         let index = $id.get_id().0.dangerously_truncate_to_usize()
-                            >> (AF::BITS - Self::len_to_store_bits($id.get_id().1)[level as usize]);
+                            >> (AF::BITS - Self::len_to_store_bits($id.get_id().1, level).unwrap());
 
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
@@ -438,7 +438,7 @@ macro_rules! impl_search_level_mut {
                                 // Meh, it's not, but we can a go to the next level
                                 // and see if it lives there.
                                 level += 1;
-                                match Self::len_to_store_bits($id.get_id().1).get((level) as usize) {
+                                match Self::len_to_store_bits($id.get_id().1, level) {
                                     // on to the next level!
                                     Some(next_bit_shift) if next_bit_shift > &0 => {
                                         (search_level.f)(
@@ -479,13 +479,12 @@ macro_rules! impl_write_level {
                     //  bits_division: [u8; 10],
                      mut level: u8| {
                     let index = $id.get_id().0.dangerously_truncate_to_usize()
-                        >> (AF::BITS - Self::len_to_store_bits($id.get_id().1)[level as usize]);
+                        >> (AF::BITS - Self::len_to_store_bits($id.get_id().1, level).unwrap());
                     println!("{:032b}", $id.get_id().0.dangerously_truncate_to_usize());
                     println!("id {:?}", $id.get_id());
                     println!("calculated index {}", index);
                     println!("level {}", level);
-                    println!("bits_div {:?}", Self::len_to_store_bits($id.get_id().1));
-                    println!("bits_division {}", Self::len_to_store_bits($id.get_id().1)[level as usize]);
+                    println!("bits_division {}", Self::len_to_store_bits($id.get_id().1,level).unwrap());
                     let guard = &epoch::pin();
                     let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
                     println!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
@@ -500,7 +499,7 @@ macro_rules! impl_write_level {
                                 &mut MaybeUninit::new(StoredNode::NodeWithRef((
                                     $id,
                                     new_node,
-                                    NodeSet::init((1 << Self::len_to_store_bits($id.get_id().1)[(level + 1) as usize]) as usize),
+                                    NodeSet::init((1 << Self::len_to_store_bits($id.get_id().1, level + 1).unwrap()) as usize),
                                 ))),
                             );
                             // ABA Baby!
@@ -547,7 +546,7 @@ macro_rules! impl_write_level {
                                 return Some($id);
                             };
                             level += 1;
-                            match Self::len_to_store_bits($id.get_id().1).get((level) as usize) {
+                            match Self::len_to_store_bits($id.get_id().1, level) {
                                 // on to the next level!
                                 Some(next_bit_shift) if next_bit_shift > &0 => {
                                     (search_level.f)(
