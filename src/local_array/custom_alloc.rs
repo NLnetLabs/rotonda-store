@@ -84,7 +84,10 @@ pub(crate) struct CustomAllocStorage<
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     CustomAllocStorage<AF, Meta>
 {
-    pub(crate) fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8> {
+    pub(crate) fn len_to_store_bits(
+        len: u8,
+        level: u8,
+    ) -> Option<&'static u8> {
         // (hor x vert) = level x len -> number of bits
         [
             [0_u8, 0, 0, 0, 0, 0, 0, 0, 0, 0],    // len 0
@@ -120,7 +123,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             [4, 8, 12, 16, 20, 24, 28, 30, 0, 0], // 30
             [4, 8, 12, 16, 20, 24, 28, 31, 0, 0], // 31
             [4, 8, 12, 16, 20, 24, 28, 32, 0, 0], // 32
-        ][len as usize].get(level as usize)
+        ][len as usize]
+            .get(level as usize)
     }
 }
 
@@ -134,29 +138,20 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self {
-        fn init_level<AF: AddressFamily, S: Stride>(
-            size: usize,
-        ) -> Atomic<[MaybeUninit<StoredNode<AF, S>>]> {
-            let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
-            for i in 0..size {
-                l[i] = MaybeUninit::new(StoredNode::Empty);
-            }
-            l.into()
-        }
         println!("init");
         let mut l0 = Owned::<[MaybeUninit<StoredNode<AF, Stride5>>]>::init(1);
         l0[0] = MaybeUninit::new(StoredNode::Empty);
 
         let mut store = CustomAllocStorage {
-            l0: NodeSet(init_level(1 << 5)),
-            l5: NodeSet(init_level(1 << 10)),
-            l10: NodeSet(init_level(1 << 12)),
-            l14: NodeSet(init_level(1 << 12)),
-            l17: NodeSet(init_level(1 << 12)),
-            l20: NodeSet(init_level(1 << 12)),
-            l23: NodeSet(init_level(1 << 12)),
-            l26: NodeSet(init_level(1 << 4)),
-            l29: NodeSet(init_level(1 << 4)),
+            l0: NodeSet::init(1 << 5),
+            l5: NodeSet::init(1 << 10),
+            l10: NodeSet::init(1 << 12),
+            l14: NodeSet::init(1 << 12),
+            l17: NodeSet::init(1 << 12),
+            l20: NodeSet::init(1 << 12),
+            l23: NodeSet::init(1 << 12),
+            l26: NodeSet::init(1 << 4),
+            l29: NodeSet::init(1 << 4),
             prefixes: DashMap::new(),
             len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
