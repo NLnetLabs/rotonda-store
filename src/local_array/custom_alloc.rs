@@ -126,6 +126,102 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         ][len as usize]
             .get(level as usize)
     }
+
+    pub(crate) fn get_store3_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride3> {
+        match id.get_id().1 as usize {
+            14 => &mut self.l14,
+            17 => &mut self.l17,
+            20 => &mut self.l20,
+            23 => &mut self.l23,
+            26 => &mut self.l26,
+            29 => &mut self.l29,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 3 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    pub(crate) fn get_store3(
+        &self,
+        id: StrideNodeId<AF>,
+    ) -> &NodeSet<AF, Stride3> {
+        match id.get_id().1 as usize {
+            14 => &self.l14,
+            17 => &self.l17,
+            20 => &self.l20,
+            23 => &self.l23,
+            26 => &self.l26,
+            29 => &self.l29,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 3 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    pub(crate) fn get_store4_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride4> {
+        match id.get_id().1 as usize {
+            10 => &mut self.l10,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 4 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    pub(crate) fn get_store4(
+        &self,
+        id: StrideNodeId<AF>,
+    ) -> &NodeSet<AF, Stride4> {
+        match id.get_id().1 as usize {
+            10 => &self.l10,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 4 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    pub(crate) fn get_store5_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride5> {
+        match id.get_id().1 as usize {
+            0 => &mut self.l0,
+            5 => &mut self.l5,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 3 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    pub(crate) fn get_store5(
+        &self,
+        id: StrideNodeId<AF>,
+    ) -> &NodeSet<AF, Stride5> {
+        match id.get_id().1 as usize {
+            0 => &self.l0,
+            5 => &self.l5,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 3 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
@@ -176,6 +272,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     // Create a new node in the store with paylaod `next_node`.
     //
     // Next node will be ignored if a node with the same `id` already exists.
+    #[allow(clippy::type_complexity)]
     fn store_node(
         &mut self,
         id: StrideNodeId<Self::AF>,
@@ -198,34 +295,19 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
-                match id.get_id().1 {
-                    14 => &mut self.l14,
-                    17 => &mut self.l17,
-                    20 => &mut self.l20,
-                    23 => &mut self.l23,
-                    26 => &mut self.l26,
-                    29 => &mut self.l29,
-                    _ => panic!("unexpected sub prefix length {} in stride size 3 ({})", id.get_id().1, id),
-                },
+                self.get_store3_mut(id),
                 new_node,
                 0,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
-                match id.get_id().1 {
-                    10 => &mut self.l10,
-                    _ => panic!("unexpected sub prefix length {} in stride size 4 ({})", id.get_id().1, id),
-                },
+                self.get_store4_mut(id),
                 new_node,
                 0,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
-                match id.get_id().1 {
-                    0 => &mut self.l0,
-                    5 => &mut self.l5,
-                    _ => panic!("unexpected sub prefix length {} in stride stride 5 ({})", id.get_id().1, id),
-                },
+                self.get_store5_mut(id),
                 new_node,
                 0,
             ),
@@ -263,15 +345,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let new_node = std::mem::take(new_node);
                 (search_level_3.f)(
                     &search_level_3,
-                    match id.get_id().1 {
-                        14 => &mut self.l14,
-                        17 => &mut self.l17,
-                        20 => &mut self.l20,
-                        23 => &mut self.l23,
-                        26 => &mut self.l26,
-                        29 => &mut self.l29,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store3_mut(id),
                     new_node,
                     // Self::len_to_store_bits(id.get_id().1),
                     0,
@@ -281,10 +355,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let new_node = std::mem::take(new_node);
                 (search_level_4.f)(
                     &search_level_4,
-                    match id.get_id().1 {
-                        10 => &mut self.l10,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store4_mut(id),
                     new_node,
                     0,
                 )
@@ -293,11 +364,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let new_node = std::mem::take(new_node);
                 (search_level_5.f)(
                     &search_level_5,
-                    match id.get_id().1 {
-                        0 => &mut self.l0,
-                        5 => &mut self.l5,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store5_mut(id),
                     new_node,
                     0,
                 )
@@ -345,15 +412,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
-                    match id.get_id().1 {
-                        14 => &self.l14,
-                        17 => &self.l17,
-                        20 => &self.l20,
-                        23 => &self.l23,
-                        26 => &self.l26,
-                        29 => &self.l29,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store3(id),
                     0,
                     guard,
                 )
@@ -364,10 +423,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("{:?}", self.l0);
                 (search_level_4.f)(
                     &search_level_4,
-                    match id.get_id().1 {
-                        10 => &self.l10,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store4(id),
                     0,
                     guard,
                 )
@@ -377,11 +433,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("{:?}", self.l0);
                 (search_level_5.f)(
                     &search_level_5,
-                    match id.get_id().1 {
-                        0 => &self.l0,
-                        5 => &self.l5,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store5(id),
                     0,
                     guard,
                 )
@@ -415,15 +467,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
-                    match id.get_id().1 {
-                        14 => &self.l14,
-                        17 => &self.l17,
-                        20 => &self.l20,
-                        23 => &self.l23,
-                        26 => &self.l26,
-                        29 => &self.l29,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store3(id),
                     0,
                     guard,
                 )
@@ -434,10 +478,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("{:?}", self.l0);
                 (search_level_4.f)(
                     &search_level_4,
-                    match id.get_id().1 {
-                        10 => &self.l10,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store4(id),
                     0,
                     guard,
                 )
@@ -447,11 +488,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("{:?}", self.l0);
                 (search_level_5.f)(
                     &search_level_5,
-                    match id.get_id().1 {
-                        0 => &self.l0,
-                        5 => &self.l5,
-                        _ => panic!("unexpected sub prefix length"),
-                    },
+                    self.get_store5(id),
                     0,
                     guard,
                 )
