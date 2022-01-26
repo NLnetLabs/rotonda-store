@@ -1,5 +1,6 @@
 use std::{
     fmt::Debug,
+    marker::PhantomData,
     mem::MaybeUninit,
     sync::atomic::{AtomicUsize, Ordering},
 };
@@ -8,8 +9,8 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use dashmap::DashMap;
 use epoch::{Guard, Owned};
 
-use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::tree::*;
+use crate::{local_array::storage_backend::StorageBackend, IPv4};
 
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
@@ -65,16 +66,37 @@ pub(crate) struct LenToBits([[u8; 10]; 33]);
 pub(crate) struct CustomAllocStorage<
     AF: AddressFamily,
     Meta: routecore::record::Meta,
+    Buckets: FamilyBuckets<AF>,
 > {
-    pub(crate) buckets: NodeBuckets<AF>,
+    pub(crate) buckets: Buckets,
     pub(crate) prefixes:
         DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     pub(crate) len_to_stride_size: [StrideType; 128],
     pub default_route_prefix_serial: AtomicUsize,
 }
 
+pub(crate) trait FamilyBuckets<AF: AddressFamily> {    
+    fn init() -> Self;
+    fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
+    fn get_store3_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride3>;
+    fn get_store4_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride4>;
+    fn get_store5_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride5>;
+    fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
+    fn get_store4(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4>;
+    fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5>;
+}
+
 #[derive(Debug)]
-pub(crate) struct NodeBuckets<AF: AddressFamily> {
+pub(crate) struct NodeBuckets4<AF: AddressFamily> {
     l0: NodeSet<AF, Stride5>,
     l5: NodeSet<AF, Stride5>,
     l10: NodeSet<AF, Stride4>,
@@ -86,9 +108,9 @@ pub(crate) struct NodeBuckets<AF: AddressFamily> {
     l29: NodeSet<AF, Stride3>,
 }
 
-impl<AF: AddressFamily> NodeBuckets<AF> {
+impl<AF: AddressFamily> FamilyBuckets<AF> for NodeBuckets4<AF> {
     fn init() -> Self {
-        NodeBuckets {
+        NodeBuckets4 {
             l0: NodeSet::init(1 << 5),
             l5: NodeSet::init(1 << 10),
             l10: NodeSet::init(1 << 12),
@@ -101,10 +123,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
         }
     }
 
-    pub(crate) fn len_to_store_bits(
-        len: u8,
-        level: u8,
-    ) -> Option<&'static u8> {
+    fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8> {
         // (vert x hor) = len x level -> number of bits
         [
             [0_u8, 0, 0, 0, 0, 0, 0, 0, 0, 0],    // len 0
@@ -144,7 +163,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
             .get(level as usize)
     }
 
-    pub(crate) fn get_store3_mut(
+    fn get_store3_mut(
         &mut self,
         id: StrideNodeId<AF>,
     ) -> &mut NodeSet<AF, Stride3> {
@@ -163,10 +182,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
         }
     }
 
-    pub(crate) fn get_store3(
-        &self,
-        id: StrideNodeId<AF>,
-    ) -> &NodeSet<AF, Stride3> {
+    fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3> {
         match id.get_id().1 as usize {
             14 => &self.l14,
             17 => &self.l17,
@@ -182,7 +198,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
         }
     }
 
-    pub(crate) fn get_store4_mut(
+    fn get_store4_mut(
         &mut self,
         id: StrideNodeId<AF>,
     ) -> &mut NodeSet<AF, Stride4> {
@@ -196,10 +212,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
         }
     }
 
-    pub(crate) fn get_store4(
-        &self,
-        id: StrideNodeId<AF>,
-    ) -> &NodeSet<AF, Stride4> {
+    fn get_store4(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4> {
         match id.get_id().1 as usize {
             10 => &self.l10,
             _ => panic!(
@@ -210,7 +223,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
         }
     }
 
-    pub(crate) fn get_store5_mut(
+    fn get_store5_mut(
         &mut self,
         id: StrideNodeId<AF>,
     ) -> &mut NodeSet<AF, Stride5> {
@@ -225,10 +238,7 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
         }
     }
 
-    pub(crate) fn get_store5(
-        &self,
-        id: StrideNodeId<AF>,
-    ) -> &NodeSet<AF, Stride5> {
+    fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5> {
         match id.get_id().1 as usize {
             0 => &self.l0,
             5 => &self.l5,
@@ -241,8 +251,11 @@ impl<AF: AddressFamily> NodeBuckets<AF> {
     }
 }
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
-    StorageBackend for CustomAllocStorage<AF, Meta>
+impl<
+        AF: AddressFamily,
+        Meta: routecore::record::Meta + MergeUpdate,
+        Buckets: FamilyBuckets<AF>,
+    > StorageBackend for CustomAllocStorage<AF, Meta, Buckets>
 {
     type AF = AF;
     type Meta = Meta;
@@ -252,11 +265,9 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self {
         println!("init");
-        let mut l0 = Owned::<[MaybeUninit<StoredNode<AF, Stride5>>]>::init(1);
-        l0[0] = MaybeUninit::new(StoredNode::Empty);
 
         let mut store = CustomAllocStorage {
-            buckets: NodeBuckets::init(),
+            buckets: Buckets::init(),
             prefixes: DashMap::new(),
             len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
@@ -268,6 +279,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         );
         store
     }
+
+    // fn len_to_store_bits(&self, len: u8, level: u8) -> Option<u8> {
+    //     <Buckets as FamilyBuckets<AF>>::len_to_store_bits(len, level)
+    // }
 
     fn acquire_new_node_id(
         &self,
