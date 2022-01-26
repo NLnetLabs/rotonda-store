@@ -15,6 +15,8 @@ use std::fmt::Debug;
 use crate::af::AddressFamily;
 use routecore::record::{MergeUpdate, Meta};
 
+use super::custom_alloc::FamilyBuckets;
+
 pub(crate) type PrefixIterResult<'a, AF, Meta> = Result<
     std::collections::hash_map::Values<
         'a,
@@ -67,6 +69,8 @@ pub(crate) trait StorageBackend {
         len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self;
+
+    // fn len_to_store_bits(&self, len: u8, level: u8) -> Option<u8>;
     fn acquire_new_node_id(
         &self,
         // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,

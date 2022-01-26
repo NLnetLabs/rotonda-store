@@ -12,12 +12,13 @@ use routecore::record::{MergeUpdate, NoMeta};
 
 use std::fmt;
 
+use super::custom_alloc::{FamilyBuckets, NodeBuckets4};
 use super::node::PrefixId;
 use super::storage_backend::PrefixHashMap;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
-    v4: TreeBitMap<CustomAllocStorage<IPv4, Meta>>,
+    v4: TreeBitMap<CustomAllocStorage<IPv4, Meta, NodeBuckets4<IPv4>>>,
     v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
 }
 
@@ -255,18 +256,18 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     }
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
-    for CustomAllocStorage<IPv4, Meta>
+impl<Meta: routecore::record::Meta + MergeUpdate, Buckets: FamilyBuckets<IPv4>> fmt::Display
+    for CustomAllocStorage<IPv4, Meta, Buckets>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CustomAllocStorage<u32, {}>", std::any::type_name::<Meta>())
+        write!(f, "CustomAllocStorage4<IPv4, {}>", std::any::type_name::<Meta>())
     }
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
-    for CustomAllocStorage<IPv6, Meta>
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CustomAllocStorage<u128, {}>", std::any::type_name::<Meta>())
-    }
-}
+// impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
+//     for CustomAllocStorage6<IPv6, Meta>
+// {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         write!(f, "CustomAllocStorage<u128, {}>", std::any::type_name::<Meta>())
+//     }
+// }
