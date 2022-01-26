@@ -66,29 +66,46 @@ pub(crate) struct CustomAllocStorage<
     AF: AddressFamily,
     Meta: routecore::record::Meta,
 > {
-    pub(crate) l0: NodeSet<AF, Stride5>,
-    pub(crate) l5: NodeSet<AF, Stride5>,
-    pub(crate) l10: NodeSet<AF, Stride4>,
-    pub(crate) l14: NodeSet<AF, Stride3>,
-    pub(crate) l17: NodeSet<AF, Stride3>,
-    pub(crate) l20: NodeSet<AF, Stride3>,
-    pub(crate) l23: NodeSet<AF, Stride3>,
-    pub(crate) l26: NodeSet<AF, Stride3>,
-    pub(crate) l29: NodeSet<AF, Stride3>,
+    pub(crate) buckets: NodeBuckets<AF>,
     pub(crate) prefixes:
         DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     pub(crate) len_to_stride_size: [StrideType; 128],
     pub default_route_prefix_serial: AtomicUsize,
 }
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
-    CustomAllocStorage<AF, Meta>
-{
+#[derive(Debug)]
+pub(crate) struct NodeBuckets<AF: AddressFamily> {
+    l0: NodeSet<AF, Stride5>,
+    l5: NodeSet<AF, Stride5>,
+    l10: NodeSet<AF, Stride4>,
+    l14: NodeSet<AF, Stride3>,
+    l17: NodeSet<AF, Stride3>,
+    l20: NodeSet<AF, Stride3>,
+    l23: NodeSet<AF, Stride3>,
+    l26: NodeSet<AF, Stride3>,
+    l29: NodeSet<AF, Stride3>,
+}
+
+impl<AF: AddressFamily> NodeBuckets<AF> {
+    fn init() -> Self {
+        NodeBuckets {
+            l0: NodeSet::init(1 << 5),
+            l5: NodeSet::init(1 << 10),
+            l10: NodeSet::init(1 << 12),
+            l14: NodeSet::init(1 << 12),
+            l17: NodeSet::init(1 << 12),
+            l20: NodeSet::init(1 << 12),
+            l23: NodeSet::init(1 << 12),
+            l26: NodeSet::init(1 << 4),
+            l29: NodeSet::init(1 << 4),
+        }
+    }
+
     pub(crate) fn len_to_store_bits(
         len: u8,
         level: u8,
     ) -> Option<&'static u8> {
-        // (hor x vert) = level x len -> number of bits
+        // (vert x hor) = len x level -> number of bits
         [
             [0_u8, 0, 0, 0, 0, 0, 0, 0, 0, 0],    // len 0
             [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 1
@@ -239,15 +256,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         l0[0] = MaybeUninit::new(StoredNode::Empty);
 
         let mut store = CustomAllocStorage {
-            l0: NodeSet::init(1 << 5),
-            l5: NodeSet::init(1 << 10),
-            l10: NodeSet::init(1 << 12),
-            l14: NodeSet::init(1 << 12),
-            l17: NodeSet::init(1 << 12),
-            l20: NodeSet::init(1 << 12),
-            l23: NodeSet::init(1 << 12),
-            l26: NodeSet::init(1 << 4),
-            l29: NodeSet::init(1 << 4),
+            buckets: NodeBuckets::init(),
             prefixes: DashMap::new(),
             len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
@@ -295,19 +304,19 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
-                self.get_store3_mut(id),
+                self.buckets.get_store3_mut(id),
                 new_node,
                 0,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
-                self.get_store4_mut(id),
+                self.buckets.get_store4_mut(id),
                 new_node,
                 0,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
-                self.get_store5_mut(id),
+                self.buckets.get_store5_mut(id),
                 new_node,
                 0,
             ),
@@ -345,7 +354,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let new_node = std::mem::take(new_node);
                 (search_level_3.f)(
                     &search_level_3,
-                    self.get_store3_mut(id),
+                    self.buckets.get_store3_mut(id),
                     new_node,
                     // Self::len_to_store_bits(id.get_id().1),
                     0,
@@ -355,7 +364,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let new_node = std::mem::take(new_node);
                 (search_level_4.f)(
                     &search_level_4,
-                    self.get_store4_mut(id),
+                    self.buckets.get_store4_mut(id),
                     new_node,
                     0,
                 )
@@ -364,7 +373,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 let new_node = std::mem::take(new_node);
                 (search_level_5.f)(
                     &search_level_5,
-                    self.get_store5_mut(id),
+                    self.buckets.get_store5_mut(id),
                     new_node,
                     0,
                 )
@@ -412,7 +421,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
-                    self.get_store3(id),
+                    self.buckets.get_store3(id),
                     0,
                     guard,
                 )
@@ -420,20 +429,20 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
             StrideType::Stride4 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
-                println!("{:?}", self.l0);
+                // println!("{:?}", self.l0);
                 (search_level_4.f)(
                     &search_level_4,
-                    self.get_store4(id),
+                    self.buckets.get_store4(id),
                     0,
                     guard,
                 )
             }
             StrideType::Stride5 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
-                println!("{:?}", self.l0);
+                // println!("{:?}", self.l0);
                 (search_level_5.f)(
                     &search_level_5,
-                    self.get_store5(id),
+                    self.buckets.get_store5(id),
                     0,
                     guard,
                 )
@@ -467,7 +476,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
-                    self.get_store3(id),
+                    self.buckets.get_store3(id),
                     0,
                     guard,
                 )
@@ -475,20 +484,20 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
             StrideType::Stride4 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
-                println!("{:?}", self.l0);
+                // println!("{:?}", self.l0);
                 (search_level_4.f)(
                     &search_level_4,
-                    self.get_store4(id),
+                    self.buckets.get_store4(id),
                     0,
                     guard,
                 )
             }
             StrideType::Stride5 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
-                println!("{:?}", self.l0);
+                // println!("{:?}", self.l0);
                 (search_level_5.f)(
                     &search_level_5,
-                    self.get_store5(id),
+                    self.buckets.get_store5(id),
                     0,
                     guard,
                 )
