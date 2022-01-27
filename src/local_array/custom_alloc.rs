@@ -75,7 +75,7 @@ pub(crate) struct CustomAllocStorage<
     pub default_route_prefix_serial: AtomicUsize,
 }
 
-pub(crate) trait FamilyBuckets<AF: AddressFamily> {    
+pub(crate) trait FamilyBuckets<AF: AddressFamily> {
     fn init() -> Self;
     fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
     fn get_store3_mut(
@@ -248,6 +248,245 @@ impl<AF: AddressFamily> FamilyBuckets<AF> for NodeBuckets4<AF> {
                 id
             ),
         }
+    }
+}
+
+pub(crate) struct NodeBuckets6<AF: AddressFamily> {
+    l0: NodeSet<AF, Stride4>,
+    l4: NodeSet<AF, Stride4>,
+    l8: NodeSet<AF, Stride4>,
+    l12: NodeSet<AF, Stride4>,
+    l16: NodeSet<AF, Stride4>,
+    l20: NodeSet<AF, Stride4>,
+    l24: NodeSet<AF, Stride4>,
+    l28: NodeSet<AF, Stride4>,
+    l32: NodeSet<AF, Stride4>,
+    l36: NodeSet<AF, Stride4>,
+    l40: NodeSet<AF, Stride4>,
+    l44: NodeSet<AF, Stride4>,
+    l48: NodeSet<AF, Stride4>,
+    l52: NodeSet<AF, Stride4>,
+    l56: NodeSet<AF, Stride4>,
+    l60: NodeSet<AF, Stride4>,
+    l64: NodeSet<AF, Stride4>,
+    l68: NodeSet<AF, Stride4>,
+    l72: NodeSet<AF, Stride4>,
+    l76: NodeSet<AF, Stride4>,
+    l80: NodeSet<AF, Stride4>,
+    l84: NodeSet<AF, Stride4>,
+    l88: NodeSet<AF, Stride4>,
+    l92: NodeSet<AF, Stride4>,
+    l96: NodeSet<AF, Stride4>,
+    l100: NodeSet<AF, Stride4>,
+    l104: NodeSet<AF, Stride4>,
+    l108: NodeSet<AF, Stride4>,
+    l112: NodeSet<AF, Stride4>,
+    l116: NodeSet<AF, Stride4>,
+    l120: NodeSet<AF, Stride4>,
+    l124: NodeSet<AF, Stride4>,
+}
+
+impl<AF: AddressFamily> FamilyBuckets<AF> for NodeBuckets6<AF> {
+    fn init() -> Self {
+        NodeBuckets6 {
+            l0: NodeSet::init(1 << 4),
+            l4: NodeSet::init(1 << 8),
+            l8: NodeSet::init(1 << 12),
+            l12: NodeSet::init(1 << 12),
+            l16: NodeSet::init(1 << 12),
+            l20: NodeSet::init(1 << 12),
+            l24: NodeSet::init(1 << 12),
+            l28: NodeSet::init(1 << 12),
+            l32: NodeSet::init(1 << 12),
+            l36: NodeSet::init(1 << 12),
+            l40: NodeSet::init(1 << 12),
+            l44: NodeSet::init(1 << 12),
+            l48: NodeSet::init(1 << 4),
+            l52: NodeSet::init(1 << 4),
+            l56: NodeSet::init(1 << 4),
+            l60: NodeSet::init(1 << 4),
+            l64: NodeSet::init(1 << 4),
+            l68: NodeSet::init(1 << 4),
+            l72: NodeSet::init(1 << 4),
+            l76: NodeSet::init(1 << 4),
+            l80: NodeSet::init(1 << 4),
+            l84: NodeSet::init(1 << 4),
+            l88: NodeSet::init(1 << 4),
+            l92: NodeSet::init(1 << 4),
+            l96: NodeSet::init(1 << 4),
+            l100: NodeSet::init(1 << 4),
+            l104: NodeSet::init(1 << 4),
+            l108: NodeSet::init(1 << 4),
+            l112: NodeSet::init(1 << 4),
+            l116: NodeSet::init(1 << 4),
+            l120: NodeSet::init(1 << 4),
+            l124: NodeSet::init(1 << 4),
+        }
+    }
+
+    fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8> {
+        // (vert x hor) = len x level -> number of bits
+        [
+            [0_u8, 0, 0, 0, 0, 0, 0, 0, 0, 0],    // len 0
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 1
+            [2, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 2
+            [3, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // len 3
+            [4, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 4
+            [5, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 5
+            [6, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 6
+            [7, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 7
+            [8, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 8
+            [9, 0, 0, 0, 0, 0, 0, 0, 0, 0],       // 9
+            [10, 0, 0, 0, 0, 0, 0, 0, 0, 0],      // 10
+            [11, 0, 0, 0, 0, 0, 0, 0, 0, 0],      // 11
+            [12, 0, 0, 0, 0, 0, 0, 0, 0, 0],      // 12
+            [12, 13, 0, 0, 0, 0, 0, 0, 0, 0],     // 13
+            [12, 14, 0, 0, 0, 0, 0, 0, 0, 0],     // 14
+            [12, 15, 0, 0, 0, 0, 0, 0, 0, 0],     // 15
+            [12, 16, 0, 0, 0, 0, 0, 0, 0, 0],     // 16
+            [12, 17, 0, 0, 0, 0, 0, 0, 0, 0],     // 17
+            [12, 18, 0, 0, 0, 0, 0, 0, 0, 0],     // 18
+            [12, 19, 0, 0, 0, 0, 0, 0, 0, 0],     // 19
+            [12, 20, 0, 0, 0, 0, 0, 0, 0, 0],     // 20
+            [12, 21, 0, 0, 0, 0, 0, 0, 0, 0],     // 21
+            [12, 22, 0, 0, 0, 0, 0, 0, 0, 0],     // 22
+            [12, 23, 0, 0, 0, 0, 0, 0, 0, 0],     // 23
+            [12, 24, 0, 0, 0, 0, 0, 0, 0, 0],     // 24
+            [12, 24, 1, 0, 0, 0, 0, 0, 0, 0],     // 25
+            [4, 8, 12, 16, 20, 24, 26, 0, 0, 0],  // 26
+            [4, 8, 12, 16, 20, 24, 27, 0, 0, 0],  // 27
+            [4, 8, 12, 16, 20, 24, 28, 0, 0, 0],  // 28
+            [4, 8, 12, 16, 20, 24, 28, 29, 0, 0], // 29
+            [4, 8, 12, 16, 20, 24, 28, 30, 0, 0], // 30
+            [4, 8, 12, 16, 20, 24, 28, 31, 0, 0], // 31
+            [4, 8, 12, 16, 20, 24, 28, 32, 0, 0], // 32
+        ][len as usize]
+            .get(level as usize)
+    }
+
+    fn get_store3_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride3> {
+        panic!(
+            "unexpected sub prefix length {} in stride size 3 ({})",
+            id.get_id().1,
+            id
+        )
+    }
+
+    fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3> {
+        panic!(
+            "unexpected sub prefix length {} in stride size 3 ({})",
+            id.get_id().1,
+            id
+        )
+    }
+
+    fn get_store4_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride4> {
+        match id.get_id().1 as usize {
+            0 => &mut self.l0,
+            4 => &mut self.l4,
+            8 => &mut self.l8,
+            12 => &mut self.l12,
+            16 => &mut self.l16,
+            20 => &mut self.l20,
+            24 => &mut self.l24,
+            28 => &mut self.l28,
+            32 => &mut self.l32,
+            36 => &mut self.l36,
+            40 => &mut self.l40,
+            44 => &mut self.l44,
+            48 => &mut self.l48,
+            52 => &mut self.l52,
+            56 => &mut self.l56,
+            60 => &mut self.l60,
+            64 => &mut self.l64,
+            68 => &mut self.l68,
+            72 => &mut self.l72,
+            76 => &mut self.l76,
+            80 => &mut self.l80,
+            84 => &mut self.l84,
+            88 => &mut self.l88,
+            92 => &mut self.l92,
+            96 => &mut self.l96,
+            100 => &mut self.l100,
+            104 => &mut self.l104,
+            108 => &mut self.l108,
+            112 => &mut self.l112,
+            116 => &mut self.l116,
+            120 => &mut self.l120,
+            124 => &mut self.l124,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 4 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    fn get_store4(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4> {
+        match id.get_id().1 as usize {
+            0 => &self.l0,
+            4 => &self.l4,
+            8 => &self.l8,
+            12 => &self.l12,
+            16 => &self.l16,
+            20 => &self.l20,
+            24 => &self.l24,
+            28 => &self.l28,
+            32 => &self.l32,
+            36 => &self.l36,
+            40 => &self.l40,
+            44 => &self.l44,
+            48 => &self.l48,
+            52 => &self.l52,
+            56 => &self.l56,
+            60 => &self.l60,
+            64 => &self.l64,
+            68 => &self.l68,
+            72 => &self.l72,
+            76 => &self.l76,
+            80 => &self.l80,
+            84 => &self.l84,
+            88 => &self.l88,
+            92 => &self.l92,
+            96 => &self.l96,
+            100 => &self.l100,
+            104 => &self.l104,
+            108 => &self.l108,
+            112 => &self.l112,
+            116 => &self.l116,
+            120 => &self.l120,
+            124 => &self.l124,
+            _ => panic!(
+                "unexpected sub prefix length {} in stride size 4 ({})",
+                id.get_id().1,
+                id
+            ),
+        }
+    }
+
+    fn get_store5_mut(
+        &mut self,
+        id: StrideNodeId<AF>,
+    ) -> &mut NodeSet<AF, Stride5> {
+        panic!(
+            "unexpected sub prefix length {} in stride size 3 ({})",
+            id.get_id().1,
+            id
+        )
+    }
+
+    fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5> {
+        panic!(
+            "unexpected sub prefix length {} in stride size 3 ({})",
+            id.get_id().1,
+            id
+        )
     }
 }
 

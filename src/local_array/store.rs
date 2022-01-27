@@ -2,7 +2,6 @@ use crate::af::{IPv4, IPv6};
 use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::custom_alloc::CustomAllocStorage;
 use crate::local_array::tree::TreeBitMap;
-use crate::local_array::storage_backend::InMemStorage;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
 use crate::{QueryResult, Stats, Strides};
@@ -12,14 +11,14 @@ use routecore::record::{MergeUpdate, NoMeta};
 
 use std::fmt;
 
-use super::custom_alloc::{FamilyBuckets, NodeBuckets4};
+use super::custom_alloc::{FamilyBuckets, NodeBuckets4, NodeBuckets6};
 use super::node::PrefixId;
 use super::storage_backend::PrefixHashMap;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
     v4: TreeBitMap<CustomAllocStorage<IPv4, Meta, NodeBuckets4<IPv4>>>,
-    v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    v6: TreeBitMap<CustomAllocStorage<IPv6, Meta, NodeBuckets6<IPv6>>>,
 }
 
 impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
@@ -260,14 +259,14 @@ impl<Meta: routecore::record::Meta + MergeUpdate, Buckets: FamilyBuckets<IPv4>> 
     for CustomAllocStorage<IPv4, Meta, Buckets>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CustomAllocStorage4<IPv4, {}>", std::any::type_name::<Meta>())
+        write!(f, "CustomAllocStorage<IPv4, {}>", std::any::type_name::<Meta>())
     }
 }
 
-// impl<Meta: routecore::record::Meta + MergeUpdate> fmt::Display
-//     for CustomAllocStorage6<IPv6, Meta>
-// {
-//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-//         write!(f, "CustomAllocStorage<u128, {}>", std::any::type_name::<Meta>())
-//     }
-// }
+impl<Meta: routecore::record::Meta + MergeUpdate, Buckets: FamilyBuckets<IPv6>> fmt::Display
+    for CustomAllocStorage<IPv6, Meta, Buckets>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "CustomAllocStorage<IPv6, {}>", std::any::type_name::<Meta>())
+    }
+}
