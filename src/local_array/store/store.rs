@@ -12,7 +12,7 @@ use routecore::record::{MergeUpdate, NoMeta};
 use std::fmt;
 
 use super::custom_alloc::{FamilyBuckets, NodeBuckets4, NodeBuckets6};
-use super::node::PrefixId;
+use super::super::node::PrefixId;
 use super::storage_backend::PrefixHashMap;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
