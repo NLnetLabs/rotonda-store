@@ -4,7 +4,7 @@ use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::tree::TreeBitMap;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
-use crate::{QueryResult, Stats, Strides};
+use crate::{QueryResult, Stats};
 
 use dashmap::DashMap;
 use routecore::addr::Prefix;
