@@ -557,7 +557,7 @@ where
         TreeBitMap {
             // strides,
             stats: stride_stats,
-            store: Store::init(len_to_stride_size, root_node),
+            store: Store::init(root_node),
         }
     }
 

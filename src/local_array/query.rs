@@ -106,15 +106,15 @@ where
         let root_node_id = self.get_root_node_id();
         let guard = &epoch::pin();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
-            super::node::StrideType::Stride3 => self
+            3 => self
                 .store
                 .retrieve_node_with_guard(root_node_id, guard)
                 .unwrap(),
-            super::node::StrideType::Stride4 => self
+            4 => self
                 .store
                 .retrieve_node_with_guard(root_node_id, guard)
                 .unwrap(),
-            super::node::StrideType::Stride5 => self
+            _ => self
                 .store
                 .retrieve_node_with_guard(root_node_id, guard)
                 .unwrap(),

@@ -72,7 +72,7 @@ pub(crate) struct CustomAllocStorage<
     pub(crate) buckets: Buckets,
     pub(crate) prefixes:
         DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
-    pub(crate) len_to_stride_size: [StrideType; 128],
+    // pub(crate) len_to_stride_size: [StrideType; 128],
     pub default_route_prefix_serial: AtomicUsize,
 }
 
@@ -80,6 +80,7 @@ pub(crate) trait FamilyBuckets<AF: AddressFamily> {
     fn init() -> Self;
     fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
     fn get_stride_sizes(&self) -> [u8; 42];
+    fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8;
     fn get_store3_mut(
         &mut self,
         id: StrideNodeId<AF>,
@@ -595,6 +596,10 @@ impl<AF: AddressFamily> FamilyBuckets<AF> for NodeBuckets6<AF> {
             4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         ]
     }
+
+    fn get_stride_for_id(&self, _id: StrideNodeId<AF>) -> u8 {
+        4
+    }
 }
 
 impl<
@@ -607,7 +612,7 @@ impl<
     type Meta = Meta;
 
     fn init(
-        len_to_stride_size: [StrideType; 128],
+        // len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self {
         println!("init");
@@ -615,7 +620,7 @@ impl<
         let mut store = CustomAllocStorage {
             buckets: Buckets::init(),
             prefixes: DashMap::new(),
-            len_to_stride_size,
+            // len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
         };
 
@@ -778,7 +783,7 @@ impl<
         let search_level_5 = impl_search_level![Stride5; id;];
 
         match self.get_stride_for_id(id) {
-            StrideType::Stride3 => {
+            3 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
@@ -788,7 +793,7 @@ impl<
                 )
             }
 
-            StrideType::Stride4 => {
+            4 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 // println!("{:?}", self.l0);
                 (search_level_4.f)(
@@ -798,7 +803,7 @@ impl<
                     guard,
                 )
             }
-            StrideType::Stride5 => {
+            _ => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 // println!("{:?}", self.l0);
                 (search_level_5.f)(
@@ -832,8 +837,8 @@ impl<
         let search_level_4 = impl_search_level_mut![Stride4; id;];
         let search_level_5 = impl_search_level_mut![Stride5; id;];
 
-        match self.get_stride_for_id(id) {
-            StrideType::Stride3 => {
+        match self.buckets.get_stride_for_id(id) {
+            3 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
@@ -843,7 +848,7 @@ impl<
                 )
             }
 
-            StrideType::Stride4 => {
+            4 => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 // println!("{:?}", self.l0);
                 (search_level_4.f)(
@@ -853,7 +858,7 @@ impl<
                     guard,
                 )
             }
-            StrideType::Stride5 => {
+            _ => {
                 println!("retrieve node {} from l{}", id, id.get_id().1);
                 // println!("{:?}", self.l0);
                 (search_level_5.f)(
@@ -940,8 +945,8 @@ impl<
     fn get_stride_for_id(
         &self,
         id: StrideNodeId<Self::AF>,
-    ) -> crate::local_array::tree::StrideType {
-        self.len_to_stride_size[id.get_id().1 as usize]
+    ) -> u8 {
+        self.buckets.get_stride_for_id(id)
     }
 
     fn get_stride_for_id_with_read_store(

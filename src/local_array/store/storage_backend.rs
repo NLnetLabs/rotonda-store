@@ -60,7 +60,7 @@ pub(crate) trait StorageBackend {
     type Meta: Meta + MergeUpdate;
 
     fn init(
-        len_to_stride_size: [StrideType; 128],
+        // len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self;
 
@@ -190,7 +190,7 @@ pub(crate) trait StorageBackend {
     fn get_stride_for_id(
         &self,
         id: StrideNodeId<Self::AF>,
-    ) -> crate::local_array::tree::StrideType;
+    ) -> u8;
     fn get_stride_for_id_with_read_store(
         &self,
         id: StrideNodeId<Self::AF>,
