@@ -590,7 +590,10 @@ impl<AF: AddressFamily> FamilyBuckets<AF> for NodeBuckets6<AF> {
     }
 
     fn get_stride_sizes(&self) -> [u8; 42] {
-        [4; 42]
+        [
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+            4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+        ]
     }
 }
 

@@ -25,7 +25,7 @@ macro_rules! match_node_for_strides {
                 format!(
                     "\x1b[91mCouldn't load id {} from store l{}\x1b[0m",
                     $cur_i,
-                    $self.strides[$level as usize]
+                    $self.store.get_stride_sizes()[$level as usize]
                 ).as_str()) {
             $(
             SizedStrideRefMut::$variant(current_node) => {
@@ -48,7 +48,7 @@ macro_rules! match_node_for_strides {
                 // the length of THIS stride
                 $stride_len,
                 // the length of the next stride
-                $self.strides.get(($level + 1) as usize),
+                $self.store.get_stride_sizes().get(($level + 1) as usize),
                 $is_last_stride,
             ) {
                 NewNodeOrIndex::NewNode(n) => {

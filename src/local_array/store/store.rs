@@ -1,6 +1,6 @@
 use crate::af::{IPv4, IPv6};
-use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::custom_alloc::CustomAllocStorage;
+use crate::local_array::storage_backend::StorageBackend;
 use crate::local_array::tree::TreeBitMap;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
@@ -12,8 +12,8 @@ use routecore::record::{MergeUpdate, NoMeta};
 
 use std::fmt;
 
-use super::custom_alloc::{FamilyBuckets, NodeBuckets4, NodeBuckets6};
 use super::super::node::PrefixId;
+use super::custom_alloc::{FamilyBuckets, NodeBuckets4, NodeBuckets6};
 use super::storage_backend::PrefixHashMap;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
@@ -211,8 +211,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     // }
 
     pub fn prefixes_len(&self) -> usize {
-        self.v4.store.prefixes.len()
-            + self.v6.store.prefixes.len()
+        self.v4.store.prefixes.len() + self.v6.store.prefixes.len()
     }
 
     pub fn prefixes_v4_len(&self) -> usize {
@@ -248,26 +247,38 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    pub fn strides(&'a self) -> Strides {
-        Strides {
-            v4: &self.v4.strides,
-            v6: &self.v6.strides,
-        }
+    // pub fn strides(&'a self) -> Strides {
+    //     Strides {
+    //         v4: &self.v4.store.get_stride_sizes().to_vec(),
+    //         v6: &self.v6.store.get_stride_sizes().to_vec(),
+    //     }
+    // }
+}
+
+impl<
+        Meta: routecore::record::Meta + MergeUpdate,
+        Buckets: FamilyBuckets<IPv4>,
+    > fmt::Display for CustomAllocStorage<IPv4, Meta, Buckets>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "CustomAllocStorage<IPv4, {}>",
+            std::any::type_name::<Meta>()
+        )
     }
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate, Buckets: FamilyBuckets<IPv4>> fmt::Display
-    for CustomAllocStorage<IPv4, Meta, Buckets>
+impl<
+        Meta: routecore::record::Meta + MergeUpdate,
+        Buckets: FamilyBuckets<IPv6>,
+    > fmt::Display for CustomAllocStorage<IPv6, Meta, Buckets>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CustomAllocStorage<IPv4, {}>", std::any::type_name::<Meta>())
-    }
-}
-
-impl<Meta: routecore::record::Meta + MergeUpdate, Buckets: FamilyBuckets<IPv6>> fmt::Display
-    for CustomAllocStorage<IPv6, Meta, Buckets>
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "CustomAllocStorage<IPv6, {}>", std::any::type_name::<Meta>())
+        write!(
+            f,
+            "CustomAllocStorage<IPv6, {}>",
+            std::any::type_name::<Meta>()
+        )
     }
 }

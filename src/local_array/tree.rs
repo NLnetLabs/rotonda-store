@@ -485,7 +485,7 @@ pub(crate) struct TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
-    pub strides: Vec<u8>,
+    // pub strides: Vec<u8>,
     pub stats: Vec<StrideStats>,
     pub store: Store,
 }
@@ -555,7 +555,7 @@ where
         };
 
         TreeBitMap {
-            strides,
+            // strides,
             stats: stride_stats,
             store: Store::init(len_to_stride_size, root_node),
         }
@@ -603,11 +603,13 @@ where
         }
 
         let mut stride_end: u8 = 0;
-        let mut cur_i = self.store.get_root_node_id(self.strides[0]);
+        let mut cur_i = self
+            .store
+            .get_root_node_id(self.store.get_stride_sizes()[0]);
         let mut level: u8 = 0;
 
         loop {
-            let stride = self.strides[level as usize];
+            let stride = self.store.get_stride_sizes()[level as usize];
             stride_end += stride;
             let nibble_len = if pfx.len < stride_end {
                 stride + pfx.len - stride_end
@@ -669,7 +671,8 @@ where
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
-        self.store.get_root_node_id(self.strides[0])
+        self.store
+            .get_root_node_id(self.store.get_stride_sizes()[0])
     }
 
     // #[inline]
@@ -938,7 +941,14 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 / 1024
         );
 
-        println!("stride division {:?}", self.strides);
+        println!(
+            "stride division {:?}",
+            self.store
+                .get_stride_sizes()
+                .iter()
+                .map_while(|s| if s > &0 { Some(*s) } else { None })
+                .collect::<Vec<_>>()
+        );
         for s in &self.stats {
             println!("{:?}", s);
         }
@@ -952,20 +962,35 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         let mut stride_bits = [0, 0];
         const SCALE: u32 = 5500;
 
-        for stride in self.strides.iter().enumerate() {
+        println!(
+            "stride_sizes {:?}",
+            self.store
+                .get_stride_sizes()
+                .iter()
+                .map_while(|s| if s > &0 { Some(*s) } else { None })
+                .enumerate()
+                .collect::<Vec<(usize, u8)>>()
+        );
+        for stride in self
+            .store
+            .get_stride_sizes()
+            .iter()
+            .map_while(|s| if s > &0 { Some(*s) } else { None })
+            .enumerate()
+        {
             // let level = stride.0;
             stride_bits = [stride_bits[1] + 1, stride_bits[1] + stride.1];
             let nodes_num = self
                 .stats
                 .iter()
-                .find(|s| s.stride_len == *stride.1)
+                .find(|s| s.stride_len == stride.1)
                 .unwrap()
                 .created_nodes[stride.0]
                 .count as u32;
             let prefixes_num = self
                 .stats
                 .iter()
-                .find(|s| s.stride_len == *stride.1)
+                .find(|s| s.stride_len == stride.1)
                 .unwrap()
                 .prefixes_num[stride.0]
                 .count as u32;

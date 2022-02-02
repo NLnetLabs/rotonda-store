@@ -106,15 +106,18 @@ where
         let root_node_id = self.get_root_node_id();
         let guard = &epoch::pin();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
-            super::node::StrideType::Stride3 => {
-                self.store.retrieve_node_with_guard(root_node_id, guard).unwrap()
-            }
-            super::node::StrideType::Stride4 => {
-                self.store.retrieve_node_with_guard(root_node_id, guard).unwrap()
-            }
-            super::node::StrideType::Stride5 => {
-                self.store.retrieve_node_with_guard(root_node_id, guard).unwrap()
-            }
+            super::node::StrideType::Stride3 => self
+                .store
+                .retrieve_node_with_guard(root_node_id, guard)
+                .unwrap(),
+            super::node::StrideType::Stride4 => self
+                .store
+                .retrieve_node_with_guard(root_node_id, guard)
+                .unwrap(),
+            super::node::StrideType::Stride5 => self
+                .store
+                .retrieve_node_with_guard(root_node_id, guard)
+                .unwrap(),
         };
 
         let mut nibble;
@@ -158,7 +161,13 @@ where
         // having to match over a SizedStrideNode again in the
         // `post-processing` section.
 
-        for stride in self.strides.iter() {
+        for stride in self.store.get_stride_sizes().iter().map_while(|s| {
+            if s > &0 {
+                Some(s)
+            } else {
+                None
+            }
+        }) {
             stride_end += stride;
 
             let last_stride = search_pfx.len < stride_end;
@@ -219,7 +228,10 @@ where
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
+                            node = self
+                                .store
+                                .retrieve_node_with_guard(n, guard)
+                                .unwrap();
                             // node = SizedStrideRef::Stride3(
                             //     nodes3.get(&n).unwrap(),
                             // );
@@ -261,7 +273,10 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
+                            node = self
+                                .store
+                                .retrieve_node_with_guard(n, guard)
+                                .unwrap();
                             // node = SizedStrideRef::Stride3(
                             //     nodes3.get(&n).unwrap(),
                             // );
@@ -379,7 +394,10 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
+                            node = self
+                                .store
+                                .retrieve_node_with_guard(n, guard)
+                                .unwrap();
                             // node = SizedStrideRef::Stride4(
                             //     nodes4.get(&n).unwrap(),
                             // );
@@ -417,7 +435,10 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
+                            node = self
+                                .store
+                                .retrieve_node_with_guard(n, guard)
+                                .unwrap();
                             // node = SizedStrideRef::Stride4(
                             //     nodes4.get(&n).unwrap(),
                             // );
@@ -524,7 +545,10 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
+                            node = self
+                                .store
+                                .retrieve_node_with_guard(n, guard)
+                                .unwrap();
                             // println!("node {}", n);
                             // println!(
                             //     "Stride {}",
@@ -569,7 +593,10 @@ where
                         (Some(n), None) => {
                             // println!("nodes5 {:?}", nodes5);
                             // println!("nodes4 {:?}", nodes4);
-                            node = self.store.retrieve_node_with_guard(n, guard).unwrap();
+                            node = self
+                                .store
+                                .retrieve_node_with_guard(n, guard)
+                                .unwrap();
                             // node = SizedStrideRef::Stride5(
                             //     nodes5.get(&n).unwrap(),
                             // );
