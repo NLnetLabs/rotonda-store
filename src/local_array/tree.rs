@@ -494,29 +494,29 @@ where
 {
     pub fn new(strides_vec: Vec<u8>) -> TreeBitMap<Store> {
         // Check if the strides division makes sense
-        let mut strides = vec![];
-        let mut len_to_stride_size: [StrideType; 128] =
-            [StrideType::Stride3; 128];
-        let mut strides_sum = 0;
-        for s in strides_vec.iter().cycle() {
-            strides.push(*s);
-            len_to_stride_size[strides_sum as usize] = StrideType::from(*s);
-            strides_sum += s;
-            if strides_sum >= Store::AF::BITS - 1 {
-                break;
-            }
-        }
-        assert_eq!(strides.iter().sum::<u8>(), Store::AF::BITS);
+        // let mut strides = vec![];
+        // let mut len_to_stride_size: [StrideType; 128] =
+        //     [StrideType::Stride3; 128];
+        // let mut strides_sum = 0;
+        // for s in strides_vec.iter().cycle() {
+        //     strides.push(*s);
+        //     len_to_stride_size[strides_sum as usize] = StrideType::from(*s);
+        //     strides_sum += s;
+        //     if strides_sum >= Store::AF::BITS - 1 {
+        //         break;
+        //     }
+        // }
+        // assert_eq!(strides_vec.iter().sum::<u8>(), Store::AF::BITS);
 
         let mut stride_stats: Vec<StrideStats> = vec![
-            StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
-            StrideStats::new(SizedStride::Stride4, strides.len() as u8), // 1
-            StrideStats::new(SizedStride::Stride5, strides.len() as u8), // 2
+            StrideStats::new(SizedStride::Stride3, strides_vec.len() as u8), // 0
+            StrideStats::new(SizedStride::Stride4, strides_vec.len() as u8), // 1
+            StrideStats::new(SizedStride::Stride5, strides_vec.len() as u8), // 2
         ];
 
         let root_node: SizedStrideNode<<Store as StorageBackend>::AF>;
 
-        match strides[0] {
+        match strides_vec[0] {
             3 => {
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
