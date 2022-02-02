@@ -199,6 +199,7 @@ pub(crate) trait StorageBackend {
         &self,
         id: StrideNodeId<Self::AF>,
     ) -> (StrideNodeId<Self::AF>, StrideWriteStore<Self::AF>);
+    fn get_stride_sizes(&self) -> [u8; 42];
 }
 
 pub(crate) struct CacheGuard<'a, AF: 'static + AddressFamily> {

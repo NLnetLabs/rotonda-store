@@ -79,6 +79,7 @@ pub(crate) struct CustomAllocStorage<
 pub(crate) trait FamilyBuckets<AF: AddressFamily> {
     fn init() -> Self;
     fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
+    fn get_stride_sizes(&self) -> [u8; 42];
     fn get_store3_mut(
         &mut self,
         id: StrideNodeId<AF>,
@@ -587,6 +588,10 @@ impl<AF: AddressFamily> FamilyBuckets<AF> for NodeBuckets6<AF> {
             id
         )
     }
+
+    fn get_stride_sizes(&self) -> [u8; 42] {
+        [4; 42]
+    }
 }
 
 impl<
@@ -948,5 +953,9 @@ impl<
         id: StrideNodeId<Self::AF>,
     ) -> (StrideNodeId<Self::AF>, StrideWriteStore<Self::AF>) {
         todo!()
+    }
+
+    fn get_stride_sizes(&self) -> [u8; 42] {
+        self.buckets.get_stride_sizes()
     }
 }
