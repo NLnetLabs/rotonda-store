@@ -93,7 +93,26 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             println!("{{");
             println!("\"type\": \"treebitmap_univec\",");
-            println!("\"strides\": {:?},", &tree_bitmap.strides());
+            println!(
+                "\"strides v4 \": {:?},",
+                &tree_bitmap
+                    .store
+                    .v4
+                    .get_stride_sizes()
+                    .iter()
+                    .map_while(|s| if s > &0 { Some(*s) } else { None })
+                    .collect::<Vec<_>>()
+            );
+            println!(
+                "\"strides v6 \": {:?},",
+                &tree_bitmap
+                    .store
+                    .v6
+                    .get_stride_sizes()
+                    .iter()
+                    .map_while(|s| if s > &0 { Some(*s) } else { None })
+                    .collect::<Vec<_>>()
+            );
             println!("\"run_no\": {},", n);
             println!("\"inserts_num\": {},", inserts_num);
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
