@@ -6,7 +6,6 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::{AddressFamily, Zero};
-use crate::local_array::custom_alloc::NodeSet;
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
@@ -15,7 +14,6 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::local_array::CacheGuard;
 
 pub(crate) use super::atomic_stride::*;
-use super::storage_backend::{StrideReadStore, StrideWriteStore};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;

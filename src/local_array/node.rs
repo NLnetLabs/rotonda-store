@@ -4,11 +4,9 @@ use std::{
     marker::PhantomData,
 };
 
-use crossbeam_epoch::{Atomic, Pointable};
 use routecore::record::NoMeta;
 
 pub use super::atomic_stride::*;
-use super::custom_alloc::{NodeSet, StoredNode};
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
