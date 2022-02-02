@@ -81,12 +81,12 @@ impl AddressFamily for IPv4 {
     }
 
     /// Treat self as a prefix and append the given nibble to it.
-    /// 
+    ///
     /// Shifts the rightmost `nibble_len` bits of `nibble` to the left to a
     /// position `len` bits from the left, then ORs the result into self.
-    /// 
+    ///
     /// For example:
-    /// 
+    ///
     /// ```
     /// # use rotonda_store::IPv4;
     /// # use rotonda_store::AddressFamily;
@@ -100,10 +100,10 @@ impl AddressFamily for IPv4 {
     /// ```
     ///
     /// # Panics
-    /// 
+    ///
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 32`.
-    /// 
+    ///
     /// ```should_panic
     /// # use rotonda_store::IPv4;
     /// # use rotonda_store::AddressFamily;
@@ -159,12 +159,12 @@ impl AddressFamily for IPv6 {
     }
 
     /// Treat self as a prefix and append the given nibble to it.
-    /// 
+    ///
     /// Shifts the rightmost `nibble_len` bits of `nibble` to the left to a
     /// position `len` bits from the left, then ORs the result into self.
-    /// 
+    ///
     /// For example:
-    /// 
+    ///
     /// ```
     /// # use rotonda_store::IPv6;
     /// # use rotonda_store::AddressFamily;
@@ -178,10 +178,10 @@ impl AddressFamily for IPv6 {
     /// ```
     ///
     /// # Panics
-    /// 
+    ///
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 128`.
-    /// 
+    ///
     /// ```should_panic
     /// # use rotonda_store::IPv6;
     /// # use rotonda_store::AddressFamily;
@@ -190,18 +190,30 @@ impl AddressFamily for IPv6 {
     /// let (new_prefix, new_len) = prefix.add_nibble(112, nibble, 32);
     /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8) {
-        let res =
-            self | (((nibble as u128) << (128 - len - nibble_len) as usize) as u128);
+        let res = self
+            | (((nibble as u128) << (128 - len - nibble_len) as usize)
+                as u128);
         (res, len + nibble_len)
     }
 
     fn truncate_to_len(self, len: u8) -> Self {
-        if (128 - len) == 0 {
-            0
-        } else {
-            (self >> (128 - len)) << (128 - len)
+        match len {
+            0 => 0,
+            1..=127 => {
+                (self >> ((127 - len) as usize)) << (127 - len) as usize
+            }
+            128 => self,
+            _ => panic!("Can't truncate to more than 128 bits"),
         }
     }
+
+    // fn truncate_to_len(self, len: u8) -> Self {
+    //     if (128 - len) == 0 {
+    //         0
+    //     } else {
+    //         (self >> (128 - len)) << (128 - len)
+    //     }
+    // }
 
     #[cfg(feature = "dynamodb")]
     fn from_addr(net: Addr) -> u128 {
