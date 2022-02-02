@@ -37,17 +37,27 @@ fn load_prefixes(
         // The iterator yields Result<StringRecord, Error>, so we check the
         // error here.
         let record = result?;
-        let ip: Vec<_> = record[0]
-            .split('.')
-            .map(|o| -> u8 { o.parse().unwrap() })
-            .collect();
-        let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+
+        let ip = record[0].parse::<std::net::IpAddr>()?;
+
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new_with_local_meta(
-            Prefix::new(net.into(), len)?,
+            Prefix::new(ip.into(), len)?,
             PrefixAs(asn),
         );
+
+        // let ip: Vec<_> = record[0]
+        //     .split('.')
+        //     .map(|o| -> u8 { o.parse().unwrap() })
+        //     .collect();
+        // let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
+        // let len: u8 = record[1].parse().unwrap();
+        // let asn: u32 = record[2].parse().unwrap();
+        // let pfx = PrefixRecord::new_with_local_meta(
+        //     Prefix::new(net.into(), len)?,
+        //     PrefixAs(asn),
+        // );
         pfxs.push(pfx);
     }
     Ok(())
@@ -77,7 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ready.checked_duration_since(start).unwrap().as_millis()
     );
 
-    tree_bitmap.print_funky_stats();
+    // tree_bitmap.print_funky_stats();
     let locks = tree_bitmap.acquire_prefixes_rwlock_read();
 
     let mut rl = Editor::<()>::new();
@@ -107,11 +117,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap.prefixes_v6_len()
                                 );
 
-                                tree_bitmap
-                                    .prefixes_iter()
-                                    .for_each(|pfx| {
-                                        println!("{} {}", pfx.prefix, pfx.meta);
-                                    });
+                                tree_bitmap.prefixes_iter().for_each(|pfx| {
+                                    println!("{} {}", pfx.prefix, pfx.meta);
+                                });
                             }
                             "n" => {
                                 // if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
@@ -168,7 +176,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let ip: Result<std::net::Ipv4Addr, _> = s_pref[0].parse();
+                let ip: Result<std::net::IpAddr, _> = s_pref[0].parse();
                 let pfx;
 
                 match ip {
