@@ -1,5 +1,6 @@
 use std::{fmt, slice};
 
+
 use crate::{
     local_array::node::PrefixId, prefix_record::InternalPrefixRecord,
     stats::StrideStats,
@@ -12,6 +13,8 @@ use routecore::{
 };
 
 pub use crate::af::{AddressFamily, IPv4, IPv6};
+
+pub use crate::local_array::store::custom_alloc;
 
 //------------ The publicly available Rotonda Stores ------------------------
 
