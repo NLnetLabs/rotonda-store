@@ -228,18 +228,6 @@ impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>>
     }
 }
 
-impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
-    for StrideNodeId<AF>
-{
-    fn from(id: &AtomicStrideNodeId<AF>) -> Self {
-        let i = match id.index.load(Ordering::Relaxed) {
-            0 => None,
-            x => Some((x.into(), 0)),
-        };
-        Self(i)
-    }
-}
-
 impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
     for PrefixId<AF>
 {
