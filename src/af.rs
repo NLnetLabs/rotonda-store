@@ -200,7 +200,7 @@ impl AddressFamily for IPv6 {
         match len {
             0 => 0,
             1..=127 => {
-                (self >> ((127 - len) as usize)) << (127 - len) as usize
+                (self >> ((128 - len) as usize)) << (128 - len) as usize
             }
             128 => self,
             _ => panic!("Can't truncate to more than 128 bits"),
