@@ -5,6 +5,7 @@ use crate::local_array::tree::TreeBitMap;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{HashMapPrefixRecordIterator, MatchOptions};
 use crate::{QueryResult, Stats};
+use routecore::record::Meta;
 
 use dashmap::DashMap;
 use rotonda_macros::stride_sizes;
@@ -23,15 +24,16 @@ use crate::AddressFamily;
 use std::marker::PhantomData;
 
 #[stride_sizes((IPv4, [5, 5, 4, 3, 3, 3, 3, 3, 3, 3]))]
-struct NodeBuckets4;
+struct TreeBitMap4;
 
-#[stride_sizes((IPv6, [
-    4,4,4,4,4,4,4,4,
-    4,4,4,4,4,4,4,4,
-    4,4,4,4,4,4,4,4,
-    4,4,4,4,4,4,4,4
-]))]
-struct NodeBuckets6;
+#[stride_sizes((
+    IPv6,
+    [
+        4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+        4, 4, 4, 4, 4, 4, 4, 4, 4
+    ]
+))]
+struct TreeBitMap6;
 
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
 pub struct Store<
@@ -39,8 +41,8 @@ pub struct Store<
     // B4: FamilyBuckets<IPv4>,
     // B6: FamilyBuckets<IPv6>,
 > {
-    v4: TreeBitMap<CustomAllocStorage<IPv4, Meta, NodeBuckets4<IPv4>>>,
-    v6: TreeBitMap<CustomAllocStorage<IPv6, Meta, NodeBuckets6<IPv6>>>,
+    v4: TreeBitMap4<Meta>,
+    v6: TreeBitMap6<Meta>,
 }
 
 impl<
@@ -81,12 +83,9 @@ impl<
     /// );
     /// ```
     pub fn new(v4_strides: Vec<u8>, v6_strides: Vec<u8>) -> Self {
-        // #[stride_sizes((IPv4, [3, 3, 3, 3, 3, 3, 3, 3, 4, 4]))]
-        // struct NodeBuckets4_1;
-
         Store {
-            v4: TreeBitMap::new(v4_strides),
-            v6: TreeBitMap::new(v6_strides),
+            v4: TreeBitMap4::new(),
+            v6: TreeBitMap6::new(),
         }
     }
 }
