@@ -7,28 +7,59 @@ use crate::{HashMapPrefixRecordIterator, MatchOptions};
 use crate::{QueryResult, Stats};
 
 use dashmap::DashMap;
+use rotonda_macros::stride_sizes;
 use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
 
 use std::fmt;
 
 use super::super::node::PrefixId;
-use super::custom_alloc::{FamilyBuckets, NodeBuckets4, NodeBuckets6};
+use super::custom_alloc::FamilyBuckets;
 use super::storage_backend::PrefixHashMap;
 
+use super::custom_alloc::NodeSet;
+use crate::local_array::tree::*;
+use crate::AddressFamily;
+use std::marker::PhantomData;
+
+#[stride_sizes((IPv4, [5, 5, 4, 3, 3, 3, 3, 3, 3, 3]))]
+struct NodeBuckets4;
+
+#[stride_sizes((IPv6, [
+    4,4,4,4,4,4,4,4,
+    4,4,4,4,4,4,4,4,
+    4,4,4,4,4,4,4,4,
+    4,4,4,4,4,4,4,4
+]))]
+struct NodeBuckets6;
+
 /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
-pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
+pub struct Store<
+    Meta: routecore::record::Meta + MergeUpdate,
+    // B4: FamilyBuckets<IPv4>,
+    // B6: FamilyBuckets<IPv6>,
+> {
     v4: TreeBitMap<CustomAllocStorage<IPv4, Meta, NodeBuckets4<IPv4>>>,
     v6: TreeBitMap<CustomAllocStorage<IPv6, Meta, NodeBuckets6<IPv6>>>,
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> Default for Store<Meta> {
+impl<
+        Meta: routecore::record::Meta + MergeUpdate,
+        // B4: FamilyBuckets<IPv4>,
+        // B6: FamilyBuckets<IPv6>,
+    > Default for Store<Meta>
+{
     fn default() -> Self {
         Self::new(vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![4])
     }
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+impl<
+        Meta: routecore::record::Meta + MergeUpdate,
+        // B4: FamilyBuckets<IPv4>,
+        // B6: FamilyBuckets<IPv6>,
+    > Store<Meta>
+{
     /// Creates a new empty store with a tree for IPv4 and on for IPv6.
     ///
     /// You'll have to provide the stride sizes per address family and the
@@ -50,6 +81,9 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     /// );
     /// ```
     pub fn new(v4_strides: Vec<u8>, v6_strides: Vec<u8>) -> Self {
+        // #[stride_sizes((IPv4, [3, 3, 3, 3, 3, 3, 3, 3, 4, 4]))]
+        // struct NodeBuckets4_1;
+
         Store {
             v4: TreeBitMap::new(v4_strides),
             v6: TreeBitMap::new(v6_strides),
@@ -57,7 +91,13 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+impl<
+        'a,
+        Meta: routecore::record::Meta + MergeUpdate,
+        // B4: FamilyBuckets<IPv4>,
+        // B6: FamilyBuckets<IPv6>,
+    > Store<Meta>
+{
     pub fn match_prefix(
         &'a self,
         prefix_store_locks: (
