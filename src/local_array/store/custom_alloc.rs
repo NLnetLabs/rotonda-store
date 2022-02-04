@@ -456,7 +456,15 @@ impl<
         todo!()
     }
 
-    fn get_stride_sizes(&self) -> [u8; 42] {
+    fn get_stride_sizes(&self) -> &[u8] {
         self.buckets.get_stride_sizes()
     }
+
+    fn get_strides_len() -> u8 {
+        Buckets::get_strides_len()
+    }
+
+    fn get_first_stride_size() -> u8 {
+        Buckets::get_first_stride_size()
+    } 
 }

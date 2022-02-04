@@ -161,13 +161,7 @@ where
         // having to match over a SizedStrideNode again in the
         // `post-processing` section.
 
-        for stride in self.store.get_stride_sizes().iter().map_while(|s| {
-            if s > &0 {
-                Some(s)
-            } else {
-                None
-            }
-        }) {
+        for stride in self.store.get_stride_sizes() {
             stride_end += stride;
 
             let last_stride = search_pfx.len < stride_end;

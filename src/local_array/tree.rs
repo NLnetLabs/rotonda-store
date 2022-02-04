@@ -492,7 +492,7 @@ impl<'a, Store> TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
-    pub fn new(strides_vec: Vec<u8>) -> TreeBitMap<Store> {
+    pub fn new() -> TreeBitMap<Store> {
         // Check if the strides division makes sense
         // let mut strides = vec![];
         // let mut len_to_stride_size: [StrideType; 128] =
@@ -509,14 +509,17 @@ where
         // assert_eq!(strides_vec.iter().sum::<u8>(), Store::AF::BITS);
 
         let mut stride_stats: Vec<StrideStats> = vec![
-            StrideStats::new(SizedStride::Stride3, strides_vec.len() as u8), // 0
-            StrideStats::new(SizedStride::Stride4, strides_vec.len() as u8), // 1
-            StrideStats::new(SizedStride::Stride5, strides_vec.len() as u8), // 2
+            StrideStats::new(
+                SizedStride::Stride3,
+                Store::get_strides_len() as u8,
+            ), // 0
+            StrideStats::new(SizedStride::Stride4, Store::get_strides_len() as u8), // 1
+            StrideStats::new(SizedStride::Stride5, Store::get_strides_len() as u8), // 2
         ];
 
         let root_node: SizedStrideNode<<Store as StorageBackend>::AF>;
 
-        match strides_vec[0] {
+        match Store::get_first_stride_size() {
             3 => {
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
@@ -601,9 +604,8 @@ where
         }
 
         let mut stride_end: u8 = 0;
-        let mut cur_i = self
-            .store
-            .get_root_node_id(self.store.get_stride_sizes()[0]);
+        let mut cur_i =
+            self.store.get_root_node_id(self.store.get_stride_sizes()[0]);
         let mut level: u8 = 0;
 
         loop {
@@ -669,8 +671,7 @@ where
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
-        self.store
-            .get_root_node_id(self.store.get_stride_sizes()[0])
+        self.store.get_root_node_id(self.store.get_stride_sizes()[0])
     }
 
     // #[inline]
