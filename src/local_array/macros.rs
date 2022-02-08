@@ -102,7 +102,7 @@ macro_rules! match_node_for_strides {
 
                     // STEP 1
                     // acquire the Atomic Serial mutably from the local pfx_vec.
-                    println!("get serial for node nr. {}", sort_id);
+                    // println!("get serial for node nr. {}", sort_id);
                     let serial = current_node.pfx_vec.get_serial_at(sort_id as usize);
                     // increment the serial number only if its zero right now.
                     let old_serial = serial.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed);
@@ -125,7 +125,7 @@ macro_rules! match_node_for_strides {
                         // to avoid starting all over again with fetching the
                         // prefix node by node.
                         Err(newer_serial) => {
-                            println!("contention while creating node");
+                            // println!("contention while creating node");
                             // Somebody beat us to it. Try again with the new serial number.
                             // let mut old_serial = serial.fetch_add(1, Ordering::Acquire);
                             let new_serial = newer_serial + 1;
@@ -341,9 +341,12 @@ macro_rules! impl_search_level {
                     mut level: u8,
                     guard| {
                         // Aaaaand, this is all of our hashing function.
-                        // I'll explain later.
-                        let index = $id.get_id().0.dangerously_truncate_to_usize()
-                            >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
+                        // // I'll explain later.
+                        // let index = $id.get_id().0.dangerously_truncate_to_usize()
+                        //     >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
+                        let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
+                        let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
+                        let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
 
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
@@ -351,17 +354,16 @@ macro_rules! impl_search_level {
                         let this_node = unsafe {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
-                        println!("this node {:?}", this_node);
+                        // println!("this node {:?}", this_node);
                         match unsafe { this_node.assume_init_mut() } {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
-                            // hashing everywhere, this may be very well a node
-                            // we're not searching for, so check that.
+                            // hashing everywhere, this may be very well a node                            // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-                                println!("found {} in level {}", node, level);
-                                println!("search id {}", $id);
-                                println!("found id {}", node_id);
+                                // println!("found {} in level {}", node, level);
+                                // println!("search id {}", $id);
+                                // println!("found id {}", node_id);
                                 if &$id == node_id {
                                     // YES, It's the one we're looking for!
                                     return Some(SizedStrideRef::$stride(node));
@@ -411,8 +413,11 @@ macro_rules! impl_search_level_mut {
                     guard| {
                         // Aaaaand, this is all of our hashing function.
                         // I'll explain later.
-                        let index = $id.get_id().0.dangerously_truncate_to_usize()
-                            >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap());
+                        let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
+                        let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
+                        let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
+                        // let index = $id.get_id().0.dangerously_truncate_to_usize()
+                        //     >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap());
 
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
@@ -420,7 +425,7 @@ macro_rules! impl_search_level_mut {
                         let this_node = unsafe {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
-                        println!("this node {:?}", this_node);
+                        // println!("this node {:?}", this_node);
                         match unsafe { this_node.assume_init_mut() } {
                             // No node exists, here
                             StoredNode::Empty => None,
@@ -428,9 +433,9 @@ macro_rules! impl_search_level_mut {
                             // hashing everywhere, this may be very well a node
                             // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-                                println!("found {} in level {}", node, level);
-                                println!("search id {}", $id);
-                                println!("found id {}", node_id);
+                                // println!("found {} in level {}", node, level);
+                                // println!("search id {}", $id);
+                                // println!("found id {}", node_id);
                                 if &$id == node_id {
                                     // YES, It's the one we're looking for!
                                     return Some(SizedStrideRefMut::$stride(node));
@@ -478,30 +483,52 @@ macro_rules! impl_write_level {
                      new_node: TreeBitMapNode<AF, $stride>,
                     //  bits_division: [u8; 10],
                      mut level: u8| {
-                    let index = $id.get_id().0.dangerously_truncate_to_usize()
-                        >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap());
-                    println!("{:032b}", $id.get_id().0.dangerously_truncate_to_usize());
+                    let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
+                    let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
+                    let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
+                    println!("{:032b}", $id.get_id().0.dangerously_truncate_to_u32());
+                    println!("this_level {}", this_level);
+                    println!("last_level {}", last_level);
                     println!("id {:?}", $id.get_id());
                     println!("calculated index {}", index);
                     println!("level {}", level);
                     println!("bits_division {}", <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
                     let guard = &epoch::pin();
                     let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
-                    println!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
+                    // println!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                     let node_ref =
                         unsafe { &mut unwrapped_nodes.deref_mut()[index] };
                     match unsafe { node_ref.assume_init_mut() } {
                         // No node exists, so we crate one here.
                         StoredNode::Empty => {
-                            println!("Empty node found, creating new node {}", $id);
-                            std::mem::swap(
-                                node_ref,
-                                &mut MaybeUninit::new(StoredNode::NodeWithRef((
-                                    $id,
-                                    new_node,
-                                    NodeSet::init((1 << <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap()) as usize),
-                                ))),
-                            );
+                            println!("Empty node found, creating new node {} len{} lvl{}", $id, $id.get_id().1, level + 1);
+                            let next_level = <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap();
+                            println!("next level {}", next_level);
+                            println!("creating {} nodes", 1 << (next_level - this_level));
+                            if next_level > &0 {
+                                std::mem::swap(
+                                    node_ref,
+                                    &mut MaybeUninit::new(StoredNode::NodeWithRef((
+                                        $id,
+                                        new_node,
+                                        NodeSet::init((1 <<
+                                        //     <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap()
+                                        //   - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap()
+                                        (next_level - this_level)
+                                        ) as usize),
+                                    ))),
+                                );
+                            } else {
+                                // the last level gets to have nodes without children.
+                                std::mem::swap(
+                                    node_ref,
+                                    &mut MaybeUninit::new(StoredNode::NodeWithRef((
+                                        $id,
+                                        new_node,
+                                        NodeSet(Atomic::null())  
+                                    ))),
+                                );
+                            };
                             // ABA Baby!
                             match nodes.0.compare_exchange(
                                 unwrapped_nodes,
@@ -532,8 +559,8 @@ macro_rules! impl_write_level {
                             Some($id)
                         }
                         // A node exists, since `store_node` only creates new
-                        // nodes, we will silently abort insertion if the
-                        // specified node already exists.
+                        // nodes, we should not get here with the SAME
+                        // esiting node as already in place.
                         StoredNode::NodeWithRef((node_id, _node, node_set)) => {
                             println!("node here exists {:?}", _node);
                             println!("node_id {:?}", node_id.get_id());
@@ -541,11 +568,13 @@ macro_rules! impl_write_level {
                             println!("id {}", $id);
                             println!("     id {:032b}", $id.get_id().0);
                             if $id == *node_id {
-                                println!("found node {}, stop", $id);
+                                println!("found node {}, STOP", $id);
                                 // Node already exists, nothing to do
-                                return Some($id);
+                                panic!("node already exists, should not happen");
+                                // return Some($id);
                             };
                             level += 1;
+                            println!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
                             match <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                 // on to the next level!
                                 Some(next_bit_shift) if next_bit_shift > &0 => {
@@ -566,5 +595,179 @@ macro_rules! impl_write_level {
             }
 
         )*
+    };
+}
+
+// #[macro_export]
+// macro_rules! create_store {
+//     ($($strides4:ident),+ ) => ( {
+//         #[stride_sizes((IPv4, [$($strides4),+]))]
+//         struct TreeBitMap4;
+
+//         // #[stride_sizes((IPv6, $strides6))]
+//         // struct TreeBitMap6;
+
+//         Self {
+//             v4: TreeBitMap4::new(),
+//             v6: TreeBitMap6::new(),
+//         }
+//     } );
+// }
+
+#[macro_export]
+macro_rules! create_store {
+    ($strides4:ident, $strides6: ident) => {
+        /// A concurrently read/writable, lock-free Prefix Store, for use in a multi-threaded context.
+        pub struct Store<Meta: routecore::record::Meta + MergeUpdate> {
+            v4: $strides4<Meta>,
+            v6: $strides6<Meta>,
+        }
+
+        impl<Meta: routecore::record::Meta + MergeUpdate> Default
+            for Store<Meta>
+        {
+            fn default() -> Self {
+                Self::new()
+            }
+        }
+
+        impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+            /// Creates a new empty store with a tree for IPv4 and on for IPv6.
+            ///
+            /// You'll have to provide the stride sizes per address family and the
+            /// meta-data type. Some meta-data type are included with this crate.
+            ///
+            /// The stride-sizes can be any of [3,4,5], and they should add up
+            /// to the total number of bits in the address family (32 for IPv4 and
+            /// 128 for IPv6). Stride sizes in the array will be repeated if the sum
+            /// of them falls short of the total number of bits for the address
+            /// family.
+            ///
+            /// # Example
+            /// ```
+            /// use rotonda_store::MultiThreadedStore;
+            /// use rotonda_store::PrefixAs;
+            ///
+            /// let store = MultiThreadedStore::<PrefixAs>::new(
+            ///     vec![3, 3, 3, 3, 3, 3, 3, 3, 4, 4], vec![5,4,3,4]
+            /// );
+            /// ```
+            pub fn new() -> Self {
+                Store {
+                    v4: TreeBitMap4::new(),
+                    v6: TreeBitMap6::new(),
+                }
+            }
+        }
+
+        impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+            pub fn match_prefix(
+                &'a self,
+                prefix_store_locks: (
+                    &'a PrefixHashMap<IPv4, Meta>,
+                    &'a PrefixHashMap<IPv6, Meta>,
+                ),
+                search_pfx: &Prefix,
+                options: &MatchOptions,
+            ) -> QueryResult<'a, Meta> {
+                match search_pfx.addr() {
+                    std::net::IpAddr::V4(addr) => self.v4.match_prefix(
+                        prefix_store_locks.0,
+                        &InternalPrefixRecord::<IPv4, NoMeta>::new(
+                            addr.into(),
+                            search_pfx.len(),
+                        ),
+                        options,
+                    ),
+                    std::net::IpAddr::V6(addr) => self.v6.match_prefix(
+                        prefix_store_locks.1,
+                        &InternalPrefixRecord::<IPv6, NoMeta>::new(
+                            addr.into(),
+                            search_pfx.len(),
+                        ),
+                        options,
+                    ),
+                }
+            }
+
+            pub fn insert(
+                &mut self,
+                prefix: &Prefix,
+                meta: Meta,
+            ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
+                match prefix.addr() {
+                    std::net::IpAddr::V4(addr) => {
+                        self.v4.insert(InternalPrefixRecord::new_with_meta(
+                            addr.into(),
+                            prefix.len(),
+                            meta,
+                        ))
+                    }
+                    std::net::IpAddr::V6(addr) => {
+                        self.v6.insert(InternalPrefixRecord::new_with_meta(
+                            addr.into(),
+                            prefix.len(),
+                            meta,
+                        ))
+                    }
+                }
+            }
+
+            pub fn prefixes_iter(&self) -> HashMapPrefixRecordIterator<Meta> {
+                let rs4 = self.v4.store.prefixes.iter();
+                let rs6 = self.v6.store.prefixes.iter();
+
+                crate::HashMapPrefixRecordIterator::<Meta> {
+                    v4: Some(rs4),
+                    v6: rs6,
+                }
+            }
+
+            pub fn acquire_prefixes_rwlock_read(
+                &'a self,
+            ) -> (
+                &'a DashMap<PrefixId<IPv4>, InternalPrefixRecord<IPv4, Meta>>,
+                &'a DashMap<PrefixId<IPv6>, InternalPrefixRecord<IPv6, Meta>>,
+            ) {
+                (&self.v4.store.prefixes, &self.v6.store.prefixes)
+            }
+
+            pub fn prefixes_len(&self) -> usize {
+                self.v4.store.prefixes.len() + self.v6.store.prefixes.len()
+            }
+
+            pub fn prefixes_v4_len(&self) -> usize {
+                self.v4.store.prefixes.len()
+            }
+
+            pub fn prefixes_v6_len(&self) -> usize {
+                self.v6.store.prefixes.len()
+            }
+
+            pub fn nodes_len(&self) -> usize {
+                self.v4.store.get_nodes_len() + self.v6.store.get_nodes_len()
+            }
+
+            pub fn nodes_v4_len(&self) -> usize {
+                self.v4.store.get_nodes_len()
+            }
+
+            pub fn nodes_v6_len(&self) -> usize {
+                self.v6.store.get_nodes_len()
+            }
+
+            #[cfg(feature = "cli")]
+            pub fn print_funky_stats(&self) {
+                println!("{}", self.v4);
+                println!("{}", self.v6);
+            }
+
+            pub fn stats(&self) -> Stats {
+                Stats {
+                    v4: &self.v4.stats,
+                    v6: &self.v6.stats,
+                }
+            }
+        }
     };
 }
