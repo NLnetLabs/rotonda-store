@@ -65,10 +65,7 @@ fn load_prefixes(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-        vec![5, 5, 4, 3, 3, 3, 3, 3, 3],
-        vec![4],
-    );
+    let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -87,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ready.checked_duration_since(start).unwrap().as_millis()
     );
 
-    // tree_bitmap.print_funky_stats();
+    tree_bitmap.print_funky_stats();
     let locks = tree_bitmap.acquire_prefixes_rwlock_read();
 
     let mut rl = Editor::<()>::new();

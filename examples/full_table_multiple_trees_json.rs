@@ -6,6 +6,12 @@ use std::error::Error;
 use std::fs::File;
 use std::process;
 
+#[create_store((
+    [4, 4, 4, 4, 4, 4, 4, 4],
+    [3,4,5,4]
+))]
+struct MyStore;
+
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
 
@@ -33,16 +39,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("[");
-    let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
+    // let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
-    for strides in strides_vec.iter().enumerate() {
+    // for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-                strides.1.to_owned(),
-                strides.1.to_owned(),
-            );
+            let mut tree_bitmap = MyStore::<PrefixAs>::new();
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -145,7 +148,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 ""
             }
         );
-    }
+    // }
     println!("]");
     Ok(())
 }

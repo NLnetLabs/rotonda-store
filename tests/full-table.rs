@@ -54,10 +54,7 @@ mod tests {
         ];
         for strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-                strides.1.to_owned(),
-                vec![4],
-            );
+            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);

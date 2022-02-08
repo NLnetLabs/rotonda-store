@@ -46,6 +46,7 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub(crate) fn init(size: usize) -> Self {
+        println!("creating space for {} nodes", &size);
         let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
         for i in 0..size {
             l[i] = MaybeUninit::new(StoredNode::Empty);
