@@ -18,6 +18,8 @@ use std::process;
 use rustyline::error::ReadlineError;
 #[cfg(feature = "cli")]
 use rustyline::Editor;
+#[cfg(feature = "cli")]
+use env_logger;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -64,6 +66,8 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+    
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
     let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
