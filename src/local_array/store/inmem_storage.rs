@@ -6,13 +6,8 @@ pub(crate) struct InMemStorage<
     // each stride in its own vec avoids having to store SizedStrideNode, an enum, that will have
     // the size of the largest variant as its memory footprint (Stride8).
     pub nodes3: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>,
-
     pub nodes4: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>,
-
     pub nodes5: DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>,
-    // pub nodes6: Vec<TreeBitMapNode<AF, Stride6, 126, 64>>,
-    // pub nodes7: Vec<TreeBitMapNode<AF, Stride7, 254, 128>>,
-    // pub nodes8: Vec<TreeBitMapNode<AF, Stride8, 510, 256>>,
     pub prefixes: DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     pub(crate) len_to_stride_size: [StrideType; 128],
     pub default_route_prefix_serial: AtomicUsize,
@@ -43,11 +38,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
         };
-        // let first_stride_type = match len_to_stride_size[0] {
-        //     StrideType::Stride3 => 3,
-        //     StrideType::Stride4 => 4,
-        //     StrideType::Stride5 => 5,
-        // };
         store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
@@ -57,7 +47,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
 
     fn acquire_new_node_id(
         &self,
-        // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         (prefix_net, sub_prefix_len): (Self::AF, u8),
     ) -> StrideNodeId<AF> {
         StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
@@ -70,20 +59,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     ) -> Option<StrideNodeId<AF>> {
         match next_node {
             SizedStrideNode::Stride3(node) => {
-                // let id = self.nodes3.len() as u32;
-                // let nodes = self.nodes3;
                 self.nodes3.insert(id, node);
                 Some(id)
             }
             SizedStrideNode::Stride4(node) => {
-                // let id = self.nodes4.len() as u32;
-                // let nodes = self.nodes4;
                 self.nodes4.insert(id, node);
                 Some(id)
             }
             SizedStrideNode::Stride5(node) => {
-                // let id = self.nodes5.len() as u32;
-                // let nodes = self.nodes5;
                 self.nodes5.insert(id, node);
                 Some(id)
             }
@@ -116,42 +99,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             }
         }
     }
-
-    // fn nodes3_read(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>> {
-    //     &self.nodes3
-    // }
-
-    // fn nodes3_write(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>> {
-    //     &self.nodes3
-    // }
-
-    // fn nodes4_read(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>> {
-    //     &self.nodes4
-    // }
-
-    // fn nodes4_write(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>> {
-    //     &self.nodes4
-    // }
-
-    // fn nodes5_read(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>> {
-    //     &self.nodes5
-    // }
-
-    // fn nodes5_write(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>> {
-    //     &self.nodes5
-    // }
 
     fn get_stride_for_id(
         &self,
@@ -253,17 +200,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
             StrideType::Stride3 => self
                 .nodes3
                 .get(&id)
-                // .as_ref()
                 .map(|n| SizedStrideRef::Stride3(n.value())),
             StrideType::Stride4 => self
                 .nodes4
                 .get(&id)
-                // .as_ref()
                 .map(|n| SizedStrideRef::Stride4(n.value())),
             StrideType::Stride5 => self
                 .nodes5
                 .get(&id)
-                // .as_ref()
                 .map(|n| SizedStrideRef::Stride5(n.value())),
         }
     }
@@ -271,7 +215,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn retrieve_node_mut_with_guard<'a>(
         &'a self,
         _id: StrideNodeId<Self::AF>,
-        // result_ref: SizedNodeRefOption<'a, Self::AF>,
         _guard: &'a Guard,
     ) -> Option<SizedStrideRefMut<'a, Self::AF>> {
         unimplemented!()
@@ -293,49 +236,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     ) -> Option<SizedStrideRef<'a, Self::AF>> {
         unimplemented!()
     }
-
-    // fn retrieve_node_mut(
-    //     &self,
-    //     id: StrideNodeId<AF>,
-    // ) -> SizedNodeRefResult<'_, Self::AF> {
-    //     match self.len_to_stride_size[id.get_id().1 as usize] {
-    //         StrideType::Stride3 => Ok(self
-    //             .nodes3
-    //             .get_mut(&id)
-    //             .map(|mut n| SizedStrideRefMut::Stride3(n.value_mut()))
-    //             .unwrap_or_else(|| panic!("Node not found"))),
-    //         StrideType::Stride4 => Ok(self
-    //             .nodes4
-    //             .get_mut(&id)
-    //             .map(|mut n| SizedStrideRefMut::Stride4(n.value_mut()))
-    //             .unwrap_or_else(|| panic!("Node not found"))),
-    //         StrideType::Stride5 => Ok(self
-    //             .nodes5
-    //             .get_mut(&id)
-    //             .map(|mut n| SizedStrideRefMut::Stride5(n.value_mut()))
-    //             .unwrap_or_else(|| panic!("Node not found"))),
-    //     }
-    // }
-
-    // fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>> {
-    //     self.nodes3
-    //         .read()
-    //         .iter()
-    //         .map(|n| SizedStrideRef::Stride3(n.1))
-    //         .chain(
-    //             self.nodes4
-    //                 .read()
-    //                 .iter()
-    //                 .map(|n| SizedStrideRef::Stride4(n.1)),
-    //         )
-    //         .chain(
-    //             self.nodes5
-    //                 .read()
-    //                 .iter()
-    //                 .map(|n| SizedStrideRef::Stride5(n.1)),
-    //         )
-    //         .collect()
-    // }
 
     fn get_root_node_id(&self, first_stride_size: u8) -> StrideNodeId<AF> {
         let (addr_bits, len) = match first_stride_size {
@@ -381,13 +281,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         self.prefixes.get(&part_id).map(|p| p.value())
     }
 
-    // fn retrieve_prefix_mut(
-    //     &mut self,
-    //     part_id: PrefixId<Self::AF>,
-    // ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>> {
-    //     self.prefixes.get_mut(&part_id).map(|mut p| p.value_mut())
-    // }
-
     fn remove_prefix(
         &self,
         id: PrefixId<Self::AF>,
@@ -419,10 +312,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
     fn get_prefixes_len(&self) -> usize {
         self.prefixes.len()
     }
-
-    // fn prefixes_iter(&self) -> PrefixIterResult<Self::AF, Self::Meta> {
-    //     Ok(self.prefixes.read().values())
-    // }
 
     #[cfg(feature = "dynamodb")]
     fn prefixes_iter_mut(

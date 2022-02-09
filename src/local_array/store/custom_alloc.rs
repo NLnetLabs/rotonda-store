@@ -109,7 +109,6 @@ impl<
     type Meta = Meta;
 
     fn init(
-        // len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self {
         trace!("initialize storage backend");
@@ -127,10 +126,6 @@ impl<
         );
         store
     }
-
-    // fn len_to_store_bits(&self, len: u8, level: u8) -> Option<u8> {
-    //     <Buckets as FamilyBuckets<AF>>::len_to_store_bits(len, level)
-    // }
 
     fn acquire_new_node_id(
         &self,
@@ -314,7 +309,6 @@ impl<
     fn retrieve_node_mut_with_guard<'a>(
         &'a self,
         id: StrideNodeId<Self::AF>,
-        // result_ref: SizedNodeRefOption<'_, Self::AF>,
         guard: &'a Guard,
     ) -> Option<SizedStrideRefMut<'a, Self::AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {

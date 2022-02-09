@@ -123,26 +123,6 @@ pub trait StorageBackend {
         next_node: SizedStrideNode<Self::AF>,
         guard: &'a Guard,
     ) -> Option<StrideNodeId<Self::AF>>;
-
-    // fn nodes3_read(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride3>>;
-    // fn nodes3_write(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride3>>;
-    // fn nodes4_read(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride4>>;
-    // fn nodes4_write(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride4>>;
-    // fn nodes5_read(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride5>>;
-    // fn nodes5_write(
-    //     &self,
-    // ) -> &DashMap<StrideNodeId<Self::AF>, TreeBitMapNode<Self::AF, Stride5>>;
-    // fn get_nodes(&self) -> Vec<SizedStrideRef<Self::AF>>;
     fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId<Self::AF>;
     fn load_default_route_prefix_serial(&self) -> usize;
     fn increment_default_route_prefix_serial(&self) -> usize;
