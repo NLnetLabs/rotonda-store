@@ -1,5 +1,8 @@
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
-use routecore::addr::Prefix;
+// extern crate self as roto;
+use rotonda_store::prelude::*;
+
+use rotonda_store::{MatchOptions, MatchType, PrefixAs};
+// use routecore::addr::Prefix;
 use routecore::bgp::PrefixRecord;
 use routecore::record::Record;
 use std::error::Error;
@@ -39,9 +42,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("[");
-    // let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
+    let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
-    // for strides in strides_vec.iter().enumerate() {
+    for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
@@ -99,8 +102,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!(
                 "\"strides v4 \": {:?},",
                 &tree_bitmap
-                    .store
                     .v4
+                    .store
                     .get_stride_sizes()
                     .iter()
                     .map_while(|s| if s > &0 { Some(*s) } else { None })
@@ -109,8 +112,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!(
                 "\"strides v6 \": {:?},",
                 &tree_bitmap
-                    .store
                     .v6
+                    .store
                     .get_stride_sizes()
                     .iter()
                     .map_while(|s| if s > &0 { Some(*s) } else { None })
@@ -148,7 +151,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 ""
             }
         );
-    // }
+    }
     println!("]");
     Ok(())
 }

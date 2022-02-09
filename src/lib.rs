@@ -25,6 +25,7 @@ mod rotonda_store;
 
 // Public Interfaces
 
+pub mod prelude;
 /// Statistics for the two trees (IPv4 and IPv6).
 pub mod stats;
 pub use crate::rotonda_store::*;

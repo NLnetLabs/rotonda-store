@@ -30,7 +30,7 @@ use routecore::record::MergeUpdate;
 // generic code.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
-pub(crate) enum SizedStrideNode<AF: AddressFamily> {
+pub enum SizedStrideNode<AF: AddressFamily> {
     Stride3(TreeBitMapNode<AF, Stride3>),
     Stride4(TreeBitMapNode<AF, Stride4>),
     Stride5(TreeBitMapNode<AF, Stride5>),
@@ -80,7 +80,7 @@ pub enum SizedStrideRef<'a, AF: AddressFamily> {
 }
 //
 #[derive(Debug)]
-pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
+pub enum SizedStrideRefMut<'a, AF: AddressFamily> {
     Stride3(&'a mut TreeBitMapNode<AF, Stride3>),
     Stride4(&'a mut TreeBitMapNode<AF, Stride4>),
     Stride5(&'a mut TreeBitMapNode<AF, Stride5>),
@@ -479,7 +479,7 @@ impl std::fmt::Display for StrideType {
 
 //--------------------- TreeBitMap ------------------------------------------
 
-pub(crate) struct TreeBitMap<Store>
+pub struct TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
@@ -593,7 +593,7 @@ where
     // 5 - 5 - 5 - 4 - 4 - [4] - 5
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
-    pub(crate) fn insert(
+    pub fn insert(
         &mut self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {

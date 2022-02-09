@@ -38,22 +38,22 @@ pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<
 
 pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
 
-pub(crate) type PrefixHashMap<AF, Meta> =
+pub type PrefixHashMap<AF, Meta> =
     DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>;
 
-pub(crate) enum StrideReadStore<'a, AF: AddressFamily> {
+pub enum StrideReadStore<'a, AF: AddressFamily> {
     Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
     Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
     Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
 }
 
-pub(crate) enum StrideWriteStore<'a, AF: AddressFamily> {
+pub enum StrideWriteStore<'a, AF: AddressFamily> {
     Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
     Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
     Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
 }
 
-pub(crate) trait StorageBackend {
+pub trait StorageBackend {
     type AF: AddressFamily;
     type Meta: Meta + MergeUpdate;
 

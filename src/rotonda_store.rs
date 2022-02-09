@@ -153,14 +153,14 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
 
 //------------ HashMapPrefixRecordIterator ----------------------------------
 pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
-    pub(crate) v4: Option<
+    pub v4: Option<
         dashmap::iter::Iter<
             'a,
             PrefixId<IPv4>,
             InternalPrefixRecord<IPv4, Meta>,
         >,
     >,
-    pub(crate) v6: dashmap::iter::Iter<
+    pub v6: dashmap::iter::Iter<
         'a,
         PrefixId<IPv6>,
         InternalPrefixRecord<IPv6, Meta>,

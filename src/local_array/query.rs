@@ -42,7 +42,7 @@ where
     // nibble              1010 1011 1100 1101 1110 1111    x
     // nibble len offset      4(contd.)
 
-    pub(crate) fn match_prefix(
+    pub fn match_prefix(
         &'a self,
         prefix_store: &'a PrefixHashMap<Store::AF, Store::Meta>,
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,

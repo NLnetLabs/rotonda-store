@@ -23,12 +23,12 @@ use super::storage_backend::{
 };
 
 #[derive(Debug)]
-pub(crate) struct NodeSet<AF: AddressFamily, S: Stride>(
+pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<StoredNode<AF, S>>]>,
 );
 
 #[derive(Debug)]
-pub(crate) enum StoredNode<AF, S>
+pub enum StoredNode<AF, S>
 where
     Self: Sized,
     S: Stride,
@@ -45,7 +45,7 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
 }
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
-    pub(crate) fn init(size: usize) -> Self {
+    pub fn init(size: usize) -> Self {
         println!("creating space for {} nodes", &size);
         let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
         for i in 0..size {
@@ -59,19 +59,19 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 pub(crate) struct LenToBits([[u8; 10]; 33]);
 
 #[derive(Debug)]
-pub(crate) struct CustomAllocStorage<
+pub struct CustomAllocStorage<
     AF: AddressFamily,
     Meta: routecore::record::Meta,
     Buckets: FamilyBuckets<AF>,
 > {
     pub(crate) buckets: Buckets,
-    pub(crate) prefixes:
+    pub prefixes:
         DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>,
     // pub(crate) len_to_stride_size: [StrideType; 128],
     pub default_route_prefix_serial: AtomicUsize,
 }
 
-pub(crate) trait FamilyBuckets<AF: AddressFamily> {
+pub trait FamilyBuckets<AF: AddressFamily> {
     fn init() -> Self;
     fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
     fn get_stride_sizes(&self) -> &[u8];
