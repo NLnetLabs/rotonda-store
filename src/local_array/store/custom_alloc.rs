@@ -5,6 +5,9 @@ use std::{
 };
 
 use crossbeam_epoch::{self as epoch, Atomic};
+
+use log::trace;
+
 use dashmap::DashMap;
 use epoch::{Guard, Owned};
 
@@ -46,7 +49,7 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
-        println!("creating space for {} nodes", &size);
+        trace!("creating space for {} nodes", &size);
         let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
         for i in 0..size {
             l[i] = MaybeUninit::new(StoredNode::Empty);
@@ -109,7 +112,7 @@ impl<
         // len_to_stride_size: [StrideType; 128],
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self {
-        println!("init");
+        trace!("initialize storage backend");
 
         let mut store = CustomAllocStorage {
             buckets: Buckets::init(),
@@ -160,7 +163,7 @@ impl<
         let search_level_4 = impl_write_level![Stride4; id;];
         let search_level_5 = impl_write_level![Stride5; id;];
 
-        println!("insert node {}: {:?}", id, next_node);
+        trace!("insert node {}: {:?}", id, next_node);
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
@@ -278,7 +281,7 @@ impl<
 
         match self.get_stride_for_id(id) {
             3 => {
-                println!("retrieve node {} from l{}", id, id.get_id().1);
+                trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
                     self.buckets.get_store3(id),
@@ -288,8 +291,7 @@ impl<
             }
 
             4 => {
-                println!("retrieve node {} from l{}", id, id.get_id().1);
-                // println!("{:?}", self.l0);
+                trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_4.f)(
                     &search_level_4,
                     self.buckets.get_store4(id),
@@ -298,8 +300,7 @@ impl<
                 )
             }
             _ => {
-                println!("retrieve node {} from l{}", id, id.get_id().1);
-                // println!("{:?}", self.l0);
+                trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_5.f)(
                     &search_level_5,
                     self.buckets.get_store5(id),
@@ -333,7 +334,7 @@ impl<
 
         match self.buckets.get_stride_for_id(id) {
             3 => {
-                println!("retrieve node {} from l{}", id, id.get_id().1);
+                trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_3.f)(
                     &search_level_3,
                     self.buckets.get_store3(id),
@@ -343,8 +344,7 @@ impl<
             }
 
             4 => {
-                println!("retrieve node {} from l{}", id, id.get_id().1);
-                // println!("{:?}", self.l0);
+                trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_4.f)(
                     &search_level_4,
                     self.buckets.get_store4(id),
@@ -353,8 +353,7 @@ impl<
                 )
             }
             _ => {
-                println!("retrieve node {} from l{}", id, id.get_id().1);
-                // println!("{:?}", self.l0);
+                trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_5.f)(
                     &search_level_5,
                     self.buckets.get_store5(id),

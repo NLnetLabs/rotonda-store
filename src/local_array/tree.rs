@@ -1,4 +1,6 @@
 use crossbeam_epoch::{self as epoch};
+use log::trace;
+
 use std::hash::Hash;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
@@ -716,7 +718,7 @@ where
         &self,
         new_meta: Store::Meta,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // println!("Updating the default route...");
+        // trace!("Updating the default route...");
         let mut old_serial =
             self.store.increment_default_route_prefix_serial();
         let new_serial = old_serial + 1;
@@ -726,7 +728,7 @@ where
         loop {
             match old_serial {
                 0 => {
-                    // println!(
+                    // trace!(
                     //     "No default route prefix found, creating one..."
                     // );
                     self.store_prefix(InternalPrefixRecord {
@@ -756,7 +758,7 @@ where
                 // more, reading the newly-current meta-data, updating it with our meta-data and
                 // see if it works then. rinse-repeat.
                 newer_serial => {
-                    println!(
+                    trace!(
                         "contention for {:?} with serial {} -> {}",
                         df_pfx_id, old_serial, newer_serial
                     );
@@ -926,21 +928,21 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_nodes = self.store.get_nodes_len();
 
-        println!("prefix vec size {}", self.store.get_prefixes_len());
-        println!("finished building tree...");
-        println!("{:?} nodes created", total_nodes);
-        println!(
+        trace!("prefix vec size {}", self.store.get_prefixes_len());
+        trace!("finished building tree...");
+        trace!("{:?} nodes created", total_nodes);
+        trace!(
             "size of node: {} bytes",
             std::mem::size_of::<SizedStrideNode<u32>>()
         );
-        println!(
+        trace!(
             "memory used by nodes: {}kb",
             self.store.get_nodes_len()
                 * std::mem::size_of::<SizedStrideNode<u32>>()
                 / 1024
         );
 
-        println!(
+        trace!(
             "stride division {:?}",
             self.store
                 .get_stride_sizes()
@@ -949,10 +951,10 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 .collect::<Vec<_>>()
         );
         for s in &self.stats {
-            println!("{:?}", s);
+            trace!("{:?}", s);
         }
 
-        println!(
+        trace!(
             "level\t[{}|{}] nodes occupied/max nodes percentage_max_nodes_occupied prefixes",
             Colour::Blue.paint("nodes"),
             Colour::Green.paint("prefixes")
@@ -961,7 +963,7 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         let mut stride_bits = [0, 0];
         const SCALE: u32 = 5500;
 
-        println!(
+        trace!(
             "stride_sizes {:?}",
             self.store
                 .get_stride_sizes()
@@ -1030,7 +1032,7 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 ) //  = scale / 7
             );
 
-            println!(" {}", prefixes_num);
+            trace!(" {}", prefixes_num);
         }
         Ok(())
     }

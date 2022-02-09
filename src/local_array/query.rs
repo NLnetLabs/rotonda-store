@@ -1,4 +1,5 @@
 use crossbeam_epoch::{self as epoch};
+use log::trace;
 
 use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;
@@ -543,8 +544,8 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // println!("node {}", n);
-                            // println!(
+                            // trace!("node {}", n);
+                            // trace!(
                             //     "Stride {}",
                             //     self.store.get_stride_for_id(n)
                             // );
@@ -585,8 +586,8 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            // println!("nodes5 {:?}", nodes5);
-                            // println!("nodes4 {:?}", nodes4);
+                            // trace!("nodes5 {:?}", nodes5);
+                            // trace!("nodes4 {:?}", nodes4);
                             node = self
                                 .store
                                 .retrieve_node_with_guard(n, guard)
@@ -685,7 +686,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            println!(
+            trace!(
                 "prefix {}/{} serial {}",
                 pfx_idx.get_net().into_ipaddr(),
                 pfx_idx.get_len(),

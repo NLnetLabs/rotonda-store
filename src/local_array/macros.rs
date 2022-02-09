@@ -102,7 +102,7 @@ macro_rules! match_node_for_strides {
 
                     // STEP 1
                     // acquire the Atomic Serial mutably from the local pfx_vec.
-                    // println!("get serial for node nr. {}", sort_id);
+                    // trace!("get serial for node nr. {}", sort_id);
                     let serial = current_node.pfx_vec.get_serial_at(sort_id as usize);
                     // increment the serial number only if its zero right now.
                     let old_serial = serial.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed);
@@ -125,7 +125,7 @@ macro_rules! match_node_for_strides {
                         // to avoid starting all over again with fetching the
                         // prefix node by node.
                         Err(newer_serial) => {
-                            // println!("contention while creating node");
+                            // trace!("contention while creating node");
                             // Somebody beat us to it. Try again with the new serial number.
                             // let mut old_serial = serial.fetch_add(1, Ordering::Acquire);
                             let new_serial = newer_serial + 1;
@@ -151,7 +151,7 @@ macro_rules! match_node_for_strides {
                                             cur_serial if cur_serial == new_serial => {
                                                 let found_prefix_id_clone = found_prefix_id.clone();
                                                 // $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
-                                                // println!(
+                                                // trace!(
                                                 //     "removing old prefix with serial {}...",
                                                 //     newer_serial
                                                 // );
@@ -163,7 +163,7 @@ macro_rules! match_node_for_strides {
                                             // more, reading the newly-current meta-data, updating it with our meta-data and
                                             // see if it works then. rinse-repeat.
                                             even_newer_serial => {
-                                                println!("Contention for {:?} with serial {} -> {}", found_prefix_id, newer_serial, even_newer_serial);
+                                                trace!("Contention for {:?} with serial {} -> {}", found_prefix_id, newer_serial, even_newer_serial);
                                                 let old_serial = serial.fetch_add(1, Ordering::Acquire);
                                                 $self.store.get_prefixes().get(&found_prefix_id.set_serial(old_serial));
                                                 $self.update_prefix_meta(found_prefix_id, even_newer_serial, &new_meta)?;
@@ -228,7 +228,7 @@ macro_rules! match_node_for_strides {
                                         // current_node.pfx_vec.insert(pfx_vec_index, found_prefix_id_clone.set_serial(new_serial));
                                         // $self.store.update_node_in_store(&mut StrideWriteStore::$variant(node_store), $cur_i,SizedStrideNode::$variant(current_node));
                                         $self.store.remove_prefix(found_prefix_id_clone.set_serial(old_serial));
-                                        // println!("current_node.pfx_vec {:?}", current_node.pfx_vec);
+                                        // trace!("current_node.pfx_vec {:?}", current_node.pfx_vec);
                                         return Ok(());
                                     },
                                     // FAILURE (Step 7)
@@ -236,7 +236,7 @@ macro_rules! match_node_for_strides {
                                     // more, reading the newly-current meta-data, updating it with our meta-data and
                                     // see if it works then. rinse-repeat.
                                     newer_serial => {
-                                        println!("Contention for {:?} with serial {} -> {}", found_prefix_id, old_serial, newer_serial);
+                                        trace!("Contention for {:?} with serial {} -> {}", found_prefix_id, old_serial, newer_serial);
                                         old_serial = serial.fetch_add(1, Ordering::Acquire);
                                         $self.store.get_prefixes().get(&found_prefix_id.set_serial(old_serial));
                                         $self.update_prefix_meta(found_prefix_id, newer_serial, &new_meta)?;
@@ -354,16 +354,16 @@ macro_rules! impl_search_level {
                         let this_node = unsafe {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
-                        // println!("this node {:?}", this_node);
+                        // trace!("this node {:?}", this_node);
                         match unsafe { this_node.assume_init_mut() } {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
                             // hashing everywhere, this may be very well a node                            // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-                                // println!("found {} in level {}", node, level);
-                                // println!("search id {}", $id);
-                                // println!("found id {}", node_id);
+                                // trace!("found {} in level {}", node, level);
+                                // trace!("search id {}", $id);
+                                // trace!("found id {}", node_id);
                                 if &$id == node_id {
                                     // YES, It's the one we're looking for!
                                     return Some(SizedStrideRef::$stride(node));
@@ -425,7 +425,7 @@ macro_rules! impl_search_level_mut {
                         let this_node = unsafe {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
-                        // println!("this node {:?}", this_node);
+                        // trace!("this node {:?}", this_node);
                         match unsafe { this_node.assume_init_mut() } {
                             // No node exists, here
                             StoredNode::Empty => None,
@@ -433,9 +433,9 @@ macro_rules! impl_search_level_mut {
                             // hashing everywhere, this may be very well a node
                             // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
-                                // println!("found {} in level {}", node, level);
-                                // println!("search id {}", $id);
-                                // println!("found id {}", node_id);
+                                // trace!("found {} in level {}", node, level);
+                                // trace!("search id {}", $id);
+                                // trace!("found id {}", node_id);
                                 if &$id == node_id {
                                     // YES, It's the one we're looking for!
                                     return Some(SizedStrideRefMut::$stride(node));
@@ -486,25 +486,25 @@ macro_rules! impl_write_level {
                     let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
                     let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
                     let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
-                    println!("{:032b}", $id.get_id().0.dangerously_truncate_to_u32());
-                    println!("this_level {}", this_level);
-                    println!("last_level {}", last_level);
-                    println!("id {:?}", $id.get_id());
-                    println!("calculated index {}", index);
-                    println!("level {}", level);
-                    println!("bits_division {}", <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
+                    trace!("{:032b}", $id.get_id().0.dangerously_truncate_to_u32());
+                    trace!("this_level {}", this_level);
+                    trace!("last_level {}", last_level);
+                    trace!("id {:?}", $id.get_id());
+                    trace!("calculated index {}", index);
+                    trace!("level {}", level);
+                    trace!("bits_division {}", <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
                     let guard = &epoch::pin();
                     let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
-                    // println!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
+                    // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                     let node_ref =
                         unsafe { &mut unwrapped_nodes.deref_mut()[index] };
                     match unsafe { node_ref.assume_init_mut() } {
                         // No node exists, so we crate one here.
                         StoredNode::Empty => {
-                            println!("Empty node found, creating new node {} len{} lvl{}", $id, $id.get_id().1, level + 1);
+                            trace!("Empty node found, creating new node {} len{} lvl{}", $id, $id.get_id().1, level + 1);
                             let next_level = <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap();
-                            println!("next level {}", next_level);
-                            println!("creating {} nodes", 1 << (next_level - this_level));
+                            trace!("next level {}", next_level);
+                            trace!("creating {} nodes", 1 << (next_level - this_level));
                             if next_level > &0 {
                                 std::mem::swap(
                                     node_ref,
@@ -542,7 +542,7 @@ macro_rules! impl_write_level {
                                     // TODO: This needs some kind of backoff,
                                     // I guess.
                                     loop {
-                                        println!("contention while creating node {}", $id);
+                                        trace!("contention while creating node {}", $id);
                                         match nodes.0.compare_exchange(
                                             unwrapped_nodes,
                                             unwrapped_nodes,
@@ -562,19 +562,19 @@ macro_rules! impl_write_level {
                         // nodes, we should not get here with the SAME
                         // esiting node as already in place.
                         StoredNode::NodeWithRef((node_id, _node, node_set)) => {
-                            println!("node here exists {:?}", _node);
-                            println!("node_id {:?}", node_id.get_id());
-                            println!("node_id {:032b}", node_id.get_id().0);
-                            println!("id {}", $id);
-                            println!("     id {:032b}", $id.get_id().0);
+                            trace!("node here exists {:?}", _node);
+                            trace!("node_id {:?}", node_id.get_id());
+                            trace!("node_id {:032b}", node_id.get_id().0);
+                            trace!("id {}", $id);
+                            trace!("     id {:032b}", $id.get_id().0);
                             if $id == *node_id {
-                                println!("found node {}, STOP", $id);
+                                trace!("found node {}, STOP", $id);
                                 // Node already exists, nothing to do
                                 panic!("node already exists, should not happen");
                                 // return Some($id);
                             };
                             level += 1;
-                            println!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
+                            trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
                             match <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                 // on to the next level!
                                 Some(next_bit_shift) if next_bit_shift > &0 => {

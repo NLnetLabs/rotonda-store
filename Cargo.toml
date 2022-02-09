@@ -20,6 +20,7 @@ rustyline = {version = "8.0.0", optional = true}
 array-init = "2.0.0"
 dashmap = "5.0.0"
 crossbeam-epoch = "0.9.6"
+log = "0.4.14"
 
 [build-dependencies]
 rustc_version = "^0.4"
