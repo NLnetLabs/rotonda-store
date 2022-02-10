@@ -41,12 +41,6 @@ pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
 pub type PrefixHashMap<AF, Meta> =
     DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>;
 
-pub enum StrideReadStore<'a, AF: AddressFamily> {
-    Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
-    Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
-    Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
-}
-
 pub enum StrideWriteStore<'a, AF: AddressFamily> {
     Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
     Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
@@ -169,14 +163,14 @@ pub trait StorageBackend {
         &self,
         id: StrideNodeId<Self::AF>,
     ) -> u8;
-    fn get_stride_for_id_with_read_store(
-        &self,
-        id: StrideNodeId<Self::AF>,
-    ) -> (StrideNodeId<Self::AF>, StrideReadStore<Self::AF>);
-    fn get_stride_for_id_with_write_store(
-        &self,
-        id: StrideNodeId<Self::AF>,
-    ) -> (StrideNodeId<Self::AF>, StrideWriteStore<Self::AF>);
+    // fn get_stride_for_id_with_read_store(
+    //     &self,
+    //     id: StrideNodeId<Self::AF>,
+    // ) -> (StrideNodeId<Self::AF>, StrideReadStore<Self::AF>);
+    // fn get_stride_for_id_with_write_store(
+    //     &self,
+    //     id: StrideNodeId<Self::AF>,
+    // ) -> (StrideNodeId<Self::AF>, StrideWriteStore<Self::AF>);
     fn get_stride_sizes(&self) -> &[u8];
     // These functions are static method, to be able to get these
     // values at instance creation time.

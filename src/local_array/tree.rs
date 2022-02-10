@@ -385,7 +385,7 @@ impl std::fmt::Display for PrefixSet {
 }
 
 impl PrefixSet {
-    // Collect all PrefixIds int a vec. Since the net and len of the
+    // Collect all PrefixIds into a vec. Since the net and len of the
     // PrefixIds are implied by the position in the pfx_vec we can
     // calculate them with if we know the base address of the node
     // this PrefixSet lives in.
@@ -485,7 +485,6 @@ pub struct TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
-    // pub strides: Vec<u8>,
     pub stats: Vec<StrideStats>,
     pub store: Store,
 }
@@ -495,20 +494,6 @@ where
     Store: StorageBackend,
 {
     pub fn new() -> TreeBitMap<Store> {
-        // Check if the strides division makes sense
-        // let mut strides = vec![];
-        // let mut len_to_stride_size: [StrideType; 128] =
-        //     [StrideType::Stride3; 128];
-        // let mut strides_sum = 0;
-        // for s in strides_vec.iter().cycle() {
-        //     strides.push(*s);
-        //     len_to_stride_size[strides_sum as usize] = StrideType::from(*s);
-        //     strides_sum += s;
-        //     if strides_sum >= Store::AF::BITS - 1 {
-        //         break;
-        //     }
-        // }
-        // assert_eq!(strides_vec.iter().sum::<u8>(), Store::AF::BITS);
 
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(
@@ -919,6 +904,12 @@ where
             self.get_all_more_specifics_for_node(*child_node, &mut msvec);
         }
         Some(msvec)
+    }
+}
+
+impl<Store: StorageBackend> Default for TreeBitMap<Store> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
