@@ -1,7 +1,9 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod tests {
     use rotonda_store::PrefixAs;
-    use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+    use rotonda_store::{
+        prelude::*, MatchOptions, MatchType, MultiThreadedStore,
+    };
     use routecore::addr::Prefix;
 
     use std::error::Error;
@@ -91,13 +93,13 @@ mod tests {
                 32,
             ), // 27
         ];
-
         for pfx in pfxs.iter().flatten() {
             tree_bitmap.insert(pfx, PrefixAs(666))?;
         }
         println!("------ end of inserts\n");
 
-        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        let guard = &epoch::pin();
         for spfx in &[
             (
                 &Prefix::new(
@@ -159,13 +161,13 @@ mod tests {
         ] {
             println!("search for: {}", (*spfx.0)?);
             let found_result = tree_bitmap.match_prefix(
-                (&locks.0, &locks.1),
                 &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::ExactMatch,
                     include_less_specifics: false,
                     include_more_specifics: true,
                 },
+                guard
             );
             println!("em/m-s: {:#?}", found_result);
 

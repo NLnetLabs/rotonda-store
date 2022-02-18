@@ -2,6 +2,7 @@
 mod tests {
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+        prelude::*
     };
 
     use routecore::addr::Prefix;
@@ -34,7 +35,8 @@ mod tests {
         }
         println!("------ end of inserts\n");
 
-        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        let guard = &epoch::pin();
         for spfx in &[
             (
                 &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
@@ -49,13 +51,13 @@ mod tests {
         ] {
             println!("search for: {:?}", spfx.0);
             let found_result = tree_bitmap.match_prefix(
-                (&locks.0, &locks.1),
                 &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::ExactMatch,
                     include_less_specifics: false,
                     include_more_specifics: true,
                 },
+                guard
             );
             println!("em/m-s: {:#?}", found_result);
 
@@ -101,8 +103,8 @@ mod tests {
             tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666))?;
         }
         println!("------ end of inserts\n");
-        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
-
+        let guard = &epoch::pin();
+        
         for spfx in &[
             (
                 &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
@@ -123,13 +125,13 @@ mod tests {
         ] {
             println!("search for: {:#}", (*spfx.0)?);
             let found_result = tree_bitmap.match_prefix(
-                (&locks.0, &locks.1),
                 &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_less_specifics: false,
                     include_more_specifics: true,
                 },
+                guard
             );
             println!("em/m-s: {}", found_result);
 

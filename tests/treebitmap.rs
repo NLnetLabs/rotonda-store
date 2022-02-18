@@ -2,7 +2,7 @@
 mod tests {
     use rotonda_store::AddressFamily;
     use rotonda_store::{
-        MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+        prelude::*, MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
     };
     use routecore::addr::Prefix;
     use routecore::record::NoMeta;
@@ -22,15 +22,15 @@ mod tests {
             1,
         );
 
-        let locks = trie.acquire_prefixes_rwlock_read();
+        let guard = &epoch::pin();
         let res = trie.match_prefix(
-            (&locks.0, &locks.1),
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
+            guard,
         );
         println!("prefix: {:?}", &expect_pfx);
         println!("result: {:#?}", &res);
@@ -49,16 +49,15 @@ mod tests {
             32,
         );
 
-
-        let locks = trie.acquire_prefixes_rwlock_read();
+        let guard = &epoch::pin();
         let res = trie.match_prefix(
-            (&locks.0, &locks.1),
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
+            guard,
         );
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
@@ -301,26 +300,24 @@ mod tests {
         //     v4: Some(store_v4),
         //     v6: store_v6,
         // };
-        
-        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
 
-        for pfx in tree_bitmap.prefixes_iter() {
+        let guard = &epoch::pin();
+        for pfx in tree_bitmap.prefixes_iter(guard) {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
-                (&locks.0, &locks.1),                
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_less_specifics: false,
                     include_more_specifics: false,
                 },
+                guard,
             );
             println!("{}", pfx);
             assert_eq!(res.prefix.unwrap(), pfx.prefix);
         }
 
         let res = tree_bitmap.match_prefix(
-            (&locks.0, &locks.1),
             &Prefix::new_relaxed(
                 std::net::Ipv4Addr::new(192, 0, 1, 0).into(),
                 24,
@@ -330,6 +327,7 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
+            guard,
         );
         println!("res: {:#?}", &res);
 
@@ -387,20 +385,20 @@ mod tests {
                     i_len_s,
                 );
 
-                let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+                let guard = &epoch::pin();
                 for s_len in i_len_s..32 {
                     let pfx = Prefix::new_relaxed(
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
                         s_len,
                     )?;
                     let res = tree_bitmap.match_prefix(
-                        (&locks.0, &locks.1),
                         &pfx,
                         &MatchOptions {
                             match_type: MatchType::LongestMatch,
                             include_less_specifics: false,
                             include_more_specifics: false,
                         },
+                        guard,
                     );
                     println!("{:?}", pfx);
 

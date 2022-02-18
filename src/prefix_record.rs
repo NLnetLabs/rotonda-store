@@ -136,3 +136,13 @@ where
         Self(Some((record.net, record.len, 1)))
     }
 }
+
+impl<AF, T> From<&InternalPrefixRecord<AF, T>> for PrefixId<AF>
+where
+    AF: AddressFamily,
+    T: Meta,
+{
+    fn from(record: &InternalPrefixRecord<AF, T>) -> Self {
+        Self(Some((record.net, record.len, 1)))
+    }
+}

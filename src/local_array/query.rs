@@ -1,4 +1,5 @@
 use crossbeam_epoch::{self as epoch};
+use epoch::Guard;
 use log::trace;
 
 use crate::af::{AddressFamily, Zero};
@@ -45,9 +46,10 @@ where
 
     pub fn match_prefix(
         &'a self,
-        prefix_store: &'a PrefixHashMap<Store::AF, Store::Meta>,
+        // prefix_store: &'a PrefixHashMap<Store::AF, Store::Meta>,
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
+        guard: &'a Guard,
     ) -> QueryResult<'a, Store::Meta> {
         // let prefixes1 = self.store.get_prefixes();
         // // let prefixes2 = self.store.get_prefixes();
@@ -77,9 +79,10 @@ where
                 serial => {
                     let prefix_meta = self
                         .store
-                        .retrieve_prefix(
+                        .retrieve_prefix_with_guard(
                             PrefixId::new(Store::AF::zero(), 0)
                                 .set_serial(serial),
+                                guard
                         )
                         .unwrap()
                         .meta
@@ -105,7 +108,7 @@ where
 
         // let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
         let root_node_id = self.get_root_node_id();
-        let guard = &epoch::pin();
+        // let guard = &epoch::pin();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
             3 => self
                 .store
@@ -217,6 +220,7 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
+                        guard
                     ) {
                         // This and the next match will handle all
                         // intermediary nodes, but they might also handle
@@ -262,6 +266,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
                                 }
                                 break;
@@ -303,6 +308,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
                                 }
                                 break;
@@ -322,6 +328,7 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
+                                        guard
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -347,6 +354,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
 
                                     match_prefix_idx = None;
@@ -386,6 +394,7 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
+                        guard
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
@@ -424,6 +433,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
                                 }
                                 break;
@@ -465,6 +475,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
                                 }
                                 break;
@@ -481,6 +492,7 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
+                                        guard
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -500,6 +512,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
 
                                     match_prefix_idx = None;
@@ -537,6 +550,7 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
+                        guard
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
@@ -580,6 +594,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
                                 }
                                 break;
@@ -623,6 +638,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
                                 }
                                 break;
@@ -639,6 +655,7 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
+                                        guard
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -656,6 +673,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
+                                            guard
                                         );
 
                                     match_prefix_idx = None;
@@ -692,7 +710,7 @@ where
                 pfx_idx.get_len(),
                 pfx_idx.0.unwrap().2
             );
-            prefix = prefix_store.get(&pfx_idx).map(|p| p.value());
+            prefix = self.store.retrieve_prefix_with_guard(pfx_idx, guard); //.map(|p| PrefixId::new(p.net, p.len));
             match_type = if prefix.unwrap().len == search_pfx.len {
                 MatchType::ExactMatch
             } else {
@@ -716,7 +734,7 @@ where
                 less_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(move |p| {
-                            prefix_store.get(p).map(|p| p.value()).unwrap()
+                            self.store.retrieve_prefix(*p).unwrap()
                         })
                         .collect::<RecordSet<'a, Store::Meta>>()
                 })
@@ -727,7 +745,7 @@ where
                 more_specifics_vec.map(|vec| {
                     vec.into_iter()
                         .map(|p| {
-                            prefix_store.get(&p).map(|p| p.value()).unwrap()
+                            self.store.retrieve_prefix(p).unwrap()
                         })
                         .collect()
                 })

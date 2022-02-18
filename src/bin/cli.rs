@@ -1,6 +1,7 @@
 #![cfg(feature = "cli")]
 
 use ansi_term::Colour;
+use rotonda_store::prelude::*;
 use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
@@ -89,7 +90,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     tree_bitmap.print_funky_stats();
-    let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+    // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+    let guard = &epoch::pin();
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
@@ -118,7 +120,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap.prefixes_v6_len()
                                 );
 
-                                tree_bitmap.prefixes_iter().for_each(|pfx| {
+                                tree_bitmap.prefixes_iter(guard).for_each(|pfx| {
                                     println!("{} {}", pfx.prefix, pfx.meta);
                                 });
                             }
@@ -191,13 +193,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
-                                        (&locks.0, &locks.1),
                                         &p,
                                         &MatchOptions {
                                             match_type: MatchType::EmptyMatch,
                                             include_less_specifics: true,
                                             include_more_specifics: true
-                                        }
+                                        },
+                                        guard
                                     )
                                 );
                             }
@@ -208,13 +210,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
-                                        (&locks.0, &locks.1),
                                         &Prefix::new_relaxed(ip.into(), len)?,
                                         &MatchOptions {
                                             match_type: MatchType::EmptyMatch,
                                             include_less_specifics: true,
                                             include_more_specifics: true
-                                        }
+                                        },
+                                        guard
                                     )
                                 );
                             }

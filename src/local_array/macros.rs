@@ -50,6 +50,7 @@ macro_rules! match_node_for_strides {
                 // the length of the next stride
                 $self.store.get_stride_sizes().get(($level + 1) as usize),
                 $is_last_stride,
+                $guard
             ) {
                 NewNodeOrIndex::NewNode(n) => {
                     // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
@@ -83,7 +84,7 @@ macro_rules! match_node_for_strides {
                     // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
                     Some(i)
                 },
-                NewNodeOrIndex::NewPrefix(sort_id) => {
+                NewNodeOrIndex::NewPrefix(serial) => {
                     // Log
                     // $self.stats[$stats_level].inc_prefix_count($level);
 
@@ -103,7 +104,7 @@ macro_rules! match_node_for_strides {
                     // STEP 1
                     // acquire the Atomic Serial mutably from the local pfx_vec.
                     // trace!("get serial for node nr. {}", sort_id);
-                    let serial = current_node.pfx_vec.get_serial_at(sort_id as usize);
+                    // let serial = current_node.pfx_vec.get_serial_at(sort_id as usize);
                     // increment the serial number only if its zero right now.
                     let old_serial = serial.compare_exchange(0, 1, Ordering::Acquire, Ordering::Relaxed);
 
@@ -165,7 +166,7 @@ macro_rules! match_node_for_strides {
                                             even_newer_serial => {
                                                 trace!("Contention for {:?} with serial {} -> {}", found_prefix_id, newer_serial, even_newer_serial);
                                                 let old_serial = serial.fetch_add(1, Ordering::Acquire);
-                                                $self.store.get_prefixes().get(&found_prefix_id.set_serial(old_serial));
+                                                $self.store.retrieve_prefix(found_prefix_id.set_serial(old_serial));
                                                 $self.update_prefix_meta(found_prefix_id, even_newer_serial, &new_meta)?;
                                             }
                                     };
@@ -238,7 +239,7 @@ macro_rules! match_node_for_strides {
                                     newer_serial => {
                                         trace!("Contention for {:?} with serial {} -> {}", found_prefix_id, old_serial, newer_serial);
                                         old_serial = serial.fetch_add(1, Ordering::Acquire);
-                                        $self.store.get_prefixes().get(&found_prefix_id.set_serial(old_serial));
+                                        $self.store.retrieve_prefix(found_prefix_id.set_serial(old_serial));
                                         $self.update_prefix_meta(found_prefix_id, newer_serial, &new_meta)?;
                                     }
                             };
@@ -343,9 +344,9 @@ macro_rules! impl_search_level {
                         // Aaaaand, this is all of our hashing function.
                         // // I'll explain later.
                         // let index = $id.get_id().0.dangerously_truncate_to_usize()
-                        //     >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
-                        let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
-                        let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
+                        //     >> (AF::BITS - <Buckets as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
+                        let last_level = if level > 0 { *<NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
+                        let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
                         let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
 
                         // Read the node from the block pointed to by the
@@ -355,7 +356,7 @@ macro_rules! impl_search_level {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
                         // trace!("this node {:?}", this_node);
-                        match unsafe { this_node.assume_init_mut() } {
+                        match unsafe { this_node.assume_init_ref() } {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
@@ -364,19 +365,19 @@ macro_rules! impl_search_level {
                                 // trace!("found {} in level {}", node, level);
                                 // trace!("search id {}", $id);
                                 // trace!("found id {}", node_id);
-                                if &$id == node_id {
+                                if $id == *node_id {
                                     // YES, It's the one we're looking for!
-                                    return Some(SizedStrideRef::$stride(node));
+                                    return Some(SizedStrideRef::$stride(&node));
                                 };
                                 // Meh, it's not, but we can a go to the next level
                                 // and see if it lives there.
                                 level += 1;
-                                match <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                                match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                     // on to the next level!
                                     Some(next_bit_shift) if next_bit_shift > &0 => {
                                         (search_level.f)(
                                             search_level,
-                                            node_set,
+                                            &node_set,
                                             // new_node,
                                             // bits_division,
                                             level,
@@ -413,11 +414,11 @@ macro_rules! impl_search_level_mut {
                     guard| {
                         // Aaaaand, this is all of our hashing function.
                         // I'll explain later.
-                        let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
-                        let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
+                        let last_level = if level > 0 { *<NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
+                        let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
                         let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
                         // let index = $id.get_id().0.dangerously_truncate_to_usize()
-                        //     >> (AF::BITS - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap());
+                        //     >> (AF::BITS - <Buckets as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap());
 
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
@@ -443,7 +444,7 @@ macro_rules! impl_search_level_mut {
                                 // Meh, it's not, but we can a go to the next level
                                 // and see if it lives there.
                                 level += 1;
-                                match <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                                match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                     // on to the next level!
                                     Some(next_bit_shift) if next_bit_shift > &0 => {
                                         (search_level.f)(
@@ -483,8 +484,8 @@ macro_rules! impl_write_level {
                      new_node: TreeBitMapNode<AF, $stride>,
                     //  bits_division: [u8; 10],
                      mut level: u8| {
-                    let last_level = if level > 0 { *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
-                    let this_level = *<Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
+                    let last_level = if level > 0 { *<NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1).unwrap() } else { 0 };
+                    let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap();
                     let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
                     trace!("{:032b}", $id.get_id().0.dangerously_truncate_to_u32());
                     trace!("this_level {}", this_level);
@@ -492,7 +493,7 @@ macro_rules! impl_write_level {
                     trace!("id {:?}", $id.get_id());
                     trace!("calculated index {}", index);
                     trace!("level {}", level);
-                    trace!("bits_division {}", <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
+                    trace!("bits_division {}", <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
                     let guard = &epoch::pin();
                     let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
                     // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
@@ -502,7 +503,7 @@ macro_rules! impl_write_level {
                         // No node exists, so we crate one here.
                         StoredNode::Empty => {
                             trace!("Empty node found, creating new node {} len{} lvl{}", $id, $id.get_id().1, level + 1);
-                            let next_level = <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap();
+                            let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap();
                             trace!("next level {}", next_level);
                             trace!("creating {} nodes", 1 << (next_level - this_level));
                             if next_level > &0 {
@@ -512,8 +513,8 @@ macro_rules! impl_write_level {
                                         $id,
                                         new_node,
                                         NodeSet::init((1 <<
-                                        //     <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap()
-                                        //   - <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap()
+                                        //     <Buckets as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1).unwrap()
+                                        //   - <Buckets as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap()
                                         (next_level - this_level)
                                         ) as usize),
                                     ))),
@@ -575,7 +576,7 @@ macro_rules! impl_write_level {
                             };
                             level += 1;
                             trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
-                            match <Buckets as FamilyBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                            match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                 // on to the next level!
                                 Some(next_bit_shift) if next_bit_shift > &0 => {
                                     (search_level.f)(

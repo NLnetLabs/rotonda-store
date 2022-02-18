@@ -1,6 +1,5 @@
 use std::{fmt, slice};
 
-
 use crate::{
     local_array::node::PrefixId, prefix_record::InternalPrefixRecord,
     stats::StrideStats,
@@ -20,6 +19,8 @@ pub use crate::local_array::store::custom_alloc;
 
 pub use crate::local_array::store::Store as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
+
+use self::custom_alloc::PrefixIter;
 
 //------------ Types for strides displaying/monitoring ----------------------
 
@@ -152,23 +153,13 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
 }
 
 //------------ HashMapPrefixRecordIterator ----------------------------------
-pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
-    pub v4: Option<
-        dashmap::iter::Iter<
-            'a,
-            PrefixId<IPv4>,
-            InternalPrefixRecord<IPv4, Meta>,
-        >,
-    >,
-    pub v6: dashmap::iter::Iter<
-        'a,
-        PrefixId<IPv6>,
-        InternalPrefixRecord<IPv6, Meta>,
-    >,
+pub struct CustomAllocPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
+    pub v4: Option<PrefixIter<'a, IPv4, Meta>>,
+    pub v6: PrefixIter<'a, IPv6, Meta>,
 }
 
 impl<'a, Meta: routecore::record::Meta + 'a> Iterator
-    for HashMapPrefixRecordIterator<'a, Meta>
+    for CustomAllocPrefixRecordIterator<'a, Meta>
 {
     type Item = PrefixRecord<'a, Meta>;
 
@@ -208,7 +199,7 @@ impl<'a, Meta: routecore::record::Meta + 'a> Iterator
 //     >(
 //         iter: I,
 //     ) -> Self {
-        
+
 //     }
 // }
 

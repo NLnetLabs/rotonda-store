@@ -12,8 +12,9 @@ struct Store;
 
 impl<
         Meta: routecore::record::Meta + MergeUpdate,
-        Buckets: FamilyBuckets<IPv4>,
-    > fmt::Display for CustomAllocStorage<IPv4, Meta, Buckets>
+        NB: NodeBuckets<IPv4>,
+        PB: PrefixBuckets<IPv4, Meta>
+    > fmt::Display for CustomAllocStorage<IPv4, Meta, NB, PB>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -26,8 +27,9 @@ impl<
 
 impl<
         Meta: routecore::record::Meta + MergeUpdate,
-        Buckets: FamilyBuckets<IPv6>,
-    > fmt::Display for CustomAllocStorage<IPv6, Meta, Buckets>
+        NB: NodeBuckets<IPv6>,
+        PB: PrefixBuckets<IPv6, Meta>
+    > fmt::Display for CustomAllocStorage<IPv6, Meta, NB, PB>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(

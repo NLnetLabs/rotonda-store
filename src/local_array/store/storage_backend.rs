@@ -1,5 +1,4 @@
 use crossbeam_epoch::Guard;
-use dashmap::DashMap;
 
 use crate::local_array::tree::*;
 
@@ -7,7 +6,6 @@ use crate::prefix_record::InternalPrefixRecord;
 
 use crate::af::AddressFamily;
 use routecore::record::{MergeUpdate, Meta};
-
 
 // pub(crate) type PrefixIterResult<'a, AF, Meta> = Result<
 //     std::collections::hash_map::Values<
@@ -27,6 +25,11 @@ use routecore::record::{MergeUpdate, Meta};
 //     Box<dyn std::error::Error>,
 // >;
 
+// pub type PrefixIter<'a, AF, Meta> = Result<
+//     std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>,
+//     Box<dyn std::error::Error>,
+// >;
+
 #[cfg(feature = "dynamodb")]
 pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<
     std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>,
@@ -38,14 +41,14 @@ pub(crate) type PrefixIterMut<'a, AF, Meta> = Result<
 
 pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
 
-pub type PrefixHashMap<AF, Meta> =
-    DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>;
+// pub type PrefixHashMap<AF, Meta> =
+//     DashMap<PrefixId<AF>, InternalPrefixRecord<AF, Meta>>;
 
-pub enum StrideWriteStore<'a, AF: AddressFamily> {
-    Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
-    Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
-    Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
-}
+// pub enum StrideWriteStore<'a, AF: AddressFamily> {
+//     Stride3(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride3>>),
+//     Stride4(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride4>>),
+//     Stride5(&'a DashMap<StrideNodeId<AF>, TreeBitMapNode<AF, Stride5>>),
+// }
 
 pub trait StorageBackend {
     type AF: AddressFamily;
@@ -75,22 +78,22 @@ pub trait StorageBackend {
     ) -> Option<StrideNodeId<Self::AF>>;
     // This is for storing child nodes (which may be in a different node
     // than its parent, that's why you have to specify the store).
-    fn store_node_in_store(
-        store: &mut StrideWriteStore<Self::AF>,
-        id: StrideNodeId<Self::AF>,
-        next_node: SizedStrideNode<Self::AF>,
-    ) -> Option<StrideNodeId<Self::AF>>;
+    // fn store_node_in_store(
+    //     store: &mut StrideWriteStore<Self::AF>,
+    //     id: StrideNodeId<Self::AF>,
+    //     next_node: SizedStrideNode<Self::AF>,
+    // ) -> Option<StrideNodeId<Self::AF>>;
     fn update_node(
         &mut self,
         current_node_id: StrideNodeId<Self::AF>,
         updated_node: SizedStrideRefMut<Self::AF>,
     );
-    fn update_node_in_store(
-        &self,
-        store: &mut StrideWriteStore<Self::AF>,
-        current_node_id: StrideNodeId<Self::AF>,
-        updated_node: SizedStrideNode<Self::AF>,
-    );
+    // fn update_node_in_store(
+    //     &self,
+    //     store: &mut StrideWriteStore<Self::AF>,
+    //     current_node_id: StrideNodeId<Self::AF>,
+    //     updated_node: SizedStrideNode<Self::AF>,
+    // );
     fn retrieve_node(
         &self,
         index: StrideNodeId<Self::AF>,
@@ -138,31 +141,34 @@ pub trait StorageBackend {
         &self,
         id: PrefixId<Self::AF>,
         next_node: InternalPrefixRecord<Self::AF, Self::Meta>,
-    ) -> Result<PrefixId<Self::AF>, Box<dyn std::error::Error>>;
+    ) -> Option<PrefixId<Self::AF>>;
     fn retrieve_prefix(
         &self,
         index: PrefixId<Self::AF>,
-    ) -> Option<&'_ InternalPrefixRecord<Self::AF, Self::Meta>>;
+        // guard: &'a Guard,
+    ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>>;
+    fn retrieve_prefix_with_guard<'a>(
+        &'a self,
+        id: PrefixId<Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<&'a InternalPrefixRecord<Self::AF, Self::Meta>>;
     // fn retrieve_prefix_mut(
     //     &mut self,
     //     index: PrefixId<Self::AF>,
     // ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn remove_prefix(
-        &self,
+        &mut self,
         index: PrefixId<Self::AF>,
     ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>>;
-    fn get_prefixes(&'_ self) -> &'_ PrefixHashMap<Self::AF, Self::Meta>;
-    fn get_prefixes_clear(&self) -> &PrefixHashMap<Self::AF, Self::Meta>;
+    // fn get_prefixes(&'_ self) -> &'_ PrefixHashMap<Self::AF, Self::Meta>;
+    // fn get_prefixes_clear(&self) -> &PrefixHashMap<Self::AF, Self::Meta>;
     fn get_prefixes_len(&self) -> usize;
     // fn prefixes_iter(&self) -> PrefixIterResult<'_, Self::AF, Self::Meta>;
-    #[cfg(feature = "dynamodb")]
-    fn prefixes_iter_mut(
-        &mut self,
-    ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
-    fn get_stride_for_id(
-        &self,
-        id: StrideNodeId<Self::AF>,
-    ) -> u8;
+    // #[cfg(feature = "dynamodb")]
+    // fn prefixes_iter_mut(
+    //     &mut self,
+    // ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
+    fn get_stride_for_id(&self, id: StrideNodeId<Self::AF>) -> u8;
     // fn get_stride_for_id_with_read_store(
     //     &self,
     //     id: StrideNodeId<Self::AF>,

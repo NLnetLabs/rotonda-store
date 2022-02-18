@@ -1,10 +1,14 @@
+use rotonda_store::prelude::*;
+
 use rotonda_store::{
     AddressFamily, MatchOptions, MatchType, MultiThreadedStore,
 };
+
 use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let guard = &epoch::pin();
     let mut tree_bitmap = MultiThreadedStore::<NoMeta>::new();
     let pfxs = vec![
         Prefix::new_relaxed(
@@ -335,15 +339,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new_relaxed(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
-        let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
         let s_spfx = tree_bitmap.match_prefix(
-            (&locks.0, &locks.1),
+            // (&locks.0, &locks.1),
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
                 include_less_specifics: false,
                 include_more_specifics: false,
             },
+            guard
         );
         println!("exact match: {:?}", s_spfx);
         println!("-----------");
