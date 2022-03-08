@@ -20,7 +20,7 @@ pub use crate::local_array::store::custom_alloc;
 pub use crate::local_array::store::Store as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
 
-use self::custom_alloc::PrefixIter;
+use self::custom_alloc::{PrefixBuckets, PrefixesLengthsIter};
 
 //------------ Types for strides displaying/monitoring ----------------------
 
@@ -153,13 +153,22 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
 }
 
 //------------ HashMapPrefixRecordIterator ----------------------------------
-pub struct CustomAllocPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
-    pub v4: Option<PrefixIter<'a, IPv4, Meta>>,
-    pub v6: PrefixIter<'a, IPv6, Meta>,
+pub struct CustomAllocPrefixRecordIterator<
+    'a,
+    Meta: routecore::record::Meta,
+    PB4: PrefixBuckets<IPv4, Meta> + Sized,
+    PB6: PrefixBuckets<IPv6, Meta> + Sized
+> {
+    pub v4: Option<PrefixesLengthsIter<'a, IPv4, Meta, PB4>>,
+    pub v6: PrefixesLengthsIter<'a, IPv6, Meta, PB6>,
 }
 
-impl<'a, Meta: routecore::record::Meta + 'a> Iterator
-    for CustomAllocPrefixRecordIterator<'a, Meta>
+impl<
+        'a,
+        Meta: routecore::record::Meta + 'a,
+        PB4: PrefixBuckets<IPv4, Meta>,
+        PB6: PrefixBuckets<IPv6, Meta>,
+    > Iterator for CustomAllocPrefixRecordIterator<'a, Meta, PB4, PB6>
 {
     type Item = PrefixRecord<'a, Meta>;
 

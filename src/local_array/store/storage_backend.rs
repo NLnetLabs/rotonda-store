@@ -1,6 +1,8 @@
+use std::sync::atomic::AtomicUsize;
+
 use crossbeam_epoch::Guard;
 
-use crate::local_array::tree::*;
+use crate::{custom_alloc::StoredPrefix, local_array::tree::*};
 
 use crate::prefix_record::InternalPrefixRecord;
 
@@ -94,10 +96,10 @@ pub trait StorageBackend {
     //     current_node_id: StrideNodeId<Self::AF>,
     //     updated_node: SizedStrideNode<Self::AF>,
     // );
-    fn retrieve_node(
-        &self,
-        index: StrideNodeId<Self::AF>,
-    ) -> SizedNodeRefOption<'_, Self::AF>;
+    // fn retrieve_node(
+    //     &self,
+    //     index: StrideNodeId<Self::AF>,
+    // ) -> SizedNodeRefOption<'_, Self::AF>;
     // fn retrieve_node_mut(
     //     &self,
     //     index: StrideNodeId<Self::AF>,
@@ -140,8 +142,13 @@ pub trait StorageBackend {
     fn store_prefix(
         &self,
         id: PrefixId<Self::AF>,
-        next_node: InternalPrefixRecord<Self::AF, Self::Meta>,
+        node: InternalPrefixRecord<Self::AF, Self::Meta>,
+        serial: usize,
     ) -> Option<PrefixId<Self::AF>>;
+    fn upsert_prefix(
+        &mut self,
+        pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
+    ) -> Result<(), Box<dyn std::error::Error>>;
     fn retrieve_prefix(
         &self,
         index: PrefixId<Self::AF>,
@@ -151,7 +158,15 @@ pub trait StorageBackend {
         &'a self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
-    ) -> Option<&'a InternalPrefixRecord<Self::AF, Self::Meta>>;
+    ) -> Option<(
+        &'a InternalPrefixRecord<Self::AF, Self::Meta>,
+        &'a usize,
+    )>;
+    fn retrieve_prefix_mut_with_guard<'a>(
+        &'a mut self,
+        id: PrefixId<Self::AF>,
+        guard: &'a Guard,
+    ) -> &'a mut StoredPrefix<Self::AF, Self::Meta>;
     // fn retrieve_prefix_mut(
     //     &mut self,
     //     index: PrefixId<Self::AF>,
@@ -163,7 +178,7 @@ pub trait StorageBackend {
     // fn get_prefixes(&'_ self) -> &'_ PrefixHashMap<Self::AF, Self::Meta>;
     // fn get_prefixes_clear(&self) -> &PrefixHashMap<Self::AF, Self::Meta>;
     fn get_prefixes_len(&self) -> usize;
-    // fn prefixes_iter(&self) -> PrefixIterResult<'_, Self::AF, Self::Meta>;
+    // fn prefixes_iter<'a>(&'a self, guard: &'a Guard) -> PrefixesLengthsIter<Self::AF, Self::Meta, Self::Store::PB>;
     // #[cfg(feature = "dynamodb")]
     // fn prefixes_iter_mut(
     //     &mut self,

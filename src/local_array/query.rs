@@ -80,11 +80,10 @@ where
                     let prefix_meta = self
                         .store
                         .retrieve_prefix_with_guard(
-                            PrefixId::new(Store::AF::zero(), 0)
-                                .set_serial(serial),
+                            PrefixId::new(Store::AF::zero(), 0),
                                 guard
                         )
-                        .unwrap()
+                        .unwrap().0
                         .meta
                         .as_ref();
                     return QueryResult {
@@ -708,10 +707,10 @@ where
                 "prefix {}/{} serial {}",
                 pfx_idx.get_net().into_ipaddr(),
                 pfx_idx.get_len(),
-                pfx_idx.0.unwrap().2
+                pfx_idx.0.unwrap().1
             );
             prefix = self.store.retrieve_prefix_with_guard(pfx_idx, guard); //.map(|p| PrefixId::new(p.net, p.len));
-            match_type = if prefix.unwrap().len == search_pfx.len {
+            match_type = if prefix.unwrap().0.len == search_pfx.len {
                 MatchType::ExactMatch
             } else {
                 MatchType::LongestMatch
@@ -720,12 +719,12 @@ where
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
-                Prefix::new(pfx.net.into_ipaddr(), pfx.len).ok()
+                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
             } else {
                 None
             },
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.meta.as_ref()
+                pfx.0.meta.as_ref()
             } else {
                 None
             },

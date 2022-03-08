@@ -147,10 +147,10 @@ where
         prefix_ids
     }
 
-    pub(crate) fn get_pfx_serial<'a>(&'a self, base_prefix: PrefixId<AF>, nibble: u32, nibble_len: u8, guard: &'a Guard) -> &mut AtomicUsize {
-        let index = <S as Stride>::get_pfx_index(nibble, nibble_len);
-        todo!()
-    }
+    // pub(crate) fn get_pfx_serial<'a>(&'a self, base_prefix: PrefixId<AF>, nibble: u32, nibble_len: u8, guard: &'a Guard) -> &mut AtomicUsize {
+    //     let index = <S as Stride>::get_pfx_index(nibble, nibble_len);
+    //     todo!()
+    // }
 
     // Inspects the stride (nibble, nibble_len) to see it there's already a 
     // child node (if not at the last stride) or a prefix (if it's the last
@@ -301,16 +301,13 @@ where
 
                 // self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
-                return NewNodeOrIndex::NewPrefix(self.get_pfx_serial(base_prefix.into(), nibble, nibble_len, guard));
+                return NewNodeOrIndex::NewPrefix;
             }
             // A prefix exists as a child of the base_prefix, so create the
             // PrefixId with the right offset from the base prefix and cut
             // it off at that point.
             let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
-            return NewNodeOrIndex::ExistingPrefix(
-                    pfx, 
-                    self.get_pfx_serial(base_prefix.into(), nibble, nibble_len, guard)
-                );
+            return NewNodeOrIndex::ExistingPrefix(pfx);
         }
 
         // Nodes always live at the last length of a stride (i.e. the last 
@@ -354,7 +351,7 @@ where
             // nibble.
             if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                 let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l);
-                f_pfx.set_serial(self.get_pfx_serial(f_pfx, nibble, n_l, guard).load(Ordering::Relaxed));
+                // f_pfx.set_serial(self.get_pfx_serial(f_pfx, nibble, n_l, guard).load(Ordering::Relaxed));
 
                 // Receiving a less_specifics_vec means that the user wants
                 // to have all the last-specific prefixes returned, so add
@@ -430,9 +427,9 @@ where
                 // consider the complete nibble.
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + nibble_len), start_bit + nibble_len);
-                    f_pfx.set_serial(
-                        self.get_pfx_serial(f_pfx, nibble, nibble_len, guard).load(Ordering::Acquire)
-                    );
+                    // f_pfx.set_serial(
+                    //     self.get_pfx_serial(f_pfx, nibble, nibble_len, guard).load(Ordering::Acquire)
+                    // );
                     found_pfx = Some(f_pfx);
                 }
             }
@@ -500,9 +497,9 @@ where
                     let f_pfx =
                         PrefixId::new(
                             search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l);
-                        f_pfx
-                        .set_serial(self.get_pfx_serial(f_pfx,nibble, n_l, guard).load(std::sync::atomic::Ordering::Acquire));
-                        found_pfx = Some(f_pfx);
+                        // f_pfx
+                        // .set_serial(self.get_pfx_serial(f_pfx,nibble, n_l, guard).load(std::sync::atomic::Ordering::Acquire));
+                        // found_pfx = Some(f_pfx);
                         // self.pfx_vec.to_vec()
                             // [S::get_pfx_index(nibble, n_l)],
                     // );
@@ -512,7 +509,7 @@ where
                 // have all the last-specific prefixes returned, so add the
                 // found prefix.
                 let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l);
-                f_pfx.set_serial(self.get_pfx_serial(f_pfx, nibble,n_l,guard).load(Ordering::Acquire));
+                // f_pfx.set_serial(self.get_pfx_serial(f_pfx, nibble,n_l,guard).load(Ordering::Acquire));
                 ls_vec.push(f_pfx);
                     // self.pfx_vec.to_vec()[S::get_pfx_index(nibble, n_l)],
                 // );
@@ -619,14 +616,15 @@ where
 
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
-                        PrefixId::new(
-                            base_prefix.get_id().0
-                            .add_nibble(
-                                base_prefix.get_id().1, ms_nibble, ms_nibble_len
-                            ).0, 
-                            base_prefix.get_id().1 + ms_nibble_len)
-                            .set_serial(self.get_pfx_serial(base_prefix.into(), ms_nibble, ms_nibble_len, guard).load(Ordering::Acquire))
-                    );
+                        base_prefix.add_nibble(ms_nibble, ms_nibble_len).into()
+                        // PrefixId::from(
+                        //     base_prefix.get_id().0
+                        //     .add_nibble(
+                        //         base_prefix.get_id().1, ms_nibble, ms_nibble_len
+                        //     ) 
+                            // base_prefix.get_id().1 + ms_nibble_len)
+                            // .set_serial(self.get_pfx_serial(base_prefix.into(), ms_nibble, ms_nibble_len, guard).load(Ordering::Acquire))
+                    )
                 }
             }
         }

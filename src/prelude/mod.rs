@@ -9,7 +9,7 @@ pub use rotonda_macros::stride_sizes;
 pub use crate::custom_alloc::CustomAllocStorage;
 pub use crate::custom_alloc::{
     prefix_store_bits_4, prefix_store_bits_6, NodeBuckets, PrefixBuckets,
-    PrefixIter,
+    // PrefixIter,
 };
 pub use crate::custom_alloc::{NodeSet, PrefixSet};
 pub use crate::local_array::node::PrefixId;
