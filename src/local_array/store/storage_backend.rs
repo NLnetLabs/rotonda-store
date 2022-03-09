@@ -166,7 +166,7 @@ pub trait StorageBackend {
         &'a mut self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
-    ) -> &'a mut StoredPrefix<Self::AF, Self::Meta>;
+    ) -> (&'a mut StoredPrefix<Self::AF, Self::Meta>, u8);
     // fn retrieve_prefix_mut(
     //     &mut self,
     //     index: PrefixId<Self::AF>,

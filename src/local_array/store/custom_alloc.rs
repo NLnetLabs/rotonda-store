@@ -671,7 +671,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
 
     pub(crate) fn is_empty(&self) -> bool {
         let guard = &epoch::pin();
-        self.0.load(Ordering::Relaxed, guard).is_null()
+        let pfx = self.0.load(Ordering::Relaxed, guard);
+        pfx.is_null() || unsafe { pfx.deref() }.1.is_none()
     }
 
     // pub(crate) fn get_serial_mut(&mut self) -> &mut AtomicUsize {
@@ -1020,11 +1021,11 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         ) -> usize {
             let mut len: usize = 0;
             let guard = &epoch::pin();
-            for p in
-                unsafe { start_set.0.load(Ordering::Relaxed, guard).deref() }
-            {
+            let start_set = start_set.0.load(Ordering::Relaxed, guard);
+            for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty() {
+                    info!("pfx {:?}", unsafe { pfx.0.load(Ordering::SeqCst,guard).deref() }.1);
                     len += 1;
                     match pfx.get_next_bucket(guard) {
                         Some(next_bucket) => {
@@ -1611,11 +1612,13 @@ impl<
         &mut self,
         pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let pfx_id = PrefixId::new(pfx_rec.net, pfx_rec.len);
         struct UpdateMeta<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &UpdateMeta<AF, M>,
                 &StoredPrefix<AF, M>,
                 InternalPrefixRecord<AF, M>,
+                u8,
             )
                 -> Result<(), Box<dyn std::error::Error>>,
         }
@@ -1623,7 +1626,8 @@ impl<
         let update_meta = UpdateMeta {
             f: &|update_meta: &UpdateMeta<AF, Meta>,
                  stored_prefix,
-                 mut pfx_rec| {
+                 mut pfx_rec,
+                 level: u8| {
                 let guard = &epoch::pin();
                 let atomic_curr_prefix =
                     stored_prefix.0.load(Ordering::SeqCst, guard);
@@ -1631,14 +1635,36 @@ impl<
                     unsafe { atomic_curr_prefix.into_owned().into_box() };
                 let tag = atomic_curr_prefix.tag();
                 let prev_rec;
-                trace!("upsert_prefix {:?}", pfx_rec);
+                let next_set;
                 match curr_prefix.1.as_ref() {
                     // insert or...
                     None => {
+                        trace!("INSERT");
                         prev_rec = None;
-                    },
+
+                        // Calculate the length of the next set of prefixes
+
+                        let this_level =
+                            *<NB as NodeBuckets<AF>>::len_to_store_bits(
+                                pfx_id.get_len(),
+                                level,
+                            )
+                            .unwrap();
+                        let next_level =
+                            <NB as NodeBuckets<AF>>::len_to_store_bits(
+                                pfx_id.get_len(),
+                                level + 1,
+                            )
+                            .unwrap();
+                        next_set = PrefixSet::init(
+                            (1 << (next_level - this_level)) as usize,
+                        );
+
+                        // End of calculation
+                    }
                     // ...update
                     Some(curr_pfx_rec) => {
+                        trace!("UPDATE");
                         pfx_rec.meta = Some(
                             curr_pfx_rec
                                 .meta
@@ -1647,18 +1673,14 @@ impl<
                                 .clone_merge_update(&pfx_rec.meta.unwrap())?,
                         );
                         prev_rec = Some(Box::new(curr_prefix.1.unwrap()));
+                        next_set = curr_prefix.2;
                     }
                 };
 
                 match stored_prefix.0.compare_exchange(
                     atomic_curr_prefix,
-                    Owned::new((
-                        tag + 1,
-                        Some(pfx_rec),
-                        curr_prefix.2,
-                        prev_rec,
-                    ))
-                    .with_tag(tag + 1),
+                    Owned::new((tag + 1, Some(pfx_rec), next_set, prev_rec))
+                        .with_tag(tag + 1),
                     Ordering::SeqCst,
                     Ordering::SeqCst,
                     guard,
@@ -1673,6 +1695,7 @@ impl<
                             update_meta,
                             store_error.current.into(),
                             store_error.new.1.clone().unwrap(),
+                            level,
                         )
                     }
                 }
@@ -1680,18 +1703,19 @@ impl<
         };
 
         let guard = &epoch::pin();
-        let pfx_id = PrefixId::new(pfx_rec.net, pfx_rec.len);
-        let stored_prefix =
+        trace!("UPSERT PREFIX {:?}", pfx_rec);
+
+        let (stored_prefix, level) =
             self.retrieve_prefix_mut_with_guard(pfx_id, guard);
 
-        (update_meta.f)(&update_meta, stored_prefix, pfx_rec)
+        (update_meta.f)(&update_meta, stored_prefix, pfx_rec, level)
     }
 
     fn retrieve_prefix_mut_with_guard<'a>(
         &'a mut self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
-    ) -> &'a mut StoredPrefix<Self::AF, Self::Meta> {
+    ) -> (&'a mut StoredPrefix<Self::AF, Self::Meta>, u8) {
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
@@ -1699,7 +1723,8 @@ impl<
                 u8,
                 &'a Guard,
                 // InternalPrefixRecord<AF, M>,
-            ) -> &'a mut StoredPrefix<AF, M>,
+            )
+                -> (&'a mut StoredPrefix<AF, M>, u8),
         }
 
         let search_level = SearchLevel {
@@ -1726,7 +1751,7 @@ impl<
                     << last_level)
                     >> (AF::BITS - (this_level - last_level)))
                     as usize;
-                trace!("retrieve prefix");
+                trace!("retrieve prefix with guard");
                 trace!(
                     "{:032b} (pfx)",
                     id.get_net().dangerously_truncate_to_u32()
@@ -1744,23 +1769,29 @@ impl<
                     )
                     .unwrap()
                 );
+
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
+                trace!(
+                    "prefixes at level {}? {:?}",
+                    level,
+                    !prefixes.is_null()
+                );
                 let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-
                 let stored_prefix = unsafe { prefix_ref.assume_init_mut() };
-                if stored_prefix.is_empty() {
-                    return stored_prefix;
-                }
+
+                // if stored_prefix.is_empty() {
+                //     return stored_prefix;
+                // }
 
                 match unsafe {
                     stored_prefix.0.load(Ordering::Relaxed, guard).deref_mut()
                 } {
-                    (serial, Some(pfx_rec), next_set, _prev_record) => {
+                    (_serial, Some(pfx_rec), next_set, _prev_record) => {
                         if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
                             trace!("found requested prefix {:?}", id);
-                            stored_prefix
+                            (stored_prefix, level)
                         } else {
                             level += 1;
                             (search_level.f)(
@@ -1772,9 +1803,9 @@ impl<
                         }
                     }
                     (_serial, None, _next_set, _prev_record) => {
-                        // No recored at the deepest level, still we're returning a reference to it,
+                        // No record at the deepest level, still we're returning a reference to it,
                         // so the caller can insert a new record here.
-                        stored_prefix
+                        (stored_prefix, level)
                     }
                 }
             },
@@ -2153,6 +2184,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 self.cur_len,
                 bucket_size
             );
+
             if self.cursor >= bucket_size {
                 if self.cur_level == 0 {
                     // END OF THE LENGTH
