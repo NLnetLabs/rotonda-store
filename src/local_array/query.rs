@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::trace;
+use log::{info, trace};
 
 use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;
@@ -81,9 +81,10 @@ where
                         .store
                         .retrieve_prefix_with_guard(
                             PrefixId::new(Store::AF::zero(), 0),
-                                guard
+                            guard,
                         )
-                        .unwrap().0
+                        .unwrap()
+                        .0
                         .meta
                         .as_ref();
                     return QueryResult {
@@ -219,7 +220,7 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
-                        guard
+                        guard,
                     ) {
                         // This and the next match will handle all
                         // intermediary nodes, but they might also handle
@@ -230,30 +231,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // node = SizedStrideRef::Stride3(
-                            //     nodes3.get(&n).unwrap(),
-                            // );
-                            // match self.store.get_stride_for_id(n) {
-                            //     super::node::StrideType::Stride3 => {
-                            //         node = nodes3
-                            //             .get(&n)
-                            //             .map(|n| {
-                            //                 SizedStrideRef::Stride3(n.value())
-                            //             })
-                            //             .unwrap();
-                            //     }
-                            //     super::node::StrideType::Stride4 => {
-                            //         node = SizedStrideRef::Stride4(
-                            //             &nodes4.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride5 => {
-                            //         node = SizedStrideRef::Stride5(
-                            //             &nodes5.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            // }
-                            // node = self.store.retrieve_node(n).unwrap();
+
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -265,7 +243,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
                                 }
                                 break;
@@ -307,7 +285,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
                                 }
                                 break;
@@ -327,7 +305,7 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
-                                        guard
+                                        guard,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -353,7 +331,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
 
                                     match_prefix_idx = None;
@@ -393,7 +371,7 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
-                        guard
+                        guard,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
@@ -432,7 +410,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
                                 }
                                 break;
@@ -474,7 +452,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
                                 }
                                 break;
@@ -491,7 +469,7 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
-                                        guard
+                                        guard,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -511,7 +489,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
 
                                     match_prefix_idx = None;
@@ -549,7 +527,7 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
-                        guard
+                        guard,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
@@ -593,7 +571,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
                                 }
                                 break;
@@ -637,7 +615,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
                                 }
                                 break;
@@ -654,7 +632,7 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
-                                        guard
+                                        guard,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -672,7 +650,7 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard
+                                            guard,
                                         );
 
                                     match_prefix_idx = None;
@@ -703,7 +681,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            trace!(
+            info!(
                 "prefix {}/{} serial {}",
                 pfx_idx.get_net().into_ipaddr(),
                 pfx_idx.get_len(),
@@ -732,9 +710,7 @@ where
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
                     vec.iter()
-                        .map(move |p| {
-                            self.store.retrieve_prefix(*p).unwrap()
-                        })
+                        .map(move |p| self.store.retrieve_prefix(*p).unwrap())
                         .collect::<RecordSet<'a, Store::Meta>>()
                 })
             } else {
@@ -744,7 +720,14 @@ where
                 more_specifics_vec.map(|vec| {
                     vec.into_iter()
                         .map(|p| {
-                            self.store.retrieve_prefix(p).unwrap()
+                            self.store.retrieve_prefix(p).unwrap_or_else(
+                                || {
+                                    panic!(
+                                        "more specific {:?} does not exist",
+                                        p
+                                    )
+                                },
+                            )
                         })
                         .collect()
                 })

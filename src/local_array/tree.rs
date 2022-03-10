@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch, Atomic};
 use epoch::{Guard, Owned};
-use log::trace;
+use log::{info, trace};
 
 use std::hash::Hash;
 use std::mem::MaybeUninit;
@@ -158,7 +158,9 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     pub fn get_id(&self) -> (AF, u8) {
         self.0.unwrap()
     }
-
+    pub fn get_len(&self) -> u8 {
+        self.0.unwrap().1
+    }
     pub fn set_len(mut self, len: u8) -> Self {
         self.0.as_mut().unwrap().1 = len;
         self
@@ -570,14 +572,14 @@ where
     //     self.store.retrieve_node(id)
     // }
 
-    #[inline]
-    #[cfg(feature = "dynamodb")]
-    pub(crate) fn retrieve_node_with_guard(
-        &self,
-        id: StrideNodeId,
-    ) -> CacheGuard<Store::AF, StrideNodeId> {
-        self.store.retrieve_node_with_guard(id)
-    }
+    // #[inline]
+    // #[cfg(feature = "dynamodb")]
+    // pub(crate) fn retrieve_node_with_guard(
+    //     &self,
+    //     id: StrideNodeId,
+    // ) -> CacheGuard<Store::AF, StrideNodeId> {
+    //     self.store.retrieve_node_with_guard(id)
+    // }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
         self.store
@@ -646,7 +648,12 @@ where
         // let old_serial = self.store.increment_default_route_prefix_serial();
 
         // let guard = &epoch::pin();
-        self.store.upsert_prefix(InternalPrefixRecord::new_with_meta(Store::AF::zero(), 0, new_meta))
+        self.store
+            .upsert_prefix(InternalPrefixRecord::new_with_meta(
+                Store::AF::zero(),
+                0,
+                new_meta,
+            ))
         // let (cur_prefix, cur_serial) = self
         //     .store
         //     .retrieve_prefix_with_guard(pfx_rec.into(), guard)
@@ -1041,10 +1048,16 @@ where
         // match self.retrieve_node(start_node_id).unwrap() {
         // let (id , store) = self.store.get_stride_for_id(start_node_id);
         let guard = &epoch::pin();
+
+        info!("start assembling all more specific prefixes here");
+        info!(
+            "{:?}",
+            self.store.retrieve_node_with_guard(start_node_id, guard)
+        );
         match self.store.retrieve_node_with_guard(start_node_id, guard) {
             Some(SizedStrideRef::Stride3(n)) => {
                 // let n = store.get(&id).unwrap();
-                found_pfx_vec.extend(n.pfx_vec(start_node_id));
+                found_pfx_vec.extend(n.pfx_vec(&start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
                     self.get_all_more_specifics_for_node(
@@ -1055,7 +1068,7 @@ where
             }
             Some(SizedStrideRef::Stride4(n)) => {
                 // let n = store.get(&id).unwrap();
-                found_pfx_vec.extend(n.pfx_vec(start_node_id));
+                found_pfx_vec.extend(n.pfx_vec(&start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
                     self.get_all_more_specifics_for_node(
@@ -1066,7 +1079,7 @@ where
             }
             Some(SizedStrideRef::Stride5(n)) => {
                 // let n = store.get(&id).unwrap();
-                found_pfx_vec.extend(n.pfx_vec(start_node_id));
+                found_pfx_vec.extend(n.pfx_vec(&start_node_id));
 
                 for child_node in n.ptr_vec(start_node_id) {
                     self.get_all_more_specifics_for_node(
