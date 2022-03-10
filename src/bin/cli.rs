@@ -19,8 +19,6 @@ use std::process;
 use rustyline::error::ReadlineError;
 #[cfg(feature = "cli")]
 use rustyline::Editor;
-#[cfg(feature = "cli")]
-use env_logger;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -46,7 +44,7 @@ fn load_prefixes(
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new_with_local_meta(
-            Prefix::new(ip.into(), len)?,
+            Prefix::new(ip, len)?,
             PrefixAs(asn),
         );
 
@@ -187,7 +185,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         rl.add_history_entry(line.as_str());
                         println!("Searching for prefix: {}/{}", ip, len);
 
-                        pfx = Prefix::new(ip.into(), len);
+                        pfx = Prefix::new(ip, len);
                         match pfx {
                             Ok(p) => {
                                 println!(
@@ -210,7 +208,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
-                                        &Prefix::new_relaxed(ip.into(), len)?,
+                                        &Prefix::new_relaxed(ip, len)?,
                                         &MatchOptions {
                                             match_type: MatchType::EmptyMatch,
                                             include_less_specifics: true,

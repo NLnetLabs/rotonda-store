@@ -1,7 +1,7 @@
 use std::{fmt, slice};
 
 use crate::{
-    local_array::node::PrefixId, prefix_record::InternalPrefixRecord,
+    prefix_record::InternalPrefixRecord,
     stats::StrideStats,
 };
 

@@ -1,5 +1,3 @@
-use std::sync::atomic::AtomicUsize;
-
 use crossbeam_epoch::Guard;
 
 use crate::{custom_alloc::StoredPrefix, local_array::tree::*};
