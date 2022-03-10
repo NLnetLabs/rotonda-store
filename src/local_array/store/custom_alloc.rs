@@ -612,7 +612,7 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
-        trace!("creating space for {} nodes", &size);
+        info!("creating space for {} nodes", &size);
         let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
         for i in 0..size {
             l[i] = MaybeUninit::new(StoredNode::Empty);
@@ -720,8 +720,13 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         // let guard = &epoch::pin();
         let stored_prefix =
             unsafe { self.0.load(Ordering::Relaxed, guard).deref() };
+
         if stored_prefix.1.is_some() {
-            Some(&stored_prefix.2)
+            if !&stored_prefix.2 .0.load(Ordering::Relaxed, guard).is_null() {
+                Some(&stored_prefix.2)
+            } else {
+                None
+            }
         } else {
             None
         }
@@ -1006,8 +1011,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     // }
 
     pub fn init(size: usize) -> Self {
-        trace!("creating space for {} prefixes in prefix_set", &size);
         let mut l = Owned::<[MaybeUninit<StoredPrefix<AF, M>>]>::init(size);
+        info!("creating space for {} prefixes in prefix_set", &size);
         for i in 0..size {
             l[i] = MaybeUninit::new(StoredPrefix::empty(size));
         }
@@ -1024,7 +1029,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
             for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty() {
-                    info!("pfx {:?}", unsafe { pfx.0.load(Ordering::SeqCst,guard).deref() }.1);
+                    info!("recurse pfx {:?}", pfx.get_prefix_id());
                     len += 1;
                     match pfx.get_next_bucket(guard) {
                         Some(next_bucket) => {
@@ -1039,16 +1044,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
             }
             len
         }
-        // let guard = &epoch::pin();
-        // unsafe {
-        //     self.0
-        //         .load(Ordering::Relaxed, guard)
-        //         .deref()
-        //         .iter()
-        //         .map(|p| p.assume_init_ref())
-        // }
-        // .filter(|p| !p.is_empty())
-        // .count()
+
         recurse_len(self)
     }
 
@@ -1505,7 +1501,7 @@ impl<
                             )
                             .unwrap();
                         trace!("next level {}", next_level);
-                        trace!(
+                        info!(
                             "creating {} prefixes",
                             1 << (next_level - this_level)
                         );
@@ -1638,7 +1634,6 @@ impl<
                 match curr_prefix.1.as_ref() {
                     // insert or...
                     None => {
-                        trace!("INSERT");
                         prev_rec = None;
 
                         // Calculate the length of the next set of prefixes
@@ -1655,9 +1650,18 @@ impl<
                                 level + 1,
                             )
                             .unwrap();
-                        next_set = PrefixSet::init(
-                            (1 << (next_level - this_level)) as usize,
-                        );
+                        next_set = if next_level > &0 {
+                            info!(
+                                "INSERT with new bucket of size {} at prefix len {}",
+                                1 << (next_level - this_level), pfx_id.get_len()
+                            );
+                            PrefixSet::init(
+                                (1 << (next_level - this_level)) as usize,
+                            )
+                        } else {
+                            info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
+                            PrefixSet(Atomic::null())
+                        };
 
                         // End of calculation
                     }
