@@ -152,23 +152,25 @@ pub trait StorageBackend {
         index: PrefixId<Self::AF>,
         // guard: &'a Guard,
     ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>>;
+
     fn retrieve_prefix_with_guard<'a>(
         &'a self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
-    ) -> Option<(
-        &'a InternalPrefixRecord<Self::AF, Self::Meta>,
-        &'a usize,
-    )>;
+    ) -> Option<(&'a InternalPrefixRecord<Self::AF, Self::Meta>, &'a usize)>;
+
+    // Retrieves the LOCATION of a prefix as &mut. That means that an empty
+    // StoredPrefix may be returned, so that the caller can create a new
+    // prefix. This why we need to have a guard passed in as well. This
+    // method returns the level at which the prefix was stored as well,
+    // so that the caller can create a new prefix at this spot and calculate
+    // the correct length of its Next PrefixSet. This method is used by
+    // `upsert_prefix`.
     fn retrieve_prefix_mut_with_guard<'a>(
         &'a mut self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
     ) -> (&'a mut StoredPrefix<Self::AF, Self::Meta>, u8);
-    // fn retrieve_prefix_mut(
-    //     &mut self,
-    //     index: PrefixId<Self::AF>,
-    // ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn remove_prefix(
         &mut self,
         index: PrefixId<Self::AF>,
