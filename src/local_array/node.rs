@@ -209,8 +209,8 @@ where
     // - The index of the existing child node in the global `nodes` vec
     // - A newly created Prefix
     // - The index of the existing prefix in the global `prefixes` vec
-    pub(crate) fn eval_node_or_prefix_at<'a>(
-        &'a mut self,
+    pub(crate) fn eval_node_or_prefix_at(
+        &mut self,
         nibble: u32,
         nibble_len: u8,
         // all the bits of the search prefix, but with the length set to
@@ -515,8 +515,8 @@ where
     // bytes in the nibble to collect the less-specific prefixes of the the 
     // search prefix. This is of course slower, so it should only be used 
     // when the user explicitly requests less-specifics.
-    pub(crate) fn search_stride_for_exact_match_with_less_specifics_at<'a>(
-        &'a self,
+    pub(crate) fn search_stride_for_exact_match_with_less_specifics_at(
+        &self,
         search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         mut nibble: u32,
         nibble_len: u8,
@@ -601,8 +601,8 @@ where
 
     // Search a stride for more-specific prefixes and child nodes containing
     // more specifics for `search_prefix`.
-    pub(crate) fn add_more_specifics_at<'a>(
-        &'a self,
+    pub(crate) fn add_more_specifics_at(
+        &self,
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<AF>,
