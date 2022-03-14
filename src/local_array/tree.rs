@@ -1105,7 +1105,6 @@ where
             nibble,
             nibble_len,
             base_prefix,
-            guard,
         );
 
         for child_node in cnvec.iter() {

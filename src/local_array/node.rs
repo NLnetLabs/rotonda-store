@@ -220,7 +220,6 @@ where
         stride_len: u8,
         next_stride: Option<&u8>,
         is_last_stride: bool,
-        guard: &'a Guard,
     ) -> NewNodeOrIndex<AF> {
 
         // THE CRIICAL SECTION
@@ -379,7 +378,6 @@ where
         nibble_len: u8,
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
-        _guard: &'a Guard
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
@@ -468,7 +466,6 @@ where
         nibble_len: u8,
         start_bit: u8,
         _: &mut Option<Vec<PrefixId<AF>>>,
-        guard: &'a Guard
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
@@ -526,7 +523,6 @@ where
         nibble_len: u8,
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
-        guard: &'a Guard
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
@@ -611,7 +607,6 @@ where
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<AF>,
-        _guard: &'a Guard
     ) -> (
         Vec<StrideNodeId<AF>>, /* child nodes with more more-specifics in
                                   this stride */

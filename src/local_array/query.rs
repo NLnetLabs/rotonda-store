@@ -220,7 +220,6 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
-                        guard,
                     ) {
                         // This and the next match will handle all
                         // intermediary nodes, but they might also handle
@@ -371,7 +370,6 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
-                        guard,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
@@ -527,7 +525,6 @@ where
                         nibble_len,
                         stride_end - stride,
                         &mut less_specifics_vec,
-                        guard,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);

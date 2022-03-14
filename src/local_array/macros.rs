@@ -50,7 +50,6 @@ macro_rules! match_node_for_strides {
                 // the length of the next stride
                 $self.store.get_stride_sizes().get(($level + 1) as usize),
                 $is_last_stride,
-                $guard
             ) {
                 NewNodeOrIndex::NewNode(n) => {
                     // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
