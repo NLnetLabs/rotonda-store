@@ -1,9 +1,6 @@
-use std::{fmt, slice};
+use std::{fmt, marker::PhantomData, slice};
 
-use crate::{
-    prefix_record::InternalPrefixRecord,
-    stats::StrideStats,
-};
+use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::{
     addr::Prefix,
@@ -157,7 +154,7 @@ pub struct CustomAllocPrefixRecordIterator<
     'a,
     Meta: routecore::record::Meta,
     PB4: PrefixBuckets<IPv4, Meta> + Sized,
-    PB6: PrefixBuckets<IPv6, Meta> + Sized
+    PB6: PrefixBuckets<IPv6, Meta> + Sized,
 > {
     pub v4: Option<PrefixesLengthsIter<'a, IPv4, Meta, PB4>>,
     pub v6: PrefixesLengthsIter<'a, IPv6, Meta, PB6>,
@@ -191,6 +188,38 @@ impl<
         }
         self.v4 = None;
         self.next()
+    }
+}
+
+// Converts from the InternalPrefixRecord to the (public) PrefixRecord
+// while iterating.
+pub struct SingleAFPrefixRecordIterator<
+    'a,
+    AF: AddressFamily,
+    Meta: routecore::record::Meta + 'a,
+    PB: PrefixBuckets<AF, Meta> + Sized,
+> {
+    pub tree: PrefixesLengthsIter<'a, AF, Meta, PB>,
+    pub _af: PhantomData<AF>,
+    pub _pb: PhantomData<PB>,
+}
+
+impl<
+        'a,
+        AF: AddressFamily,
+        Meta: routecore::record::Meta + 'a,
+        PB: PrefixBuckets<AF, Meta> + Sized,
+    > Iterator for SingleAFPrefixRecordIterator<'a, AF, Meta, PB>
+{
+    type Item = PrefixRecord<'a, Meta>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.tree.next().map(|res| {
+            PrefixRecord::new_with_local_meta(
+                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
+                res.meta.clone().unwrap(),
+            )
+        })
     }
 }
 

@@ -66,7 +66,7 @@ fn load_prefixes(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
-    
+
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
     let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
@@ -104,24 +104,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if s_pref.len() < 2 {
                     if let Some(cmd) = line.chars().next() {
                         match cmd.to_string().as_ref() {
-                            "p" => {
-                                println!(
-                                    "total prefixes :\t{}",
-                                    tree_bitmap.prefixes_len()
-                                );
-                                println!(
-                                    "ipv4 prefixes :\t{}",
-                                    tree_bitmap.prefixes_v4_len()
-                                );
-                                println!(
-                                    "ipv6 prefixes :\t{}",
-                                    tree_bitmap.prefixes_v6_len()
-                                );
-
-                                tree_bitmap.prefixes_iter(guard).for_each(|pfx| {
-                                    println!("{} {}", pfx.prefix, pfx.meta);
-                                });
-                            }
+                            "p" => match line.chars().as_str() {
+                                "p4" => {
+                                    tree_bitmap
+                                        .prefixes_iter_v4(guard)
+                                        .for_each(|pfx| {
+                                            println!(
+                                                "{} {}",
+                                                pfx.prefix, pfx.meta
+                                            );
+                                        });
+                                    println!(
+                                        "ipv4 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v4_len()
+                                    );
+                                }
+                                "p6" => {
+                                    tree_bitmap
+                                        .prefixes_iter_v6(guard)
+                                        .for_each(|pfx| {
+                                            println!(
+                                                "{} {}",
+                                                pfx.prefix, pfx.meta
+                                            );
+                                        });
+                                    println!(
+                                        "ipv6 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v6_len()
+                                    );
+                                }
+                                _ => {
+                                    println!(
+                                        "ipv4 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v4_len()
+                                    );
+                                    println!(
+                                        "ipv6 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v6_len()
+                                    );
+                                    tree_bitmap
+                                        .prefixes_iter(guard)
+                                        .for_each(|pfx| {
+                                            println!(
+                                                "{} {}",
+                                                pfx.prefix, pfx.meta
+                                            );
+                                        });
+                                    println!(
+                                        "total prefixes :\t{}",
+                                        tree_bitmap.prefixes_len()
+                                    );
+                                }
+                            },
                             "n" => {
                                 // if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
                                 //     for n in tree_bitmap
