@@ -4,7 +4,6 @@ use std::{
     marker::PhantomData,
 };
 
-use crossbeam_epoch::Guard;
 use log::{trace, info};
 use routecore::record::NoMeta;
 

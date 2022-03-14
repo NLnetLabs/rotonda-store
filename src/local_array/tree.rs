@@ -1,4 +1,4 @@
-use crossbeam_epoch::{self as epoch, Guard};
+use crossbeam_epoch::{self as epoch};
 use log::{info, trace};
 
 use std::hash::Hash;
@@ -1096,7 +1096,6 @@ where
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<Store::AF>,
-        guard: &'a Guard,
     ) -> Option<Vec<PrefixId<Store::AF>>>
     where
         S: Stride,

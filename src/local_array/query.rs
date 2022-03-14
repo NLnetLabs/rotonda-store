@@ -242,7 +242,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
                                 }
                                 break;
@@ -284,7 +283,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
                                 }
                                 break;
@@ -304,7 +302,6 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
-                                        guard,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -330,7 +327,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
 
                                     match_prefix_idx = None;
@@ -408,7 +404,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
                                 }
                                 break;
@@ -450,7 +445,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
                                 }
                                 break;
@@ -467,7 +461,6 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
-                                        guard,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -487,7 +480,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
 
                                     match_prefix_idx = None;
@@ -568,7 +560,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
                                 }
                                 break;
@@ -612,7 +603,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
                                 }
                                 break;
@@ -629,7 +619,6 @@ where
                                             search_pfx.net,
                                             stride_end - stride,
                                         ),
-                                        guard,
                                     );
                             }
                             match_prefix_idx = Some(pfx_idx);
@@ -647,7 +636,6 @@ where
                                                 search_pfx.net,
                                                 stride_end - stride,
                                             ),
-                                            guard,
                                         );
 
                                     match_prefix_idx = None;
