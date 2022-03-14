@@ -1023,26 +1023,28 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         fn recurse_len<AF: AddressFamily, M: routecore::record::Meta>(
             start_set: &PrefixSet<AF, M>,
         ) -> usize {
-            let mut len: usize = 0;
+            let mut size: usize = 0;
             let guard = &epoch::pin();
             let start_set = start_set.0.load(Ordering::Relaxed, guard);
             for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty() {
-                    info!("recurse pfx {:?}", pfx.get_prefix_id());
-                    len += 1;
+                    size += 1;
+                    info!("recurse found pfx {:?} cur size {}", pfx.get_prefix_id(), size);
                     match pfx.get_next_bucket(guard) {
                         Some(next_bucket) => {
-                            len += recurse_len(next_bucket);
+                            trace!("found next bucket");
+                            size += recurse_len(next_bucket);
                         }
                         None => {
                             // No more buckets, so we are done with this pfx len.
-                            return len;
+                            return size;
                         }
                     }
                 }
             }
-            len
+            
+            size
         }
 
         recurse_len(self)
@@ -1429,178 +1431,178 @@ impl<
         pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
         serial: usize,
     ) -> Option<PrefixId<Self::AF>> {
-        struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
-            f: &'s dyn for<'a> Fn(
-                &SearchLevel<AF, M>,
-                &PrefixSet<AF, M>,
-                InternalPrefixRecord<AF, M>,
-                u8,
-            ) -> Option<PrefixId<AF>>,
-        }
+        // struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
+        //     f: &'s dyn for<'a> Fn(
+        //         &SearchLevel<AF, M>,
+        //         &PrefixSet<AF, M>,
+        //         InternalPrefixRecord<AF, M>,
+        //         u8,
+        //     ) -> Option<PrefixId<AF>>,
+        // }
 
-        let search_level = SearchLevel {
-            f: &|search_level: &SearchLevel<AF, Meta>,
-                 prefix_set: &PrefixSet<AF, Meta>,
-                 new_prefix: InternalPrefixRecord<AF, Meta>,
-                 mut level: u8| {
-                let last_level = if level > 0 {
-                    *<NB as NodeBuckets<AF>>::len_to_store_bits(
-                        id.get_len(),
-                        level - 1,
-                    )
-                    .unwrap()
-                } else {
-                    0
-                };
-                let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits(
-                    id.get_len(),
-                    level,
-                )
-                .unwrap();
-                let index = ((id.get_net().dangerously_truncate_to_u32()
-                    << last_level)
-                    >> (AF::BITS - (this_level - last_level)))
-                    as usize;
-                trace!("create prefix {:?}", id);
-                trace!(
-                    "{:032b} (pfx)",
-                    id.get_net().dangerously_truncate_to_u32()
-                );
-                trace!("this_level {}", this_level);
-                trace!("last_level {}", last_level);
-                trace!("id {:?}", id);
-                trace!("calculated index {}", index);
-                trace!("level {}", level);
-                trace!(
-                    "bits_division {}",
-                    <NB as NodeBuckets<AF>>::len_to_store_bits(
-                        id.get_len(),
-                        level
-                    )
-                    .unwrap()
-                );
-                let guard = &epoch::pin();
-                let mut prefixes =
-                    prefix_set.0.load(Ordering::Relaxed, guard);
-                // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
-                let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-                match unsafe {
-                    prefix_ref
-                        .assume_init_mut()
-                        .0
-                        .load(Ordering::SeqCst, guard)
-                        .deref_mut()
-                } {
-                    // No node exists, so we crate one here.
-                    (_serial, None, _next_set, _prev_record) => {
-                        trace!("Empty node found, creating new prefix {} len{} lvl{}", id.get_net(), id.get_len(), level + 1);
-                        let next_level =
-                            <NB as NodeBuckets<AF>>::len_to_store_bits(
-                                id.get_len(),
-                                level + 1,
-                            )
-                            .unwrap();
-                        trace!("next level {}", next_level);
-                        info!(
-                            "creating {} prefixes",
-                            1 << (next_level - this_level)
-                        );
-                        std::mem::swap(
-                            prefix_ref,
-                            &mut MaybeUninit::new(StoredPrefix(Atomic::new(
-                                (
-                                    1,
-                                    Some(new_prefix),
-                                    PrefixSet::init(
-                                        (1 << (next_level - this_level))
-                                            as usize,
-                                    ),
-                                    None,
-                                ),
-                            ))),
-                        );
-                        // ABA Baby!
-                        match prefix_set.0.compare_exchange(
-                            prefixes,
-                            prefixes,
-                            Ordering::SeqCst,
-                            Ordering::SeqCst,
-                            guard,
-                        ) {
-                            Ok(_) => Some(id),
-                            Err(_) => {
-                                // TODO: This needs some kind of backoff,
-                                // I guess.
-                                loop {
-                                    trace!("contention while creating prefix {:?}", id);
-                                    if prefix_set
-                                        .0
-                                        .compare_exchange(
-                                            prefixes,
-                                            prefixes,
-                                            Ordering::SeqCst,
-                                            Ordering::SeqCst,
-                                            guard,
-                                        )
-                                        .is_ok()
-                                    {
-                                        return Some(id);
-                                    };
-                                }
-                            }
-                        };
-                        Some(id)
-                    }
-                    // A node exists, since `store_node` only creates new
-                    // nodes, we should not get here with the SAME
-                    // existing prefix as already in place.
-                    (_serial, Some(prefix), next_set, _prev_record) => {
-                        trace!("prefix here exists {:?}", prefix);
-                        trace!("prefix_id {:032b}", prefix.net);
-                        trace!("id {:?}", id);
-                        trace!("     id {:032b}", id.get_net());
-                        if id == PrefixId::new(prefix.net, prefix.len) {
-                            trace!("found prefix {:?}, STOP", prefix);
-                            // Node already exists, nothing to do
-                            panic!(
-                                "prefix already exists, should not happen"
-                            );
-                            // return Some($id);
-                        };
-                        level += 1;
-                        trace!("Collision with node_id, move to next level: {:?} len{} next_lvl{} index {}", prefix, id.get_len(), level, index);
-                        match <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_len(),
-                            level,
-                        ) {
-                            // on to the next level!
-                            Some(next_bit_shift) if next_bit_shift > &0 => {
-                                (search_level.f)(
-                                    search_level,
-                                    next_set,
-                                    new_prefix,
-                                    level,
-                                )
-                            }
-                            // There's no next level!
-                            _ => panic!(
-                                "out of storage levels, current level is {}",
-                                level
-                            ),
-                        }
-                    }
-                }
-            },
-        };
+        // let search_level = SearchLevel {
+        //     f: &|search_level: &SearchLevel<AF, Meta>,
+        //          prefix_set: &PrefixSet<AF, Meta>,
+        //          new_prefix: InternalPrefixRecord<AF, Meta>,
+        //          mut level: u8| {
+        //         let last_level = if level > 0 {
+        //             *<NB as NodeBuckets<AF>>::len_to_store_bits(
+        //                 id.get_len(),
+        //                 level - 1,
+        //             )
+        //             .unwrap()
+        //         } else {
+        //             0
+        //         };
+        //         let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits(
+        //             id.get_len(),
+        //             level,
+        //         )
+        //         .unwrap();
+        //         let index = ((id.get_net().dangerously_truncate_to_u32()
+        //             << last_level)
+        //             >> (AF::BITS - (this_level - last_level)))
+        //             as usize;
+        //         trace!("create prefix {:?}", id);
+        //         trace!(
+        //             "{:032b} (pfx)",
+        //             id.get_net().dangerously_truncate_to_u32()
+        //         );
+        //         trace!("this_level {}", this_level);
+        //         trace!("last_level {}", last_level);
+        //         trace!("id {:?}", id);
+        //         trace!("calculated index {}", index);
+        //         trace!("level {}", level);
+        //         trace!(
+        //             "bits_division {}",
+        //             <NB as NodeBuckets<AF>>::len_to_store_bits(
+        //                 id.get_len(),
+        //                 level
+        //             )
+        //             .unwrap()
+        //         );
+        //         let guard = &epoch::pin();
+        //         let mut prefixes =
+        //             prefix_set.0.load(Ordering::Relaxed, guard);
+        //         // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
+        //         let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
+        //         match unsafe {
+        //             prefix_ref
+        //                 .assume_init_mut()
+        //                 .0
+        //                 .load(Ordering::SeqCst, guard)
+        //                 .deref_mut()
+        //         } {
+        //             // No node exists, so we crate one here.
+        //             (_serial, None, _next_set, _prev_record) => {
+        //                 trace!("Empty node found, creating new prefix {} len{} lvl{}", id.get_net(), id.get_len(), level + 1);
+        //                 let next_level =
+        //                     <NB as NodeBuckets<AF>>::len_to_store_bits(
+        //                         id.get_len(),
+        //                         level + 1,
+        //                     )
+        //                     .unwrap();
+        //                 trace!("next level {}", next_level);
+        //                 info!(
+        //                     "creating {} prefixes",
+        //                     1 << (next_level - this_level)
+        //                 );
+        //                 std::mem::swap(
+        //                     prefix_ref,
+        //                     &mut MaybeUninit::new(StoredPrefix(Atomic::new(
+        //                         (
+        //                             1,
+        //                             Some(new_prefix),
+        //                             PrefixSet::init(
+        //                                 (1 << (next_level - this_level))
+        //                                     as usize,
+        //                             ),
+        //                             None,
+        //                         ),
+        //                     ))),
+        //                 );
+        //                 // ABA Baby!
+        //                 match prefix_set.0.compare_exchange(
+        //                     prefixes,
+        //                     prefixes,
+        //                     Ordering::SeqCst,
+        //                     Ordering::SeqCst,
+        //                     guard,
+        //                 ) {
+        //                     Ok(_) => Some(id),
+        //                     Err(_) => {
+        //                         // TODO: This needs some kind of backoff,
+        //                         // I guess.
+        //                         loop {
+        //                             trace!("contention while creating prefix {:?}", id);
+        //                             if prefix_set
+        //                                 .0
+        //                                 .compare_exchange(
+        //                                     prefixes,
+        //                                     prefixes,
+        //                                     Ordering::SeqCst,
+        //                                     Ordering::SeqCst,
+        //                                     guard,
+        //                                 )
+        //                                 .is_ok()
+        //                             {
+        //                                 return Some(id);
+        //                             };
+        //                         }
+        //                     }
+        //                 };
+        //                 Some(id)
+        //             }
+        //             // A node exists, since `store_node` only creates new
+        //             // nodes, we should not get here with the SAME
+        //             // existing prefix as already in place.
+        //             (_serial, Some(prefix), next_set, _prev_record) => {
+        //                 trace!("prefix here exists {:?}", prefix);
+        //                 trace!("prefix_id {:032b}", prefix.net);
+        //                 trace!("id {:?}", id);
+        //                 trace!("     id {:032b}", id.get_net());
+        //                 if id == PrefixId::new(prefix.net, prefix.len) {
+        //                     trace!("found prefix {:?}, STOP", prefix);
+        //                     // Node already exists, nothing to do
+        //                     panic!(
+        //                         "prefix already exists, should not happen"
+        //                     );
+        //                     // return Some($id);
+        //                 };
+        //                 level += 1;
+        //                 trace!("Collision with node_id, move to next level: {:?} len{} next_lvl{} index {}", prefix, id.get_len(), level, index);
+        //                 match <NB as NodeBuckets<AF>>::len_to_store_bits(
+        //                     id.get_len(),
+        //                     level,
+        //                 ) {
+        //                     // on to the next level!
+        //                     Some(next_bit_shift) if next_bit_shift > &0 => {
+        //                         (search_level.f)(
+        //                             search_level,
+        //                             next_set,
+        //                             new_prefix,
+        //                             level,
+        //                         )
+        //                     }
+        //                     // There's no next level!
+        //                     _ => panic!(
+        //                         "out of storage levels, current level is {}",
+        //                         level
+        //                     ),
+        //                 }
+        //             }
+        //         }
+        //     },
+        // };
 
-        // trace!("insert prefix {:?}", &pfx_rec);
-        (search_level.f)(
-            &search_level,
-            self.prefixes.get_root_prefix_set(pfx_rec.len),
-            pfx_rec,
-            0,
-        )
-        // self.prefixes.insert(pfx_rec.into(), pfx_rec);
+        // // trace!("insert prefix {:?}", &pfx_rec);
+        // (search_level.f)(
+        //     &search_level,
+        //     self.prefixes.get_root_prefix_set(pfx_rec.len),
+        //     pfx_rec,
+        //     0,
+        // )
+        unimplemented!()
     }
 
     fn upsert_prefix(
@@ -1635,9 +1637,7 @@ impl<
                     // insert or...
                     None => {
                         prev_rec = None;
-
                         // Calculate the length of the next set of prefixes
-
                         let this_level =
                             *<NB as NodeBuckets<AF>>::len_to_store_bits(
                                 pfx_id.get_len(),
@@ -1650,6 +1650,7 @@ impl<
                                 level + 1,
                             )
                             .unwrap();
+                        trace!("this level {} next level {}", this_level, next_level);
                         next_set = if next_level > &0 {
                             info!(
                                 "INSERT with new bucket of size {} at prefix len {}",
@@ -1689,11 +1690,11 @@ impl<
                     guard,
                 ) {
                     Ok(_) => {
-                        // trace!("prefix updated {:?}", pfx_id);
+                        trace!("prefix successfully updated {:?}", pfx_id);
                         Ok(())
                     }
                     Err(store_error) => {
-                        // trace!("prefix update failed {:?}", pfx_id);
+                        trace!("prefix update failed {:?}", pfx_id);
                         (update_meta.f)(
                             update_meta,
                             store_error.current.into(),
@@ -2234,17 +2235,18 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
                             // Check if there's a prefix here, return that as the next item,
                             // or continue in the loop searching for one.
-                            if let Some(prefix) = self
-                                .cur_bucket
-                                .get_by_index(
-                                    self.cursor as usize,
-                                    self.guard,
-                                )
-                                .get_prefix_record(self.guard)
-                            {
-                                info!("found prefix {:?}", prefix);
-                                return Some(prefix);
-                            };
+                            // if let Some(prefix) = self
+                            //     .cur_bucket
+                            //     .get_by_index(
+                            //         self.cursor as usize,
+                            //         self.guard,
+                            //     )
+                            //     .get_prefix_record(self.guard)
+                            // {
+                            //     info!("found prefix {:?}", prefix);
+                            //     return Some(prefix);
+                            // };
+                            continue;
                         }
                         None => {
                             trace!(
@@ -2262,8 +2264,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 }
                 // continue;
             };
-
-            trace!("B. get next prefix for cursor {}", self.cursor);
 
             // we're somewhere in the PrefixSet iteration, read the next StoredPrefix.
             // We are doing depth-first iteration, so we check for a child first and
