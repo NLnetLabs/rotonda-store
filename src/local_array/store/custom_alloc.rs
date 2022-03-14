@@ -1030,20 +1030,18 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty() {
                     size += 1;
-                    info!("recurse found pfx {:?} cur size {}", pfx.get_prefix_id(), size);
-                    match pfx.get_next_bucket(guard) {
-                        Some(next_bucket) => {
-                            trace!("found next bucket");
-                            size += recurse_len(next_bucket);
-                        }
-                        None => {
-                            // No more buckets, so we are done with this pfx len.
-                            return size;
-                        }
+                    info!(
+                        "recurse found pfx {:?} cur size {}",
+                        pfx.get_prefix_id(),
+                        size
+                    );
+                    if let Some(next_bucket) = pfx.get_next_bucket(guard) {
+                        trace!("found next bucket");
+                        size += recurse_len(next_bucket);
                     }
                 }
             }
-            
+
             size
         }
 
@@ -1650,7 +1648,11 @@ impl<
                                 level + 1,
                             )
                             .unwrap();
-                        trace!("this level {} next level {}", this_level, next_level);
+                        trace!(
+                            "this level {} next level {}",
+                            this_level,
+                            next_level
+                        );
                         next_set = if next_level > &0 {
                             info!(
                                 "INSERT with new bucket of size {} at prefix len {}",
