@@ -1464,25 +1464,23 @@ impl<
                     // insert or...
                     None => {
                         prev_rec = None;
-                        // Calculate the length of the next set of prefixes
+
                         let this_level =
-                            *<NB as NodeBuckets<AF>>::len_to_store_bits(
-                                pfx_id.get_len(),
-                                level,
-                            )
-                            .unwrap();
-                        let next_level =
-                            <NB as NodeBuckets<AF>>::len_to_store_bits(
-                                pfx_id.get_len(),
-                                level + 1,
-                            )
-                            .unwrap();
+                            *PB::get_bits_for_len(pfx_id.get_len(), level)
+                                .unwrap();
+
+                        let next_level = *PB::get_bits_for_len(
+                            pfx_id.get_len(),
+                            level + 1,
+                        )
+                        .unwrap();
+
                         trace!(
                             "this level {} next level {}",
                             this_level,
                             next_level
                         );
-                        next_set = if next_level > &0 {
+                        next_set = if next_level > 0 {
                             info!(
                                 "INSERT with new bucket of size {} at prefix len {}",
                                 1 << (next_level - this_level), pfx_id.get_len()
@@ -1557,7 +1555,6 @@ impl<
                 &PrefixSet<AF, M>,
                 u8,
                 &'a Guard,
-                // InternalPrefixRecord<AF, M>,
             )
                 -> (&'a mut StoredPrefix<AF, M>, u8),
         }
@@ -1568,20 +1565,16 @@ impl<
                  //  new_prefix: InternalPrefixRecord<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
+
                 let last_level = if level > 0 {
-                    *<NB as NodeBuckets<AF>>::len_to_store_bits(
-                        id.get_len(),
-                        level - 1,
-                    )
-                    .unwrap()
+                    *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
                 } else {
                     0
                 };
-                let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits(
-                    id.get_len(),
-                    level,
-                )
-                .unwrap();
+
+                let this_level =
+                    *PB::get_bits_for_len(id.get_len(), level).unwrap();
+
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
                     >> (AF::BITS - (this_level - last_level)))
@@ -1677,7 +1670,7 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *<NB as NodeBuckets<AF>>::len_to_store_bits(
+                    *PB::get_bits_for_len(
                         id.get_len(),
                         level - 1,
                     )
@@ -1685,11 +1678,12 @@ impl<
                 } else {
                     0
                 };
-                let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits(
+                let this_level =  *PB::get_bits_for_len(
                     id.get_len(),
                     level,
                 )
                 .unwrap();
+
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
                     >> (AF::BITS - (this_level - last_level)))
@@ -1767,7 +1761,7 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *<NB as NodeBuckets<AF>>::len_to_store_bits(
+                    *PB::get_bits_for_len(
                         id.get_len(),
                         level - 1,
                     )
@@ -1775,7 +1769,7 @@ impl<
                 } else {
                     0
                 };
-                let this_level = *<NB as NodeBuckets<AF>>::len_to_store_bits(
+                let this_level =  *PB::get_bits_for_len(
                     id.get_len(),
                     level,
                 )
