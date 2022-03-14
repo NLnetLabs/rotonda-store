@@ -1,22 +1,16 @@
-use crossbeam_epoch::{self as epoch, Atomic};
-use epoch::{Guard, Owned};
+use crossbeam_epoch::{self as epoch, Guard};
 use log::{info, trace};
 
 use std::hash::Hash;
-use std::mem::MaybeUninit;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::{AddressFamily, Zero};
-use crate::local_array::custom_alloc::StoredPrefix;
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
-
-#[cfg(feature = "dynamodb")]
-use crate::local_array::CacheGuard;
 
 pub(crate) use super::atomic_stride::*;
 use crate::stats::{SizedStride, StrideStats};
@@ -25,8 +19,6 @@ pub(crate) use crate::local_array::node::TreeBitMapNode;
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
-
-use routecore::record::MergeUpdate;
 
 //------------------- Sized Node Enums ------------------------------------
 

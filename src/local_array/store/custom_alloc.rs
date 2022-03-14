@@ -6,7 +6,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{error, info, trace};
+use log::{info, trace};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;

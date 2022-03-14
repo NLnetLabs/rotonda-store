@@ -58,7 +58,7 @@ fn load_prefixes(
 fn main() -> Result<(), Box<dyn Error>> {
     let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
-    for strides in strides_vec.iter() {
+    for _strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
         let mut tree_bitmap: MyStore<PrefixAs> = MyStore::<PrefixAs>::new();
 

@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::{info, trace};
+use log::info;
 
 use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;

@@ -53,7 +53,7 @@ mod tests {
             // vec![6, 6, 6, 6, 4, 4],
             // vec![3, 4, 4, 6, 7, 8],
         ];
-        for strides in strides_vec.iter().enumerate() {
+        for _strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
             let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
