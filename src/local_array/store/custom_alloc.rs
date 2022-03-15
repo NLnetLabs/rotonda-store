@@ -76,7 +76,7 @@ pub struct StoredPrefix<AF: AddressFamily, Meta: routecore::record::Meta>(
 impl<AF: AddressFamily, Meta: routecore::record::Meta>
     StoredPrefix<AF, Meta>
 {
-    pub(crate) fn empty(size: usize) -> Self {
+    pub(crate) fn empty() -> Self {
         StoredPrefix(Atomic::new((0, None, PrefixSet(Atomic::null()), None)))
     }
     // fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8> {
@@ -446,7 +446,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         let mut l = Owned::<[MaybeUninit<StoredPrefix<AF, M>>]>::init(size);
         info!("creating space for {} prefixes in prefix_set", &size);
         for i in 0..size {
-            l[i] = MaybeUninit::new(StoredPrefix::empty(size));
+            l[i] = MaybeUninit::new(StoredPrefix::empty());
         }
         PrefixSet(l.into())
     }
