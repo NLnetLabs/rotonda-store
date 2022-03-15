@@ -116,7 +116,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         unsafe { self.0.load(Ordering::Relaxed, guard).into_owned() }.0
     }
 
-    fn get_prefix_id(&self) -> PrefixId<AF> {
+    pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
         let guard = &epoch::pin();
         if let Some(pfx_rec) =
             &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.1
