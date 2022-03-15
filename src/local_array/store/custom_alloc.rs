@@ -23,7 +23,6 @@ use routecore::record::Meta;
 
 use super::storage_backend::SizedNodeRefOption;
 
-
 // ----------- Node related structs -----------------------------------------
 
 #[derive(Debug)]
@@ -92,9 +91,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     // fn get_store(&self, id: PrefixId<AF>) -> &NodeSet<AF, Stride3> {
     //     todo!()
     // }
-    pub(crate) fn new(
-        record: InternalPrefixRecord<AF, Meta>,
-    ) -> Self {
+    pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
         StoredPrefix(Atomic::new((
             1,
             Some(record),
@@ -940,6 +937,9 @@ impl<
                                 .unwrap()
                                 .clone_merge_update(&pfx_rec.meta.unwrap())?,
                         );
+                        // Tuck the current record away on the heap.
+                        // This doesn't have to be an aotmid pointer, since
+                        // we're doing this in one transaction.
                         prev_rec = Some(Box::new(curr_prefix.1.unwrap()));
                         next_set = curr_prefix.2;
                     }
@@ -958,7 +958,12 @@ impl<
                         Ok(())
                     }
                     Err(store_error) => {
-                        trace!("prefix update failed {:?}", pfx_id);
+                        trace!(
+                            "Contention. Prefix update failed {:?}",
+                            pfx_id
+                        );
+                        // Try again. TODO: backoff neeeds to be implemented
+                        // hers.
                         (update_meta.f)(
                             update_meta,
                             store_error.current.into(),
@@ -1000,7 +1005,6 @@ impl<
                  //  new_prefix: InternalPrefixRecord<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-
                 let last_level = if level > 0 {
                     *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
                 } else {
@@ -1105,19 +1109,12 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *PB::get_bits_for_len(
-                        id.get_len(),
-                        level - 1,
-                    )
-                    .unwrap()
+                    *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
                 } else {
                     0
                 };
-                let this_level =  *PB::get_bits_for_len(
-                    id.get_len(),
-                    level,
-                )
-                .unwrap();
+                let this_level =
+                    *PB::get_bits_for_len(id.get_len(), level).unwrap();
 
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
@@ -1196,19 +1193,12 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *PB::get_bits_for_len(
-                        id.get_len(),
-                        level - 1,
-                    )
-                    .unwrap()
+                    *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
                 } else {
                     0
                 };
-                let this_level =  *PB::get_bits_for_len(
-                    id.get_len(),
-                    level,
-                )
-                .unwrap();
+                let this_level =
+                    *PB::get_bits_for_len(id.get_len(), level).unwrap();
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
                     >> (AF::BITS - (this_level - last_level)))
