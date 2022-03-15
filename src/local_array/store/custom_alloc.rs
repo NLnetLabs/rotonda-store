@@ -63,6 +63,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 // Unlike StoredNode, we don't need an Empty variant, since we're using
 // serial == 0 as the empty value. We're not using an Option here, to
 // avoid going outside our atomic procedure.
+#[allow(clippy::type_complexity)]
 #[derive(Debug)]
 pub struct StoredPrefix<AF: AddressFamily, Meta: routecore::record::Meta>(
     Atomic<(
@@ -651,6 +652,7 @@ impl<
     //     unimplemented!()
     // }
 
+    #[allow(clippy::type_complexity)]
     fn update_node(
         &mut self,
         id: StrideNodeId<AF>,
@@ -717,6 +719,7 @@ impl<
     //     unimplemented!()
     // }
 
+    #[allow(clippy::type_complexity)]
     fn retrieve_node_with_guard<'a>(
         &'a self,
         id: StrideNodeId<Self::AF>,
@@ -768,6 +771,7 @@ impl<
         }
     }
 
+    #[allow(clippy::type_complexity)]
     fn retrieve_node_mut_with_guard<'a>(
         &'a self,
         id: StrideNodeId<Self::AF>,
@@ -864,6 +868,7 @@ impl<
         unimplemented!()
     }
 
+    #[allow(clippy::type_complexity)]
     fn upsert_prefix(
         &mut self,
         pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
@@ -984,6 +989,7 @@ impl<
         (update_meta.f)(&update_meta, stored_prefix, pfx_rec, level)
     }
 
+    #[allow(clippy::type_complexity)]
     fn retrieve_prefix_mut_with_guard<'a>(
         &'a mut self,
         id: PrefixId<Self::AF>,
@@ -1086,6 +1092,7 @@ impl<
         )
     }
 
+    #[allow(clippy::type_complexity)]
     fn retrieve_prefix(
         &self,
         id: PrefixId<Self::AF>,
@@ -1097,7 +1104,6 @@ impl<
                 &PrefixSet<AF, M>,
                 u8,
                 &'a Guard,
-                // InternalPrefixRecord<AF, M>,
             )
                 -> Option<InternalPrefixRecord<AF, M>>,
         }
@@ -1167,6 +1173,7 @@ impl<
         )
     }
 
+    #[allow(clippy::type_complexity)]
     fn retrieve_prefix_with_guard<'a>(
         &'a self,
         id: PrefixId<Self::AF>,

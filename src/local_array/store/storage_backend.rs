@@ -153,6 +153,7 @@ pub trait StorageBackend {
         // guard: &'a Guard,
     ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>>;
 
+    #[allow(clippy::type_complexity)]
     fn retrieve_prefix_with_guard<'a>(
         &'a self,
         id: PrefixId<Self::AF>,

@@ -1,5 +1,4 @@
 use std::fmt;
-
 use crate::prelude::*;
 
 // The default stride sizes for IPv4, IPv6, resp.
