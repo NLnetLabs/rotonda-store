@@ -1344,8 +1344,8 @@ impl<
     pub fn prefixes_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> PrefixesLengthsIter<AF, Meta, PB> {
-        PrefixesLengthsIter {
+    ) -> PrefixIter<AF, Meta, PB> {
+        PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),
             cur_len: 0,
@@ -1359,7 +1359,7 @@ impl<
     }
 }
 
-pub struct PrefixesLengthsIter<
+pub struct PrefixIter<
     'a,
     AF: AddressFamily + 'a,
     M: Meta + 'a,
@@ -1383,7 +1383,7 @@ pub struct PrefixesLengthsIter<
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
-    Iterator for PrefixesLengthsIter<'a, AF, M, PB>
+    Iterator for PrefixIter<'a, AF, M, PB>
 {
     type Item = &'a InternalPrefixRecord<AF, M>;
 

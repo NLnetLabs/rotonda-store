@@ -17,7 +17,7 @@ pub use crate::local_array::store::custom_alloc;
 pub use crate::local_array::store::Store as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
 
-use self::custom_alloc::{PrefixBuckets, PrefixesLengthsIter};
+use self::custom_alloc::{PrefixBuckets, PrefixIter};
 
 //------------ Types for strides displaying/monitoring ----------------------
 
@@ -156,8 +156,8 @@ pub struct CustomAllocPrefixRecordIterator<
     PB4: PrefixBuckets<IPv4, Meta> + Sized,
     PB6: PrefixBuckets<IPv6, Meta> + Sized,
 > {
-    pub v4: Option<PrefixesLengthsIter<'a, IPv4, Meta, PB4>>,
-    pub v6: PrefixesLengthsIter<'a, IPv6, Meta, PB6>,
+    pub v4: Option<PrefixIter<'a, IPv4, Meta, PB4>>,
+    pub v6: PrefixIter<'a, IPv6, Meta, PB6>,
 }
 
 impl<
@@ -199,7 +199,7 @@ pub struct SingleAFPrefixRecordIterator<
     Meta: routecore::record::Meta + 'a,
     PB: PrefixBuckets<AF, Meta> + Sized,
 > {
-    pub tree: PrefixesLengthsIter<'a, AF, Meta, PB>,
+    pub tree: PrefixIter<'a, AF, Meta, PB>,
     pub _af: PhantomData<AF>,
     pub _pb: PhantomData<PB>,
 }
