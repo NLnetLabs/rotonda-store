@@ -353,8 +353,8 @@ where
             // A prefix exists as a child of the base_prefix, so create the
             // PrefixId with the right offset from the base prefix and cut
             // it off at that point.
-            let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
-            return NewNodeOrIndex::ExistingPrefix(pfx);
+            // let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
+            return NewNodeOrIndex::ExistingPrefix;
         }
 
         // Nodes always live at the last length of a stride (i.e. the last 

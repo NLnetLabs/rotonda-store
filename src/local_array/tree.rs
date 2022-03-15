@@ -90,7 +90,7 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
     NewPrefix,
-    ExistingPrefix(PrefixId<AF>),
+    ExistingPrefix,
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]

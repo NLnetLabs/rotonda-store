@@ -184,7 +184,7 @@ macro_rules! match_node_for_strides {
 
                     // break Ok(());
                 }
-                NewNodeOrIndex::ExistingPrefix(found_prefix_id) => {
+                NewNodeOrIndex::ExistingPrefix => {
                     return $self.store.upsert_prefix($pfx)
                     // THE CRITICAL SECTION
                     //
