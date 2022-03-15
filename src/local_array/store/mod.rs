@@ -1,5 +1,5 @@
 pub(crate) mod storage_backend;
 pub mod custom_alloc;
-pub(crate) mod store;
+pub(crate) mod default_store;
 
-pub use store::Store;
+pub use default_store::Store;
