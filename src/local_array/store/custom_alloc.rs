@@ -127,7 +127,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         }
     }
 
-    fn get_prefix_record<'a>(
+    pub(crate) fn get_prefix_record<'a>(
         &'a self,
         guard: &'a Guard,
     ) -> &Option<InternalPrefixRecord<AF, Meta>> {
@@ -216,100 +216,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-// pub struct PrefixIter<'a, AF: AddressFamily, M: routecore::record::Meta> {
-//     pub cur_bucket: &'a PrefixSet<AF, M>, // the bucket we're iterating over
-//     pub cur_len: u8, // the current prefix length we're iterating over
-//     pub cur_level: u8, // the level we're iterating over.
-//     pub cur_max_index: u8, // the maximum index of the level we're iterating over.
-//     pub cursor: u8,        // current index in the level
-//     pub guard: &'a Guard,
-//     pub _af: PhantomData<AF>,
-// }
-
-// impl<'a, AF: AddressFamily, M: routecore::record::Meta> Iterator
-//     for PrefixIter<'a, AF, M>
-// {
-//     type Item = &'a InternalPrefixRecord<AF, M>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         trace!(
-//             "xtarting next loop for level {} cursor {} max_index {}",
-//             self.cur_level,
-//             self.cursor,
-//             self.cur_max_index,
-//         );
-//         loop {
-//             if self.cursor == self.cur_max_index {
-//                 // This level is done, go to the next level
-//                 // get the next bucket
-//                 self.cur_level += 1;
-
-//                 self.cur_bucket = match self
-//                     .cur_bucket
-//                     .get_by_index((self.cursor - 1) as usize, self.guard)
-//                     .get_next_bucket()
-//                 {
-//                     Some(bucket) => bucket,
-//                     None => {
-//                         // No reference to another PrefixSet, so we're done.
-//                         return None;
-//                     }
-//                 };
-
-//                 trace!(
-//                     "reached bucket size; move to next level {} with max_index {}",
-//                     self.cur_level,
-//                     1
-//                     << *prefix_store_bits_4(self.cur_len, self.cur_level)
-//                         .unwrap()
-//                 );
-
-//                 self.cursor = 0; // reset the index for the next level.
-//                 self.cur_max_index = 1
-//                     << *prefix_store_bits_4(self.cur_len, self.cur_level)
-//                         .unwrap();
-
-//                 if self.cur_max_index == 0 {
-//                     // This length is done too, go to the next length
-//                     self.cur_len += 1;
-
-//                     if self.cur_len == AF::BITS as u8 {
-//                         // This is the end, my friend
-//                         return None;
-//                     }
-
-//                     self.cur_level = 0;
-//                     self.cur_max_index = 1
-//                         << *prefix_store_bits_4(self.cur_len, self.cur_level)
-//                             .unwrap();
-//                 }
-//             }
-
-//             trace!("get_by_index {}", self.cursor);
-//             match self
-//                 .cur_bucket
-//                 .get_by_index(self.cursor as usize, self.guard)
-//                 .1
-//                 .as_ref()
-//             {
-//                 Some(prefix) => {
-//                     trace!("found prefix {:?}", prefix);
-//                     return Some(prefix);
-//                 }
-//                 None => {
-//                     // This slot is empty, go to the next one.
-//                     self.cursor += 1;
-//                     trace!(
-//                         "no prefix, incrementing cursor to {}",
-//                         self.cursor
-//                     );
-//                     continue;
-//                 }
-//             }
-//         }
-//     }
-// }
-
 // ----------- FamilyBuckets Trait ------------------------------------------
 //
 // Implementations of this trait are done by a proc-macro called
@@ -365,14 +271,13 @@ where
 
 //------------ PrefixSet ----------------------------------------------------
 
-// The PrefixSet is the type that powers pfx_vec, the ARRAY that holds all
-// the child prefixes in a node. Since we are storing these prefixes in the
-// global store in a HashMap that is keyed on the tuple (addr_bits, len,
-// serial number) we can get away with storing ONLY THE SERIAL NUMBER in the
-// pfx_vec: The addr_bits and len are implied in the position in the array a
-// serial numher has. A PrefixSet doesn't know anything about the node it is
-// contained in, so it needs a base address to be able to calculate the
-// complete prefix of a child prefix.
+// The PrefixSet is the ARRAY that holds all the child prefixes in a node. 
+// Since we are storing these prefixes in the global store in a HashMap that
+// is keyed on the tuple (addr_bits, len, serial number) we can get away with
+// storing ONLY THE SERIAL NUMBER in the pfx_vec: The addr_bits and len are 
+// implied in the position in the array a serial numher has. A PrefixSet 
+// doesn't know anything about the node it is contained in, so it needs a 
+// base address to be able to calculate the complete prefix of a child prefix.
 
 #[derive(Debug)]
 pub struct PrefixSet<AF: AddressFamily, M: routecore::record::Meta>(
@@ -386,63 +291,6 @@ impl<AF: AddressFamily, M: Meta> std::fmt::Display for PrefixSet<AF, M> {
 }
 
 impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
-    // Collect all PrefixIds into a vec. Since the net and len of the
-    // PrefixIds are implied by the position in the pfx_vec we can
-    // calculate them with if we know the base address of the node
-    // this PrefixSet lives in.
-    // pub(crate) fn to_vec<'a>(
-    //     &self,
-    //     base_prefix: StrideNodeId<AF>,
-    //     guard: &'a Guard,
-    // ) -> Vec<&'a InternalPrefixRecord<AF, M>> {
-    //     let prefix_ids =
-    //         unsafe { self.0.load(Ordering::Relaxed, guard).deref() };
-    //     let mut vec = vec![];
-    //     let mut i: usize = 0;
-    //     let mut nibble_len = 1;
-    //     while i < prefix_ids.len() {
-    //         for nibble in 0..1 << nibble_len {
-    //             let this_prefix = unsafe { prefix_ids[i].assume_init_ref() };
-    //             match this_prefix.0
-    //             .load(Ordering::Relaxed) {
-    //                 0 => (),
-    //                 serial => {
-    //                     vec.push(this_prefix.1.as_ref().unwrap());
-    //                 }
-    //                 // serial => vec.push(
-    //                 //     PrefixId::<AF>::new(
-    //                 //         base_prefix
-    //                 //             .get_id()
-    //                 //             .0
-    //                 //             .add_nibble(
-    //                 //                 base_prefix.get_id().1,
-    //                 //                 nibble,
-    //                 //                 nibble_len,
-    //                 //             )
-    //                 //             .0,
-    //                 //         base_prefix.get_id().1 + nibble_len,
-    //                 //     )
-    //                 //     .set_serial(serial),
-    //                 // ),
-    //             }
-    //             i += 1;
-    //         }
-    //         nibble_len += 1;
-    //     }
-    //     vec
-    //     // let mut prefix_ids = Vec::new();
-    //     // let pfxbitarr = self.pfxbitarr.load();
-    // }
-
-    // pub(crate) fn empty(len: u8) -> Self {
-    //     // let arr = array_init::array_init(|_| AtomicUsize::new(0));
-    //     let mut v: Vec<AtomicUsize> = Vec::new();
-    //     for _ in 0..len {
-    //         v.push(AtomicUsize::new(0));
-    //     }
-    //     PrefixSet(v.into_boxed_slice(), len)
-    // }
-
     pub fn init(size: usize) -> Self {
         let mut l = Owned::<[MaybeUninit<StoredPrefix<AF, M>>]>::init(size);
         info!("creating space for {} prefixes in prefix_set", &size);
@@ -480,18 +328,6 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
 
         recurse_len(self)
     }
-
-    // pub(crate) fn get_serial_at<'a>(
-    //     &'a mut self,
-    //     index: usize,
-    //     guard: &'a Guard,
-    // ) -> &mut AtomicUsize {
-    //     unsafe {
-    //         self.0.load(Ordering::Relaxed, guard).deref_mut()[index as usize]
-    //             .assume_init_mut()
-    //     }
-    //     .get_serial_mut()
-    // }
 
     pub(crate) fn get_by_index<'a>(
         &'a self,
@@ -592,8 +428,6 @@ impl<
 
     fn acquire_new_node_id(
         &self,
-        // sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
-        //
         (prefix_net, sub_prefix_len): (Self::AF, u8),
     ) -> StrideNodeId<Self::AF> {
         StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
@@ -643,14 +477,6 @@ impl<
             ),
         }
     }
-
-    // fn store_node_in_store(
-    //     _store: &mut StrideWriteStore<Self::AF>,
-    //     _id: StrideNodeId<Self::AF>,
-    //     _next_node: SizedStrideNode<Self::AF>,
-    // ) -> Option<StrideNodeId<Self::AF>> {
-    //     unimplemented!()
-    // }
 
     #[allow(clippy::type_complexity)]
     fn update_node(
@@ -702,22 +528,6 @@ impl<
             }
         };
     }
-
-    // fn update_node_in_store(
-    //     &self,
-    //     _store: &mut StrideWriteStore<Self::AF>,
-    //     _current_node_id: StrideNodeId<Self::AF>,
-    //     _updated_node: SizedStrideNode<Self::AF>,
-    // ) {
-    //     todo!()
-    // }
-
-    // fn retrieve_node(
-    //     &self,
-    //     _id: StrideNodeId<AF>,
-    // ) -> SizedNodeRefOption<'_, Self::AF> {
-    //     unimplemented!()
-    // }
 
     #[allow(clippy::type_complexity)]
     fn retrieve_node_with_guard<'a>(
@@ -1270,14 +1080,6 @@ impl<
         }
     }
 
-    // fn get_prefixes(&'_ self) -> &'_ PrefixBuckets<Self::AF, Self::Meta> {
-    //     &self.prefixes
-    // }
-
-    // fn get_prefixes_clear(&self) -> &PrefixHashMap<Self::AF, Self::Meta> {
-    //     &self.prefixes
-    // }
-
     fn get_prefixes_len(&self) -> usize {
         (0..=AF::BITS)
             .map(|pfx_len| -> usize {
@@ -1288,38 +1090,12 @@ impl<
             .sum()
     }
 
-    // fn prefixes_iter<'a>(
-    //     &'a self,
-    //     guard: &'a Guard,
-    // ) -> PrefixesLengthsIter<Self::AF, Self::Meta, PB> {
-    //     PrefixesLengthsIter {
-    //         prefixes: &self.prefixes,
-    //         cur_prefix_set: self.prefixes.get_root_prefix_set(0),
-    //         cur_len: 0,
-    //         _af: PhantomData,
-    //         _meta: PhantomData,
-    //     }
-    // }
 
     // Stride related methods
 
     fn get_stride_for_id(&self, id: StrideNodeId<Self::AF>) -> u8 {
         self.buckets.get_stride_for_id(id)
     }
-
-    // fn get_stride_for_id_with_read_store(
-    //     &self,
-    //     id: StrideNodeId<Self::AF>,
-    // ) -> (StrideNodeId<Self::AF>, StrideReadStore<Self::AF>) {
-    //     todo!()
-    // }
-
-    // fn get_stride_for_id_with_write_store(
-    //     &self,
-    //     id: StrideNodeId<Self::AF>,
-    // ) -> (StrideNodeId<Self::AF>, StrideWriteStore<Self::AF>) {
-    //     todo!()
-    // }
 
     fn get_stride_sizes(&self) -> &[u8] {
         self.buckets.get_stride_sizes()
