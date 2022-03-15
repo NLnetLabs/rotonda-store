@@ -15,7 +15,6 @@ pub trait StorageBackend {
     fn init(
         root_node: SizedStrideNode<Self::AF>,
     ) -> Self;
-
     fn acquire_new_node_id(
         &self,
         sub_prefix: (Self::AF, u8),

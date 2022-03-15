@@ -1075,7 +1075,7 @@ impl<
         index: PrefixId<Self::AF>,
     ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>> {
         match index.is_empty() {
-            false => self.prefixes.remove(index), //.map(|p| p.1),
+            false => self.prefixes.remove(index),
             true => None,
         }
     }
@@ -1144,14 +1144,12 @@ pub struct PrefixIter<
     prefixes: &'a PB,
     cur_len: u8,
     cur_bucket: &'a PrefixSet<AF, M>,
-    // cur_bucket: &'a [MaybeUninit<StoredPrefix<AF, M>>],
     cur_level: u8,
     // level depth of IPv4 as defined in rotonda-macros/maps.rs
     // Option(parent, cursor position at the parent)
     // 26 is the max number of levels in IPv6, which is the max number of
     // of both IPv4 and IPv6.
     parent: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
-    // parent: [Option<&'a [MaybeUninit<StoredPrefix<AF, M>>]>; 10],
     cursor: usize,
     guard: &'a Guard,
     _af: PhantomData<AF>,
@@ -1194,8 +1192,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 self.parent = [None; 26];
 
                 // let's continue, get the prefixes for the next length
-                // self.cur_bucket =
-                //     unsafe { self.prefixes.get_root_prefix_set(self.cur_len).0.load(Ordering::Relaxed, self.guard).deref() };
                 self.cur_bucket =
                     self.prefixes.get_root_prefix_set(self.cur_len);
                 continue;
@@ -1262,23 +1258,12 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             // and return that.
                             self.cur_level -= 1;
 
-                            // retrieve the parent and the cursor position where we left off
+                            // move the current bucket to the parent and move
+                            // the cursor position where we left off. The
+                            // next run of the loop will read it.
                             self.cur_bucket = parent.0;
                             self.cursor = parent.1 + 1;
 
-                            // Check if there's a prefix here, return that as the next item,
-                            // or continue in the loop searching for one.
-                            // if let Some(prefix) = self
-                            //     .cur_bucket
-                            //     .get_by_index(
-                            //         self.cursor as usize,
-                            //         self.guard,
-                            //     )
-                            //     .get_prefix_record(self.guard)
-                            // {
-                            //     info!("found prefix {:?}", prefix);
-                            //     return Some(prefix);
-                            // };
                             continue;
                         }
                         None => {
@@ -1311,7 +1296,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             let s_pfx = self
                 .cur_bucket
                 .get_by_index(self.cursor as usize, self.guard);
-            // self.cursor += 1;
             trace!("s_pfx {:?}", s_pfx);
             // DEPTH FIRST ITERATION
             match s_pfx.get_next_bucket(self.guard) {
