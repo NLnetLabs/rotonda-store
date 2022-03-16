@@ -712,6 +712,7 @@ impl<
                     None => {
                         prev_rec = None;
 
+                        // start calculation size of next set
                         let this_level =
                             *PB::get_bits_for_len(pfx_id.get_len(), level)
                                 .unwrap();
@@ -739,7 +740,6 @@ impl<
                             info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
                             PrefixSet(Atomic::null())
                         };
-
                         // End of calculation
                     }
                     // ...update
@@ -753,8 +753,8 @@ impl<
                                 .clone_merge_update(&pfx_rec.meta.unwrap())?,
                         );
                         // Tuck the current record away on the heap.
-                        // This doesn't have to be an aotmid pointer, since
-                        // we're doing this in one transaction.
+                        // This doesn't have to be an atomic pointer, since
+                        // we're doing this in one (atomic) transaction.
                         prev_rec = Some(Box::new(curr_prefix.1.unwrap()));
                         next_set = curr_prefix.2;
                     }

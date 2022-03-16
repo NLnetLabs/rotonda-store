@@ -1,3 +1,4 @@
+use std::ops::Add;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
     fmt::Debug,
@@ -99,10 +100,19 @@ where
     // StrideSize          3      3
     // child pfxs len      /27-29 /30-32
     // child Nodes len     /29    /32
+    pub(crate) fn ptr_iter(&self, base_prefix: StrideNodeId<AF>) -> 
+        impl std::iter::Iterator<Item=StrideNodeId<AF>> {
+            NodeChildIter::<AF,S> {
+                base_prefix,
+                ptrbitarr: self.ptrbitarr.load(),
+                bit_span: 0,
+                _af: PhantomData,
+            }
+    }
 
     pub(crate) fn ptr_vec(
         &self,
-        base_prefix: StrideNodeId<AF>,
+        base_prefix: &StrideNodeId<AF>,
     ) -> Vec<StrideNodeId<AF>> {
         let mut child_node_ids = Vec::new();
         // CRITICAL SECTION ALERT
@@ -155,10 +165,21 @@ where
     // variable.
     //
     // The `bit_span` variable starts counting at every new prefix length.
+    pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
+        impl std::iter::Iterator<Item=PrefixId<AF>> {
+        NodePrefixIter::<AF, S> {
+            pfxbitarr: self.pfxbitarr.to_u64(),
+            base_prefix,
+            len: 1,
+            bit_span: 0,
+            _af: PhantomData,
+            _s: PhantomData,
+        }
+    }
 
     pub(crate) fn pfx_vec(
         &self,
-        base_prefix: &StrideNodeId<AF>
+        base_prefix: StrideNodeId<AF>
     ) -> Vec<PrefixId<AF>> {
         trace!("start going over pfxbitarr with base prefix {:?}", base_prefix);
         trace!("stride_len {}", S::STRIDE_LEN);
@@ -194,11 +215,6 @@ where
         trace!("{:?}", prefix_ids);
         prefix_ids
     }
-
-    // pub(crate) fn get_pfx_serial<'a>(&'a self, base_prefix: PrefixId<AF>, nibble: u32, nibble_len: u8, guard: &'a Guard) -> &mut AtomicUsize {
-    //     let index = <S as Stride>::get_pfx_index(nibble, nibble_len);
-    //     todo!()
-    // }
 
     // Inspects the stride (nibble, nibble_len) to see it there's already a 
     // child node (if not at the last stride) or a prefix (if it's the last
@@ -698,4 +714,78 @@ where
             found_more_specifics_vec,
         )
     }
+}
+
+pub(crate) struct NodeChildIter<AF: AddressFamily, S: Stride> {
+   base_prefix: StrideNodeId<AF>,
+   ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+   bit_span: u32, // start with 0
+   _af: PhantomData<AF>,
+}
+
+impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
+    NodeChildIter<AF, S>
+{
+    type Item = StrideNodeId<AF>;
+    fn next(&mut self) -> Option<Self::Item> {
+        for cursor in self.bit_span..(1 << S::STRIDE_LEN) {
+            let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
+            if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
+                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+            {
+                self.bit_span = cursor + 1;
+                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
+            }    
+            
+        }
+        None
+    }
+}
+
+pub(crate) struct NodePrefixIter<AF: AddressFamily, S: Stride> {
+    base_prefix: StrideNodeId<AF>,
+    pfxbitarr: u64,
+    len: u8, // start with 1
+    bit_span: u32, // start with 0
+    _af: PhantomData<AF>,
+    _s: PhantomData<S>,
+}
+
+impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
+    NodePrefixIter<AF, S> {
+        type Item = PrefixId<AF>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            for cur_len in self.len..=S::STRIDE_LEN {
+                // fancy way of saying the length is muliplied by two every iteration.
+                let inc_len = (1 << cur_len) - 1;
+
+                // the bit_span can be a maximum of five bits for a stride of size5
+                // (the largest for the multithreaded tree), so that's 0001_1111 and
+                // that fits a u8 just fine.
+                for bit_span in self.bit_span..inc_len + 1 {
+                    // shift a 1 all the way to the left, to start counting the
+                    // position. 
+                    let bit_pos: u64 = (1_u64 << (S::BITS - 1)) >> (inc_len + bit_span);
+                    trace!("cmpnibble {:064b} ({} + {})", bit_pos, inc_len, bit_span);
+                    trace!("pfxbitarr {:064b}", self.pfxbitarr);
+                    if (bit_pos | self.pfxbitarr) == self.pfxbitarr {
+                        info!("found prefix with len {} at pos {} pfx len {}", 
+                            cur_len, bit_pos, self.base_prefix.get_len());
+                        let new_prefix = self.base_prefix
+                            .add_nibble(bit_span as u32, cur_len).into();
+                        trace!("found prefix {:?}", new_prefix);
+
+                        // the inner for loop gets skipped if self.bit_span
+                        // is greater than the `inc_len + 1`, so we can
+                        // safely increment it here.
+                        self.bit_span = bit_span + 1;
+                        self.len = cur_len;
+
+                        return Some(new_prefix)
+                    }
+                }
+            }
+            None
+        }     
 }

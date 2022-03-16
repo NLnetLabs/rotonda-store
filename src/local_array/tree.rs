@@ -616,9 +616,9 @@ where
         match self.store.retrieve_node_with_guard(start_node_id, guard) {
             Some(SizedStrideRef::Stride3(n)) => {
                 // let n = store.get(&id).unwrap();
-                found_pfx_vec.extend(n.pfx_vec(&start_node_id));
+                found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
 
-                for child_node in n.ptr_vec(start_node_id) {
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
@@ -627,9 +627,9 @@ where
             }
             Some(SizedStrideRef::Stride4(n)) => {
                 // let n = store.get(&id).unwrap();
-                found_pfx_vec.extend(n.pfx_vec(&start_node_id));
+                found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
 
-                for child_node in n.ptr_vec(start_node_id) {
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
@@ -638,9 +638,9 @@ where
             }
             Some(SizedStrideRef::Stride5(n)) => {
                 // let n = store.get(&id).unwrap();
-                found_pfx_vec.extend(n.pfx_vec(&start_node_id));
+                found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
 
-                for child_node in n.ptr_vec(start_node_id) {
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
