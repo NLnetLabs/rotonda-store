@@ -1,4 +1,3 @@
-use std::ops::Add;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
     fmt::Debug,
@@ -27,13 +26,6 @@ pub struct TreeBitMapNode<
 {
     pub ptrbitarr: <S as Stride>::AtomicPtrSize,
     pub pfxbitarr: <S as Stride>::AtomicPfxSize,
-    // The vec of prefixes hosted by this node, referenced by (bit_id, global
-    // prefix index). This is the exact same type as for the NodeIds, so we
-    // reuse that.
-    // pub pfx_vec: PrefixSet<AF>,
-    // The vec of child nodes hosted by this node, referenced by
-    // (ptrbitarr_index, global vec index). We need the u16 (ptrbitarr_index)
-    // to sort the vec that's stored in the node.
     pub _af: PhantomData<AF>,
 }
 
@@ -47,7 +39,6 @@ where
         f.debug_struct("TreeBitMapNode")
             .field("ptrbitarr", &self.ptrbitarr.load())
             .field("pfxbitarr", &self.pfxbitarr.load())
-            // .field("pfx_vec", &self.pfx_vec)
             .finish()
     }
 }
@@ -64,7 +55,6 @@ where
             "TreeBitMapNode {{ ptrbitarr: {:?}, pfxbitarr: {:?} }}",
             self.ptrbitarr.load(),
             self.pfxbitarr.load(),
-            // self.pfx_vec
         )
     }
 }
@@ -75,31 +65,7 @@ where
     AF: AddressFamily,
     S: Stride
 {
-    // create a vec of all child nodes id
-    //
-    // we don't have a collection of local nodes anymore, since the id of the
-    // node are deterministically generated, as the prefix+len they represent
-    // in the treebitmap. This has both the advantage of using less memory,
-    // and being easier to use in a concurrently updated tree. The
-    // disadvantage is that we have to look up the child nodes on the fly
-    // when we want to iterate over all children of a node.
-    //
-    // ptr child nodes only exist at the last nibble of the stride size
-    // (`child_len`). Since children  in the first nibbles are leaf nodes.
-    // leaf nodes will only be prefixes. So if we have a first stride of
-    // size 5, all ptr nodes wil have StrideNodeIds with len = 5.
-    //
-    // Ex.:
-    //
-    // Stride no.          1       2       3      4       5       6       7       
-    // StrideSize          5       5       4      3       3       3       3      
-    // child pfxs len      /1-5   /5-10    /10-14 /15-17  /18-20  /21-23  /24-26
-    // child Nodes len     /5      /10     /14    /17     /20     /23     /26 
-    //
-    // Stride no.          8      9
-    // StrideSize          3      3
-    // child pfxs len      /27-29 /30-32
-    // child Nodes len     /29    /32
+    // Iterate over all the child node of this node
     pub(crate) fn ptr_iter(&self, base_prefix: StrideNodeId<AF>) -> 
         impl std::iter::Iterator<Item=StrideNodeId<AF>> {
             NodeChildIter::<AF,S> {
@@ -110,61 +76,7 @@ where
             }
     }
 
-    pub(crate) fn ptr_vec(
-        &self,
-        base_prefix: &StrideNodeId<AF>,
-    ) -> Vec<StrideNodeId<AF>> {
-        let mut child_node_ids = Vec::new();
-        // CRITICAL SECTION ALERT
-        let ptrbitarr = self.ptrbitarr.load();
-        // iterate over all the possible values for this `nibble_len`, e.g.
-        // two bits can have 4 different values.
-        for nibble in 0..(1 << S::STRIDE_LEN) {
-            // move the nibble left with the amount of bits we're going to
-            // loop over.
-            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
-            // becomes 0000 0000 0000 1100, then it will iterate over 
-            // ...1100,...1101,...1110,...1111
-            let bit_pos = S::get_bit_pos(nibble, S::STRIDE_LEN);
-
-            // CRITICAL SECTION ALERT!
-            if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
-            {
-                child_node_ids.push(
-                    base_prefix.add_nibble(nibble, S::STRIDE_LEN)
-                );
-            }
-        }
-
-        child_node_ids
-    }
-
-    // Create a vec of all prefix ids hosted by this node.
-
-    // Partition for stride 3
-    //
-    // pfxbitarr   (AF::BITS)  0 1 2  3  4  5  6   7   8   9  10  11  12  13  14 
-    // bit_span (binary)       * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 * *
-    // bit_span (dec.)         * 0 1  0  1  2  3   0   1   2   3   4   5   6   7 * *
-    // len                     0 1   2           3                               
-    //
-    // pfxbitarr (example)     1 0 0 0  0  0  1  1   1   0   0   0   0   0   0   0 0
-    // pos (example)           0 0 0 0  0  0  0  0   1   0   0   0   0   0   0   0 0                  
-    //
-    // Ex.:
-    // `pos` describes the bit that is currently under consideration. 
-    // 
-    // `pfxbitarr` is the bitmap that contains the prefixes. Every 1 in the
-    // bitmap means that the prefix is hosted by this node. Moreover, the
-    // position in the bitmap describes the address part of the prefix, given
-    // a `base prefix`. The descibed prefix is the bits of the `base_prefix`
-    // bitmap appended by the `bit span` bits.
-    //
-    // The length of the prefix is
-    // described by sum of the length of the base_prefix and the `len`
-    // variable.
-    //
-    // The `bit_span` variable starts counting at every new prefix length.
+    // Iteratate over all the prefix ids contained in this node
     pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
         impl std::iter::Iterator<Item=PrefixId<AF>> {
         NodePrefixIter::<AF, S> {
@@ -175,45 +87,6 @@ where
             _af: PhantomData,
             _s: PhantomData,
         }
-    }
-
-    pub(crate) fn pfx_vec(
-        &self,
-        base_prefix: StrideNodeId<AF>
-    ) -> Vec<PrefixId<AF>> {
-        trace!("start going over pfxbitarr with base prefix {:?}", base_prefix);
-        trace!("stride_len {}", S::STRIDE_LEN);
-
-        let mut prefix_ids: Vec<PrefixId<AF>> = Vec::new();
-        let pfxbitarr = self.pfxbitarr.to_u64();
-        trace!("pfxbitarr {:064b}", pfxbitarr);
-        for len in 1..=S::STRIDE_LEN {
-            // fancy way of saying the length is muliplied by two every iteration.
-            let inc_len = (1 << len) - 1;
-
-            // the bit_span can be a maximum of five bits for a stride of size5
-            // (the largest for the multithreaded tree), so that's 0001_1111 and
-            // that fits a u8 just fine.
-            for bit_span in 0_u8..inc_len + 1 {
-                // shift a 1 all the way to the left, to start counting the
-                // position. 
-                let bit_pos: u64 = (1_u64 << (S::BITS - 1)) >> (inc_len + bit_span);
-                trace!("cmpnibble {:064b} ({} + {})", bit_pos, inc_len, bit_span);
-                trace!("pfxbitarr {:064b}", pfxbitarr);
-                if (bit_pos | pfxbitarr) == pfxbitarr {
-                    info!("found prefix with len {} at pos {} pfx len {}", len, bit_pos, base_prefix.get_len());
-                    let new_prefix = base_prefix
-                        // .add_to_len(len)
-                        .add_nibble(bit_span as u32, len).into();
-                    trace!("found prefix {:?}", new_prefix);
-                    prefix_ids.push(
-                        new_prefix
-                    );
-                }
-            }  
-        }
-        trace!("{:?}", prefix_ids);
-        prefix_ids
     }
 
     // Inspects the stride (nibble, nibble_len) to see it there's already a 
@@ -716,6 +589,36 @@ where
     }
 }
 
+
+// ----------- NodeChildIter ------------------------------------------------
+
+// create an iterator over all child nodes id
+//
+// we don't have a collection of local nodes anymore, since the id of the
+// node are deterministically generated, as the prefix+len they represent
+// in the treebitmap. This has both the advantage of using less memory,
+// and being easier to use in a concurrently updated tree. The
+// disadvantage is that we have to look up the child nodes on the fly
+// when we want to iterate over all children of a node.
+//
+// ptr child nodes only exist at the last nibble of the stride size
+// (`child_len`). Since children  in the first nibbles are leaf nodes.
+// leaf nodes will only be prefixes. So if we have a first stride of
+// size 5, all ptr nodes wil have StrideNodeIds with len = 5.
+//
+// Ex.:
+//
+// Stride no.          1       2       3      4       5       6       7       
+// StrideSize          5       5       4      3       3       3       3      
+// child pfxs len      /1-5   /5-10    /10-14 /15-17  /18-20  /21-23  /24-26
+// child Nodes len     /5      /10     /14    /17     /20     /23     /26 
+//
+// Stride no.          8      9
+// StrideSize          3      3
+// child pfxs len      /27-29 /30-32
+// child Nodes len     /29    /32
+
+
 pub(crate) struct NodeChildIter<AF: AddressFamily, S: Stride> {
    base_prefix: StrideNodeId<AF>,
    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
@@ -728,7 +631,14 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
 {
     type Item = StrideNodeId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
+        // iterate over all the possible values for this stride length, e.g.
+        // two bits can have 4 different values.
         for cursor in self.bit_span..(1 << S::STRIDE_LEN) {
+            // move the bit_span left with the amount of bits we're going to
+            // loop over.
+            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
+            // becomes 0000 0000 0000 1100, then it will iterate over 
+            // ...1100,...1101,...1110,...1111
             let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
             if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
                 <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
@@ -741,6 +651,35 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         None
     }
 }
+
+// ----------- NodePrefixIter -----------------------------------------------
+
+// Create an iterator of all prefix ids hosted by this node.
+
+// Partition for stride 3
+//
+// pfxbitarr (AF::BITS)  0 1 2  3  4  5  6   7   8   9  10  11  12  13  14 
+// bit_span (binary)     * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 * *
+// bit_span (dec.)       * 0 1  0  1  2  3   0   1   2   3   4   5   6   7 * *
+// len                   0 1   2           3                               
+//
+// pfxbitarr (example)   1 0 0 0  0  0  1  1   1   0   0   0   0   0   0   0 0
+// pos (example)         0 0 0 0  0  0  0  0   1   0   0   0   0   0   0   0 0                  
+//
+// Ex.:
+// `pos` describes the bit that is currently under consideration. 
+// 
+// `pfxbitarr` is the bitmap that contains the prefixes. Every 1 in the
+// bitmap means that the prefix is hosted by this node. Moreover, the
+// position in the bitmap describes the address part of the prefix, given
+// a `base prefix`. The descibed prefix is the bits of the `base_prefix`
+// bitmap appended by the `bit span` bits.
+//
+// The length of the prefix is
+// described by sum of the length of the base_prefix and the `len`
+// variable.
+//
+// The `bit_span` variable starts counting at every new prefix length.
 
 pub(crate) struct NodePrefixIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
