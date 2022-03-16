@@ -16,6 +16,19 @@ use crate::af::AddressFamily;
 
 //------------ TreeBitMap Node ----------------------------------------------
 
+// The treebitmap turned into a triebitmap, really. A Node in the treebitmap
+// now only holds a ptrbitarr bitmap and a pfxbitarr bitmap, that indicate
+// whether a node or a prefix exists in that spot. The corresponding node Ids
+// and prefix ids are calcaluted from their position in the array. Nodes do
+// *NOT* have a clue where they are in the tree, so they don't know the node
+// id they represent. Instead, the node id is calculated from the position in
+// the tree. That's why several methods take a `base_prefix` as a an argument:
+// it represents the ID of the node itself.
+//
+// The elision of both the collection of children nodes and the prefix nodes in
+// a treebitmap node is enabled by the storage backend for the multi-threaded
+// store, since holds its entries keyed on the [node|prefix] id. (in contrast
+// with arrays or vecs, that have 
 pub struct TreeBitMapNode<
     AF,
     S,
@@ -373,9 +386,6 @@ where
                 // consider the complete nibble.
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + nibble_len), start_bit + nibble_len);
-                    // f_pfx.set_serial(
-                    //     self.get_pfx_serial(f_pfx, nibble, nibble_len, guard).load(Ordering::Acquire)
-                    // );
                     found_pfx = Some(f_pfx);
                 }
             }
@@ -442,22 +452,14 @@ where
                     let f_pfx =
                         PrefixId::new(
                             search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l);
-                        // f_pfx
-                        // .set_serial(self.get_pfx_serial(f_pfx,nibble, n_l, guard).load(std::sync::atomic::Ordering::Acquire));
                         found_pfx = Some(f_pfx);
-                        // self.pfx_vec.to_vec()
-                            // [S::get_pfx_index(nibble, n_l)],
-                    // );
                 }
 
                 // Receiving a less_specifics_vec means that the user wants to
                 // have all the last-specific prefixes returned, so add the
                 // found prefix.
                 let f_pfx = PrefixId::new(search_pfx.net.truncate_to_len(start_bit + n_l), start_bit + n_l);
-                // f_pfx.set_serial(self.get_pfx_serial(f_pfx, nibble,n_l,guard).load(Ordering::Acquire));
                 ls_vec.push(f_pfx);
-                    // self.pfx_vec.to_vec()[S::get_pfx_index(nibble, n_l)],
-                // );
             }
         }
 
