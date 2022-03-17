@@ -184,18 +184,18 @@ impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     }
 }
 
-impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>>
-    for StrideNodeId<AF>
-{
-    fn from(id: AtomicStrideNodeId<AF>) -> Self {
-        let i = match id.index.load(Ordering::Relaxed) {
-            0 => None,
-            // THIS DOESN'T ACTUALLY WORK. TEMPORARY.
-            x => Some((x.into(), 0)),
-        };
-        Self(i)
-    }
-}
+// impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>>
+//     for StrideNodeId<AF>
+// {
+//     fn from(id: AtomicStrideNodeId<AF>) -> Self {
+//         let i = match id.index.load(Ordering::Relaxed) {
+//             0 => None,
+//             // THIS DOESN'T ACTUALLY WORK. TEMPORARY.
+//             x => Some((x.into(), 0)),
+//         };
+//         Self(i)
+//     }
+// }
 
 impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
     for PrefixId<AF>
@@ -206,17 +206,17 @@ impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
     }
 }
 
-impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
-    for StrideNodeId<AF>
-{
-    fn from(id: &AtomicStrideNodeId<AF>) -> Self {
-        let i = match id.index.load(Ordering::Relaxed) {
-            0 => None,
-            x => Some((x.into(), 0)),
-        };
-        Self(i)
-    }
-}
+// impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
+//     for StrideNodeId<AF>
+// {
+//     fn from(id: &AtomicStrideNodeId<AF>) -> Self {
+//         let i = match id.index.load(Ordering::Relaxed) {
+//             0 => None,
+//             x => Some((x.into(), 0)),
+//         };
+//         Self(i)
+//     }
+// }
 
 #[derive(Debug)]
 pub struct AtomicStrideNodeId<AF: AddressFamily> {
@@ -396,7 +396,6 @@ where
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-                    // pfx_vec: PrefixSet::init(14),
                     _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
@@ -405,7 +404,6 @@ where
                 root_node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
-                    // pfx_vec: PrefixSet::init(30),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
@@ -414,7 +412,6 @@ where
                 root_node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
-                    // pfx_vec: PrefixSet::init(62),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
@@ -574,8 +571,6 @@ where
         start_node_id: StrideNodeId<Store::AF>,
         found_pfx_vec: &mut Vec<PrefixId<Store::AF>>,
     ) {
-        // match self.retrieve_node(start_node_id).unwrap() {
-        // let (id , store) = self.store.get_stride_for_id(start_node_id);
         let guard = &epoch::pin();
 
         info!("start assembling all more specific prefixes here");
@@ -585,7 +580,6 @@ where
         );
         match self.store.retrieve_node_with_guard(start_node_id, guard) {
             Some(SizedStrideRef::Stride3(n)) => {
-                // let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -596,7 +590,6 @@ where
                 }
             }
             Some(SizedStrideRef::Stride4(n)) => {
-                // let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -607,7 +600,6 @@ where
                 }
             }
             Some(SizedStrideRef::Stride5(n)) => {
-                // let n = store.get(&id).unwrap();
                 found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
 
                 for child_node in n.ptr_iter(start_node_id) {
