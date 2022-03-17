@@ -14,7 +14,7 @@ pub use crate::local_array::store::custom_alloc;
 
 //------------ The publicly available Rotonda Stores ------------------------
 
-pub use crate::local_array::store::Store as MultiThreadedStore;
+pub use crate::local_array::store::DefaultStore as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
 
 use self::custom_alloc::{PrefixBuckets, PrefixIter};
@@ -149,7 +149,7 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-//------------ HashMapPrefixRecordIterator ----------------------------------
+//------------ Iterator for CustomAlloc -------------------------------------
 pub struct CustomAllocPrefixRecordIterator<
     'a,
     Meta: routecore::record::Meta,

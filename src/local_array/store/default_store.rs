@@ -7,7 +7,7 @@ use crate::prelude::*;
     [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     4, 4, 4, 4, 4, 4, 4, 4, 4]
 ))]
-struct Store;
+struct DefaultStore;
 
 impl<
         Meta: routecore::record::Meta + MergeUpdate,

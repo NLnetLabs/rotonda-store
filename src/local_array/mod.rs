@@ -6,7 +6,6 @@ mod tests;
 
 pub mod store;
 pub(crate) use store::*;
-pub use store::default_store::Store as Store;
 
 #[macro_use]
 mod macros;
