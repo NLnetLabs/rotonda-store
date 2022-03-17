@@ -223,24 +223,6 @@ impl<
     }
 }
 
-// impl<'a, Meta: routecore::record::Meta + 'a> std::fmt::Display
-//     for HashMapPrefixRecordIterator<'a, Meta>
-// {
-//     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-//         write!(f, "some kind of prefixes iterator")
-//     }
-// }
-
-// impl<'a, Meta: routecore::record::Meta + 'a> std::iter::FromIterator<routecore::bgp::PrefixRecord<'a, Meta>> for HashMapPrefixRecordIterator<'a, Meta> {
-//     fn from_iter<
-//         I: IntoIterator<Item = routecore::bgp::PrefixRecord<'a, Meta>>,
-//     >(
-//         iter: I,
-//     ) -> Self {
-
-//     }
-// }
-
 //------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
@@ -277,31 +259,6 @@ impl<'a, Meta: routecore::record::Meta> Iterator
         self.next()
     }
 }
-
-// impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
-//     for PrefixRecordIter<'a, Meta>
-// {
-//     fn next_back(&mut self) -> Option<Self::Item> {
-//         // V4 is already done.
-//         if self.v4.is_none() {
-//             return self.v6.next_back().map(|res| {
-//                 PrefixRecord::new(
-//                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-//                     res.meta.as_ref().unwrap(),
-//                 )
-//             });
-//         }
-
-//         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
-//             return Some(PrefixRecord::new(
-//                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-//                 res.meta.as_ref().unwrap(),
-//             ));
-//         }
-//         self.v4 = None;
-//         self.next_back()
-//     }
-// }
 
 //------------- QueryResult -------------------------------------------------
 
