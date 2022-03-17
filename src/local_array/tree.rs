@@ -463,7 +463,7 @@ where
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
     pub fn insert(
-        &mut self,
+        &self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if pfx.len == 0 {
@@ -551,7 +551,7 @@ where
     //  for that prefix and make sure we start searching/inserting with one
     //   of those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
-        &mut self,
+        &self,
         new_meta: Store::Meta,
     ) -> Result<(), Box<dyn std::error::Error>> {
         trace!("Updating the default route...");

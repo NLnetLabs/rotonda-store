@@ -438,14 +438,14 @@ impl<
     // Next node will be ignored if a node with the same `id` already exists.
     #[allow(clippy::type_complexity)]
     fn store_node(
-        &mut self,
+        &self,
         id: StrideNodeId<Self::AF>,
         next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<Self::AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
-                &mut NodeSet<AF, S>,
+                &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
                 u8,
             ) -> Option<StrideNodeId<AF>>,
@@ -459,19 +459,19 @@ impl<
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
-                self.buckets.get_store3_mut(id),
+                self.buckets.get_store3(id),
                 new_node,
                 0,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
-                self.buckets.get_store4_mut(id),
+                self.buckets.get_store4(id),
                 new_node,
                 0,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
-                self.buckets.get_store5_mut(id),
+                self.buckets.get_store5(id),
                 new_node,
                 0,
             ),
@@ -480,14 +480,14 @@ impl<
 
     #[allow(clippy::type_complexity)]
     fn update_node(
-        &mut self,
+        &self,
         id: StrideNodeId<AF>,
         updated_node: SizedStrideRefMut<AF>,
     ) {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
-                &mut NodeSet<AF, S>,
+                &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
                 u8,
             ) -> Option<StrideNodeId<AF>>,
@@ -502,7 +502,7 @@ impl<
                 let new_node = std::mem::take(new_node);
                 (search_level_3.f)(
                     &search_level_3,
-                    self.buckets.get_store3_mut(id),
+                    self.buckets.get_store3(id),
                     new_node,
                     // Self::len_to_store_bits(id.get_id().1),
                     0,
@@ -512,7 +512,7 @@ impl<
                 let new_node = std::mem::take(new_node);
                 (search_level_4.f)(
                     &search_level_4,
-                    self.buckets.get_store4_mut(id),
+                    self.buckets.get_store4(id),
                     new_node,
                     0,
                 )
@@ -521,7 +521,7 @@ impl<
                 let new_node = std::mem::take(new_node);
                 (search_level_5.f)(
                     &search_level_5,
-                    self.buckets.get_store5_mut(id),
+                    self.buckets.get_store5(id),
                     new_node,
                     0,
                 )
@@ -680,7 +680,7 @@ impl<
 
     #[allow(clippy::type_complexity)]
     fn upsert_prefix(
-        &mut self,
+        &self,
         pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pfx_id = PrefixId::new(pfx_rec.net, pfx_rec.len);
@@ -801,7 +801,7 @@ impl<
 
     #[allow(clippy::type_complexity)]
     fn retrieve_prefix_mut_with_guard<'a>(
-        &'a mut self,
+        &'a self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
     ) -> (&'a mut StoredPrefix<Self::AF, Self::Meta>, u8) {

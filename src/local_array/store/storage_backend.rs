@@ -20,12 +20,12 @@ pub trait StorageBackend {
         sub_prefix: (Self::AF, u8),
     ) -> StrideNodeId<Self::AF>;
     fn store_node(
-        &mut self,
+        &self,
         id: StrideNodeId<Self::AF>,
         next_node: SizedStrideNode<Self::AF>,
     ) -> Option<StrideNodeId<Self::AF>>;
     fn update_node(
-        &mut self,
+        &self,
         current_node_id: StrideNodeId<Self::AF>,
         updated_node: SizedStrideRefMut<Self::AF>,
     );
@@ -60,7 +60,7 @@ pub trait StorageBackend {
         serial: usize,
     ) -> Option<PrefixId<Self::AF>>;
     fn upsert_prefix(
-        &mut self,
+        &self,
         pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
     ) -> Result<(), Box<dyn std::error::Error>>;
     fn retrieve_prefix(
@@ -83,7 +83,7 @@ pub trait StorageBackend {
     // the correct length of its Next PrefixSet. This method is used by
     // `upsert_prefix`.
     fn retrieve_prefix_mut_with_guard<'a>(
-        &'a mut self,
+        &'a self,
         id: PrefixId<Self::AF>,
         guard: &'a Guard,
     ) -> (&'a mut StoredPrefix<Self::AF, Self::Meta>, u8);
