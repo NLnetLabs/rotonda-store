@@ -410,7 +410,7 @@ impl<
     fn init(root_node: SizedStrideNode<Self::AF>) -> Self {
         trace!("initialize storage backend");
 
-        let mut store = CustomAllocStorage {
+        let store = CustomAllocStorage {
             buckets: NB::init(),
             prefixes: PB::init(),
             // len_to_stride_size,
