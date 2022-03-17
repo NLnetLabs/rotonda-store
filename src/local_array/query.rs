@@ -46,7 +46,6 @@ where
 
     pub fn match_prefix(
         &'a self,
-        // prefix_store: &'a PrefixHashMap<Store::AF, Store::Meta>,
         search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
         options: &MatchOptions,
         guard: &'a Guard,
@@ -484,7 +483,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                                
+
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
