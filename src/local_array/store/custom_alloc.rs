@@ -80,18 +80,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     pub(crate) fn empty() -> Self {
         StoredPrefix(Atomic::new((0, None, PrefixSet(Atomic::null()), None)))
     }
-    // fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8> {
-    //     todo!()
-    // }
-    // fn get_store_mut(
-    //     &mut self,
-    //     id: StrideNodeId<AF>,
-    // ) -> &mut NodeSet<AF, Stride3> {
-    //     todo!()
-    // }
-    // fn get_store(&self, id: PrefixId<AF>) -> &NodeSet<AF, Stride3> {
-    //     todo!()
-    // }
+    
     pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
         StoredPrefix(Atomic::new((
             1,
@@ -106,10 +95,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         let pfx = self.0.load(Ordering::Relaxed, guard);
         pfx.is_null() || unsafe { pfx.deref() }.1.is_none()
     }
-
-    // pub(crate) fn get_serial_mut(&mut self) -> &mut AtomicUsize {
-    //     &mut self.0.load(Ordering::Relaxed, guard).0
-    // }
 
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
@@ -233,13 +218,6 @@ where
     Self: Sized,
 {
     fn init() -> Self;
-    // fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
-    // fn get<'a>(
-    //     &'a self,
-    //     id: PrefixId<AF>,
-    // ) -> Option<&'a InternalPrefixRecord<AF, M>>;
-    // fn len(&self) -> usize;
-    // fn iter<'a>(&'a self, guard: &'a Guard) -> PrefixIter<'a, AF, M>;
     fn remove(
         &mut self,
         id: PrefixId<AF>,
@@ -319,44 +297,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         }
     }
 
-    // fn iter<'a>(&'a self, guard: &'a Guard) -> PrefixIter<'a, AF, M> {
-    //     PrefixIter {
-    //         prefixes_for_len:
-    //         cur_bucket: self,
-    //         cur_len: 0,
-    //         cur_level: 0,
-    //         cur_max_index: 0,
-    //         cursor: 0,
-    //         guard,
-    //         _af: PhantomData,
-    //     }
-    // }
 }
 
-// impl<AF: AddressFamily, M: Meta> std::ops::Index<usize> for PrefixSet<AF, M> {
-//     type Output = StoredPrefix<AF, M>;
-
-//     fn index(&self, idx: usize) -> &StoredPrefix<AF, M> {
-//         let guard = &epoch::pin();
-//         unsafe {
-//             self.0.load(Ordering::Relaxed, guard).as_ref().unwrap()
-//                 [idx as usize]
-//                 .assume_init_ref()
-//         }
-//     }
-// }
-
-// impl<AF: AddressFamily, M: Meta> std::ops::IndexMut<usize>
-//     for PrefixSet<AF, M>
-// {
-//     fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-//         let guard = &epoch::pin();
-//         unsafe {
-//             self.0.load(Ordering::Relaxed, guard).deref_mut()[idx as usize]
-//                 .assume_init_mut()
-//         }
-//     }
-// }
 
 // ----------- CustomAllocStorage Implementation ----------------------------
 //
@@ -975,7 +917,6 @@ impl<
                 &PrefixSet<AF, M>,
                 u8,
                 &'a Guard,
-                // InternalPrefixRecord<AF, M>,
             ) -> Option<(
                 &'a InternalPrefixRecord<AF, M>,
                 &'a usize,
@@ -985,7 +926,6 @@ impl<
         let search_level = SearchLevel {
             f: &|search_level: &SearchLevel<AF, Meta>,
                  prefix_set: &PrefixSet<AF, Meta>,
-                 //  new_prefix: InternalPrefixRecord<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
@@ -1259,7 +1199,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         }
                     };
                 }
-                // continue;
             };
 
             // we're somewhere in the PrefixSet iteration, read the next StoredPrefix.
