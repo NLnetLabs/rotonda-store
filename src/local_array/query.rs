@@ -51,15 +51,10 @@ where
         options: &MatchOptions,
         guard: &'a Guard,
     ) -> QueryResult<'a, Store::Meta> {
-        // let prefixes1 = self.store.get_prefixes();
-        // // let prefixes2 = self.store.get_prefixes();
-        // let nodes3 = self.store.nodes3_read();
-        // let nodes4 = self.store.nodes4_read();
-        // let nodes5 = self.store.nodes5_read();
-        // --- The Default Prefix ------------------------------------------
+        // --- The Default Route Prefix -------------------------------------
 
-        // The Default Prefix unfortunately does not fit in tree as we have
-        // it. There's no room for it in the pfxbitarr of the root node,
+        // The Default Route Prefix unfortunately does not fit in tree as we
+        // have it. There's no room for it in the pfxbitarr of the root node,
         // since that can only contain serial numbers for prefixes that are
         // children of the root node. We, however, want the default prefix
         // which lives on the root node itself! We are *not* going to return
@@ -106,9 +101,7 @@ where
 
         let mut stride_end = 0;
 
-        // let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
         let root_node_id = self.get_root_node_id();
-        // let guard = &epoch::pin();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
             3 => self
                 .store
@@ -252,26 +245,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // node = SizedStrideRef::Stride3(
-                            //     nodes3.get(&n).unwrap(),
-                            // );
-                            // match self.store.get_stride_for_id(n) {
-                            //     super::node::StrideType::Stride3 => {
-                            //         node = SizedStrideRef::Stride3(
-                            //             &nodes3.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride4 => {
-                            //         node = SizedStrideRef::Stride4(
-                            //             &nodes4.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride5 => {
-                            //         node = SizedStrideRef::Stride5(
-                            //             &nodes5.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            // }
+
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -373,26 +347,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // node = SizedStrideRef::Stride4(
-                            //     nodes4.get(&n).unwrap(),
-                            // );
-                            // match self.store.get_stride_for_id(n) {
-                            //     super::node::StrideType::Stride3 => {
-                            //         node = SizedStrideRef::Stride3(
-                            //             &nodes3.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride4 => {
-                            //         node = SizedStrideRef::Stride4(
-                            //             &nodes4.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride5 => {
-                            //         node = SizedStrideRef::Stride5(
-                            //             &nodes5.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            // }
+
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -414,26 +369,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // node = SizedStrideRef::Stride4(
-                            //     nodes4.get(&n).unwrap(),
-                            // );
-                            // match self.store.get_stride_for_id(n) {
-                            //     super::node::StrideType::Stride3 => {
-                            //         node = SizedStrideRef::Stride3(
-                            //             &nodes3.entry(n).or_default(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride4 => {
-                            //         node = SizedStrideRef::Stride4(
-                            //             &nodes4.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride5 => {
-                            //         node = SizedStrideRef::Stride5(
-                            //             &nodes5.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            // }
+                                
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -524,31 +460,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // trace!("node {}", n);
-                            // trace!(
-                            //     "Stride {}",
-                            //     self.store.get_stride_for_id(n)
-                            // );
-                            // node = SizedStrideRef::Stride5(
-                            //     nodes5.get(&n).unwrap(),
-                            // );
-                            // match self.store.get_stride_for_id(n) {
-                            //     super::node::StrideType::Stride3 => {
-                            //         node = SizedStrideRef::Stride3(
-                            //             &nodes3.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride4 => {
-                            //         node = SizedStrideRef::Stride4(
-                            //             &nodes4.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride5 => {
-                            //         node = SizedStrideRef::Stride5(
-                            //             &nodes5.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            // }
+
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
@@ -572,26 +484,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                            // node = SizedStrideRef::Stride5(
-                            //     nodes5.get(&n).unwrap(),
-                            // );
-                            // match self.store.get_stride_for_id(n) {
-                            //     super::node::StrideType::Stride3 => {
-                            //         node = SizedStrideRef::Stride3(
-                            //             &nodes3.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride4 => {
-                            //         node = SizedStrideRef::Stride4(
-                            //             &nodes4.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            //     super::node::StrideType::Stride5 => {
-                            //         node = SizedStrideRef::Stride5(
-                            //             &nodes5.get(&n).unwrap(),
-                            //         );
-                            //     }
-                            // }
+                                
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
