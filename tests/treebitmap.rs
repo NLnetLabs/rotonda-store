@@ -66,7 +66,7 @@ mod tests {
 
     #[test]
     fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let mut tree_bitmap = MultiThreadedStore::<NoMeta>::new();
+            let tree_bitmap = MultiThreadedStore::<NoMeta>::new();
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()

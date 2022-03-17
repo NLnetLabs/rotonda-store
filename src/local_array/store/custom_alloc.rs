@@ -134,14 +134,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.1
     }
 
-    pub(crate) fn get_prefix_record_mut<'a>(
-        &'a mut self,
-        guard: &'a Guard,
-    ) -> &'a mut Option<InternalPrefixRecord<AF, Meta>> {
-        // let guard = &epoch::pin();
-        &mut unsafe { self.0.load(Ordering::Relaxed, guard).deref_mut() }.1
-    }
-
     // PrefixSet is an Atomic that might be a null pointer, which is
     // UB! Therefore we keep the prefix record in an Option: If
     // that Option is None, then the PrefixSet is a null pointer and
@@ -229,18 +221,6 @@ pub trait NodeBuckets<AF: AddressFamily> {
     fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
     fn get_stride_sizes(&self) -> &[u8];
     fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8;
-    fn get_store3_mut(
-        &mut self,
-        id: StrideNodeId<AF>,
-    ) -> &mut NodeSet<AF, Stride3>;
-    fn get_store4_mut(
-        &mut self,
-        id: StrideNodeId<AF>,
-    ) -> &mut NodeSet<AF, Stride4>;
-    fn get_store5_mut(
-        &mut self,
-        id: StrideNodeId<AF>,
-    ) -> &mut NodeSet<AF, Stride5>;
     fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
     fn get_store4(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4>;
     fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5>;
@@ -265,7 +245,6 @@ where
         id: PrefixId<AF>,
     ) -> Option<InternalPrefixRecord<AF, M>>;
     fn get_root_prefix_set(&self, len: u8) -> &'_ PrefixSet<AF, M>;
-    fn get_root_prefix_set_mut(&mut self, len: u8) -> &mut PrefixSet<AF, M>;
     fn get_bits_for_len(len: u8, level: u8) -> Option<&'static u8>;
 }
 

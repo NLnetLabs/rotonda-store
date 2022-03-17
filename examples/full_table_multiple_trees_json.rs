@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap = MyStore::<PrefixAs>::new();
+            let tree_bitmap = MyStore::<PrefixAs>::new();
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);

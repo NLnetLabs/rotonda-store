@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+    let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);

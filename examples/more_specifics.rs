@@ -7,7 +7,7 @@ use routecore::addr::Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
-    let mut tree_bitmap =
+    let tree_bitmap =
         MultiThreadedStore::<PrefixAs>::new();
     let pfxs = vec![
         Prefix::new_relaxed(

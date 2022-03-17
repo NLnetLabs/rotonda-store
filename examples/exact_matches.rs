@@ -9,7 +9,7 @@ use routecore::record::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
-    let mut tree_bitmap = MultiThreadedStore::<NoMeta>::new();
+    let tree_bitmap = MultiThreadedStore::<NoMeta>::new();
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
