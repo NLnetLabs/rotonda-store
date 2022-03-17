@@ -184,19 +184,6 @@ impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     }
 }
 
-// impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>>
-//     for StrideNodeId<AF>
-// {
-//     fn from(id: AtomicStrideNodeId<AF>) -> Self {
-//         let i = match id.index.load(Ordering::Relaxed) {
-//             0 => None,
-//             // THIS DOESN'T ACTUALLY WORK. TEMPORARY.
-//             x => Some((x.into(), 0)),
-//         };
-//         Self(i)
-//     }
-// }
-
 impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
     for PrefixId<AF>
 {
@@ -205,18 +192,6 @@ impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
         PrefixId::new(addr_bits, len)
     }
 }
-
-// impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
-//     for StrideNodeId<AF>
-// {
-//     fn from(id: &AtomicStrideNodeId<AF>) -> Self {
-//         let i = match id.index.load(Ordering::Relaxed) {
-//             0 => None,
-//             x => Some((x.into(), 0)),
-//         };
-//         Self(i)
-//     }
-// }
 
 #[derive(Debug)]
 pub struct AtomicStrideNodeId<AF: AddressFamily> {
