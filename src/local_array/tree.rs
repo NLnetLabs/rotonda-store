@@ -31,9 +31,6 @@ pub enum SizedStrideNode<AF: AddressFamily> {
     Stride3(TreeBitMapNode<AF, Stride3>),
     Stride4(TreeBitMapNode<AF, Stride4>),
     Stride5(TreeBitMapNode<AF, Stride5>),
-    // Stride6(TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
 impl<AF, S> Default for TreeBitMapNode<AF, S>
@@ -45,7 +42,6 @@ where
         Self {
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
             pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
-            // pfx_vec: PrefixSet::empty(S::BITS),
             _af: PhantomData,
         }
     }
@@ -59,7 +55,6 @@ where
         SizedStrideNode::Stride3(TreeBitMapNode {
             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-            // pfx_vec: PrefixSet::empty(14),
             _af: PhantomData,
         })
     }
@@ -71,9 +66,6 @@ pub enum SizedStrideRef<'a, AF: AddressFamily> {
     Stride3(&'a TreeBitMapNode<AF, Stride3>),
     Stride4(&'a TreeBitMapNode<AF, Stride4>),
     Stride5(&'a TreeBitMapNode<AF, Stride5>),
-    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 //
 #[derive(Debug)]
@@ -81,9 +73,6 @@ pub enum SizedStrideRefMut<'a, AF: AddressFamily> {
     Stride3(&'a mut TreeBitMapNode<AF, Stride3>),
     Stride4(&'a mut TreeBitMapNode<AF, Stride4>),
     Stride5(&'a mut TreeBitMapNode<AF, Stride5>),
-    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
 }
 
 pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
@@ -103,11 +92,6 @@ impl<AF: AddressFamily> PrefixId<AF> {
     pub fn is_empty(&self) -> bool {
         self.0.is_none()
     }
-
-    // pub fn set_serial(mut self, serial: usize) -> Self {
-    //     self.0.as_mut().unwrap().2 = serial;
-    //     self
-    // }
 
     pub fn get_net(&self) -> AF {
         self.0.unwrap().0
@@ -187,20 +171,6 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
         self.0
     }
 }
-
-// impl<AF: AddressFamily> Default for StrideNodeId<AF> {
-//     fn default() -> Self {
-//         Self(None)
-//     }
-// }
-
-// impl<AF: AddressFamily + From<u32> + From<u16>> std::convert::From<u16>
-//     for StrideNodeId<AF>
-// {
-//     fn from(id: u16) -> Self {
-//         Self(Some((id.into(), 0)))
-//     }
-// }
 
 impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
