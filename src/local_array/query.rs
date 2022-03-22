@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::info;
+use log::{info, trace};
 
 use crate::af::{AddressFamily, Zero};
 use routecore::addr::Prefix;
@@ -23,6 +23,40 @@ impl<'a, Store> TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
+    pub fn more_specifics_iter_from(
+        &'a self,
+        prefix_id: PrefixId<Store::AF>,
+        guard: &'a Guard,
+    ) -> QueryResult<'a, Store::Meta> {
+        let result = self
+            .store
+            .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
+        trace!("more specifics iter from {:?}", result);
+        let prefix = result.0;
+        let more_specifics_vec =
+            result.1.map(|(prefix_id, level, cur_set, parents, index)| {
+                self.store.prefix_iter_from(
+                    prefix_id, level, cur_set, parents, index, guard,
+                )
+            });
+
+        QueryResult {
+            prefix: if let Some(pfx) = prefix {
+                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
+            } else {
+                None
+            },
+            prefix_meta: if let Some(pfx) = prefix {
+                pfx.0.meta.as_ref()
+            } else {
+                None
+            },
+            match_type: MatchType::EmptyMatch,
+            less_specifics: None,
+            more_specifics: more_specifics_vec.map(|iter| iter.collect()),
+        }
+    }
+
     // In a LMP search we have to go over all the nibble lengths in the
     // stride up until the value of the actual nibble length were looking for
     // (until we reach stride length for all strides that aren't the last)
@@ -368,7 +402,7 @@ where
                                 .store
                                 .retrieve_node_with_guard(n, guard)
                                 .unwrap();
-                                
+
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self

@@ -80,7 +80,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     pub(crate) fn empty() -> Self {
         StoredPrefix(Atomic::new((0, None, PrefixSet(Atomic::null()), None)))
     }
-    
+
     pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
         StoredPrefix(Atomic::new((
             1,
@@ -228,12 +228,12 @@ where
 
 //------------ PrefixSet ----------------------------------------------------
 
-// The PrefixSet is the ARRAY that holds all the child prefixes in a node. 
+// The PrefixSet is the ARRAY that holds all the child prefixes in a node.
 // Since we are storing these prefixes in the global store in a HashMap that
 // is keyed on the tuple (addr_bits, len, serial number) we can get away with
-// storing ONLY THE SERIAL NUMBER in the pfx_vec: The addr_bits and len are 
-// implied in the position in the array a serial numher has. A PrefixSet 
-// doesn't know anything about the node it is contained in, so it needs a 
+// storing ONLY THE SERIAL NUMBER in the pfx_vec: The addr_bits and len are
+// implied in the position in the array a serial numher has. A PrefixSet
+// doesn't know anything about the node it is contained in, so it needs a
 // base address to be able to calculate the complete prefix of a child prefix.
 
 #[derive(Debug)]
@@ -291,14 +291,13 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         index: usize,
         guard: &'a Guard,
     ) -> &'a StoredPrefix<AF, M> {
+        assert!(!self.0.load(Ordering::Relaxed, guard).is_null());
         unsafe {
             self.0.load(Ordering::Relaxed, guard).deref()[index as usize]
                 .assume_init_ref()
         }
     }
-
 }
-
 
 // ----------- CustomAllocStorage Implementation ----------------------------
 //
@@ -327,6 +326,7 @@ impl<
 {
     type AF = AF;
     type Meta = Meta;
+    type PB = PB;
 
     fn init(root_node: SizedStrideNode<Self::AF>) -> Self {
         trace!("initialize storage backend");
@@ -905,6 +905,77 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
+    fn non_recursive_retrieve_prefix_with_guard<'a>(
+        &'a self,
+        id: PrefixId<Self::AF>,
+        guard: &'a Guard,
+    ) -> (
+        Option<(&InternalPrefixRecord<Self::AF, Self::Meta>, &'a usize)>,
+        Option<(
+            PrefixId<Self::AF>,
+            u8,
+            &'a PrefixSet<Self::AF, Self::Meta>,
+            [Option<(&'a PrefixSet<Self::AF, Self::Meta>, usize)>; 26],
+            usize,
+        )>,
+    ) {
+        let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
+        let mut parents = [None; 26];
+        let mut index: usize;
+        let mut level: u8 = 0;
+
+        loop {
+            let last_level = if level > 0 {
+                *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
+            } else {
+                0
+            };
+            let this_level =
+                *PB::get_bits_for_len(id.get_len(), level).unwrap();
+            // The index of the prefix in this array (at this len and
+            // level) is calculated by performing the hash function
+            // over the prefix.
+
+            index = ((id.get_net().dangerously_truncate_to_u32()
+                << last_level)
+                >> (AF::BITS - (this_level - last_level)))
+                as usize;
+
+            let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
+            // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
+            let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
+            match unsafe {
+                prefix_ref
+                    .assume_init_ref()
+                    .0
+                    .load(Ordering::SeqCst, guard)
+                    .deref()
+            } {
+                (serial, Some(pfx_rec), next_set, _prev_record) => {
+                    if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
+                        trace!("found requested prefix {:?}", id);
+                        parents[level as usize] = Some((prefix_set, index));
+                        return (
+                            Some((pfx_rec, serial)),
+                            Some((id, level, prefix_set, parents, index)),
+                        );
+                    };
+                    prefix_set = next_set;
+                    level += 1;
+                }
+                (_serial, None, _next_set, _prev_record) => {
+                    trace!("no prefix found for {:?}", id);
+                    parents[level as usize] = Some((prefix_set, index));
+                    return (
+                        None,
+                        Some((id, level, prefix_set, parents, index)),
+                    );
+                }
+            };
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
     fn retrieve_prefix_with_guard<'a>(
         &'a self,
         id: PrefixId<Self::AF>,
@@ -1009,7 +1080,6 @@ impl<
             .sum()
     }
 
-
     // Stride related methods
 
     fn get_stride_for_id(&self, id: StrideNodeId<Self::AF>) -> u8 {
@@ -1027,6 +1097,32 @@ impl<
     fn get_first_stride_size() -> u8 {
         NB::get_first_stride_size()
     }
+
+    // Iterator over all prefixes, starting from the given prefix
+    // at the given level and cursor.
+    fn prefix_iter_from<'a>(
+        &'a self,
+        start_prefix_id: PrefixId<AF>,
+        start_level: u8,
+        start_bucket: &'a PrefixSet<AF, Meta>,
+        parents: [Option<(&'a PrefixSet<AF, Meta>, usize)>; 26],
+        cursor: usize,
+        guard: &'a Guard,
+    ) -> PrefixIter<AF, Meta, PB> {
+        trace!("more specifics for {:?}", start_prefix_id);
+        trace!("level {}, cursor: {}", start_level, cursor);
+        PrefixIter {
+            prefixes: &self.prefixes,
+            cur_bucket: start_bucket,
+            cur_len: start_prefix_id.get_len(),
+            cur_level: start_level,
+            cursor,
+            parents,
+            guard,
+            _af: PhantomData,
+            _meta: PhantomData,
+        }
+    }
 }
 
 impl<
@@ -1036,6 +1132,7 @@ impl<
         PB: PrefixBuckets<AF, Meta>,
     > CustomAllocStorage<AF, Meta, NB, PB>
 {
+    // Iterator over all the prefixes in the storage.
     pub fn prefixes_iter<'a>(
         &'a self,
         guard: &'a Guard,
@@ -1046,7 +1143,7 @@ impl<
             cur_len: 0,
             cur_level: 0,
             cursor: 0,
-            parent: [None; 26],
+            parents: [None; 26],
             guard,
             _af: PhantomData,
             _meta: PhantomData,
@@ -1068,7 +1165,7 @@ pub struct PrefixIter<
     // Option(parent, cursor position at the parent)
     // 26 is the max number of levels in IPv6, which is the max number of
     // of both IPv4 and IPv6.
-    parent: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
+    parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
     cursor: usize,
     guard: &'a Guard,
     _af: PhantomData<AF>,
@@ -1108,7 +1205,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 // but also empty all the parents
                 self.cur_level = 0;
                 self.cursor = 0;
-                self.parent = [None; 26];
+                self.parents = [None; 26];
 
                 // let's continue, get the prefixes for the next length
                 self.cur_bucket =
@@ -1129,13 +1226,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         .unwrap()
                 });
             // EXIT CONDITIONS FOR THIS BUCKET
-            trace!(
-                "c{} lvl{} len{} bsize {}",
-                self.cursor,
-                self.cur_level,
-                self.cur_len,
-                bucket_size
-            );
+            // trace!(
+            //     "c{} lvl{} len{} bsize {}",
+            //     self.cursor,
+            //     self.cur_level,
+            //     self.cur_len,
+            //     bucket_size
+            // );
 
             if self.cursor >= bucket_size {
                 if self.cur_level == 0 {
@@ -1149,14 +1246,14 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // but also empty all the parents
                     self.cur_level = 0;
                     self.cursor = 0;
-                    self.parent = [None; 26];
+                    self.parents = [None; 26];
 
                     if self.cur_len > AF::BITS as u8 {
                         // This is the end, my friend
-                        trace!(
-                            "reached max length {}, returning None",
-                            self.cur_len
-                        );
+                        // trace!(
+                        //     "reached max length {}, returning None",
+                        //     self.cur_len
+                        // );
                         return None;
                     }
 
@@ -1168,9 +1265,9 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // GO BACK UP ONE LEVEL
                     // The level is done, but the length isn't
                     // Go back up one level and continue
-                    match self.parent[self.cur_level as usize] {
+                    match self.parents[self.cur_level as usize] {
                         Some(parent) => {
-                            trace!("back up one level");
+                            // trace!("back up one level");
 
                             // There is a parent, go back up. Since we're doing depth-first
                             // we have to check if there's a prefix directly at the parent
@@ -1192,7 +1289,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                                 self.cur_level,
                                 self.cur_len
                             );
-                            trace!("parent {:?}", self.parent);
+                            // trace!("parent {:?}", self.parent);
                             panic!(
                                 "Where do we belong? Where do we come from?"
                             );
@@ -1204,26 +1301,26 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             // we're somewhere in the PrefixSet iteration, read the next StoredPrefix.
             // We are doing depth-first iteration, so we check for a child first and
             // descend into that if it exists.
-            trace!(
-                "c{} l{} len {}",
-                self.cursor,
-                self.cur_level,
-                self.cur_len
-            );
+            // trace!(
+            //     "c{} l{} len {}",
+            //     self.cursor,
+            //     self.cur_level,
+            //     self.cur_len
+            // );
 
             let s_pfx = self
                 .cur_bucket
                 .get_by_index(self.cursor as usize, self.guard);
-            trace!("s_pfx {:?}", s_pfx);
+            // trace!("s_pfx {:?}", s_pfx);
             // DEPTH FIRST ITERATION
             match s_pfx.get_next_bucket(self.guard) {
                 Some(bucket) => {
                     // DESCEND ONe LEVEL
                     // There's a child here, descend into it, but...
-                    trace!("C. got next bucket {:?}", bucket);
+                    // trace!("C. got next bucket {:?}", bucket);
 
                     // save our parent and cursor position first, and then..
-                    self.parent[(self.cur_level + 1) as usize] =
+                    self.parents[(self.cur_level + 1) as usize] =
                         Some((self.cur_bucket, self.cursor));
 
                     // move to the next bucket,

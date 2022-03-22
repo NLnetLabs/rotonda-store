@@ -2,19 +2,21 @@ use crossbeam_epoch::Guard;
 
 use routecore::record::{MergeUpdate, Meta};
 
-use crate::{custom_alloc::StoredPrefix, local_array::tree::*};
-use crate::prefix_record::InternalPrefixRecord;
 use crate::af::AddressFamily;
+use crate::custom_alloc::{PrefixBuckets, PrefixIter, PrefixSet};
+use crate::prefix_record::InternalPrefixRecord;
+use crate::{custom_alloc::StoredPrefix, local_array::tree::*};
 
 pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
 
 pub trait StorageBackend {
     type AF: AddressFamily;
     type Meta: Meta + MergeUpdate;
+    type PB: PrefixBuckets<Self::AF, Self::Meta>;
 
-    fn init(
-        root_node: SizedStrideNode<Self::AF>,
-    ) -> Self;
+    fn init(root_node: SizedStrideNode<Self::AF>) -> Self;
+
+    //-------- Nodes --------------------------------------------------------
     fn acquire_new_node_id(
         &self,
         sub_prefix: (Self::AF, u8),
@@ -75,6 +77,22 @@ pub trait StorageBackend {
         guard: &'a Guard,
     ) -> Option<(&'a InternalPrefixRecord<Self::AF, Self::Meta>, &'a usize)>;
 
+    #[allow(clippy::type_complexity)]
+    fn non_recursive_retrieve_prefix_with_guard<'a>(
+        &'a self,
+        id: PrefixId<Self::AF>,
+        guard: &'a Guard,
+    ) -> (
+        Option<(&InternalPrefixRecord<Self::AF, Self::Meta>, &'a usize)>,
+        Option<(
+            PrefixId<Self::AF>,
+            u8,
+            &'a PrefixSet<Self::AF, Self::Meta>,
+            [Option<(&'a PrefixSet<Self::AF, Self::Meta>, usize)>; 26],
+            usize,
+        )>,
+    );
+
     // Retrieves the LOCATION of a prefix as &mut. That means that an empty
     // StoredPrefix may be returned, so that the caller can create a new
     // prefix. This why we need to have a guard passed in as well. This
@@ -99,4 +117,14 @@ pub trait StorageBackend {
     // values at instance creation time.
     fn get_strides_len() -> u8;
     fn get_first_stride_size() -> u8;
+
+    fn prefix_iter_from<'a>(
+        &'a self,
+        start_prefix_id: PrefixId<Self::AF>,
+        start_level: u8,
+        start_bucket: &'a PrefixSet<Self::AF, Self::Meta>,
+        parents: [Option<(&'a PrefixSet<Self::AF, Self::Meta>, usize)>; 26],
+        cursor: usize,
+        guard: &'a Guard,
+    ) -> PrefixIter<Self::AF, Self::Meta, Self::PB>;
 }
