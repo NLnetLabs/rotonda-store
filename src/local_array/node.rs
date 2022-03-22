@@ -80,7 +80,7 @@ where
 {
     // Iterate over all the child node of this node
     pub(crate) fn ptr_iter(&self, base_prefix: StrideNodeId<AF>) -> 
-        impl std::iter::Iterator<Item=StrideNodeId<AF>> {
+        NodeChildIter<AF,S> {
             NodeChildIter::<AF,S> {
                 base_prefix,
                 ptrbitarr: self.ptrbitarr.load(),
@@ -91,12 +91,12 @@ where
 
     // Iteratate over all the prefix ids contained in this node
     pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
-        impl std::iter::Iterator<Item=PrefixId<AF>> {
+        NodePrefixIter<AF, S> {
         NodePrefixIter::<AF, S> {
             pfxbitarr: self.pfxbitarr.to_u64(),
             base_prefix,
-            len: 1,
-            bit_span: 0,
+            start_len: 1,
+            start_bit_span: 0,
             _af: PhantomData,
             _s: PhantomData,
         }
@@ -686,8 +686,8 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
 pub(crate) struct NodePrefixIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
     pfxbitarr: u64,
-    len: u8, // start with 1
-    bit_span: u32, // start with 0
+    start_len: u8, // start with 1
+    start_bit_span: u32, // start with 0
     _af: PhantomData<AF>,
     _s: PhantomData<S>,
 }
@@ -697,14 +697,14 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         type Item = PrefixId<AF>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            for cur_len in self.len..=S::STRIDE_LEN {
+            for cur_len in self.start_len..=S::STRIDE_LEN {
                 // fancy way of saying the length is muliplied by two every iteration.
                 let inc_len = (1 << cur_len) - 1;
 
                 // the bit_span can be a maximum of five bits for a stride of size5
                 // (the largest for the multithreaded tree), so that's 0001_1111 and
                 // that fits a u8 just fine.
-                for bit_span in self.bit_span..inc_len + 1 {
+                for bit_span in self.start_bit_span..inc_len + 1 {
                     // shift a 1 all the way to the left, to start counting the
                     // position. 
                     let bit_pos: u64 = (1_u64 << (S::BITS - 1)) >> (inc_len + bit_span);
@@ -720,8 +720,8 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
                         // the inner for loop gets skipped if self.bit_span
                         // is greater than the `inc_len + 1`, so we can
                         // safely increment it here.
-                        self.bit_span = bit_span + 1;
-                        self.len = cur_len;
+                        self.start_bit_span = bit_span + 1;
+                        self.start_len = cur_len;
 
                         return Some(new_prefix)
                     }
