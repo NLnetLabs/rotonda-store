@@ -15,6 +15,7 @@ pub use crate::local_array::store::storage_backend::StorageBackend;
 pub use crate::local_array::tree::*;
 pub use crate::prefix_record::InternalPrefixRecord;
 pub use crate::stride::{Stride3, Stride4, Stride5};
-pub use crate::SingleAFPrefixRecordIterator;
-pub use crate::{CustomAllocPrefixRecordIterator, MatchOptions};
-pub use crate::{QueryResult, Stats};
+pub use crate::{
+    CustomAllocPrefixRecordIterator, SingleAFPrefixRecordIterator,
+};
+pub use crate::{MatchOptions, QueryResult, Stats};
