@@ -234,6 +234,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         guard
                                     )
                                 );
+                                println!("--- numatch");
+                                println!(
+                                    "{}",
+                                    tree_bitmap.more_specifics_iter_from(
+                                        &Prefix::new_relaxed(ip, len)?,
+                                        guard
+                                    )
+                                );
                             }
                             Err(
                                 routecore::addr::PrefixError::NonZeroHost,
@@ -248,6 +256,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             include_less_specifics: true,
                                             include_more_specifics: true
                                         },
+                                        guard
+                                    )
+                                );
+                                println!("--- numatch");
+                                println!(
+                                    "{}",
+                                    tree_bitmap.more_specifics_iter_from(
+                                        &Prefix::new_relaxed(ip, len)?,
                                         guard
                                     )
                                 );
