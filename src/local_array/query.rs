@@ -33,12 +33,11 @@ where
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
         trace!("more specifics iter from {:?}", result);
         let prefix = result.0;
-        let more_specifics_vec =
-            result.1.map(|(prefix_id, level, cur_set, parents, index)| {
-                self.store.prefix_iter_from(
-                    prefix_id, level, cur_set, parents, index, guard,
-                )
-            });
+        let more_specifics_vec = result.1.and_then(
+            |(prefix_id, level, cur_set, parents, index)| {
+                self.store.more_specific_prefix_iter_from(prefix_id, guard)
+            },
+        );
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
@@ -53,7 +52,46 @@ where
             },
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
-            more_specifics: more_specifics_vec.map(|iter| iter.collect()),
+            more_specifics: more_specifics_vec.map(|iter| {
+                iter.map(|p| {
+                    self.store.retrieve_prefix_with_guard(p, guard).unwrap().0
+                })
+                .collect()
+            }),
+        }
+    }
+
+    pub fn less_specifics_iter_from(
+        &'a self,
+        prefix_id: PrefixId<Store::AF>,
+        guard: &'a Guard,
+    ) -> QueryResult<'a, Store::Meta> {
+        let result = self
+            .store
+            .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
+
+        let prefix = result.0;
+        trace!("get less specific iter from {:?}", result);
+        let less_specifics_vec = result.1.and_then(
+            |(prefix_id, _level, _cur_set, _parents, _index)| {
+                self.store.prefix_iter_to(prefix_id, guard)
+            },
+        );
+
+        QueryResult {
+            prefix: if let Some(pfx) = prefix {
+                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
+            } else {
+                None
+            },
+            prefix_meta: if let Some(pfx) = prefix {
+                pfx.0.meta.as_ref()
+            } else {
+                None
+            },
+            match_type: MatchType::EmptyMatch,
+            less_specifics: less_specifics_vec.map(|iter| iter.collect()),
+            more_specifics: None,
         }
     }
 

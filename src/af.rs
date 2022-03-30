@@ -17,6 +17,7 @@ pub trait AddressFamily:
     + std::ops::BitOr<Output = Self>
     + std::ops::Shr<u8, Output = Self>
     + std::ops::Shl<Output = Self>
+    + std::ops::Sub<Output = Self>
     + Zero
     + Copy
     + Ord

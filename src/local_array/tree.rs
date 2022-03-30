@@ -8,6 +8,7 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::{AddressFamily, Zero};
+use crate::local_array::bit_span::BitSpan;
 use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
@@ -67,7 +68,8 @@ pub enum SizedStrideRef<'a, AF: AddressFamily> {
     Stride4(&'a TreeBitMapNode<AF, Stride4>),
     Stride5(&'a TreeBitMapNode<AF, Stride5>),
 }
-//
+
+
 #[derive(Debug)]
 pub enum SizedStrideRefMut<'a, AF: AddressFamily> {
     Stride3(&'a mut TreeBitMapNode<AF, Stride3>),
@@ -99,6 +101,14 @@ impl<AF: AddressFamily> PrefixId<AF> {
 
     pub fn get_len(&self) -> u8 {
         self.0.unwrap().1
+    }
+
+    // Increment the length of the prefix without changing the bits part.
+    // This is used to iterate over more-specific prefixes for this prefix,
+    // since the more specifics iterator includes the requested `base_prefix`
+    // itself.
+    pub fn inc_len(self) -> Self {
+        Self(self.0.map(|(net, len)| (net, len + 1)))
     }
 }
 
@@ -448,9 +458,7 @@ where
         }
 
         let mut stride_end: u8 = 0;
-        let mut cur_i = self
-            .store
-            .get_root_node_id(self.store.get_stride_sizes()[0]);
+        let mut cur_i = self.store.get_root_node_id();
         let mut level: u8 = 0;
 
         loop {
@@ -499,8 +507,7 @@ where
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
-        self.store
-            .get_root_node_id(self.store.get_stride_sizes()[0])
+        self.store.get_root_node_id()
     }
 
     // Yes, we're hating this. But, the root node has no room for a serial
@@ -555,9 +562,17 @@ where
         );
         match self.store.retrieve_node_with_guard(start_node_id, guard) {
             Some(SizedStrideRef::Stride3(n)) => {
-                found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
+                found_pfx_vec.extend(
+                    n.more_specific_pfx_iter(
+                        start_node_id,
+                        BitSpan::new(0, 1),
+                    )
+                    .collect::<Vec<PrefixId<Store::AF>>>(),
+                );
 
-                for child_node in n.ptr_iter(start_node_id) {
+                for child_node in
+                    n.ptr_iter(start_node_id)
+                {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
@@ -565,7 +580,13 @@ where
                 }
             }
             Some(SizedStrideRef::Stride4(n)) => {
-                found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
+                found_pfx_vec.extend(
+                    n.more_specific_pfx_iter(
+                        start_node_id,
+                        BitSpan::new(0, 1),
+                    )
+                    .collect::<Vec<PrefixId<Store::AF>>>(),
+                );
 
                 for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
@@ -575,7 +596,13 @@ where
                 }
             }
             Some(SizedStrideRef::Stride5(n)) => {
-                found_pfx_vec.extend(n.pfx_iter(start_node_id).collect::<Vec<PrefixId<Store::AF>>>());
+                found_pfx_vec.extend(
+                    n.more_specific_pfx_iter(
+                        start_node_id,
+                        BitSpan::new(0, 1),
+                    )
+                    .collect::<Vec<PrefixId<Store::AF>>>(),
+                );
 
                 for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(

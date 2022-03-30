@@ -11,8 +11,12 @@ use log::{info, trace};
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
 
-use crate::local_array::storage_backend::StorageBackend;
-use crate::local_array::tree::*;
+use crate::local_array::{
+    bit_span::BitSpan,
+    node::NodeChildIter,
+    storage_backend::StorageBackend,
+};
+use crate::local_array::{node::NodeMoreSpecificsPrefixIter, tree::*};
 
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
@@ -564,7 +568,7 @@ impl<
         unimplemented!()
     }
 
-    fn get_root_node_id(&self, _stride_size: u8) -> StrideNodeId<Self::AF> {
+    fn get_root_node_id(&self) -> StrideNodeId<Self::AF> {
         StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0)
     }
 
@@ -960,6 +964,7 @@ impl<
                             Some((id, level, prefix_set, parents, index)),
                         );
                     };
+                    // Advance to the next level.
                     prefix_set = next_set;
                     level += 1;
                 }
@@ -1098,30 +1103,135 @@ impl<
         NB::get_first_stride_size()
     }
 
-    // Iterator over all prefixes, starting from the given prefix
-    // at the given level and cursor.
-    fn prefix_iter_from<'a>(
+    // Calculates the id of the node that COULD host a prefix in its
+    // ptrbitarr.
+    fn get_node_id_for_prefix(
+        &self,
+        prefix: &PrefixId<Self::AF>,
+    ) -> (StrideNodeId<Self::AF>, BitSpan) {
+        let mut acc = 0;
+        for i in self.get_stride_sizes() {
+            acc += *i;
+            if acc >= prefix.get_len() {
+                let node_len = acc - i;
+                return (
+                    StrideNodeId::new_with_cleaned_id(
+                        prefix.get_net(),
+                        node_len,
+                    ),
+                    BitSpan::new(
+                        (prefix.get_net().dangerously_truncate_to_u32()
+                            << node_len)
+                            >> (32 - (prefix.get_len() - node_len)),
+                        prefix.get_len() - node_len,
+                    ),
+                );
+            }
+        }
+        panic!("prefix length for {:?} is too long", prefix);
+    }
+
+    // Iterator over all more-specific prefixes, starting from the given
+    // prefix at the given level and cursor.
+    fn more_specific_prefix_iter_from<'a>(
         &'a self,
         start_prefix_id: PrefixId<AF>,
-        start_level: u8,
-        start_bucket: &'a PrefixSet<AF, Meta>,
-        parents: [Option<(&'a PrefixSet<AF, Meta>, usize)>; 26],
-        cursor: usize,
         guard: &'a Guard,
-    ) -> PrefixIter<AF, Meta, PB> {
+    ) -> Option<MoreSpecificsPrefixIter<AF, Self>> {
         trace!("more specifics for {:?}", start_prefix_id);
-        trace!("level {}, cursor: {}", start_level, cursor);
-        PrefixIter {
+
+        // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
+        if start_prefix_id.get_len() >= AF::BITS {
+            return None;
+        }
+
+        // calculate the node start_prefix_id lives in.
+        let (cur_node_id, cur_bit_span) =
+            self.get_node_id_for_prefix(&start_prefix_id.inc_len());
+        trace!("start node {}", cur_node_id);
+
+        trace!(
+            "start prefix id {:032b} (len {})",
+            start_prefix_id.get_net(),
+            start_prefix_id.get_len()
+        );
+        trace!(
+            "start node id   {:032b} (bits {} len {})",
+            cur_node_id.get_id().0,
+            cur_node_id.get_id().0,
+            cur_node_id.get_len()
+        );
+        trace!(
+            "start bit span  {:032b} {}",
+            cur_bit_span,
+            cur_bit_span.bits
+        );
+        let cur_pfx_iter: SizedPrefixIter<AF>;
+        let cur_ptr_iter: SizedNodeIter<AF>;
+
+        match self.retrieve_node_with_guard(cur_node_id, guard).unwrap() {
+            SizedStrideRef::Stride3(n) => {
+                cur_pfx_iter = SizedPrefixIter::Stride3(
+                    n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
+                );
+                cur_ptr_iter = SizedNodeIter::Stride3(
+                    n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
+                );
+            }
+            SizedStrideRef::Stride4(n) => {
+                cur_pfx_iter = SizedPrefixIter::Stride4(
+                    n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
+                );
+                cur_ptr_iter = SizedNodeIter::Stride4(
+                    n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
+                );
+            }
+            SizedStrideRef::Stride5(n) => {
+                cur_pfx_iter = SizedPrefixIter::Stride5(
+                    n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
+                );
+                cur_ptr_iter = SizedNodeIter::Stride5(
+                    n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
+                );
+            }
+        };
+
+        Some(MoreSpecificsPrefixIter {
+            store: self,
+            guard,
+            cur_pfx_iter,
+            cur_ptr_iter,
+            parent_and_position: vec![],
+        })
+    }
+
+    // Iterator over all less-specific prefixes, starting from the given
+    // prefix at the given level and cursor.
+    fn prefix_iter_to<'a>(
+        &'a self,
+        start_prefix_id: PrefixId<AF>,
+        guard: &'a Guard,
+    ) -> Option<LessSpecificPrefixIter<AF, Meta, PB>> {
+        trace!("less specifics for {:?}", start_prefix_id);
+        trace!("level {}, len {}", 0, start_prefix_id.get_len());
+
+        if start_prefix_id.get_len() < 1 {
+            return None;
+        }
+
+        let cur_len = start_prefix_id.get_len() - 1;
+        let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
+
+        Some(LessSpecificPrefixIter {
             prefixes: &self.prefixes,
-            cur_bucket: start_bucket,
-            cur_len: start_prefix_id.get_len(),
-            cur_level: start_level,
-            cursor,
-            parents,
+            cur_prefix_id: start_prefix_id,
+            cur_bucket,
+            cur_len,
+            cur_level: 0,
             guard,
             _af: PhantomData,
             _meta: PhantomData,
-        }
+        })
     }
 }
 
@@ -1151,6 +1261,7 @@ impl<
     }
 }
 
+// Iterator over all the prefixes in the storage.
 pub struct PrefixIter<
     'a,
     AF: AddressFamily + 'a,
@@ -1184,8 +1295,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
         );
 
         loop {
-            // trace!("node {:?}", self.cur_bucket);
-
             if self.cur_len > AF::BITS as u8 {
                 // This is the end, my friend
                 trace!("reached max length {}, returning None", self.cur_len);
@@ -1225,14 +1334,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     *PB::get_bits_for_len(self.cur_len, self.cur_level)
                         .unwrap()
                 });
-            // EXIT CONDITIONS FOR THIS BUCKET
-            // trace!(
-            //     "c{} lvl{} len{} bsize {}",
-            //     self.cursor,
-            //     self.cur_level,
-            //     self.cur_len,
-            //     bucket_size
-            // );
 
             if self.cursor >= bucket_size {
                 if self.cur_level == 0 {
@@ -1250,10 +1351,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
                     if self.cur_len > AF::BITS as u8 {
                         // This is the end, my friend
-                        // trace!(
-                        //     "reached max length {}, returning None",
-                        //     self.cur_len
-                        // );
                         return None;
                     }
 
@@ -1355,6 +1452,601 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 }
             };
             self.cursor += 1;
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum SizedNodeIter<AF: AddressFamily> {
+    Stride3(NodeChildIter<AF, Stride3>),
+    Stride4(NodeChildIter<AF, Stride4>),
+    Stride5(NodeChildIter<AF, Stride5>),
+}
+
+impl<AF: AddressFamily> SizedNodeIter<AF> {
+    fn next(&mut self) -> Option<StrideNodeId<AF>> {
+        match self {
+            SizedNodeIter::Stride3(iter) => iter.next(),
+            SizedNodeIter::Stride4(iter) => iter.next(),
+            SizedNodeIter::Stride5(iter) => iter.next(),
+        }
+    }
+}
+
+pub(crate) enum SizedPrefixIter<AF: AddressFamily> {
+    Stride3(NodeMoreSpecificsPrefixIter<AF, Stride3>),
+    Stride4(NodeMoreSpecificsPrefixIter<AF, Stride4>),
+    Stride5(NodeMoreSpecificsPrefixIter<AF, Stride5>),
+}
+
+impl<AF: AddressFamily> SizedPrefixIter<AF> {
+    fn next(&mut self) -> Option<PrefixId<AF>> {
+        match self {
+            SizedPrefixIter::Stride3(iter) => iter.next(),
+            SizedPrefixIter::Stride4(iter) => iter.next(),
+            SizedPrefixIter::Stride5(iter) => iter.next(),
+        }
+    }
+}
+
+// This iterator is somewhat different to the other *PrefixIterator types,
+// since it uses the Nodes to select the more specifics. Am Iterator that
+// would only use the Prefixes in the store could exist, but iterating over
+// those in search of more specifics would be way more expensive.
+pub struct MoreSpecificsPrefixIter<
+    'a,
+    AF: AddressFamily,
+    Store: StorageBackend,
+> {
+    store: &'a Store,
+    cur_ptr_iter: SizedNodeIter<AF>,
+    cur_pfx_iter: SizedPrefixIter<AF>,
+    parent_and_position: Vec<SizedNodeIter<AF>>,
+    guard: &'a Guard,
+}
+
+impl<'a, AF: AddressFamily + 'a, Store: StorageBackend<AF = AF>> Iterator
+    for MoreSpecificsPrefixIter<'a, AF, Store>
+{
+    type Item = PrefixId<Store::AF>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        trace!("MoreSpecificsPrefixIter");
+
+        loop {
+            let next_pfx = self.cur_pfx_iter.next();
+
+            if next_pfx.is_some() {
+                return next_pfx;
+            }
+
+            // Our current prefix iterator for this node is done, look for
+            // the next pfx iterator of the next child node in the current
+            // ptr iterator.
+            let mut next_ptr = self.cur_ptr_iter.next();
+
+            // Our current ptr iterator is also done, maybe we have a parent
+            if next_ptr.is_none() {
+                if let Some(cur_ptr_iter) = self.parent_and_position.pop() {
+                    self.cur_ptr_iter = cur_ptr_iter;
+                    next_ptr = self.cur_ptr_iter.next();
+                }
+                else {
+                    return None;
+                }
+            }
+
+            if let Some(next_ptr) = next_ptr {
+                match self
+                    .store
+                    .retrieve_node_with_guard(next_ptr, self.guard)
+                {
+                    Some(SizedStrideRef::Stride3(next_node)) => {
+                        // copy the current iterator into the parent vec and create
+                        // a new ptr iterator for this node
+                        self.parent_and_position.push(self.cur_ptr_iter);
+                        let ptr_iter = next_node.ptr_iter(next_ptr);
+                        self.cur_ptr_iter = ptr_iter.wrap();
+
+                        self.cur_pfx_iter = next_node
+                            .more_specific_pfx_iter(
+                                next_ptr,
+                                BitSpan::new(0, 1),
+                            )
+                            .wrap();
+                    }
+                    Some(SizedStrideRef::Stride4(next_node)) => {
+                        // create new ptr iterator for this node.
+                        self.parent_and_position.push(self.cur_ptr_iter);
+                        let ptr_iter = next_node.ptr_iter(next_ptr);
+                        self.cur_ptr_iter = ptr_iter.wrap();
+
+                        self.cur_pfx_iter = next_node
+                            .more_specific_pfx_iter(
+                                next_ptr,
+                                BitSpan::new(0, 1),
+                            )
+                            .wrap();
+                    }
+                    Some(SizedStrideRef::Stride5(next_node)) => {
+                        // create new ptr iterator for this node.
+                        self.parent_and_position.push(self.cur_ptr_iter);
+                        let ptr_iter = next_node.ptr_iter(next_ptr);
+                        self.cur_ptr_iter = ptr_iter.wrap();
+
+                        self.cur_pfx_iter = next_node
+                            .more_specific_pfx_iter(
+                                next_ptr,
+                                BitSpan::new(0, 1),
+                            )
+                            .wrap();
+                    }
+                    None => return None, // if let Some(next_id) = next {
+                };
+            }
+
+            trace!("done more specificing");
+        }
+        //     // store the current iterator in the parent_and_position
+        //     // so that it can continue when we we're done with the
+        //     // complete depth of the node tree.
+        //     // self.parent_and_position.push(self.cur_ptr_iter);
+        //     self.cur_pfx_iter = match self
+        //         .store
+        //         .retrieve_node_with_guard(next_id, self.guard)
+        //     {
+        //         Some(SizedStrideRef::Stride3(n)) => {
+        //             SizedPrefixIter::Stride3(
+        //                 n.more_specific_pfx_iter(
+        //                     next_id,
+        //                     BitSpan::new(0, 1),
+        //                 ),
+        //             )
+        //         }
+        //         Some(SizedStrideRef::Stride4(n)) => {
+        //             SizedPrefixIter::Stride4(
+        //                 n.more_specific_pfx_iter(
+        //                     next_id,
+        //                     BitSpan::new(0, 1),
+        //                 ),
+        //             )
+        //         }
+        //         Some(SizedStrideRef::Stride5(n)) => {
+        //             SizedPrefixIter::Stride5(
+        //                 n.more_specific_pfx_iter(
+        //                     next_id,
+        //                     BitSpan::new(0, 1),
+        //                 ),
+        //             )
+        //         }
+        // The node iterator is empty also, maybe we have a parent?
+        // None => {
+        //     if let Some(iter) =
+        //         self.parent_and_position.pop()
+        //     {
+        //         // yes, we have one, make it the current ptr iterator.
+        //         self.cur_ptr_iter = iter;
+        //     } else {
+        //         // no, we don't have a parent, we're done.
+        //         return None;
+        //     };
+
+        //     // fetch a new pfx iterator from the new ptr iterator.
+        //     if let Some(next_id) =
+        //         self.cur_ptr_iter.next()
+        //     {
+        //         match self.store.retrieve_node_with_guard(
+        //             next_id, self.guard,
+        //         ) {
+        //             Some(SizedStrideRef::Stride3(n)) => {
+        //                 SizedPrefixIter::Stride3(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             Some(SizedStrideRef::Stride4(n)) => {
+        //                 SizedPrefixIter::Stride4(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             Some(SizedStrideRef::Stride5(n)) => {
+        //                 SizedPrefixIter::Stride5(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             None => {
+        //                 panic!("stored parent does not exist (anymore?)");
+        //             }
+        //         }
+        //     } else {
+        //         // our current ptr iterator is done
+        //         // for this node. The next iteration
+        //         // of the loop will fetch a new
+        //         // parent (if any) with a new ptr
+        //         // iterator.
+        //         continue;
+        //     }
+        // }
+        //         None => {
+        //             panic!("DONE!");
+        //         }
+        //     };
+        // }
+        // }
+        // SizedNodeIter::Stride4(mut iter) => {
+        //     let next = iter.next();
+
+        //     if let Some(next_id) = next {
+        //         // store the current iterator in the parent_and_position
+        //         // so that it can continue when we we're done with the
+        //         // complete depth of the node tree.
+        //         // self.parent_and_position.push(self.cur_ptr_iter);
+        //         self.cur_pfx_iter = match self
+        //             .store
+        //             .retrieve_node_with_guard(next_id, self.guard)
+        //         {
+        //             Some(SizedStrideRef::Stride3(n)) => {
+        //                 SizedPrefixIter::Stride3(
+        //                     n.more_specific_pfx_iter(
+        //                         next_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+        //             Some(SizedStrideRef::Stride4(n)) => {
+        //                 SizedPrefixIter::Stride4(
+        //                     n.more_specific_pfx_iter(
+        //                         next_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+        //             Some(SizedStrideRef::Stride5(n)) => {
+        //                 SizedPrefixIter::Stride5(
+        //                     n.more_specific_pfx_iter(
+        //                         next_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+        // The node iterator is empty also, maybe we have a parent?
+        // None => {
+        //     if let Some(iter) =
+        //         self.parent_and_position.pop()
+        //     {
+        //         // yes, we have one, make it the current ptr iterator.
+        //         self.cur_ptr_iter = iter;
+        //     } else {
+        //         // no, we don't have a parent, we're done.
+        //         return None;
+        //     };
+
+        //     // fetch a new pfx iterator from the new ptr iterator.
+        //     if let Some(next_id) =
+        //         self.cur_ptr_iter.next()
+        //     {
+        //         match self.store.retrieve_node_with_guard(
+        //             next_id, self.guard,
+        //         ) {
+        //             Some(SizedStrideRef::Stride3(n)) => {
+        //                 SizedPrefixIter::Stride3(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             Some(SizedStrideRef::Stride4(n)) => {
+        //                 SizedPrefixIter::Stride4(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             Some(SizedStrideRef::Stride5(n)) => {
+        //                 SizedPrefixIter::Stride5(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             None => {
+        //                 panic!("stored parent does not exist (anymore?)");
+        //             }
+        //         }
+        //     } else {
+        //         // our current ptr iterator is done
+        //         // for this node. The next iteration
+        //         // of the loop will fetch a new
+        //         // parent (if any) with a new ptr
+        //         // iterator.
+        //         continue;
+        //     }
+        // }
+        //             None => {
+        //                 panic!("DONE!");
+        //             }
+        //         };
+        //     }
+        // }
+
+        // SizedNodeIter::Stride5(mut iter) => {
+        //     trace!("ptr_iter {:?}", iter);
+        //     let next = iter.next();
+
+        //     if let Some(next_id) = next {
+        //         // store the current iterator in the parent_and_position
+        //         // so that it can continue when we we're done with the
+        //         // complete depth of the node tree.
+        //         // self.parent_and_position.push(self.cur_ptr_iter);
+        //         trace!("next ptr {} s5", next_id);
+        //         self.cur_pfx_iter = match self
+        //             .store
+        //             .retrieve_node_with_guard(next_id, self.guard)
+        //         {
+        //             Some(SizedStrideRef::Stride3(n)) => {
+        //                 SizedPrefixIter::Stride3(
+        //                     n.more_specific_pfx_iter(
+        //                         next_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+        //             Some(SizedStrideRef::Stride4(n)) => {
+        //                 SizedPrefixIter::Stride4(
+        //                     n.more_specific_pfx_iter(
+        //                         next_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+        //             Some(SizedStrideRef::Stride5(n)) => {
+        //                 SizedPrefixIter::Stride5(
+        //                     n.more_specific_pfx_iter(
+        //                         next_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+        //             None => {
+        // panic!("DONE");
+        // The node iterator is empty also, maybe we have a parent?
+        // None => {
+        //     if let Some(iter) =
+        //         self.parent_and_position.pop()
+        //     {
+        //         // yes, we have one, make it the current ptr iterator.
+        //         self.cur_ptr_iter = iter;
+        //     } else {
+        //         // no, we don't have a parent, we're done.
+        //         return None;
+        //     };
+
+        //     // fetch a new pfx iterator from the new ptr iterator.
+        //     if let Some(next_id) =
+        //         self.cur_ptr_iter.next()
+        //     {
+        //         match self.store.retrieve_node_with_guard(
+        //             next_id, self.guard,
+        //         ) {
+        //             Some(SizedStrideRef::Stride3(n)) => {
+        //                 SizedPrefixIter::Stride3(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             Some(SizedStrideRef::Stride4(n)) => {
+        //                 SizedPrefixIter::Stride4(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             Some(SizedStrideRef::Stride5(n)) => {
+        //                 SizedPrefixIter::Stride5(
+        //                     n.more_specific_pfx_iter(
+        //                         self.cur_node_id,
+        //                         BitSpan::new(0, 1),
+        //                     ),
+        //                 )
+        //             }
+
+        //             None => {
+        //                 panic!("stored parent does not exist (anymore?)");
+        //             }
+        //         }
+        //     } else {
+        //         // our current ptr iterator is done
+        //         // for this node. The next iteration
+        //         // of the loop will fetch a new
+        //         // parent (if any) with a new ptr
+        //         // iterator.
+        //         continue;
+        //     }
+        // }
+        // };
+        // }
+        // }
+        // }
+        // }
+    }
+}
+
+pub struct LessSpecificPrefixIter<
+    'a,
+    AF: AddressFamily + 'a,
+    M: Meta + 'a,
+    PB: PrefixBuckets<AF, M>,
+> {
+    prefixes: &'a PB,
+    cur_len: u8,
+    cur_bucket: &'a PrefixSet<AF, M>,
+    cur_level: u8,
+    cur_prefix_id: PrefixId<AF>,
+    guard: &'a Guard,
+    _af: PhantomData<AF>,
+    _meta: PhantomData<M>,
+}
+
+impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
+    Iterator for LessSpecificPrefixIter<'a, AF, M, PB>
+{
+    type Item = &'a InternalPrefixRecord<AF, M>;
+
+    // This iterator moves down all prefix lengths, starting with the length
+    // of the (search prefix - 1), looking for shorter prefixes, where the
+    // its bits are the same as the bits of the search prefix.
+    fn next(&mut self) -> Option<Self::Item> {
+        trace!("search next less-specific for {:?}", self.cur_prefix_id);
+
+        loop {
+            if self.cur_len == 0 {
+                // This is the end, my friend
+                trace!("reached min length {}, returning None", self.cur_len);
+                return None;
+            }
+
+            // shave a bit of the current prefix.
+            trace!(
+                "truncate to len {} (level {})",
+                self.cur_len,
+                self.cur_level
+            );
+            self.cur_prefix_id = PrefixId::new(
+                self.cur_prefix_id.get_net().truncate_to_len(self.cur_len),
+                self.cur_len,
+            );
+
+            let last_level = if self.cur_level > 0 {
+                *PB::get_bits_for_len(self.cur_len, self.cur_level - 1)
+                    .unwrap()
+            } else {
+                0
+            };
+
+            let this_level =
+                *PB::get_bits_for_len(self.cur_len, self.cur_level).unwrap();
+
+            let index =
+                ((self.cur_prefix_id.get_net().dangerously_truncate_to_u32()
+                    << last_level)
+                    >> (AF::BITS - (this_level - last_level)))
+                    as usize;
+
+            if this_level == 0 {
+                // END OF THE LENGTH
+                // This length is done too, go to the next length
+                trace!("next length {}", self.cur_len + 1);
+                self.cur_len -= 1;
+
+                // a new length, a new life
+                // reset the level depth and cursor,
+                // but also empty all the parents
+                self.cur_level = 0;
+                // self.parents = [None; 26];
+
+                // let's continue, get the prefixes for the next length
+                self.cur_bucket =
+                    self.prefixes.get_root_prefix_set(self.cur_len);
+                continue;
+            }
+
+            // LEVEL DEPTH ITERATION
+            let s_pfx =
+                self.cur_bucket.get_by_index(index as usize, self.guard);
+            // trace!("s_pfx {:?}", s_pfx);
+            match unsafe {
+                s_pfx.0.load(Ordering::SeqCst, self.guard).deref()
+            } {
+                (_serial, Some(pfx_rec), next_set, _prev_record) => {
+                    // There is a prefix  here, but we need to checkt if it's
+                    // the right one.
+                    if self.cur_prefix_id
+                        == PrefixId::new(pfx_rec.net, pfx_rec.len)
+                    {
+                        trace!(
+                            "found requested prefix {:?}",
+                            self.cur_prefix_id
+                        );
+                        self.cur_len -= 1;
+                        self.cur_level = 0;
+                        self.cur_bucket =
+                            self.prefixes.get_root_prefix_set(self.cur_len);
+                        return Some(pfx_rec);
+                    };
+                    // Advance to the next level or the next len.
+                    match next_set
+                        .0
+                        .load(Ordering::SeqCst, self.guard)
+                        .is_null()
+                    {
+                        // No child here, move one length down.
+                        true => {
+                            self.cur_len -= 1;
+                            self.cur_level = 0;
+                            self.cur_bucket = self
+                                .prefixes
+                                .get_root_prefix_set(self.cur_len);
+                        }
+                        // There's a child, move a level up and set the child
+                        // as current. Length remains the same.
+                        false => {
+                            self.cur_bucket = next_set;
+                            self.cur_level += 1;
+                        }
+                    }
+                }
+                (_serial, None, next_set, _prev_record) => {
+                    // No prefix here, let's see if there's a child here
+                    trace!(
+                        "no prefix found for {:?} in len {}",
+                        self.cur_prefix_id,
+                        self.cur_len
+                    );
+                    // Advance to the next level or the next len.
+                    match next_set
+                        .0
+                        .load(Ordering::SeqCst, self.guard)
+                        .is_null()
+                    {
+                        // No child here, move one length down.
+                        true => {
+                            self.cur_len -= 1;
+                            self.cur_level = 0;
+                            self.cur_bucket = self
+                                .prefixes
+                                .get_root_prefix_set(self.cur_len);
+                        }
+                        // There's a child, move a level up and set the child
+                        // as current. Length remains the same.
+                        false => {
+                            self.cur_bucket = next_set;
+                            self.cur_level += 1;
+                        }
+                    }
+                }
+            };
         }
     }
 }

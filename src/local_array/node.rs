@@ -8,6 +8,8 @@ use log::{trace, info};
 use routecore::record::NoMeta;
 
 pub use super::atomic_stride::*;
+use super::bit_span::BitSpan;
+use crate::custom_alloc::{SizedNodeIter, SizedPrefixIter};
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
@@ -84,7 +86,7 @@ where
             NodeChildIter::<AF,S> {
                 base_prefix,
                 ptrbitarr: self.ptrbitarr.load(),
-                bit_span: 0,
+                bit_span: BitSpan::new(0, 1),
                 _af: PhantomData,
             }
     }
@@ -93,12 +95,37 @@ where
     pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
         NodePrefixIter<AF, S> {
         NodePrefixIter::<AF, S> {
-            pfxbitarr: self.pfxbitarr.to_u64(),
+            pfxbitarr: self.pfxbitarr.load(),
             base_prefix,
-            start_len: 1,
-            start_bit_span: 0,
+            bit_span: BitSpan::new(0,1 ),
             _af: PhantomData,
             _s: PhantomData,
+        }
+    }
+
+    // Iteratate over the more specific prefixes ids contained
+    // in this node
+    pub(crate) fn more_specific_pfx_iter(&self, base_prefix: StrideNodeId<AF>, bit_span: BitSpan) -> 
+        NodeMoreSpecificsPrefixIter<AF, S> {
+        NodeMoreSpecificsPrefixIter::<AF, S> {
+            pfxbitarr: self.pfxbitarr.to_u64(),
+            base_prefix,
+            // bit_span: BitSpan::new(0,1 ),
+            bit_span,
+            // _af: PhantomData,
+            _s: PhantomData,
+        }
+    }
+
+    // Iteratate over the nodes that contain more specifics
+    // for the requested base_prefix
+    pub(crate) fn more_specific_ptr_iter(&self, base_prefix: StrideNodeId<AF>, bit_span: BitSpan) -> 
+        NodeChildIter<AF, S> {
+        NodeChildIter::<AF, S> {
+            ptrbitarr: self.ptrbitarr.load(),
+            base_prefix,
+            bit_span,
+            _af: PhantomData,
         }
     }
 
@@ -620,11 +647,11 @@ where
 // child pfxs len      /27-29 /30-32
 // child Nodes len     /29    /32
 
-
+#[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeChildIter<AF: AddressFamily, S: Stride> {
    base_prefix: StrideNodeId<AF>,
    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-   bit_span: u32, // start with 0
+   bit_span: BitSpan, // start with 0
    _af: PhantomData<AF>,
 }
 
@@ -635,7 +662,7 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
     fn next(&mut self) -> Option<Self::Item> {
         // iterate over all the possible values for this stride length, e.g.
         // two bits can have 4 different values.
-        for cursor in self.bit_span..(1 << S::STRIDE_LEN) {
+        for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
             // move the bit_span left with the amount of bits we're going to
             // loop over.
             // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
@@ -645,7 +672,7 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
             if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
                 <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
             {
-                self.bit_span = cursor + 1;
+                self.bit_span.bits = cursor + 1;
                 return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
             }    
             
@@ -653,6 +680,25 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         None
     }
 }
+
+impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride3> {
+    pub fn wrap(self) -> SizedNodeIter<AF> {
+        SizedNodeIter::<AF>::Stride3(self)
+    }
+}
+
+impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride4> {
+    pub fn wrap(self) -> SizedNodeIter<AF> {
+        SizedNodeIter::<AF>::Stride4(self)
+    }
+}
+
+impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride5> {
+    pub fn wrap(self) -> SizedNodeIter<AF> {
+        SizedNodeIter::<AF>::Stride5(self)
+    }
+}
+
 
 // ----------- NodePrefixIter -----------------------------------------------
 
@@ -682,12 +728,10 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
 // variable.
 //
 // The `bit_span` variable starts counting at every new prefix length.
-
 pub(crate) struct NodePrefixIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
-    pfxbitarr: u64,
-    start_len: u8, // start with 1
-    start_bit_span: u32, // start with 0
+    pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
+    bit_span: BitSpan, // start with 0
     _af: PhantomData<AF>,
     _s: PhantomData<S>,
 }
@@ -697,14 +741,50 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         type Item = PrefixId<AF>;
 
         fn next(&mut self) -> Option<Self::Item> {
-            for cur_len in self.start_len..=S::STRIDE_LEN {
+        // iterate over all the possible values for this stride length, e.g.
+        // two bits can have 4 different values.
+        for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
+            
+            let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
+            if self.pfxbitarr & bit_pos >
+                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+            {
+                self.bit_span.bits = cursor + 1;
+                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN).into());
+            }    
+            
+        }
+        None   
+    }
+}
+
+// Iterator that returns all prefixes that exist in a node that are a more-
+// specific prefix of the `base_prefix`.
+// Note: this will also include the `base_prefix` itself, it's present in the
+// node!
+pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
+    base_prefix: StrideNodeId<AF>,
+    pfxbitarr: u64,
+    bit_span: BitSpan,
+    // start_len: u8, // start with 1
+    // start_bit_span: u32, // start with 0
+    _s: PhantomData<S>,
+}
+
+impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
+    NodeMoreSpecificsPrefixIter<AF, S> {
+        type Item = PrefixId<AF>;
+
+        fn next(&mut self) -> Option<Self::Item> {
+            trace!("next more specifics prefix iter");
+            for cur_len in self.bit_span.len..=S::STRIDE_LEN {
                 // fancy way of saying the length is muliplied by two every iteration.
                 let inc_len = (1 << cur_len) - 1;
 
                 // the bit_span can be a maximum of five bits for a stride of size5
                 // (the largest for the multithreaded tree), so that's 0001_1111 and
                 // that fits a u8 just fine.
-                for bit_span in self.start_bit_span..inc_len + 1 {
+                for bit_span in self.bit_span.bits..inc_len + 1 {
                     // shift a 1 all the way to the left, to start counting the
                     // position. 
                     let bit_pos: u64 = (1_u64 << (S::BITS - 1)) >> (inc_len + bit_span);
@@ -720,8 +800,8 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
                         // the inner for loop gets skipped if self.bit_span
                         // is greater than the `inc_len + 1`, so we can
                         // safely increment it here.
-                        self.start_bit_span = bit_span + 1;
-                        self.start_len = cur_len;
+                        self.bit_span.bits = bit_span + 1;
+                        self.bit_span.len = cur_len;
 
                         return Some(new_prefix)
                     }
@@ -729,4 +809,57 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
             }
             None
         }     
+}
+
+
+impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride3> {
+    pub fn wrap(self) -> SizedPrefixIter<AF> {
+        SizedPrefixIter::<AF>::Stride3(self)
+    }
+}
+
+impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride4> {
+    pub fn wrap(self) -> SizedPrefixIter<AF> {
+        SizedPrefixIter::<AF>::Stride4(self)
+    }
+}
+
+impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride5> {
+    pub fn wrap(self) -> SizedPrefixIter<AF> {
+        SizedPrefixIter::<AF>::Stride5(self)
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct NodeChildMoreSpecificsIter<AF: AddressFamily, S: Stride> {
+    base_prefix: StrideNodeId<AF>,
+    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+    bit_span: BitSpan,
+    _af: PhantomData<AF>,
+    _s: PhantomData<S>,
+}
+
+impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
+    NodeChildMoreSpecificsIter<AF, S> {
+    type Item = StrideNodeId<AF>;
+    fn next(&mut self) -> Option<Self::Item> {
+        // iterate over all the possible values for this stride length, e.g.
+        // two bits can have 4 different values.
+        for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
+            // move the bit_span left with the amount of bits we're going to
+            // loop over.
+            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
+            // becomes 0000 0000 0000 1100, then it will iterate over 
+            // ...1100,...1101,...1110,...1111
+            let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
+            if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
+                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+            {
+                self.bit_span.bits = cursor + 1;
+                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
+            }    
+            
+        }
+        None
+    }
 }

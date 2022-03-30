@@ -44,6 +44,7 @@ pub trait AtomicBitmap {
     ) -> CasResult<Self::InnerType>;
     fn load(&self) -> Self::InnerType;
     fn to_u64(&self) -> u64;
+    fn to_u32(&self) -> u32;
 }
 
 impl AtomicBitmap for AtomicStride2 {
@@ -72,6 +73,10 @@ impl AtomicBitmap for AtomicStride2 {
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
+    }
+
+    fn to_u32(&self) -> u32 {
+        self.0.load(Ordering::SeqCst) as u32
     }
 
     fn to_u64(&self) -> u64 {
@@ -118,6 +123,10 @@ impl AtomicBitmap for AtomicStride3 {
         self.0.load(Ordering::SeqCst)
     }
 
+    fn to_u32(&self) -> u32 {
+        self.0.load(Ordering::SeqCst) as u32
+    }
+
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
     }
@@ -161,6 +170,10 @@ impl AtomicBitmap for AtomicStride4 {
         self.0.load(Ordering::SeqCst)
     }
 
+    fn to_u32(&self) -> u32 {
+        self.0.load(Ordering::SeqCst) as u32
+    }
+
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
     }
@@ -202,6 +215,10 @@ impl AtomicBitmap for AtomicStride5 {
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
+    }
+
+    fn to_u32(&self) -> u32 {
+        self.0.load(Ordering::SeqCst) as u32
     }
 
     fn to_u64(&self) -> u64 {
@@ -269,6 +286,10 @@ impl AtomicBitmap for AtomicStride6 {
             hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
             lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
         ])
+    }
+
+    fn to_u32(&self) -> u32 {
+        unimplemented!()
     }
 
     fn to_u64(&self) -> u64 {

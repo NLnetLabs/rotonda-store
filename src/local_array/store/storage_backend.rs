@@ -3,7 +3,8 @@ use crossbeam_epoch::Guard;
 use routecore::record::{MergeUpdate, Meta};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{PrefixBuckets, PrefixIter, PrefixSet};
+use crate::custom_alloc::{PrefixBuckets, MoreSpecificsPrefixIter, PrefixSet, LessSpecificPrefixIter};
+use crate::local_array::bit_span::BitSpan;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{custom_alloc::StoredPrefix, local_array::tree::*};
 
@@ -47,7 +48,8 @@ pub trait StorageBackend {
         next_node: SizedStrideNode<Self::AF>,
         guard: &'a Guard,
     ) -> Option<StrideNodeId<Self::AF>>;
-    fn get_root_node_id(&self, stride_size: u8) -> StrideNodeId<Self::AF>;
+    fn get_root_node_id(&self) -> StrideNodeId<Self::AF>;
+    fn get_node_id_for_prefix(&self, prefix: &PrefixId<Self::AF>) -> (StrideNodeId<Self::AF>, BitSpan);
     fn load_default_route_prefix_serial(&self) -> usize;
     fn increment_default_route_prefix_serial(&self) -> usize;
     fn get_nodes_len(&self) -> usize;
@@ -118,13 +120,15 @@ pub trait StorageBackend {
     fn get_strides_len() -> u8;
     fn get_first_stride_size() -> u8;
 
-    fn prefix_iter_from<'a>(
+    fn more_specific_prefix_iter_from<'a>(
         &'a self,
         start_prefix_id: PrefixId<Self::AF>,
-        start_level: u8,
-        start_bucket: &'a PrefixSet<Self::AF, Self::Meta>,
-        parents: [Option<(&'a PrefixSet<Self::AF, Self::Meta>, usize)>; 26],
-        cursor: usize,
         guard: &'a Guard,
-    ) -> PrefixIter<Self::AF, Self::Meta, Self::PB>;
+    ) -> Option<MoreSpecificsPrefixIter<Self::AF, Self>> where Self: std::marker::Sized;
+
+    fn prefix_iter_to<'a>(
+        &'a self,
+        start_prefix_id: PrefixId<Self::AF>,
+        guard: &'a Guard,
+    ) -> Option<LessSpecificPrefixIter<Self::AF, Self::Meta, Self::PB>>;
 }

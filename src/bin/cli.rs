@@ -242,6 +242,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         guard
                                     )
                                 );
+                                println!("less specifics");
+                                println!("{}", tree_bitmap.less_specifics_iter_from(
+                                    &Prefix::new_relaxed(ip, len)?,
+                                    guard
+                                ));
                             }
                             Err(
                                 routecore::addr::PrefixError::NonZeroHost,
@@ -260,6 +265,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     )
                                 );
                                 println!("--- numatch");
+                                println!("more specifics");
                                 println!(
                                     "{}",
                                     tree_bitmap.more_specifics_iter_from(
@@ -267,6 +273,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         guard
                                     )
                                 );
+                                println!("less specifics");
+                                println!("{}", tree_bitmap.less_specifics_iter_from(
+                                    &Prefix::new_relaxed(ip, len)?,
+                                    guard
+                                ));
                             }
                             Err(_) => {
                                 println!("Error: Can't parse prefix. Pleasy try again.");
