@@ -23,7 +23,7 @@ impl<'a, Store> TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
-    pub fn more_specifics_iter_from(
+    pub fn more_specifics_from(
         &'a self,
         prefix_id: PrefixId<Store::AF>,
         guard: &'a Guard,
@@ -61,7 +61,7 @@ where
         }
     }
 
-    pub fn less_specifics_iter_from(
+    pub fn less_specifics_from(
         &'a self,
         prefix_id: PrefixId<Store::AF>,
         guard: &'a Guard,

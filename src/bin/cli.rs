@@ -237,13 +237,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("--- numatch");
                                 println!(
                                     "{}",
-                                    tree_bitmap.more_specifics_iter_from(
+                                    tree_bitmap.more_specifics_from(
                                         &Prefix::new_relaxed(ip, len)?,
                                         guard
                                     )
                                 );
                                 println!("less specifics");
-                                println!("{}", tree_bitmap.less_specifics_iter_from(
+                                println!("{}", tree_bitmap.less_specifics_from(
                                     &Prefix::new_relaxed(ip, len)?,
                                     guard
                                 ));
@@ -268,13 +268,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("more specifics");
                                 println!(
                                     "{}",
-                                    tree_bitmap.more_specifics_iter_from(
+                                    tree_bitmap.more_specifics_from(
                                         &Prefix::new_relaxed(ip, len)?,
                                         guard
                                     )
                                 );
                                 println!("less specifics");
-                                println!("{}", tree_bitmap.less_specifics_iter_from(
+                                println!("{}", tree_bitmap.less_specifics_from(
                                     &Prefix::new_relaxed(ip, len)?,
                                     guard
                                 ));

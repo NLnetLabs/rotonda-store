@@ -110,9 +110,7 @@ where
         NodeMoreSpecificsPrefixIter::<AF, S> {
             pfxbitarr: self.pfxbitarr.to_u64(),
             base_prefix,
-            // bit_span: BitSpan::new(0,1 ),
             bit_span,
-            // _af: PhantomData,
             _s: PhantomData,
         }
     }
@@ -760,8 +758,8 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
 
 // Iterator that returns all prefixes that exist in a node that are a more-
 // specific prefix of the `base_prefix`.
-// Note: this will also include the `base_prefix` itself, it's present in the
-// node!
+// Note: this will also include the `base_prefix` itself, if it's present in
+// the node!
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
     pfxbitarr: u64,
@@ -830,36 +828,36 @@ impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride5> {
     }
 }
 
-#[derive(Debug)]
-pub(crate) struct NodeChildMoreSpecificsIter<AF: AddressFamily, S: Stride> {
-    base_prefix: StrideNodeId<AF>,
-    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-    bit_span: BitSpan,
-    _af: PhantomData<AF>,
-    _s: PhantomData<S>,
-}
+// #[derive(Debug)]
+// pub(crate) struct NodeChildMoreSpecificsIter<AF: AddressFamily, S: Stride> {
+//     base_prefix: StrideNodeId<AF>,
+//     ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+//     bit_span: BitSpan,
+//     _af: PhantomData<AF>,
+//     _s: PhantomData<S>,
+// }
 
-impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
-    NodeChildMoreSpecificsIter<AF, S> {
-    type Item = StrideNodeId<AF>;
-    fn next(&mut self) -> Option<Self::Item> {
-        // iterate over all the possible values for this stride length, e.g.
-        // two bits can have 4 different values.
-        for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
-            // move the bit_span left with the amount of bits we're going to
-            // loop over.
-            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
-            // becomes 0000 0000 0000 1100, then it will iterate over 
-            // ...1100,...1101,...1110,...1111
-            let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
-            if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
-                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
-            {
-                self.bit_span.bits = cursor + 1;
-                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
-            }    
+// impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
+//     NodeChildMoreSpecificsIter<AF, S> {
+//     type Item = StrideNodeId<AF>;
+//     fn next(&mut self) -> Option<Self::Item> {
+//         // iterate over all the possible values for this stride length, e.g.
+//         // two bits can have 4 different values.
+//         for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
+//             // move the bit_span left with the amount of bits we're going to
+//             // loop over.
+//             // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
+//             // becomes 0000 0000 0000 1100, then it will iterate over 
+//             // ...1100,...1101,...1110,...1111
+//             let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
+//             if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
+//                 <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+//             {
+//                 self.bit_span.bits = cursor + 1;
+//                 return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
+//             }    
             
-        }
-        None
-    }
-}
+//         }
+//         None
+//     }
+// }
