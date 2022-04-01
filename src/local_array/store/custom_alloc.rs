@@ -12,9 +12,7 @@ use epoch::{Guard, Owned};
 use std::marker::PhantomData;
 
 use crate::local_array::{
-    bit_span::BitSpan,
-    node::NodeChildIter,
-    storage_backend::StorageBackend,
+    bit_span::BitSpan, node::NodeChildIter, storage_backend::StorageBackend,
 };
 use crate::local_array::{node::NodeMoreSpecificsPrefixIter, tree::*};
 
@@ -300,6 +298,10 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
             self.0.load(Ordering::Relaxed, guard).deref()[index as usize]
                 .assume_init_ref()
         }
+    }
+
+    pub(crate) fn empty() -> Self {
+        PrefixSet(Atomic::null())
     }
 }
 
@@ -1137,12 +1139,15 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<MoreSpecificsPrefixIter<AF, Self>> {
+    ) -> Result<MoreSpecificsPrefixIter<AF, Self>, std::io::Error> {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
         if start_prefix_id.get_len() >= AF::BITS {
-            return None;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "prefix length is too long. No more-specifics can live here.",
+            ));
         }
 
         // calculate the node start_prefix_id lives in.
@@ -1196,7 +1201,7 @@ impl<
             }
         };
 
-        Some(MoreSpecificsPrefixIter {
+        Ok(MoreSpecificsPrefixIter {
             store: self,
             guard,
             cur_pfx_iter,
@@ -1207,22 +1212,26 @@ impl<
 
     // Iterator over all less-specific prefixes, starting from the given
     // prefix at the given level and cursor.
-    fn prefix_iter_to<'a>(
+    fn less_specific_prefix_iter_to<'a>(
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<LessSpecificPrefixIter<AF, Meta, PB>> {
+    ) -> Result<LessSpecificPrefixIter<AF, Meta, PB>, std::io::Error> {
         trace!("less specifics for {:?}", start_prefix_id);
         trace!("level {}, len {}", 0, start_prefix_id.get_len());
 
         if start_prefix_id.get_len() < 1 {
-            return None;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "prefix length is too short. /0 is not allowed. Use `prefix_iter()` instead.",
+            ));
+            // return Ok(LessSpecificPrefixIter::empty());
         }
 
         let cur_len = start_prefix_id.get_len() - 1;
         let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
 
-        Some(LessSpecificPrefixIter {
+        Ok(LessSpecificPrefixIter {
             prefixes: &self.prefixes,
             cur_prefix_id: start_prefix_id,
             cur_bucket,
@@ -1231,22 +1240,25 @@ impl<
             guard,
             _af: PhantomData,
             _meta: PhantomData,
+            _pb: PhantomData,
         })
     }
+
 }
 
 impl<
-        AF: AddressFamily,
-        Meta: routecore::record::Meta + MergeUpdate,
+        'a,
+        AF: AddressFamily + 'a,
+        M: Meta + 'a,
         NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, Meta>,
-    > CustomAllocStorage<AF, Meta, NB, PB>
+        PB: PrefixBuckets<AF, M>,
+    > CustomAllocStorage<AF, M, NB, PB>
 {
     // Iterator over all the prefixes in the storage.
-    pub fn prefixes_iter<'a>(
+    pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> PrefixIter<AF, Meta, PB> {
+    ) -> PrefixIter<AF, M, PB> {
         PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),
@@ -1258,6 +1270,39 @@ impl<
             _af: PhantomData,
             _meta: PhantomData,
         }
+    }
+
+    // Iterator over all less-specific prefixes, starting from the given
+    // prefix at the given level and cursor.
+    pub fn less_specific_prefix_iter(
+        &'a self,
+        start_prefix_id: PrefixId<AF>,
+        guard: &'a Guard,
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
+        trace!("less specifics for {:?}", start_prefix_id);
+        trace!("level {}, len {}", 0, start_prefix_id.get_len());
+
+        // We could just let the /0 prefix search the tree and have it return
+        // an empty iterator, but to avoid having to read out the root node
+        // for this prefix, we'll just return an empty iterator. The trade-off
+        // is that the whole iterator has to be wrapped in a Box<dyn ...>
+        if start_prefix_id.get_len() < 1 {
+            None
+        } else {
+            let cur_len = start_prefix_id.get_len() - 1;
+            let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
+
+            Some(LessSpecificPrefixIter::new(
+                &self.prefixes,
+                cur_len,
+                cur_bucket,
+                0,
+                start_prefix_id,
+                guard,
+            ))
+        }
+        .into_iter()
+        .flatten()
     }
 }
 
@@ -1489,7 +1534,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
     }
 }
 
-// This iterator is somewhat different to the other *PrefixIterator types,
+// This iterator is somewhat different from the other *PrefixIterator types,
 // since it uses the Nodes to select the more specifics. Am Iterator that
 // would only use the Prefixes in the store could exist, but iterating over
 // those in search of more specifics would be way more expensive.
@@ -1530,8 +1575,7 @@ impl<'a, AF: AddressFamily + 'a, Store: StorageBackend<AF = AF>> Iterator
                 if let Some(cur_ptr_iter) = self.parent_and_position.pop() {
                     self.cur_ptr_iter = cur_ptr_iter;
                     next_ptr = self.cur_ptr_iter.next();
-                }
-                else {
+                } else {
                     return None;
                 }
             }
@@ -1584,312 +1628,7 @@ impl<'a, AF: AddressFamily + 'a, Store: StorageBackend<AF = AF>> Iterator
                     None => return None, // if let Some(next_id) = next {
                 };
             }
-
-            trace!("done more specificing");
         }
-        //     // store the current iterator in the parent_and_position
-        //     // so that it can continue when we we're done with the
-        //     // complete depth of the node tree.
-        //     // self.parent_and_position.push(self.cur_ptr_iter);
-        //     self.cur_pfx_iter = match self
-        //         .store
-        //         .retrieve_node_with_guard(next_id, self.guard)
-        //     {
-        //         Some(SizedStrideRef::Stride3(n)) => {
-        //             SizedPrefixIter::Stride3(
-        //                 n.more_specific_pfx_iter(
-        //                     next_id,
-        //                     BitSpan::new(0, 1),
-        //                 ),
-        //             )
-        //         }
-        //         Some(SizedStrideRef::Stride4(n)) => {
-        //             SizedPrefixIter::Stride4(
-        //                 n.more_specific_pfx_iter(
-        //                     next_id,
-        //                     BitSpan::new(0, 1),
-        //                 ),
-        //             )
-        //         }
-        //         Some(SizedStrideRef::Stride5(n)) => {
-        //             SizedPrefixIter::Stride5(
-        //                 n.more_specific_pfx_iter(
-        //                     next_id,
-        //                     BitSpan::new(0, 1),
-        //                 ),
-        //             )
-        //         }
-        // The node iterator is empty also, maybe we have a parent?
-        // None => {
-        //     if let Some(iter) =
-        //         self.parent_and_position.pop()
-        //     {
-        //         // yes, we have one, make it the current ptr iterator.
-        //         self.cur_ptr_iter = iter;
-        //     } else {
-        //         // no, we don't have a parent, we're done.
-        //         return None;
-        //     };
-
-        //     // fetch a new pfx iterator from the new ptr iterator.
-        //     if let Some(next_id) =
-        //         self.cur_ptr_iter.next()
-        //     {
-        //         match self.store.retrieve_node_with_guard(
-        //             next_id, self.guard,
-        //         ) {
-        //             Some(SizedStrideRef::Stride3(n)) => {
-        //                 SizedPrefixIter::Stride3(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             Some(SizedStrideRef::Stride4(n)) => {
-        //                 SizedPrefixIter::Stride4(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             Some(SizedStrideRef::Stride5(n)) => {
-        //                 SizedPrefixIter::Stride5(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             None => {
-        //                 panic!("stored parent does not exist (anymore?)");
-        //             }
-        //         }
-        //     } else {
-        //         // our current ptr iterator is done
-        //         // for this node. The next iteration
-        //         // of the loop will fetch a new
-        //         // parent (if any) with a new ptr
-        //         // iterator.
-        //         continue;
-        //     }
-        // }
-        //         None => {
-        //             panic!("DONE!");
-        //         }
-        //     };
-        // }
-        // }
-        // SizedNodeIter::Stride4(mut iter) => {
-        //     let next = iter.next();
-
-        //     if let Some(next_id) = next {
-        //         // store the current iterator in the parent_and_position
-        //         // so that it can continue when we we're done with the
-        //         // complete depth of the node tree.
-        //         // self.parent_and_position.push(self.cur_ptr_iter);
-        //         self.cur_pfx_iter = match self
-        //             .store
-        //             .retrieve_node_with_guard(next_id, self.guard)
-        //         {
-        //             Some(SizedStrideRef::Stride3(n)) => {
-        //                 SizedPrefixIter::Stride3(
-        //                     n.more_specific_pfx_iter(
-        //                         next_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-        //             Some(SizedStrideRef::Stride4(n)) => {
-        //                 SizedPrefixIter::Stride4(
-        //                     n.more_specific_pfx_iter(
-        //                         next_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-        //             Some(SizedStrideRef::Stride5(n)) => {
-        //                 SizedPrefixIter::Stride5(
-        //                     n.more_specific_pfx_iter(
-        //                         next_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-        // The node iterator is empty also, maybe we have a parent?
-        // None => {
-        //     if let Some(iter) =
-        //         self.parent_and_position.pop()
-        //     {
-        //         // yes, we have one, make it the current ptr iterator.
-        //         self.cur_ptr_iter = iter;
-        //     } else {
-        //         // no, we don't have a parent, we're done.
-        //         return None;
-        //     };
-
-        //     // fetch a new pfx iterator from the new ptr iterator.
-        //     if let Some(next_id) =
-        //         self.cur_ptr_iter.next()
-        //     {
-        //         match self.store.retrieve_node_with_guard(
-        //             next_id, self.guard,
-        //         ) {
-        //             Some(SizedStrideRef::Stride3(n)) => {
-        //                 SizedPrefixIter::Stride3(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             Some(SizedStrideRef::Stride4(n)) => {
-        //                 SizedPrefixIter::Stride4(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             Some(SizedStrideRef::Stride5(n)) => {
-        //                 SizedPrefixIter::Stride5(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             None => {
-        //                 panic!("stored parent does not exist (anymore?)");
-        //             }
-        //         }
-        //     } else {
-        //         // our current ptr iterator is done
-        //         // for this node. The next iteration
-        //         // of the loop will fetch a new
-        //         // parent (if any) with a new ptr
-        //         // iterator.
-        //         continue;
-        //     }
-        // }
-        //             None => {
-        //                 panic!("DONE!");
-        //             }
-        //         };
-        //     }
-        // }
-
-        // SizedNodeIter::Stride5(mut iter) => {
-        //     trace!("ptr_iter {:?}", iter);
-        //     let next = iter.next();
-
-        //     if let Some(next_id) = next {
-        //         // store the current iterator in the parent_and_position
-        //         // so that it can continue when we we're done with the
-        //         // complete depth of the node tree.
-        //         // self.parent_and_position.push(self.cur_ptr_iter);
-        //         trace!("next ptr {} s5", next_id);
-        //         self.cur_pfx_iter = match self
-        //             .store
-        //             .retrieve_node_with_guard(next_id, self.guard)
-        //         {
-        //             Some(SizedStrideRef::Stride3(n)) => {
-        //                 SizedPrefixIter::Stride3(
-        //                     n.more_specific_pfx_iter(
-        //                         next_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-        //             Some(SizedStrideRef::Stride4(n)) => {
-        //                 SizedPrefixIter::Stride4(
-        //                     n.more_specific_pfx_iter(
-        //                         next_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-        //             Some(SizedStrideRef::Stride5(n)) => {
-        //                 SizedPrefixIter::Stride5(
-        //                     n.more_specific_pfx_iter(
-        //                         next_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-        //             None => {
-        // panic!("DONE");
-        // The node iterator is empty also, maybe we have a parent?
-        // None => {
-        //     if let Some(iter) =
-        //         self.parent_and_position.pop()
-        //     {
-        //         // yes, we have one, make it the current ptr iterator.
-        //         self.cur_ptr_iter = iter;
-        //     } else {
-        //         // no, we don't have a parent, we're done.
-        //         return None;
-        //     };
-
-        //     // fetch a new pfx iterator from the new ptr iterator.
-        //     if let Some(next_id) =
-        //         self.cur_ptr_iter.next()
-        //     {
-        //         match self.store.retrieve_node_with_guard(
-        //             next_id, self.guard,
-        //         ) {
-        //             Some(SizedStrideRef::Stride3(n)) => {
-        //                 SizedPrefixIter::Stride3(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             Some(SizedStrideRef::Stride4(n)) => {
-        //                 SizedPrefixIter::Stride4(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             Some(SizedStrideRef::Stride5(n)) => {
-        //                 SizedPrefixIter::Stride5(
-        //                     n.more_specific_pfx_iter(
-        //                         self.cur_node_id,
-        //                         BitSpan::new(0, 1),
-        //                     ),
-        //                 )
-        //             }
-
-        //             None => {
-        //                 panic!("stored parent does not exist (anymore?)");
-        //             }
-        //         }
-        //     } else {
-        //         // our current ptr iterator is done
-        //         // for this node. The next iteration
-        //         // of the loop will fetch a new
-        //         // parent (if any) with a new ptr
-        //         // iterator.
-        //         continue;
-        //     }
-        // }
-        // };
-        // }
-        // }
-        // }
-        // }
     }
 }
 
@@ -1907,6 +1646,32 @@ pub struct LessSpecificPrefixIter<
     guard: &'a Guard,
     _af: PhantomData<AF>,
     _meta: PhantomData<M>,
+    _pb: PhantomData<PB>,
+}
+
+impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
+    LessSpecificPrefixIter<'a, AF, M, PB>
+{
+    pub(crate) fn new(
+        prefixes: &'a PB,
+        cur_len: u8,
+        cur_bucket: &'a PrefixSet<AF, M>,
+        cur_level: u8,
+        cur_prefix_id: PrefixId<AF>,
+        guard: &'a Guard,
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
+        LessSpecificPrefixIter {
+            prefixes,
+            cur_len,
+            cur_bucket,
+            cur_level,
+            cur_prefix_id,
+            guard,
+            _af: PhantomData,
+            _meta: PhantomData,
+            _pb: PhantomData,
+        }
+    }
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>

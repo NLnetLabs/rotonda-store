@@ -1,4 +1,4 @@
-pub use crossbeam_epoch::{self as epoch, Guard};
+pub use crossbeam_epoch::{self as epoch, Guard, Atomic};
 pub use routecore::record::Meta;
 
 pub use crate::{AddressFamily, IPv4, IPv6, PrefixRecordIter};

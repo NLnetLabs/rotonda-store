@@ -3,7 +3,9 @@ use crossbeam_epoch::Guard;
 use routecore::record::{MergeUpdate, Meta};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{PrefixBuckets, MoreSpecificsPrefixIter, PrefixSet, LessSpecificPrefixIter};
+use crate::custom_alloc::{
+    LessSpecificPrefixIter, MoreSpecificsPrefixIter, PrefixBuckets, PrefixSet,
+};
 use crate::local_array::bit_span::BitSpan;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{custom_alloc::StoredPrefix, local_array::tree::*};
@@ -49,7 +51,10 @@ pub trait StorageBackend {
         guard: &'a Guard,
     ) -> Option<StrideNodeId<Self::AF>>;
     fn get_root_node_id(&self) -> StrideNodeId<Self::AF>;
-    fn get_node_id_for_prefix(&self, prefix: &PrefixId<Self::AF>) -> (StrideNodeId<Self::AF>, BitSpan);
+    fn get_node_id_for_prefix(
+        &self,
+        prefix: &PrefixId<Self::AF>,
+    ) -> (StrideNodeId<Self::AF>, BitSpan);
     fn load_default_route_prefix_serial(&self) -> usize;
     fn increment_default_route_prefix_serial(&self) -> usize;
     fn get_nodes_len(&self) -> usize;
@@ -124,11 +129,16 @@ pub trait StorageBackend {
         &'a self,
         start_prefix_id: PrefixId<Self::AF>,
         guard: &'a Guard,
-    ) -> Option<MoreSpecificsPrefixIter<Self::AF, Self>> where Self: std::marker::Sized;
+    ) -> Result<MoreSpecificsPrefixIter<Self::AF, Self>, std::io::Error>
+    where
+        Self: std::marker::Sized;
 
-    fn prefix_iter_to<'a>(
+    fn less_specific_prefix_iter_to<'a>(
         &'a self,
         start_prefix_id: PrefixId<Self::AF>,
         guard: &'a Guard,
-    ) -> Option<LessSpecificPrefixIter<Self::AF, Self::Meta, Self::PB>>;
+    ) -> Result<
+        LessSpecificPrefixIter<Self::AF, Self::Meta, Self::PB>,
+        std::io::Error,
+    >;
 }

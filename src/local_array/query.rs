@@ -35,7 +35,9 @@ where
         let prefix = result.0;
         let more_specifics_vec = result.1.and_then(
             |(prefix_id, level, cur_set, parents, index)| {
-                self.store.more_specific_prefix_iter_from(prefix_id, guard)
+                self.store
+                    .more_specific_prefix_iter_from(prefix_id, guard)
+                    .ok()
             },
         );
 
@@ -74,7 +76,7 @@ where
         trace!("get less specific iter from {:?}", result);
         let less_specifics_vec = result.1.and_then(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.store.prefix_iter_to(prefix_id, guard)
+                self.store.less_specific_prefix_iter_to(prefix_id, guard).ok()
             },
         );
 
@@ -94,6 +96,34 @@ where
             more_specifics: None,
         }
     }
+
+    pub fn more_specifics_iter_from(
+        &'a self,
+        prefix_id: PrefixId<Store::AF>,
+        guard: &'a Guard,
+    ) -> Result<
+        impl Iterator<Item = &'a InternalPrefixRecord<Store::AF, Store::Meta>>,
+        std::io::Error,
+    > {
+        Ok(self
+            .store
+            .more_specific_prefix_iter_from(prefix_id, guard)?
+            .map(move |p_id| {
+                self.store
+                    .retrieve_prefix_with_guard(p_id, guard)
+                    .unwrap_or_else(|| panic!("BOOM! More-specific prefix {:?} disappeared from the store", prefix_id))
+                    .0
+            }))
+    }
+
+    // pub fn less_specifics_iter_to(
+    //     &'a self,
+    //     prefix_id: PrefixId<Store::AF>,
+    //     guard: &'a Guard,
+    // ) -> impl Iterator<Item = &'a InternalPrefixRecord<Store::AF, Store::Meta>>
+    // {
+    //     self.store.non_default_prefix_iter_to(prefix_id, guard)
+    // }
 
     // In a LMP search we have to go over all the nibble lengths in the
     // stride up until the value of the actual nibble length were looking for

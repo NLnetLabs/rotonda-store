@@ -3,7 +3,7 @@ use std::fmt;
 use std::fmt::Debug;
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
-use routecore::record::{MergeUpdate, Meta};
+use routecore::record::{MergeUpdate, Meta, Record};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -144,5 +144,23 @@ where
 {
     fn from(record: &InternalPrefixRecord<AF, T>) -> Self {
         Self(Some((record.net, record.len)))
+    }
+}
+
+impl<'a, AF, M> From<&'a InternalPrefixRecord<AF, M>>
+    for routecore::bgp::PrefixRecord<'a, M>
+where
+    AF: AddressFamily,
+    M: Meta,
+{
+    fn from(record: &'a InternalPrefixRecord<AF, M>) -> Self {
+        routecore::bgp::PrefixRecord::new(
+            routecore::addr::Prefix::new(
+                record.net.into_ipaddr(),
+                record.len,
+            )
+            .unwrap(),
+            record.meta.as_ref().unwrap(),
+        )
     }
 }
