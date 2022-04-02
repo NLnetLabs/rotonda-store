@@ -12,7 +12,7 @@ use epoch::{Guard, Owned};
 use std::marker::PhantomData;
 
 use crate::local_array::{
-    bit_span::BitSpan, node::NodeChildIter, storage_backend::StorageBackend,
+    bit_span::BitSpan, node::NodeChildIter,
 };
 use crate::local_array::{node::NodeMoreSpecificsPrefixIter, tree::*};
 
@@ -23,9 +23,9 @@ use crate::AddressFamily;
 use routecore::record::MergeUpdate;
 use routecore::record::Meta;
 
-use super::storage_backend::SizedNodeRefOption;
-
 // ----------- Node related structs -----------------------------------------
+
+pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
 
 #[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
@@ -312,7 +312,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
 #[derive(Debug)]
 pub struct CustomAllocStorage<
     AF: AddressFamily,
-    Meta: routecore::record::Meta,
+    Meta: routecore::record::Meta + routecore::record::MergeUpdate,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, Meta>,
 > {
@@ -324,22 +324,19 @@ pub struct CustomAllocStorage<
 }
 
 impl<
+        'a,
         AF: AddressFamily,
         Meta: routecore::record::Meta + MergeUpdate,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, Meta>,
-    > StorageBackend for CustomAllocStorage<AF, Meta, NB, PB>
+    > CustomAllocStorage<AF, Meta, NB, PB>
 {
-    type AF = AF;
-    type Meta = Meta;
-    type PB = PB;
-
-    fn init(root_node: SizedStrideNode<Self::AF>) -> Self {
+    pub(crate) fn init(root_node: SizedStrideNode<AF>) -> Self {
         trace!("initialize storage backend");
 
         let store = CustomAllocStorage {
-            buckets: NB::init(),
-            prefixes: PB::init(),
+            buckets: NodeBuckets::<AF>::init(),
+            prefixes: PrefixBuckets::<AF, Meta>::init(),
             // len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
             _af: PhantomData,
@@ -353,10 +350,10 @@ impl<
         store
     }
 
-    fn acquire_new_node_id(
+    pub(crate) fn acquire_new_node_id(
         &self,
-        (prefix_net, sub_prefix_len): (Self::AF, u8),
-    ) -> StrideNodeId<Self::AF> {
+        (prefix_net, sub_prefix_len): (AF, u8),
+    ) -> StrideNodeId<AF> {
         StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
     }
 
@@ -364,11 +361,11 @@ impl<
     //
     // Next node will be ignored if a node with the same `id` already exists.
     #[allow(clippy::type_complexity)]
-    fn store_node(
+    pub(crate) fn store_node(
         &self,
-        id: StrideNodeId<Self::AF>,
-        next_node: SizedStrideNode<Self::AF>,
-    ) -> Option<StrideNodeId<Self::AF>> {
+        id: StrideNodeId<AF>,
+        next_node: SizedStrideNode<AF>,
+    ) -> Option<StrideNodeId<AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
@@ -457,11 +454,11 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    fn retrieve_node_with_guard<'a>(
+    pub(crate) fn retrieve_node_with_guard(
         &'a self,
-        id: StrideNodeId<Self::AF>,
+        id: StrideNodeId<AF>,
         guard: &'a Guard,
-    ) -> Option<SizedStrideRef<'a, Self::AF>> {
+    ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
@@ -509,11 +506,11 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    fn retrieve_node_mut_with_guard<'a>(
+    pub(crate) fn retrieve_node_mut_with_guard(
         &'a self,
-        id: StrideNodeId<Self::AF>,
+        id: StrideNodeId<AF>,
         guard: &'a Guard,
-    ) -> Option<SizedStrideRefMut<'a, Self::AF>> {
+    ) -> Option<SizedStrideRefMut<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
@@ -563,24 +560,24 @@ impl<
 
     fn store_node_with_guard(
         &self,
-        _current_node: SizedNodeRefOption<Self::AF>,
+        _current_node: SizedNodeRefOption<AF>,
         _next_node: SizedStrideNode<AF>,
         _guard: &epoch::Guard,
-    ) -> Option<StrideNodeId<Self::AF>> {
+    ) -> Option<StrideNodeId<AF>> {
         unimplemented!()
     }
 
-    fn get_root_node_id(&self) -> StrideNodeId<Self::AF> {
+    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
         StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0)
     }
 
-    fn get_nodes_len(&self) -> usize {
+    pub fn get_nodes_len(&self) -> usize {
         0
     }
 
     // Prefixes related methods
 
-    fn load_default_route_prefix_serial(&self) -> usize {
+    pub(crate) fn load_default_route_prefix_serial(&self) -> usize {
         self.default_route_prefix_serial.load(Ordering::Acquire)
     }
 
@@ -591,24 +588,24 @@ impl<
 
     fn acquire_new_prefix_id(
         &self,
-        prefix: &InternalPrefixRecord<Self::AF, Self::Meta>,
-    ) -> PrefixId<Self::AF> {
+        prefix: &InternalPrefixRecord<AF, Meta>,
+    ) -> PrefixId<AF> {
         PrefixId::<AF>::new(prefix.net, prefix.len)
     }
 
     fn store_prefix(
         &self,
-        _id: PrefixId<Self::AF>,
-        _pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
+        _id: PrefixId<AF>,
+        _pfx_rec: InternalPrefixRecord<AF, Meta>,
         _serial: usize,
-    ) -> Option<PrefixId<Self::AF>> {
+    ) -> Option<PrefixId<AF>> {
         unimplemented!()
     }
 
     #[allow(clippy::type_complexity)]
-    fn upsert_prefix(
+    pub(crate) fn upsert_prefix(
         &self,
-        pfx_rec: InternalPrefixRecord<Self::AF, Self::Meta>,
+        pfx_rec: InternalPrefixRecord<AF, Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let pfx_id = PrefixId::new(pfx_rec.net, pfx_rec.len);
         struct UpdateMeta<'s, AF: AddressFamily, M: routecore::record::Meta> {
@@ -727,11 +724,11 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    fn retrieve_prefix_mut_with_guard<'a>(
+    fn retrieve_prefix_mut_with_guard(
         &'a self,
-        id: PrefixId<Self::AF>,
+        id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> (&'a mut StoredPrefix<Self::AF, Self::Meta>, u8) {
+    ) -> (&'a mut StoredPrefix<AF, Meta>, u8) {
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
@@ -830,10 +827,10 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    fn retrieve_prefix(
+    pub(crate) fn retrieve_prefix(
         &self,
-        id: PrefixId<Self::AF>,
-    ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>> {
+        id: PrefixId<AF>,
+    ) -> Option<InternalPrefixRecord<AF, Meta>> {
         let guard = epoch::pin();
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
@@ -911,17 +908,17 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    fn non_recursive_retrieve_prefix_with_guard<'a>(
+    pub(crate) fn non_recursive_retrieve_prefix_with_guard(
         &'a self,
-        id: PrefixId<Self::AF>,
+        id: PrefixId<AF>,
         guard: &'a Guard,
     ) -> (
-        Option<(&InternalPrefixRecord<Self::AF, Self::Meta>, &'a usize)>,
+        Option<(&InternalPrefixRecord<AF, Meta>, &'a usize)>,
         Option<(
-            PrefixId<Self::AF>,
+            PrefixId<AF>,
             u8,
-            &'a PrefixSet<Self::AF, Self::Meta>,
-            [Option<(&'a PrefixSet<Self::AF, Self::Meta>, usize)>; 26],
+            &'a PrefixSet<AF, Meta>,
+            [Option<(&'a PrefixSet<AF, Meta>, usize)>; 26],
             usize,
         )>,
     ) {
@@ -983,12 +980,11 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    fn retrieve_prefix_with_guard<'a>(
+    pub(crate) fn retrieve_prefix_with_guard(
         &'a self,
-        id: PrefixId<Self::AF>,
+        id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<(&InternalPrefixRecord<Self::AF, Self::Meta>, &'a usize)>
-    {
+    ) -> Option<(&InternalPrefixRecord<AF, Meta>, &'a usize)> {
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
@@ -1069,15 +1065,15 @@ impl<
 
     fn remove_prefix(
         &mut self,
-        index: PrefixId<Self::AF>,
-    ) -> Option<InternalPrefixRecord<Self::AF, Self::Meta>> {
+        index: PrefixId<AF>,
+    ) -> Option<InternalPrefixRecord<AF, Meta>> {
         match index.is_empty() {
             false => self.prefixes.remove(index),
             true => None,
         }
     }
 
-    fn get_prefixes_len(&self) -> usize {
+    pub fn get_prefixes_len(&self) -> usize {
         (0..=AF::BITS)
             .map(|pfx_len| -> usize {
                 self.prefixes
@@ -1089,19 +1085,19 @@ impl<
 
     // Stride related methods
 
-    fn get_stride_for_id(&self, id: StrideNodeId<Self::AF>) -> u8 {
+    pub(crate) fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8 {
         self.buckets.get_stride_for_id(id)
     }
 
-    fn get_stride_sizes(&self) -> &[u8] {
+    pub fn get_stride_sizes(&self) -> &[u8] {
         self.buckets.get_stride_sizes()
     }
 
-    fn get_strides_len() -> u8 {
+    pub(crate) fn get_strides_len() -> u8 {
         NB::get_strides_len()
     }
 
-    fn get_first_stride_size() -> u8 {
+    pub(crate) fn get_first_stride_size() -> u8 {
         NB::get_first_stride_size()
     }
 
@@ -1109,8 +1105,8 @@ impl<
     // ptrbitarr.
     fn get_node_id_for_prefix(
         &self,
-        prefix: &PrefixId<Self::AF>,
-    ) -> (StrideNodeId<Self::AF>, BitSpan) {
+        prefix: &PrefixId<AF>,
+    ) -> (StrideNodeId<AF>, BitSpan) {
         let mut acc = 0;
         for i in self.get_stride_sizes() {
             acc += *i;
@@ -1135,11 +1131,12 @@ impl<
 
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.
-    fn more_specific_prefix_iter_from<'a>(
+    pub(crate) fn more_specific_prefix_iter_from(
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Result<MoreSpecificsPrefixIter<AF, Self>, std::io::Error> {
+    ) -> Result<MoreSpecificsPrefixIter<AF, Meta, NB, PB>, std::io::Error>
+    {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
@@ -1209,47 +1206,12 @@ impl<
             parent_and_position: vec![],
         })
     }
-
-    // Iterator over all less-specific prefixes, starting from the given
-    // prefix at the given level and cursor.
-    fn less_specific_prefix_iter_to<'a>(
-        &'a self,
-        start_prefix_id: PrefixId<AF>,
-        guard: &'a Guard,
-    ) -> Result<LessSpecificPrefixIter<AF, Meta, PB>, std::io::Error> {
-        trace!("less specifics for {:?}", start_prefix_id);
-        trace!("level {}, len {}", 0, start_prefix_id.get_len());
-
-        if start_prefix_id.get_len() < 1 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "prefix length is too short. /0 is not allowed. Use `prefix_iter()` instead.",
-            ));
-            // return Ok(LessSpecificPrefixIter::empty());
-        }
-
-        let cur_len = start_prefix_id.get_len() - 1;
-        let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
-
-        Ok(LessSpecificPrefixIter {
-            prefixes: &self.prefixes,
-            cur_prefix_id: start_prefix_id,
-            cur_bucket,
-            cur_len,
-            cur_level: 0,
-            guard,
-            _af: PhantomData,
-            _meta: PhantomData,
-            _pb: PhantomData,
-        })
-    }
-
 }
 
 impl<
         'a,
         AF: AddressFamily + 'a,
-        M: Meta + 'a,
+        M: Meta + MergeUpdate + 'a,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > CustomAllocStorage<AF, M, NB, PB>
@@ -1541,19 +1503,27 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 pub struct MoreSpecificsPrefixIter<
     'a,
     AF: AddressFamily,
-    Store: StorageBackend,
+    M: Meta + MergeUpdate,
+    NB: NodeBuckets<AF>,
+    PB: PrefixBuckets<AF, M>,
+    // Store: StorageBackend,
 > {
-    store: &'a Store,
+    store: &'a CustomAllocStorage<AF, M, NB, PB>,
     cur_ptr_iter: SizedNodeIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
     parent_and_position: Vec<SizedNodeIter<AF>>,
     guard: &'a Guard,
 }
 
-impl<'a, AF: AddressFamily + 'a, Store: StorageBackend<AF = AF>> Iterator
-    for MoreSpecificsPrefixIter<'a, AF, Store>
+impl<
+        'a,
+        AF: AddressFamily + 'a,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > Iterator for MoreSpecificsPrefixIter<'a, AF, M, NB, PB>
 {
-    type Item = PrefixId<Store::AF>;
+    type Item = PrefixId<AF>;
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!("MoreSpecificsPrefixIter");

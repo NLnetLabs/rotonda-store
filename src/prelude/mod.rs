@@ -10,7 +10,6 @@ pub use crate::custom_alloc::CustomAllocStorage;
 pub use crate::custom_alloc::{NodeBuckets, PrefixBuckets};
 pub use crate::custom_alloc::{NodeSet, PrefixSet};
 pub use crate::local_array::node::PrefixId;
-pub use crate::local_array::store::storage_backend::StorageBackend;
 
 pub use crate::local_array::tree::*;
 pub use crate::prefix_record::InternalPrefixRecord;

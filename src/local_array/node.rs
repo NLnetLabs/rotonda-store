@@ -91,7 +91,7 @@ where
             }
     }
 
-    // Iteratate over all the prefix ids contained in this node
+    // Iterate over all the prefix ids contained in this node
     pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
         NodePrefixIter<AF, S> {
         NodePrefixIter::<AF, S> {

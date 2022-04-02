@@ -2,12 +2,12 @@ use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 use log::{info, trace};
 
-use crate::af::{AddressFamily, Zero};
+use crate::af::AddressFamily;
+use crate::custom_alloc::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
-use routecore::record::{NoMeta, Record};
+use routecore::record::{MergeUpdate, Meta, NoMeta, Record};
 
-use crate::local_array::storage_backend::*;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
 
@@ -19,15 +19,18 @@ use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
 
 //------------ Longest Matching Prefix  -------------------------------------
 
-impl<'a, Store> TreeBitMap<Store>
+impl<'a, AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
 where
-    Store: StorageBackend,
+    AF: AddressFamily,
+    M: Meta + MergeUpdate,
+    NB: NodeBuckets<AF>,
+    PB: PrefixBuckets<AF, M>,
 {
     pub fn more_specifics_from(
         &'a self,
-        prefix_id: PrefixId<Store::AF>,
+        prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> QueryResult<'a, Store::Meta> {
+    ) -> QueryResult<'a, M> {
         let result = self
             .store
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
@@ -65,18 +68,18 @@ where
 
     pub fn less_specifics_from(
         &'a self,
-        prefix_id: PrefixId<Store::AF>,
+        prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> QueryResult<'a, Store::Meta> {
+    ) -> QueryResult<'a, M> {
         let result = self
             .store
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
 
         let prefix = result.0;
         trace!("get less specific iter from {:?}", result);
-        let less_specifics_vec = result.1.and_then(
+        let less_specifics_vec = result.1.map(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.store.less_specific_prefix_iter_to(prefix_id, guard).ok()
+                self.store.less_specific_prefix_iter(prefix_id, guard)
             },
         );
 
@@ -99,10 +102,10 @@ where
 
     pub fn more_specifics_iter_from(
         &'a self,
-        prefix_id: PrefixId<Store::AF>,
+        prefix_id: PrefixId<AF>,
         guard: &'a Guard,
     ) -> Result<
-        impl Iterator<Item = &'a InternalPrefixRecord<Store::AF, Store::Meta>>,
+        impl Iterator<Item = &'a InternalPrefixRecord<AF, M>>,
         std::io::Error,
     > {
         Ok(self
@@ -115,15 +118,6 @@ where
                     .0
             }))
     }
-
-    // pub fn less_specifics_iter_to(
-    //     &'a self,
-    //     prefix_id: PrefixId<Store::AF>,
-    //     guard: &'a Guard,
-    // ) -> impl Iterator<Item = &'a InternalPrefixRecord<Store::AF, Store::Meta>>
-    // {
-    //     self.store.non_default_prefix_iter_to(prefix_id, guard)
-    // }
 
     // In a LMP search we have to go over all the nibble lengths in the
     // stride up until the value of the actual nibble length were looking for
@@ -148,10 +142,10 @@ where
 
     pub fn match_prefix(
         &'a self,
-        search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
+        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
         options: &MatchOptions,
         guard: &'a Guard,
-    ) -> QueryResult<'a, Store::Meta> {
+    ) -> QueryResult<'a, M> {
         // --- The Default Route Prefix -------------------------------------
 
         // The Default Route Prefix unfortunately does not fit in tree as we
@@ -176,7 +170,7 @@ where
                     let prefix_meta = self
                         .store
                         .retrieve_prefix_with_guard(
-                            PrefixId::new(Store::AF::zero(), 0),
+                            PrefixId::new(AF::zero(), 0),
                             guard,
                         )
                         .unwrap()
@@ -230,18 +224,18 @@ where
         // QueryResult is computed at the end.
 
         // The final prefix
-        let mut match_prefix_idx: Option<PrefixId<Store::AF>> = None;
+        let mut match_prefix_idx: Option<PrefixId<AF>> = None;
 
         // The indexes of the less-specifics
         let mut less_specifics_vec = if options.include_less_specifics {
-            Some(Vec::<PrefixId<Store::AF>>::new())
+            Some(Vec::<PrefixId<AF>>::new())
         } else {
             None
         };
 
         // The indexes of the more-specifics.
         let mut more_specifics_vec = if options.include_more_specifics {
-            Some(Vec::<PrefixId<Store::AF>>::new())
+            Some(Vec::<PrefixId<AF>>::new())
         } else {
             None
         };
@@ -690,7 +684,7 @@ where
                 less_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(move |p| self.store.retrieve_prefix(*p).unwrap())
-                        .collect::<RecordSet<'a, Store::Meta>>()
+                        .collect::<RecordSet<'a, M>>()
                 })
             } else {
                 None

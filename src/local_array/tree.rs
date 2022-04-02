@@ -1,5 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use log::{info, trace};
+use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -7,9 +8,9 @@ use std::sync::atomic::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::af::{AddressFamily, Zero};
+use crate::af::AddressFamily;
+use crate::custom_alloc::{CustomAllocStorage, NodeBuckets, PrefixBuckets};
 use crate::local_array::bit_span::BitSpan;
-use crate::local_array::storage_backend::StorageBackend;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
 
@@ -68,7 +69,6 @@ pub enum SizedStrideRef<'a, AF: AddressFamily> {
     Stride4(&'a TreeBitMapNode<AF, Stride4>),
     Stride5(&'a TreeBitMapNode<AF, Stride5>),
 }
-
 
 #[derive(Debug)]
 pub enum SizedStrideRefMut<'a, AF: AddressFamily> {
@@ -346,37 +346,43 @@ impl std::fmt::Display for StrideType {
 
 //--------------------- TreeBitMap ------------------------------------------
 
-pub struct TreeBitMap<Store>
-where
-    Store: StorageBackend,
-{
+pub struct TreeBitMap<
+    AF: AddressFamily,
+    M: Meta + MergeUpdate,
+    NB: NodeBuckets<AF>,
+    PB: PrefixBuckets<AF, M>,
+> {
     pub stats: Vec<StrideStats>,
-    pub store: Store,
+    pub store: CustomAllocStorage<AF, M, NB, PB>,
 }
 
-impl<'a, Store> TreeBitMap<Store>
-where
-    Store: StorageBackend,
+impl<
+        'a,
+        AF: AddressFamily,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > TreeBitMap<AF, M, NB, PB>
 {
-    pub fn new() -> TreeBitMap<Store> {
+    pub fn new() -> TreeBitMap<AF, M, NB, PB> {
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(
                 SizedStride::Stride3,
-                Store::get_strides_len() as u8,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
             ), // 0
             StrideStats::new(
                 SizedStride::Stride4,
-                Store::get_strides_len() as u8,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
             ), // 1
             StrideStats::new(
                 SizedStride::Stride5,
-                Store::get_strides_len() as u8,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
             ), // 2
         ];
 
-        let root_node: SizedStrideNode<<Store as StorageBackend>::AF>;
+        let root_node: SizedStrideNode<AF>;
 
-        match Store::get_first_stride_size() {
+        match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
             3 => {
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
@@ -412,7 +418,7 @@ where
         TreeBitMap {
             // strides,
             stats: stride_stats,
-            store: Store::init(root_node),
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node),
         }
     }
 
@@ -449,7 +455,7 @@ where
 
     pub fn insert(
         &self,
-        pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
+        pfx: InternalPrefixRecord<AF, M>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if pfx.len == 0 {
             let _res =
@@ -470,11 +476,8 @@ where
                 stride
             };
 
-            let nibble = Store::AF::get_nibble(
-                pfx.net,
-                stride_end - stride,
-                nibble_len,
-            );
+            let nibble =
+                AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
             let guard = &epoch::pin();
@@ -506,7 +509,7 @@ where
         }
     }
 
-    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
+    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
         self.store.get_root_node_id()
     }
 
@@ -534,12 +537,12 @@ where
     //   of those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
         &self,
-        new_meta: Store::Meta,
+        new_meta: M,
     ) -> Result<(), Box<dyn std::error::Error>> {
         trace!("Updating the default route...");
         self.store
             .upsert_prefix(InternalPrefixRecord::new_with_meta(
-                Store::AF::zero(),
+                AF::zero(),
                 0,
                 new_meta,
             ))
@@ -550,8 +553,8 @@ where
     // adding all `pfx_vec`s of its children.
     fn get_all_more_specifics_for_node(
         &self,
-        start_node_id: StrideNodeId<Store::AF>,
-        found_pfx_vec: &mut Vec<PrefixId<Store::AF>>,
+        start_node_id: StrideNodeId<AF>,
+        found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
         let guard = &epoch::pin();
 
@@ -567,12 +570,10 @@ where
                         start_node_id,
                         BitSpan::new(0, 1),
                     )
-                    .collect::<Vec<PrefixId<Store::AF>>>(),
+                    .collect::<Vec<PrefixId<AF>>>(),
                 );
 
-                for child_node in
-                    n.ptr_iter(start_node_id)
-                {
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
@@ -585,7 +586,7 @@ where
                         start_node_id,
                         BitSpan::new(0, 1),
                     )
-                    .collect::<Vec<PrefixId<Store::AF>>>(),
+                    .collect::<Vec<PrefixId<AF>>>(),
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -601,7 +602,7 @@ where
                         start_node_id,
                         BitSpan::new(0, 1),
                     )
-                    .collect::<Vec<PrefixId<Store::AF>>>(),
+                    .collect::<Vec<PrefixId<AF>>>(),
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -623,11 +624,11 @@ where
     // returns that.
     pub(crate) fn get_all_more_specifics_from_nibble<S: Stride>(
         &'a self,
-        current_node: &TreeBitMapNode<Store::AF, S>,
+        current_node: &TreeBitMapNode<AF, S>,
         nibble: u32,
         nibble_len: u8,
-        base_prefix: StrideNodeId<Store::AF>,
-    ) -> Option<Vec<PrefixId<Store::AF>>>
+        base_prefix: StrideNodeId<AF>,
+    ) -> Option<Vec<PrefixId<AF>>>
     where
         S: Stride,
     {
@@ -644,7 +645,13 @@ where
     }
 }
 
-impl<Store: StorageBackend> Default for TreeBitMap<Store> {
+impl<
+        AF: AddressFamily,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > Default for TreeBitMap<AF, M, NB, PB>
+{
     fn default() -> Self {
         Self::new()
     }
@@ -652,7 +659,14 @@ impl<Store: StorageBackend> Default for TreeBitMap<Store> {
 
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
-impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
+impl<
+        'a,
+        AF: AddressFamily,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
+{
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_nodes = self.store.get_nodes_len();
 

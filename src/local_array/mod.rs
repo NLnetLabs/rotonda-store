@@ -6,7 +6,6 @@ mod atomic_stride;
 mod tests;
 
 pub mod store;
-pub(crate) use store::*;
 
 #[macro_use]
 mod macros;
