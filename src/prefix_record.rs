@@ -164,3 +164,18 @@ where
         )
     }
 }
+
+impl<'a, AF, M> From<routecore::bgp::PrefixRecord<'a, M>>
+    for InternalPrefixRecord<AF, M>
+where
+    AF: AddressFamily,
+    M: Meta,
+{
+    fn from(record: routecore::bgp::PrefixRecord<'a, M>) -> Self {
+        Self {
+            net: AF::from_ipaddr(record.key().addr()),
+            len: record.key().len(),
+            meta: Some(record.meta().into_owned()),
+        }
+    }
+}
