@@ -586,22 +586,6 @@ impl<
             .fetch_add(1, Ordering::Acquire)
     }
 
-    fn acquire_new_prefix_id(
-        &self,
-        prefix: &InternalPrefixRecord<AF, Meta>,
-    ) -> PrefixId<AF> {
-        PrefixId::<AF>::new(prefix.net, prefix.len)
-    }
-
-    fn store_prefix(
-        &self,
-        _id: PrefixId<AF>,
-        _pfx_rec: InternalPrefixRecord<AF, Meta>,
-        _serial: usize,
-    ) -> Option<PrefixId<AF>> {
-        unimplemented!()
-    }
-
     #[allow(clippy::type_complexity)]
     pub(crate) fn upsert_prefix(
         &self,
