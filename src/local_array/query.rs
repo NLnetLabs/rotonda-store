@@ -6,7 +6,7 @@ use crate::af::AddressFamily;
 use crate::custom_alloc::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
-use routecore::record::{MergeUpdate, Meta, NoMeta, Record};
+use routecore::record::{MergeUpdate, Meta, Record};
 
 use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
@@ -124,7 +124,7 @@ where
 
     pub fn match_prefix(
         &'a self,
-        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
+        search_pfx: PrefixId<AF>,
         options: &MatchOptions,
         guard: &'a Guard,
     ) -> QueryResult<'a, M> {
@@ -136,7 +136,7 @@ where
         // children of the root node. We, however, want the default prefix
         // which lives on the root node itself! We are *not* going to return
         // all of the prefixes in the tree as more-specifics.
-        if search_pfx.len == 0 {
+        if search_pfx.get_len() == 0 {
             match self.store.load_default_route_prefix_serial() {
                 0 => {
                     return QueryResult {
@@ -161,8 +161,8 @@ where
                         .as_ref();
                     return QueryResult {
                         prefix: Prefix::new(
-                            search_pfx.net.into_ipaddr(),
-                            search_pfx.len,
+                            search_pfx.get_net().into_ipaddr(),
+                            search_pfx.get_len(),
                         )
                         .ok(),
                         prefix_meta,
@@ -238,10 +238,10 @@ where
         for stride in self.store.get_stride_sizes() {
             stride_end += stride;
 
-            let last_stride = search_pfx.len < stride_end;
+            let last_stride = search_pfx.get_len() < stride_end;
 
             nibble_len = if last_stride {
-                stride + search_pfx.len - stride_end
+                stride + search_pfx.get_len() - stride_end
             } else {
                 *stride
             };
@@ -249,7 +249,7 @@ where
             // Shift left and right to set the bits to zero that are not
             // in the nibble we're handling here.
             nibble = AddressFamily::get_nibble(
-                search_pfx.net,
+                search_pfx.get_net(),
                 stride_end - stride,
                 nibble_len,
             );
@@ -309,7 +309,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -331,7 +331,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -350,7 +350,7 @@ where
                                         nibble,
                                         nibble_len,
                                         StrideNodeId::new_with_cleaned_id(
-                                            search_pfx.net,
+                                            search_pfx.get_net(),
                                             stride_end - stride,
                                         ),
                                     );
@@ -375,7 +375,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -433,7 +433,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -455,7 +455,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -471,7 +471,7 @@ where
                                         nibble,
                                         nibble_len,
                                         StrideNodeId::new_with_cleaned_id(
-                                            search_pfx.net,
+                                            search_pfx.get_net(),
                                             stride_end - stride,
                                         ),
                                     );
@@ -490,7 +490,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -546,7 +546,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -570,7 +570,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -586,7 +586,7 @@ where
                                         nibble,
                                         nibble_len,
                                         StrideNodeId::new_with_cleaned_id(
-                                            search_pfx.net,
+                                            search_pfx.get_net(),
                                             stride_end - stride,
                                         ),
                                     );
@@ -603,7 +603,7 @@ where
                                             nibble,
                                             nibble_len,
                                             StrideNodeId::new_with_cleaned_id(
-                                                search_pfx.net,
+                                                search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
                                         );
@@ -643,7 +643,7 @@ where
                 pfx_idx.0.unwrap().1
             );
             prefix = self.store.retrieve_prefix_with_guard(pfx_idx, guard); //.map(|p| PrefixId::new(p.net, p.len));
-            match_type = if prefix.unwrap().0.len == search_pfx.len {
+            match_type = if prefix.unwrap().0.len == search_pfx.get_len() {
                 MatchType::ExactMatch
             } else {
                 MatchType::LongestMatch
