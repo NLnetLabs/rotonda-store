@@ -101,6 +101,60 @@ where
         Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
     }
 
+    pub fn nu_match_prefix(
+        &'a self,
+        search_pfx: PrefixId<AF>,
+        options: &MatchOptions,
+        guard: &'a Guard,
+    ) -> QueryResult<'a, M> {
+        let prefix = self
+            .store
+            .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
+            .0;
+
+        let match_type = if let Some(pfx) = prefix {
+            if pfx.0.len == search_pfx.get_len() {
+                MatchType::ExactMatch
+            } else {
+                MatchType::LongestMatch
+            }
+        } else {
+            MatchType::EmptyMatch
+        };
+
+        QueryResult {
+            prefix: if let Some(pfx) = prefix {
+                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
+            } else {
+                None
+            },
+            prefix_meta: if let Some(pfx) = prefix {
+                pfx.0.meta.as_ref()
+            } else {
+                None
+            },
+            match_type,
+            less_specifics: if options.include_less_specifics {
+                Some(
+                    self.store
+                        .less_specific_prefix_iter(search_pfx, guard)
+                        .collect(),
+                )
+            } else {
+                None
+            },
+            more_specifics: if options.include_more_specifics {
+                Some(
+                    self.store
+                        .more_specific_prefix_iter_from(search_pfx, guard)
+                        .collect(),
+                )
+            } else {
+                None
+            },
+        }
+    }
+
     // In a LMP search we have to go over all the nibble lengths in the
     // stride up until the value of the actual nibble length were looking for
     // (until we reach stride length for all strides that aren't the last)

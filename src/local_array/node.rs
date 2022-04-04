@@ -89,7 +89,10 @@ where
             }
     }
 
-    // Iterate over all the prefix ids contained in this node
+    // Iterate over all the prefix ids contained in this node.
+    // Note that this function is *not* used by the iterator that iterates
+    // over all prefixes. That one doesn't have to use the tree at all, but
+    // uses the store directly.
     pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
         NodePrefixIter<AF, S> {
         NodePrefixIter::<AF, S> {
@@ -275,17 +278,15 @@ where
                 // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
                 return NewNodeOrIndex::NewPrefix;
             }
-            // A prefix exists as a child of the base_prefix, so create the
-            // PrefixId with the right offset from the base prefix and cut
-            // it off at that point.
-            // let pfx: PrefixId<AF> = base_prefix.add_to_len(nibble_len).truncate_to_len().into();
             return NewNodeOrIndex::ExistingPrefix;
         }
 
         // Nodes always live at the last length of a stride (i.e. the last 
         // nibble), so we add the stride length to the length of the
         // base_prefix (which is always the start length of the stride).
-        NewNodeOrIndex::ExistingNode(base_prefix.add_to_len(stride_len).truncate_to_len())
+        NewNodeOrIndex::ExistingNode(
+            base_prefix.add_to_len(stride_len).truncate_to_len()
+        )
     }
 
     //-------- Search nibble functions --------------------------------------
