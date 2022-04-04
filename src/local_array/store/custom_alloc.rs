@@ -223,7 +223,7 @@ where
     fn remove(
         &mut self,
         id: PrefixId<AF>,
-    ) -> Option<InternalPrefixRecord<AF, M>>;
+    ) -> Option<M>;
     fn get_root_prefix_set(&self, len: u8) -> &'_ PrefixSet<AF, M>;
     fn get_bits_for_len(len: u8, level: u8) -> Option<&'static u8>;
 }
@@ -1050,7 +1050,7 @@ impl<
     fn remove_prefix(
         &mut self,
         index: PrefixId<AF>,
-    ) -> Option<InternalPrefixRecord<AF, Meta>> {
+    ) -> Option<Meta> {
         match index.is_empty() {
             false => self.prefixes.remove(index),
             true => None,

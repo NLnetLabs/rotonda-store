@@ -31,4 +31,4 @@ pub mod stats;
 pub use crate::rotonda_store::*;
 
 // re-exports
-pub use routecore::*;
+pub use routecore::{addr, record};
