@@ -18,7 +18,13 @@ use crossbeam_epoch::Guard;
 use log::{info, trace};
 use routecore::record::{MergeUpdate, Meta};
 
+// ----------- PrefixIter ---------------------------------------------------
+
 // Iterator over all the prefixes in the storage.
+// This Iterator does *not* use the tree, it iterates over all the length
+// arrays in the CustomAllocStorage.
+
+
 pub struct PrefixIter<
     'a,
     AF: AddressFamily + 'a,
@@ -213,6 +219,15 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     }
 }
 
+// ----------- MoreSpecificsIter --------------------------------------------
+
+// A iterator over all the more-specifics for a given prefix.
+//
+// This iterator is somewhat different from the other *PrefixIterator types,
+// since it uses the Nodes to select the more specifics. Am Iterator that
+// would only use the Prefixes in the store could exist, but iterating over
+// those in search of more specifics would be way more expensive.
+
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum SizedNodeIter<AF: AddressFamily> {
     Stride3(NodeChildIter<AF, Stride3>),
@@ -246,17 +261,12 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
     }
 }
 
-// This iterator is somewhat different from the other *PrefixIterator types,
-// since it uses the Nodes to select the more specifics. Am Iterator that
-// would only use the Prefixes in the store could exist, but iterating over
-// those in search of more specifics would be way more expensive.
 pub struct MoreSpecificsPrefixIter<
     'a,
     AF: AddressFamily,
     M: Meta + MergeUpdate,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
-    // Store: StorageBackend,
 > {
     store: &'a CustomAllocStorage<AF, M, NB, PB>,
     cur_ptr_iter: SizedNodeIter<AF>,
@@ -351,6 +361,14 @@ impl<
         }
     }
 }
+
+
+// ----------- LessSpecificPrefixIter ---------------------------------------
+
+// This iterator iterates over all the less-specifics for a given prefix.
+// It does *not* use the tree, it goes directly into the CustomAllocStorage
+// and retrieves the less-specifics by going from len to len, searching for
+// the prefixes.
 
 pub struct LessSpecificPrefixIter<
     'a,
@@ -535,6 +553,10 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
         }
     }
 }
+
+// ----------- Iterator initialization methods for CustomAllocStorage -------
+
+// These are only the methods that are to start the iterations.
 
 impl<
         'a,
