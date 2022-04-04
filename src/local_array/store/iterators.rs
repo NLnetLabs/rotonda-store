@@ -24,7 +24,6 @@ use routecore::record::{MergeUpdate, Meta};
 // This Iterator does *not* use the tree, it iterates over all the length
 // arrays in the CustomAllocStorage.
 
-
 pub struct PrefixIter<
     'a,
     AF: AddressFamily + 'a,
@@ -283,7 +282,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > Iterator for MoreSpecificsPrefixIter<'a, AF, M, NB, PB>
 {
-    type Item = PrefixId<AF>;
+    type Item = &'a InternalPrefixRecord<AF, M>;
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!("MoreSpecificsPrefixIter");
@@ -292,7 +291,19 @@ impl<
             let next_pfx = self.cur_pfx_iter.next();
 
             if next_pfx.is_some() {
-                return next_pfx;
+                return self
+                    .store
+                    .non_recursive_retrieve_prefix_with_guard(
+                        next_pfx.unwrap_or_else(
+                            || panic!(
+                                "BOOM! More-specific prefix {:?} disappeared from the store",
+                                next_pfx
+                            )
+                        ),
+                        self.guard,
+                    )
+                    .0
+                    .map(|p| p.0);
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -361,7 +372,6 @@ impl<
         }
     }
 }
-
 
 // ----------- LessSpecificPrefixIter ---------------------------------------
 
@@ -572,76 +582,74 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Result<MoreSpecificsPrefixIter<AF, Meta, NB, PB>, std::io::Error>
-    {
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, Meta>> {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
         if start_prefix_id.get_len() >= AF::BITS {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "prefix length is too long. No more-specifics can live here.",
-            ));
+            None
+        } else {
+            // calculate the node start_prefix_id lives in.
+            let (cur_node_id, cur_bit_span) =
+                self.get_node_id_for_prefix(&start_prefix_id.inc_len());
+            trace!("start node {}", cur_node_id);
+
+            trace!(
+                "start prefix id {:032b} (len {})",
+                start_prefix_id.get_net(),
+                start_prefix_id.get_len()
+            );
+            trace!(
+                "start node id   {:032b} (bits {} len {})",
+                cur_node_id.get_id().0,
+                cur_node_id.get_id().0,
+                cur_node_id.get_len()
+            );
+            trace!(
+                "start bit span  {:032b} {}",
+                cur_bit_span,
+                cur_bit_span.bits
+            );
+            let cur_pfx_iter: SizedPrefixIter<AF>;
+            let cur_ptr_iter: SizedNodeIter<AF>;
+
+            match self.retrieve_node_with_guard(cur_node_id, guard).unwrap() {
+                SizedStrideRef::Stride3(n) => {
+                    cur_pfx_iter = SizedPrefixIter::Stride3(
+                        n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
+                    );
+                    cur_ptr_iter = SizedNodeIter::Stride3(
+                        n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
+                    );
+                }
+                SizedStrideRef::Stride4(n) => {
+                    cur_pfx_iter = SizedPrefixIter::Stride4(
+                        n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
+                    );
+                    cur_ptr_iter = SizedNodeIter::Stride4(
+                        n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
+                    );
+                }
+                SizedStrideRef::Stride5(n) => {
+                    cur_pfx_iter = SizedPrefixIter::Stride5(
+                        n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
+                    );
+                    cur_ptr_iter = SizedNodeIter::Stride5(
+                        n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
+                    );
+                }
+            };
+
+            Some(MoreSpecificsPrefixIter {
+                store: self,
+                guard,
+                cur_pfx_iter,
+                cur_ptr_iter,
+                parent_and_position: vec![],
+            })
         }
-
-        // calculate the node start_prefix_id lives in.
-        let (cur_node_id, cur_bit_span) =
-            self.get_node_id_for_prefix(&start_prefix_id.inc_len());
-        trace!("start node {}", cur_node_id);
-
-        trace!(
-            "start prefix id {:032b} (len {})",
-            start_prefix_id.get_net(),
-            start_prefix_id.get_len()
-        );
-        trace!(
-            "start node id   {:032b} (bits {} len {})",
-            cur_node_id.get_id().0,
-            cur_node_id.get_id().0,
-            cur_node_id.get_len()
-        );
-        trace!(
-            "start bit span  {:032b} {}",
-            cur_bit_span,
-            cur_bit_span.bits
-        );
-        let cur_pfx_iter: SizedPrefixIter<AF>;
-        let cur_ptr_iter: SizedNodeIter<AF>;
-
-        match self.retrieve_node_with_guard(cur_node_id, guard).unwrap() {
-            SizedStrideRef::Stride3(n) => {
-                cur_pfx_iter = SizedPrefixIter::Stride3(
-                    n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
-                );
-                cur_ptr_iter = SizedNodeIter::Stride3(
-                    n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
-                );
-            }
-            SizedStrideRef::Stride4(n) => {
-                cur_pfx_iter = SizedPrefixIter::Stride4(
-                    n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
-                );
-                cur_ptr_iter = SizedNodeIter::Stride4(
-                    n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
-                );
-            }
-            SizedStrideRef::Stride5(n) => {
-                cur_pfx_iter = SizedPrefixIter::Stride5(
-                    n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
-                );
-                cur_ptr_iter = SizedNodeIter::Stride5(
-                    n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
-                );
-            }
-        };
-
-        Ok(MoreSpecificsPrefixIter {
-            store: self,
-            guard,
-            cur_pfx_iter,
-            cur_ptr_iter,
-            parent_and_position: vec![],
-        })
+        .into_iter()
+        .flatten()
     }
 }
 

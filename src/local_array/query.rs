@@ -36,13 +36,8 @@ where
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
         trace!("more specifics iter from {:?}", result);
         let prefix = result.0;
-        let more_specifics_vec = result.1.and_then(
-            |(prefix_id, level, cur_set, parents, index)| {
-                self.store
-                    .more_specific_prefix_iter_from(prefix_id, guard)
-                    .ok()
-            },
-        );
+        let more_specifics_vec =
+            self.store.more_specific_prefix_iter_from(prefix_id, guard);
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
@@ -57,12 +52,7 @@ where
             },
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
-            more_specifics: more_specifics_vec.map(|iter| {
-                iter.map(|p| {
-                    self.store.retrieve_prefix_with_guard(p, guard).unwrap().0
-                })
-                .collect()
-            }),
+            more_specifics: Some(more_specifics_vec.collect()),
         }
     }
 
@@ -108,15 +98,7 @@ where
         impl Iterator<Item = &'a InternalPrefixRecord<AF, M>>,
         std::io::Error,
     > {
-        Ok(self
-            .store
-            .more_specific_prefix_iter_from(prefix_id, guard)?
-            .map(move |p_id| {
-                self.store
-                    .retrieve_prefix_with_guard(p_id, guard)
-                    .unwrap_or_else(|| panic!("BOOM! More-specific prefix {:?} disappeared from the store", prefix_id))
-                    .0
-            }))
+        Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
     }
 
     // In a LMP search we have to go over all the nibble lengths in the
