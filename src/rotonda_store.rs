@@ -17,7 +17,8 @@ pub use crate::local_array::store::custom_alloc;
 pub use crate::local_array::store::DefaultStore as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
 
-use self::custom_alloc::{PrefixBuckets, PrefixIter};
+use self::custom_alloc::PrefixBuckets;
+use crate::local_array::store::iterators::PrefixIter;
 
 //------------ Types for strides displaying/monitoring ----------------------
 

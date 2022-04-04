@@ -17,4 +17,5 @@ pub use crate::stride::{Stride3, Stride4, Stride5};
 pub use crate::{
     CustomAllocPrefixRecordIterator, SingleAFPrefixRecordIterator,
 };
+pub use crate::local_array::store::iterators::PrefixIter;
 pub use crate::{MatchOptions, QueryResult, Stats};

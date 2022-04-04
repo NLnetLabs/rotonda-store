@@ -9,7 +9,7 @@ use routecore::record::NoMeta;
 
 pub use super::atomic_stride::*;
 use super::bit_span::BitSpan;
-use crate::custom_alloc::{SizedNodeIter, SizedPrefixIter};
+use crate::local_array::store::iterators::{SizedNodeIter, SizedPrefixIter};
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
@@ -710,7 +710,7 @@ impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride5> {
 // len                   0 1   2           3                               
 //
 // pfxbitarr (example)   1 0 0 0  0  0  1  1   1   0   0   0   0   0   0   0 0
-// pos (example)         0 0 0 0  0  0  0  0   1   0   0   0   0   0   0   0 0                  
+// pos (example)         0 0 0 0  0  0  0  0   1   0   0   0   0   0   0   0 0                 
 //
 // Ex.:
 // `pos` describes the bit that is currently under consideration. 
@@ -827,37 +827,3 @@ impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride5> {
         SizedPrefixIter::<AF>::Stride5(self)
     }
 }
-
-// #[derive(Debug)]
-// pub(crate) struct NodeChildMoreSpecificsIter<AF: AddressFamily, S: Stride> {
-//     base_prefix: StrideNodeId<AF>,
-//     ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-//     bit_span: BitSpan,
-//     _af: PhantomData<AF>,
-//     _s: PhantomData<S>,
-// }
-
-// impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
-//     NodeChildMoreSpecificsIter<AF, S> {
-//     type Item = StrideNodeId<AF>;
-//     fn next(&mut self) -> Option<Self::Item> {
-//         // iterate over all the possible values for this stride length, e.g.
-//         // two bits can have 4 different values.
-//         for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
-//             // move the bit_span left with the amount of bits we're going to
-//             // loop over.
-//             // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
-//             // becomes 0000 0000 0000 1100, then it will iterate over 
-//             // ...1100,...1101,...1110,...1111
-//             let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
-//             if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
-//                 <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
-//             {
-//                 self.bit_span.bits = cursor + 1;
-//                 return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
-//             }    
-            
-//         }
-//         None
-//     }
-// }
