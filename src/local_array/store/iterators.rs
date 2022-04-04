@@ -218,7 +218,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     }
 }
 
-// ----------- MoreSpecificsIter --------------------------------------------
+// ----------- MoreSpecificIter --------------------------------------------
 
 // A iterator over all the more-specifics for a given prefix.
 //
@@ -260,7 +260,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
     }
 }
 
-pub struct MoreSpecificsPrefixIter<
+pub struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
     M: Meta + MergeUpdate,
@@ -280,7 +280,7 @@ impl<
         M: Meta + MergeUpdate,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > Iterator for MoreSpecificsPrefixIter<'a, AF, M, NB, PB>
+    > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
 {
     type Item = &'a InternalPrefixRecord<AF, M>;
 
@@ -395,31 +395,6 @@ pub struct LessSpecificPrefixIter<
     _af: PhantomData<AF>,
     _meta: PhantomData<M>,
     _pb: PhantomData<PB>,
-}
-
-impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
-    LessSpecificPrefixIter<'a, AF, M, PB>
-{
-    pub(crate) fn new(
-        prefixes: &'a PB,
-        cur_len: u8,
-        cur_bucket: &'a PrefixSet<AF, M>,
-        cur_level: u8,
-        cur_prefix_id: PrefixId<AF>,
-        guard: &'a Guard,
-    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
-        LessSpecificPrefixIter {
-            prefixes,
-            cur_len,
-            cur_bucket,
-            cur_level,
-            cur_prefix_id,
-            guard,
-            _af: PhantomData,
-            _meta: PhantomData,
-            _pb: PhantomData,
-        }
-    }
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -571,10 +546,10 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 impl<
         'a,
         AF: AddressFamily,
-        Meta: routecore::record::Meta + MergeUpdate,
+        M: routecore::record::Meta + MergeUpdate,
         NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, Meta>,
-    > CustomAllocStorage<AF, Meta, NB, PB>
+        PB: PrefixBuckets<AF, M>,
+    > CustomAllocStorage<AF, M, NB, PB>
 {
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.
@@ -582,7 +557,7 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, Meta>> {
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
@@ -640,7 +615,7 @@ impl<
                 }
             };
 
-            Some(MoreSpecificsPrefixIter {
+            Some(MoreSpecificPrefixIter {
                 store: self,
                 guard,
                 cur_pfx_iter,
@@ -650,33 +625,6 @@ impl<
         }
         .into_iter()
         .flatten()
-    }
-}
-
-impl<
-        'a,
-        AF: AddressFamily + 'a,
-        M: Meta + MergeUpdate + 'a,
-        NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, M>,
-    > CustomAllocStorage<AF, M, NB, PB>
-{
-    // Iterator over all the prefixes in the storage.
-    pub fn prefixes_iter(
-        &'a self,
-        guard: &'a Guard,
-    ) -> PrefixIter<AF, M, PB> {
-        PrefixIter {
-            prefixes: &self.prefixes,
-            cur_bucket: self.prefixes.get_root_prefix_set(0),
-            cur_len: 0,
-            cur_level: 0,
-            cursor: 0,
-            parents: [None; 26],
-            guard,
-            _af: PhantomData,
-            _meta: PhantomData,
-        }
     }
 
     // Iterator over all less-specific prefixes, starting from the given
@@ -699,16 +647,37 @@ impl<
             let cur_len = start_prefix_id.get_len() - 1;
             let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
 
-            Some(LessSpecificPrefixIter::new(
-                &self.prefixes,
+            Some(LessSpecificPrefixIter {
+                prefixes: &self.prefixes,
                 cur_len,
                 cur_bucket,
-                0,
-                start_prefix_id,
+                cur_level: 0,
+                cur_prefix_id: start_prefix_id,
                 guard,
-            ))
+                _af: PhantomData,
+                _meta: PhantomData,
+                _pb: PhantomData
+            })
         }
         .into_iter()
         .flatten()
+    }
+
+    // Iterator over all the prefixes in the storage.
+    pub fn prefixes_iter(
+        &'a self,
+        guard: &'a Guard,
+    ) -> PrefixIter<AF, M, PB> {
+        PrefixIter {
+            prefixes: &self.prefixes,
+            cur_bucket: self.prefixes.get_root_prefix_set(0),
+            cur_len: 0,
+            cur_level: 0,
+            cursor: 0,
+            parents: [None; 26],
+            guard,
+            _af: PhantomData,
+            _meta: PhantomData,
+        }
     }
 }
