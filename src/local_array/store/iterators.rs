@@ -24,7 +24,7 @@ use routecore::record::{MergeUpdate, Meta};
 // This Iterator does *not* use the tree, it iterates over all the length
 // arrays in the CustomAllocStorage.
 
-pub struct PrefixIter<
+pub(crate) struct PrefixIter<
     'a,
     AF: AddressFamily + 'a,
     M: Meta + 'a,
@@ -260,7 +260,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
     }
 }
 
-pub struct MoreSpecificPrefixIter<
+pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
     M: Meta + MergeUpdate,
@@ -380,7 +380,7 @@ impl<
 // and retrieves the less-specifics by going from len to len, searching for
 // the prefixes.
 
-pub struct LessSpecificPrefixIter<
+pub(crate) struct LessSpecificPrefixIter<
     'a,
     AF: AddressFamily + 'a,
     M: Meta + 'a,
@@ -541,7 +541,8 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
 // ----------- Iterator initialization methods for CustomAllocStorage -------
 
-// These are only the methods that are to start the iterations.
+// These are only the methods that are starting the iterations. All other
+// methods for CustomAllocStorage are in the main custom_alloc.rs file.
 
 impl<
         'a,
@@ -553,7 +554,7 @@ impl<
 {
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.
-    pub(crate) fn more_specific_prefix_iter_from(
+    pub fn more_specific_prefix_iter_from(
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
@@ -667,7 +668,7 @@ impl<
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> PrefixIter<AF, M, PB> {
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
         PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),
