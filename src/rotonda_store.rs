@@ -1,4 +1,4 @@
-use std::{fmt, marker::PhantomData, slice};
+use std::{fmt, slice};
 
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
@@ -16,9 +16,6 @@ pub use crate::local_array::store::custom_alloc;
 
 pub use crate::local_array::store::DefaultStore as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
-
-use self::custom_alloc::PrefixBuckets;
-use crate::local_array::store::iterators::PrefixIter;
 
 //------------ Types for strides displaying/monitoring ----------------------
 
