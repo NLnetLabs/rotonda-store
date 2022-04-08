@@ -41,6 +41,12 @@ where
             meta: Some(meta),
         }
     }
+    // This should never fail, since there shouldn't be a invalid prefix in
+    // this record in the first place.
+    pub fn prefix_into_pub(&self) -> routecore::addr::Prefix {
+        routecore::addr::Prefix::new(self.net.into_ipaddr(), self.len)
+            .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
+    }
 }
 
 impl<T, AF> std::fmt::Display for InternalPrefixRecord<AF, T>
