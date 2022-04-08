@@ -436,6 +436,11 @@ where
         len: u8,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
+    fn get_bit_pos_as_u8(
+        nibble: u32,
+        len: u8,
+    ) -> u8;
+
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This numbder represents the index to the corresponding prefix in
     // the pfx_vec.
