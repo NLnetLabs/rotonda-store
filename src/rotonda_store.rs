@@ -74,6 +74,15 @@ pub enum MatchType {
     EmptyMatch,
 }
 
+impl MatchType {
+    pub(crate) fn is_empty(&self) -> bool {
+        match &self {
+            Self::EmptyMatch => true,
+            _ => false,
+        }
+    }
+}
+
 impl std::fmt::Display for MatchType {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         match self {
@@ -146,7 +155,6 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
         Self { v4, v6 }
     }
 }
-
 
 //------------ PrefixRecordIter ---------------------------------------------
 
