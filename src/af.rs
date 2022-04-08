@@ -120,10 +120,10 @@ impl AddressFamily for IPv4 {
     fn from_ipaddr(addr: std::net::IpAddr) -> u32 {
         // Well, this is awkward.
         if let std::net::IpAddr::V4(addr) = addr {
-            addr.octets()[0] as u32
-                | (addr.octets()[1] as u32) << 8
-                | (addr.octets()[2] as u32) << 16
-                | (addr.octets()[3] as u32) << 24
+            (addr.octets()[0] as u32) << 24
+                | (addr.octets()[1] as u32) << 16
+                | (addr.octets()[2] as u32) << 8
+                | (addr.octets()[3] as u32)
         } else {
             panic!("Can't convert IPv6 to IPv4");
         }
@@ -224,22 +224,22 @@ impl AddressFamily for IPv6 {
 
     fn from_ipaddr(net: std::net::IpAddr) -> u128 {
         if let std::net::IpAddr::V6(addr) = net {
-            addr.octets()[0] as u128
-                | (addr.octets()[1] as u128) << 8
-                | (addr.octets()[2] as u128) << 16
-                | (addr.octets()[3] as u128) << 24
-                | (addr.octets()[4] as u128) << 32
-                | (addr.octets()[5] as u128) << 40
-                | (addr.octets()[6] as u128) << 48
-                | (addr.octets()[7] as u128) << 56
-                | (addr.octets()[8] as u128) << 64
-                | (addr.octets()[9] as u128) << 72
-                | (addr.octets()[10] as u128) << 80
-                | (addr.octets()[11] as u128) << 88
-                | (addr.octets()[12] as u128) << 96
-                | (addr.octets()[13] as u128) << 104
-                | (addr.octets()[14] as u128) << 112
-                | (addr.octets()[15] as u128) << 120
+            addr.octets()[15] as u128
+                | (addr.octets()[14] as u128) << 8
+                | (addr.octets()[13] as u128) << 16
+                | (addr.octets()[12] as u128) << 24
+                | (addr.octets()[11] as u128) << 32
+                | (addr.octets()[10] as u128) << 40
+                | (addr.octets()[9] as u128) << 48
+                | (addr.octets()[8] as u128) << 56
+                | (addr.octets()[7] as u128) << 64
+                | (addr.octets()[6] as u128) << 72
+                | (addr.octets()[5] as u128) << 80
+                | (addr.octets()[4] as u128) << 88
+                | (addr.octets()[3] as u128) << 96
+                | (addr.octets()[2] as u128) << 104
+                | (addr.octets()[1] as u128) << 112
+                | (addr.octets()[0] as u128) << 120
         } else {
             panic!("Can't convert IPv4 to IPv6");
         }
