@@ -101,57 +101,91 @@ where
         Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
     }
 
-    pub fn nu_match_prefix(
+    pub fn match_prefix(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
         guard: &'a Guard,
     ) -> QueryResult<'a, M> {
-        let prefix = self
+        // `non_recursive_retrieve_prefix_with_guard` return an exact match
+        // only, so no longest matching prefix!
+        let mut prefix = self
             .store
             .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
-            .0;
+            .0
+            .map(|p| p.0);
 
-        let match_type = if let Some(pfx) = prefix {
-            if pfx.0.len == search_pfx.get_len() {
-                MatchType::ExactMatch
-            } else {
-                MatchType::LongestMatch
+        // Check if we have an actual exact match, if not then fetch the
+        // first lesser-specific prefix, that's the longest matching prefix
+        let match_type = match &prefix {
+            Some(_pfx) => MatchType::ExactMatch,
+            None => {
+                prefix = self
+                    .store
+                    .less_specific_prefix_iter(search_pfx, guard)
+                    .next();
+                if prefix.is_some() {
+                    MatchType::LongestMatch
+                } else {
+                    MatchType::EmptyMatch
+                }
             }
-        } else {
-            MatchType::EmptyMatch
         };
 
         QueryResult {
-            prefix: if let Some(pfx) = prefix {
-                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
+            prefix: prefix.map(move |p| p.prefix_into_pub()),
+            prefix_meta: if let Some(pfx) = prefix {
+                pfx.meta.as_ref()
             } else {
                 None
             },
-            prefix_meta: if let Some(pfx) = prefix {
-                pfx.0.meta.as_ref()
+            less_specifics: if options.include_less_specifics
+                && !match_type.is_empty()
+            {
+                Some(
+                    self.store
+                        .less_specific_prefix_iter(
+                            if let Some(pfx) = prefix {
+                                PrefixId::new(pfx.net, pfx.len)
+                            } else {
+                                search_pfx
+                            },
+                            guard,
+                        )
+                        .collect(),
+                )
+            } else if match_type.is_empty() {
+                Some(RecordSet {
+                    v4: vec![],
+                    v6: vec![],
+                })
+            } else {
+                None
+            },
+            more_specifics: if options.include_more_specifics
+                && !match_type.is_empty()
+            {
+                Some(
+                    self.store
+                        .more_specific_prefix_iter_from(
+                            if let Some(pfx) = prefix {
+                                PrefixId::new(pfx.net, pfx.len)
+                            } else {
+                                search_pfx
+                            },
+                            guard,
+                        )
+                        .collect(),
+                )
+            } else if match_type.is_empty() {
+                Some(RecordSet {
+                    v4: vec![],
+                    v6: vec![],
+                })
             } else {
                 None
             },
             match_type,
-            less_specifics: if options.include_less_specifics {
-                Some(
-                    self.store
-                        .less_specific_prefix_iter(search_pfx, guard)
-                        .collect(),
-                )
-            } else {
-                None
-            },
-            more_specifics: if options.include_more_specifics {
-                Some(
-                    self.store
-                        .more_specific_prefix_iter_from(search_pfx, guard)
-                        .collect(),
-                )
-            } else {
-                None
-            },
         }
     }
 
@@ -176,7 +210,7 @@ where
     // nibble              1010 1011 1100 1101 1110 1111    x
     // nibble len offset      4(contd.)
 
-    pub fn match_prefix(
+    pub fn legacy_match_prefix(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
