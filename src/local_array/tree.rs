@@ -566,9 +566,8 @@ impl<
         match self.store.retrieve_node_with_guard(start_node_id, guard) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
-                    n.more_specific_pfx_iter(
+                    n.pfx_iter(
                         start_node_id,
-                        BitSpan::new(0, 1),
                     )
                     .collect::<Vec<PrefixId<AF>>>(),
                 );
@@ -582,9 +581,8 @@ impl<
             }
             Some(SizedStrideRef::Stride4(n)) => {
                 found_pfx_vec.extend(
-                    n.more_specific_pfx_iter(
+                    n.pfx_iter(
                         start_node_id,
-                        BitSpan::new(0, 1),
                     )
                     .collect::<Vec<PrefixId<AF>>>(),
                 );
@@ -598,9 +596,8 @@ impl<
             }
             Some(SizedStrideRef::Stride5(n)) => {
                 found_pfx_vec.extend(
-                    n.more_specific_pfx_iter(
+                    n.pfx_iter(
                         start_node_id,
-                        BitSpan::new(0, 1),
                     )
                     .collect::<Vec<PrefixId<AF>>>(),
                 );
