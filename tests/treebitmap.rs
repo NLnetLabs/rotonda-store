@@ -318,10 +318,7 @@ mod tests {
         }
 
         let res = tree_bitmap.match_prefix(
-            &Prefix::new_relaxed(
-                std::net::Ipv4Addr::new(192, 0, 1, 0).into(),
-                24,
-            )?,
+            &Prefix::new(std::net::Ipv4Addr::new(192, 0, 1, 0).into(), 24)?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
                 include_less_specifics: true,
@@ -329,6 +326,7 @@ mod tests {
             },
             guard,
         );
+        println!("prefix {:?}", res.prefix);
         println!("res: {:#?}", &res);
 
         assert_eq!(
@@ -341,19 +339,22 @@ mod tests {
 
         let less_specifics = res.less_specifics.unwrap();
 
-        assert_eq!(
-            less_specifics[1].prefix,
-            Prefix::new_relaxed(
-                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                16
-            )?
-        );
-        assert_eq!(
-            less_specifics[0].prefix,
-            Prefix::new_relaxed(
-                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                4
-            )?
+        assert!(less_specifics.iter().any(|r| {
+            r.prefix
+                == Prefix::new(
+                    std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
+                    16,
+                )
+                .unwrap()
+        }));
+        assert!(
+            less_specifics.iter().any(|r| {
+                r.prefix
+                    == Prefix::new(
+                        std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
+                        4,
+                    ).unwrap()
+            })
         );
         Ok(())
     }
