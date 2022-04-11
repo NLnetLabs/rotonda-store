@@ -76,10 +76,7 @@ pub enum MatchType {
 
 impl MatchType {
     pub(crate) fn is_empty(&self) -> bool {
-        match &self {
-            Self::EmptyMatch => true,
-            _ => false,
-        }
+        matches!(self, Self::EmptyMatch)
     }
 }
 
