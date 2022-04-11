@@ -79,6 +79,8 @@ where
     AF: AddressFamily,
     S: Stride
 {
+    // ------- Iterators ----------------------------------------------------
+
     // Iterate over all the child node of this node
     pub(crate) fn ptr_iter(&self, base_prefix: StrideNodeId<AF>) -> 
         NodeChildIter<AF,S> {
@@ -105,9 +107,9 @@ where
         }
     }
 
-    // Iteratate over the more specific prefixes ids contained
-    // in this node
-    pub(crate) fn more_specific_pfx_iter(&self, base_prefix: StrideNodeId<AF>, start_bit_span: BitSpan, skip_self: bool) -> 
+    // Iterate over the more specific prefixes ids contained in this node
+    pub(crate) fn more_specific_pfx_iter(&self, base_prefix: StrideNodeId<AF>, 
+    start_bit_span: BitSpan, skip_self: bool) -> 
         NodeMoreSpecificsPrefixIter<AF, S> {
         NodeMoreSpecificsPrefixIter::<AF, S> {
             pfxbitarr: self.pfxbitarr.load(),
@@ -119,9 +121,10 @@ where
         }
     }
 
-    // Iteratate over the nodes that contain more specifics
-    // for the requested base_prefix
-    pub(crate) fn more_specific_ptr_iter(&self, base_prefix: StrideNodeId<AF>, start_bit_span: BitSpan) -> 
+    // Iterate over the nodes that contain more specifics for the requested
+    // base_prefix and corresponding bit_span.
+    pub(crate) fn more_specific_ptr_iter(&self, base_prefix: StrideNodeId<AF>, 
+    start_bit_span: BitSpan) -> 
         NodeMoreSpecificChildIter<AF, S> {
         NodeMoreSpecificChildIter::<AF, S> {
             ptrbitarr: self.ptrbitarr.load(),
