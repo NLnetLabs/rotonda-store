@@ -123,7 +123,8 @@ where
                 prefix = self
                     .store
                     .less_specific_prefix_iter(search_pfx, guard)
-                    .next();
+                    .max_by(|p0, p1| { p0.len.cmp(&p1.len)});
+                println!("LMP prefix {:?}", prefix);
                 if prefix.is_some() {
                     MatchType::LongestMatch
                 } else {
@@ -140,7 +141,6 @@ where
                 None
             },
             less_specifics: if options.include_less_specifics
-                && !match_type.is_empty()
             {
                 Some(
                     self.store
@@ -154,17 +154,10 @@ where
                         )
                         .collect(),
                 )
-            } else if match_type.is_empty() {
-                Some(RecordSet {
-                    v4: vec![],
-                    v6: vec![],
-                })
             } else {
                 None
             },
-            more_specifics: if options.include_more_specifics
-                && !match_type.is_empty()
-            {
+            more_specifics: if options.include_more_specifics {
                 Some(
                     self.store
                         .more_specific_prefix_iter_from(
@@ -177,11 +170,6 @@ where
                         )
                         .collect(),
                 )
-            } else if match_type.is_empty() {
-                Some(RecordSet {
-                    v4: vec![],
-                    v6: vec![],
-                })
             } else {
                 None
             },
@@ -780,4 +768,3 @@ where
         }
     }
 }
-
