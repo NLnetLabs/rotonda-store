@@ -6,8 +6,9 @@ use std::{
 
 use log::{trace, info};
 
-pub use super::atomic_stride::*;
+// pub use super::atomic_stride::*;
 use super::bit_span::BitSpan;
+use super::store::iterators::SizedNodeMoreSpecificIter;
 use crate::local_array::store::iterators::{SizedNodeIter, SizedPrefixIter};
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
