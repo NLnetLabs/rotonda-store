@@ -739,10 +739,9 @@ where
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
             info!(
-                "prefix {}/{} serial {}",
+                "prefix {}/{}",
                 pfx_idx.get_net().into_ipaddr(),
                 pfx_idx.get_len(),
-                pfx_idx.0.unwrap().1
             );
             prefix = self.store.retrieve_prefix_with_guard(pfx_idx, guard); //.map(|p| PrefixId::new(p.net, p.len));
             match_type = if prefix.unwrap().0.len == search_pfx.get_len() {
