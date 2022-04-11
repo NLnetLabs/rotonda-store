@@ -8,8 +8,9 @@ use crate::{
     local_array::{
         bit_span::BitSpan,
         node::{
-            NodeChildIter, NodeMoreSpecificsPrefixIter, PrefixId,
-            SizedStrideRef, Stride3, Stride4, Stride5, StrideNodeId,
+            NodeChildIter, NodeMoreSpecificChildIter,
+            NodeMoreSpecificsPrefixIter, PrefixId, SizedStrideRef, Stride3,
+            Stride4, Stride5, StrideNodeId,
         },
     },
     prefix_record::InternalPrefixRecord,
@@ -244,6 +245,23 @@ impl<AF: AddressFamily> SizedNodeIter<AF> {
     }
 }
 
+#[derive(Copy, Clone, Debug)]
+pub(crate) enum SizedNodeMoreSpecificIter<AF: AddressFamily> {
+    Stride3(NodeMoreSpecificChildIter<AF, Stride3>),
+    Stride4(NodeMoreSpecificChildIter<AF, Stride4>),
+    Stride5(NodeMoreSpecificChildIter<AF, Stride5>),
+}
+
+impl<AF: AddressFamily> SizedNodeMoreSpecificIter<AF> {
+    fn next(&mut self) -> Option<StrideNodeId<AF>> {
+        match self {
+            SizedNodeMoreSpecificIter::Stride3(iter) => iter.next(),
+            SizedNodeMoreSpecificIter::Stride4(iter) => iter.next(),
+            SizedNodeMoreSpecificIter::Stride5(iter) => iter.next(),
+        }
+    }
+}
+
 pub(crate) enum SizedPrefixIter<AF: AddressFamily> {
     Stride3(NodeMoreSpecificsPrefixIter<AF, Stride3>),
     Stride4(NodeMoreSpecificsPrefixIter<AF, Stride4>),
@@ -268,11 +286,11 @@ pub(crate) struct MoreSpecificPrefixIter<
     PB: PrefixBuckets<AF, M>,
 > {
     store: &'a CustomAllocStorage<AF, M, NB, PB>,
-    cur_ptr_iter: SizedNodeIter<AF>,
+    cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
     start_bit_span: BitSpan,
     // skip_self: bool,
-    parent_and_position: Vec<SizedNodeIter<AF>>,
+    parent_and_position: Vec<SizedNodeMoreSpecificIter<AF>>,
     guard: &'a Guard,
 }
 
@@ -311,14 +329,18 @@ impl<
             // Our current prefix iterator for this node is done, look for
             // the next pfx iterator of the next child node in the current
             // ptr iterator.
+            trace!("start first ptr_iter");
             let mut next_ptr = self.cur_ptr_iter.next();
 
             // Our current ptr iterator is also done, maybe we have a parent
             if next_ptr.is_none() {
+                trace!("try for parent");
                 if let Some(cur_ptr_iter) = self.parent_and_position.pop() {
+                    trace!("continue with parent");
                     self.cur_ptr_iter = cur_ptr_iter;
                     next_ptr = self.cur_ptr_iter.next();
                 } else {
+                    trace!("no more parents");
                     return None;
                 }
             }
@@ -332,7 +354,10 @@ impl<
                         // copy the current iterator into the parent vec and create
                         // a new ptr iterator for this node
                         self.parent_and_position.push(self.cur_ptr_iter);
-                        let ptr_iter = next_node.ptr_iter(next_ptr);
+                        let ptr_iter = next_node.more_specific_ptr_iter(
+                            next_ptr,
+                            BitSpan::new(0, 0),
+                        );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
                         trace!("next stride new iterator stride 3 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
@@ -347,7 +372,10 @@ impl<
                     Some(SizedStrideRef::Stride4(next_node)) => {
                         // create new ptr iterator for this node.
                         self.parent_and_position.push(self.cur_ptr_iter);
-                        let ptr_iter = next_node.ptr_iter(next_ptr);
+                        let ptr_iter = next_node.more_specific_ptr_iter(
+                            next_ptr,
+                            BitSpan::new(0, 0),
+                        );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
                         trace!("next stride new iterator stride 4 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
@@ -362,7 +390,10 @@ impl<
                     Some(SizedStrideRef::Stride5(next_node)) => {
                         // create new ptr iterator for this node.
                         self.parent_and_position.push(self.cur_ptr_iter);
-                        let ptr_iter = next_node.ptr_iter(next_ptr);
+                        let ptr_iter = next_node.more_specific_ptr_iter(
+                            next_ptr,
+                            BitSpan::new(0, 0),
+                        );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
                         trace!("next stride new iterator stride 5 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
@@ -374,7 +405,10 @@ impl<
                             )
                             .wrap();
                     }
-                    None => return None, // if let Some(next_id) = next {
+                    None => {
+                        println!("no node here.");
+                        return None;
+                    }
                 };
             }
         }
@@ -595,7 +629,7 @@ impl<
                 start_bit_span.bits
             );
             let cur_pfx_iter: SizedPrefixIter<AF>;
-            let cur_ptr_iter: SizedNodeIter<AF>;
+            let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
             match self.retrieve_node_with_guard(start_node_id, guard).unwrap()
             {
@@ -606,11 +640,12 @@ impl<
                             start_bit_span,
                             true,
                         ));
-                    cur_ptr_iter =
-                        SizedNodeIter::Stride3(n.more_specific_ptr_iter(
+                    cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
+                        n.more_specific_ptr_iter(
                             start_node_id,
                             start_bit_span,
-                        ));
+                        ),
+                    );
                 }
                 SizedStrideRef::Stride4(n) => {
                     cur_pfx_iter =
@@ -619,11 +654,12 @@ impl<
                             start_bit_span,
                             true,
                         ));
-                    cur_ptr_iter =
-                        SizedNodeIter::Stride4(n.more_specific_ptr_iter(
+                    cur_ptr_iter = SizedNodeMoreSpecificIter::Stride4(
+                        n.more_specific_ptr_iter(
                             start_node_id,
                             start_bit_span,
-                        ));
+                        ),
+                    );
                 }
                 SizedStrideRef::Stride5(n) => {
                     cur_pfx_iter =
@@ -632,11 +668,12 @@ impl<
                             start_bit_span,
                             true,
                         ));
-                    cur_ptr_iter =
-                        SizedNodeIter::Stride5(n.more_specific_ptr_iter(
+                    cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(
+                        n.more_specific_ptr_iter(
                             start_node_id,
                             start_bit_span,
-                        ));
+                        ),
+                    );
                 }
             };
 
