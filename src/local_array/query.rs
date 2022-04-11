@@ -17,7 +17,7 @@ use crate::{MatchOptions, MatchType};
 
 use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
 
-//------------ Longest Matching Prefix  -------------------------------------
+//------------ Prefix Matching ----------------------------------------------
 
 impl<'a, AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
 where
@@ -101,7 +101,7 @@ where
         Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
     }
 
-    pub fn match_prefix(
+    pub fn match_prefix_by_store_direct(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
@@ -210,7 +210,7 @@ where
     // nibble              1010 1011 1100 1101 1110 1111    x
     // nibble len offset      4(contd.)
 
-    pub fn legacy_match_prefix(
+    pub fn match_prefix_by_tree_traversal(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
@@ -781,36 +781,3 @@ where
     }
 }
 
-impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
-    std::iter::FromIterator<InternalPrefixRecord<AF, Meta>>
-    for RecordSet<'a, Meta>
-{
-    fn from_iter<I: IntoIterator<Item = InternalPrefixRecord<AF, Meta>>>(
-        iter: I,
-    ) -> Self {
-        let mut v4 = vec![];
-        let mut v6 = vec![];
-        for pfx in iter {
-            let addr = pfx.net.into_ipaddr();
-            match addr {
-                std::net::IpAddr::V4(_) => {
-                    v4.push(
-                        routecore::bgp::PrefixRecord::new_with_local_meta(
-                            Prefix::new(addr, pfx.len).unwrap(),
-                            pfx.meta.unwrap(),
-                        ),
-                    );
-                }
-                std::net::IpAddr::V6(_) => {
-                    v6.push(
-                        routecore::bgp::PrefixRecord::new_with_local_meta(
-                            Prefix::new(addr, pfx.len).unwrap(),
-                            pfx.meta.unwrap(),
-                        ),
-                    );
-                }
-            }
-        }
-        Self { v4, v6 }
-    }
-}
