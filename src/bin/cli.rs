@@ -222,31 +222,49 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         pfx = Prefix::new(ip, len);
                         match pfx {
                             Ok(p) => {
-                                println!(
-                                    "{}",
-                                    tree_bitmap.match_prefix(
-                                        &p,
-                                        &MatchOptions {
-                                            match_type: MatchType::EmptyMatch,
-                                            include_less_specifics: true,
-                                            include_more_specifics: true
-                                        },
-                                        guard
-                                    )
+                                let query_result = tree_bitmap.match_prefix(
+                                    &p,
+                                    &MatchOptions {
+                                        match_type: MatchType::EmptyMatch,
+                                        include_less_specifics: true,
+                                        include_more_specifics: true,
+                                    },
+                                    guard,
                                 );
+                                println!("query result");
+                                println!("{}", query_result);
+                                println!(
+                                    "more_specifics: {}",
+                                    query_result.more_specifics.unwrap()
+                                );
+                                println!(
+                                    "less_specifics: {}",
+                                    query_result.less_specifics.unwrap()
+                                );
+
                                 println!("--- numatch");
+                                println!("more specifics");
                                 println!(
                                     "{}",
-                                    tree_bitmap.more_specifics_from(
-                                        &Prefix::new_relaxed(ip, len)?,
-                                        guard
-                                    )
+                                    tree_bitmap
+                                        .more_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .more_specifics
+                                        .unwrap()
                                 );
                                 println!("less specifics");
-                                println!("{}", tree_bitmap.less_specifics_from(
-                                    &Prefix::new_relaxed(ip, len)?,
-                                    guard
-                                ));
+                                println!(
+                                    "{}",
+                                    tree_bitmap
+                                        .less_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .less_specifics
+                                        .unwrap()
+                                );
                             }
                             Err(
                                 routecore::addr::PrefixError::NonZeroHost,
@@ -268,16 +286,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!("more specifics");
                                 println!(
                                     "{}",
-                                    tree_bitmap.more_specifics_from(
-                                        &Prefix::new_relaxed(ip, len)?,
-                                        guard
-                                    )
+                                    tree_bitmap
+                                        .more_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .more_specifics
+                                        .unwrap()
                                 );
                                 println!("less specifics");
-                                println!("{}", tree_bitmap.less_specifics_from(
-                                    &Prefix::new_relaxed(ip, len)?,
-                                    guard
-                                ));
+                                println!(
+                                    "{}",
+                                    tree_bitmap
+                                        .less_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .less_specifics
+                                        .unwrap()
+                                );
                             }
                             Err(_) => {
                                 println!("Error: Can't parse prefix. Pleasy try again.");
