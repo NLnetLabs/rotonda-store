@@ -17,7 +17,7 @@ use crate::{
 };
 use crossbeam_epoch::Guard;
 use log::{info, trace};
-use routecore::record::{MergeUpdate, Meta};
+use routecore::{record::{MergeUpdate, Meta, Record}, addr::Prefix};
 
 // ----------- PrefixIter ---------------------------------------------------
 
@@ -725,5 +725,41 @@ impl<
             _af: PhantomData,
             _meta: PhantomData,
         }
+    }
+}
+
+// ----------- InternalPrefixRecord -> RecordSet (public) -------------------
+
+impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
+    std::iter::FromIterator<InternalPrefixRecord<AF, Meta>>
+    for routecore::bgp::RecordSet<'a, Meta>
+{
+    fn from_iter<I: IntoIterator<Item = InternalPrefixRecord<AF, Meta>>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let addr = pfx.net.into_ipaddr();
+            match addr {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(
+                        routecore::bgp::PrefixRecord::new_with_local_meta(
+                            Prefix::new(addr, pfx.len).unwrap(),
+                            pfx.meta.unwrap(),
+                        ),
+                    );
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(
+                        routecore::bgp::PrefixRecord::new_with_local_meta(
+                            Prefix::new(addr, pfx.len).unwrap(),
+                            pfx.meta.unwrap(),
+                        ),
+                    );
+                }
+            }
+        }
+        Self { v4, v6 }
     }
 }
