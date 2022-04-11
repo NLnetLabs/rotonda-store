@@ -1,3 +1,12 @@
+// ----------- Store Iterators ----------------------------------------------
+//
+// This file hosts the iterators for the CustomAllocStorage type and the
+// implementations for the methods that start'em.
+// Note that these iterators are only the iterators that go over the
+// storage (and some over the TreeBitMap nodes, the parent of the store),
+// as such all the iterators here are composed of iterators over the
+// individual nodes. The Node Iterators live in the node.rs file.
+
 use std::{marker::PhantomData, sync::atomic::Ordering};
 
 use crate::{
@@ -221,14 +230,11 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     }
 }
 
-// ----------- MoreSpecificIter --------------------------------------------
+// ----------- Sized Wrappers -----------------------------------------------
 
-// A iterator over all the more-specifics for a given prefix.
-//
-// This iterator is somewhat different from the other *PrefixIterator types,
-// since it uses the Nodes to select the more specifics. Am Iterator that
-// would only use the Prefixes in the store could exist, but iterating over
-// those in search of more specifics would be way more expensive.
+// These are enums to abstract over the Stride Size of the iterators. Each
+// iterator in here need to go over iterators that have different underlying
+// stride sizes. To facilate this these wrapper enums exist.
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum SizedNodeMoreSpecificIter<AF: AddressFamily> {
@@ -263,6 +269,25 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
     }
 }
 
+// ----------- MoreSpecificPrefixIter ------------------------------------
+
+// A iterator over all the more-specifics for a given prefix.
+//
+// This iterator is somewhat different from the other *PrefixIterator types,
+// since it uses the Nodes to select the more specifics. Am Iterator that
+// would only use the Prefixes in the store could exist, but iterating over
+// those in search of more specifics would be way more expensive.
+
+// The first iterator it goes over should have a bit_span that is the 
+// difference between the requested prefix and the node that hosts that
+// prefix. See the method initializing this iterator
+// (`get_node_for_id_prefix` takes care of it in there). The consecutive
+// iterators will all have a bit_span of { bits: 0, len: 0 }. Yes, we could
+// also use the PrefixIter there (it iterates over all prefixes of a node),
+// but then we would have to deal with two different types of iterators.
+// Note that the iterator is neither depth- or breadth-first and the
+// results are essentially unordered.
+
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
@@ -293,6 +318,7 @@ impl<
         trace!("MoreSpecificsPrefixIter");
 
         loop {
+            // first drain the current prefix iterator until empty.
             let next_pfx = self.cur_pfx_iter.next();
 
             if next_pfx.is_some() {

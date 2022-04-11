@@ -695,8 +695,47 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
 // Create an iterator over all the child nodes that hold a more specific
 // prefixes of the specified start_bit_span. This basically the same Iterator
 // as the ChildNodeIter, except that it stops (potentially) earlier, to avoid
-// including nodes with adjacent prefixes.
-
+// including nodes with adjacent prefixes. Starting an iterator with a 
+// `start_bit_span` of { bits: 0, len: 0 } will return all child nodes of 
+// this node. In that case you could also use the `NodeChildIter` instead.
+//
+// inputs
+//
+// `base_prefix`
+// This iterator take a `base_prefix` since the nodes themselves have no
+// knowledge of their own prefixes, those are inferred by their position in
+// the tree (therefore, it's actually a Trie). Note that `base_prefix` +
+// `bit_span` define the actual starting prefix for this iteratator.
+//
+// `ptrbitarr` 
+// is the bitmap that holds the slots that have child nodes. 
+//
+// `start_bit_span` 
+// is the bit span that is going to be used as a starting point for the 
+// iterator.
+// 
+// `cursor`
+// holds the current cursor offset from the start_bit_span.bits, the sum of
+// these describe the current position in the bitmap. Used for re-entry into
+// the iterator. A new iterator should start with None.
+//
+// How this works
+//
+// The iterator starts at the start_bit_span.bits position in the bitmap and
+// advances until it reaches either a one in the bitmap, or the maximum
+// position for the particular more-specifics for this bit_span.
+//
+// e.x.
+// The stride size is 5 and the starting bit span is {bits: 2, len: 4} (0010)
+// The starting point is therefore the bit_array 0010. The iterator will go
+// over 0010 0 and 0010 1. The next bits to consider would be 0011 0 which
+// would not fit our starting bit_span of 0010. So we have to stop after 2
+// iterations. This means that the number of iterations is determined by the
+// difference between the number of bits in the stride size (5) and the the
+// number of bits in the start_bit_span (4). The number of iterations in the
+// above example is therefore 1 << (5 - 4) = 2. Remember that a ptrbitarr
+// holds only one stride size (the largest for its stride size), so we're
+// done now.
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
    base_prefix: StrideNodeId<AF>,
@@ -738,19 +777,15 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         trace!("          x1  4   8  12  16  20  24  28  32");
         trace!("ptrbitarr {:032b}", self.ptrbitarr);
 
-        // 
         let start = if let Some(bits) = self.cursor { bits } else { self.start_bit_span.bits };
         let stop = (1 << (S::STRIDE_LEN - self.start_bit_span.len)) + start; 
 
         trace!("start {:?} stop {}", start, stop);
         for cursor in start..=stop {
-            // move the bit_span left with the amount of bits we're going t
-
-            // loop over.
+            // move the bit_span left with the amount of bits we're going to loop over.
             // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
             // becomes 0000 0000 0000 1100, then it will iterate over 
             // ...1100,...1101,...1110,...1111
-
             let bit_pos = 
                 S::get_bit_pos(
                     cursor, S::STRIDE_LEN);
@@ -848,15 +883,61 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
     }
 }
 
-// Iterator that returns all prefixes that exist in a node that are a more-
-// specific prefix of the `base_prefix`.
-// Note: this will also include the `base_prefix` itself, if it's present in
-// the node!
+// Creates an Iterator that returns all prefixes that exist in a node that
+// are a more-specific prefix of the `base_prefix` + `start_bit_span`.
+//
+// Inputs
+// 
+// `base_prefix`
+// This iterator take a `base_prefix` since the nodes themselves have no
+// knowledge of their own prefixes, those are inferred by their position in
+// the tree (therefore, it's actually a Trie). Note that `base_prefix` +
+// `bit_span` define the actual starting prefix for this iteratator.
+//
+// `pfxbitarr` 
+// is the bitmap that holds the slots that have prefixes.
+//
+// `start_bit_span` 
+// is the bit span that is going to be used as a starting point for the 
+// iterator.
+// 
+// `cursor`
+// holds the current cursor offset from the start_bit_span.bits, the sum of
+// these describe the current position in the bitmap. Used for re-entry into
+// the iterator. A new iterator should start with None.
+//
+// How this works
+//
+// The iterator starts at the start_bit_span.bits position in the bitmap and
+// advances until it reaches either a one in the bitmap, or the maximum
+// position for the particular more-specifics for this bit_span. When it
+// reaches the maximum position it determines whether there are more stride-
+// sizes available in this bitmap. If there are, it advances to the next
+// stride-size in the first position. If not it terminates the iterator.
+//
+// e.x.
+// The stride size is 5 and the starting bit span is {bits: 1, len: 3} (001)
+// This means that the stride size that we have to consider are 4 and 5. 3 
+// being the size of the current bit_span and 5 being the size of the total
+// stride. 
+// The starting point is therefore the bit_array 001. The iterator will go
+// over 001 00, 001 01, 001 10 and 001 11. The next bits to consider would be
+//  010 00 which would not fit our starting bit_span of 0010. So we have to
+// stop after 2 iterations. This means that the number of iterations is
+// determined by the difference between the number of bits in the stride size
+// (5) and the the number of bits in the start_bit_span (4). The number of 
+// iterations in the above example is therefore 1 << (5 - 3) = 4.
+// Unlike the MoreSpecificPrefixIter, we will have to consider more lengths
+// than just the bit_span len. We will have to jump a few pfxbitarr birs and
+// move to the next stride size in the bitmap, starting at bit_array 0010, or
+// the bit_span { bits: 2, len: 3 }, a.k.a. 0010 << 1. But now we will have
+// to go over a different amount of 1 << (5 - 4) = 2 iterations to reap the
+// next bit_spans of 0010 0 and 0010 1.
+
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // immutables
     base_prefix: StrideNodeId<AF>,
     pfxbitarr: <<S as crate::local_array::atomic_stride::Stride>::AtomicPfxSize as crate::local_array::atomic_stride::AtomicBitmap>::InnerType,
-    // pfxbitarr: u64,
     // we need to keep around only the `bits` part of the `bit_span`
     // technically, (it needs resetting the current state to it after each
     // prefix-length), but we'll keep the start-length as well for clarity
@@ -864,10 +945,6 @@ pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     start_bit_span: BitSpan,
     cursor: BitSpan,
     skip_self: bool,
-    // first_stride: bool,
-    // the current, thus mutable state.
-    // cur_bits: u32,
-    // cur_len: u8,
     _s: PhantomData<S>,
 }
 
