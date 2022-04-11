@@ -15,11 +15,15 @@ impl BitSpan {
     }
 
     // Increment the bit span by one and calcalate the new length.
-    pub(crate) fn inc(mut self) -> Self{
+    pub(crate) fn inc(&mut self) {
         self.bits += 1;
-        self.len = (32 - self.bits.leading_zeros()) as u8;
+        self.len = <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
         trace!("inc result {:?}", self);
-        self
+    }
+
+    pub(crate) fn set_len_to_bits(&mut self) {
+        self.len = <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
+        trace!("adjust len result {:?}", self);
     }
     
 }
