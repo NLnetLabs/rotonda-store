@@ -132,6 +132,9 @@ where
         }
     }
 
+
+    // ------- Search by Traversal methods -----------------------------------
+
     // Inspects the stride (nibble, nibble_len) to see it there's already a 
     // child node (if not at the last stride) or a prefix (if it's the last
     // stride).
@@ -619,6 +622,8 @@ where
     }
 }
 
+
+// ------------ Iterator methods --------------------------------------------
 
 // ----------- NodeChildIter ------------------------------------------------
 
