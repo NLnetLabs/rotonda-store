@@ -973,12 +973,6 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         }    
 }
 
-pub(crate) enum SizedNodePrefixIter<AF: AddressFamily> {
-    Stride3(NodePrefixIter<AF, Stride3>),
-    Stride4(NodePrefixIter<AF, Stride4>),
-    Stride5(NodePrefixIter<AF, Stride5>),
-}
-
 impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride3> {
     pub fn wrap(self) -> SizedPrefixIter<AF> {
         SizedPrefixIter::<AF>::Stride3(self)
@@ -993,24 +987,6 @@ impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride4> {
 
 impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride5> {
     pub fn wrap(self) -> SizedPrefixIter<AF> {
-        SizedPrefixIter::<AF>::Stride5(self)
-    }
-}
-
-impl<'a, AF: AddressFamily> NodePrefixIter<AF, Stride3> {
-    pub fn wrap(self) -> SizedNodePrefixIter<AF> {
-        SizedNodePrefixIter::<AF>::Stride3(self)
-    }
-}
-
-impl<'a, AF: AddressFamily> NodePrefixIter<AF, Stride4> {
-    pub fn wrap(self) -> SizedNodePrefixIter<AF> {
-        SizedNodePrefixIter::<AF>::Stride4(self)
-    }
-}
-
-impl<'a, AF: AddressFamily> NodePrefixIter<AF, Stride5> {
-    pub fn wrap(self) -> SizedNodePrefixIter<AF> {
-        SizedNodePrefixIter::<AF>::Stride5(self)
+        SizedPrefixIter::Stride5(self)
     }
 }
