@@ -75,9 +75,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 return None;
             }
 
-            if *PB::get_bits_for_len(self.cur_len, self.cur_level).unwrap()
-                == 0
-            {
+            if PB::get_bits_for_len(self.cur_len, self.cur_level) == 0 {
                 // END OF THE LENGTH
                 // This length is done too, go to the next length
                 trace!("next length {}", self.cur_len + 1);
@@ -97,16 +95,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             }
             let bucket_size = 1_usize
                 << (if self.cur_level > 0 {
-                    *PB::get_bits_for_len(self.cur_len, self.cur_level)
-                        .unwrap()
-                        - *PB::get_bits_for_len(
+                    PB::get_bits_for_len(self.cur_len, self.cur_level)
+                        - PB::get_bits_for_len(
                             self.cur_len,
                             self.cur_level - 1,
                         )
-                        .unwrap()
                 } else {
-                    *PB::get_bits_for_len(self.cur_len, self.cur_level)
-                        .unwrap()
+                    PB::get_bits_for_len(self.cur_len, self.cur_level)
                 });
 
             if self.cursor >= bucket_size {
@@ -278,7 +273,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 // would only use the Prefixes in the store could exist, but iterating over
 // those in search of more specifics would be way more expensive.
 
-// The first iterator it goes over should have a bit_span that is the 
+// The first iterator it goes over should have a bit_span that is the
 // difference between the requested prefix and the node that hosts that
 // prefix. See the method initializing this iterator
 // (`get_node_for_id_prefix` takes care of it in there). The consecutive
@@ -480,14 +475,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             );
 
             let last_level = if self.cur_level > 0 {
-                *PB::get_bits_for_len(self.cur_len, self.cur_level - 1)
-                    .unwrap()
+                PB::get_bits_for_len(self.cur_len, self.cur_level - 1)
             } else {
                 0
             };
 
             let this_level =
-                *PB::get_bits_for_len(self.cur_len, self.cur_level).unwrap();
+                PB::get_bits_for_len(self.cur_len, self.cur_level);
 
             let index =
                 ((self.cur_prefix_id.get_net().dangerously_truncate_to_u32()

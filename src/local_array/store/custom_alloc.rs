@@ -6,15 +6,13 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{info, trace};
+use log::{info, trace, warn};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
 
+use crate::local_array::bit_span::BitSpan;
 use crate::local_array::tree::*;
-use crate::local_array::{
-    bit_span::BitSpan,
-};
 
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
@@ -203,7 +201,7 @@ pub(crate) struct LenToBits([[u8; 10]; 33]);
 
 pub trait NodeBuckets<AF: AddressFamily> {
     fn init() -> Self;
-    fn len_to_store_bits(len: u8, level: u8) -> Option<&'static u8>;
+    fn len_to_store_bits(len: u8, level: u8) -> u8;
     fn get_stride_sizes(&self) -> &[u8];
     fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8;
     fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
@@ -218,12 +216,9 @@ where
     Self: Sized,
 {
     fn init() -> Self;
-    fn remove(
-        &mut self,
-        id: PrefixId<AF>,
-    ) -> Option<M>;
+    fn remove(&mut self, id: PrefixId<AF>) -> Option<M>;
     fn get_root_prefix_set(&self, len: u8) -> &'_ PrefixSet<AF, M>;
-    fn get_bits_for_len(len: u8, level: u8) -> Option<&'static u8>;
+    fn get_bits_for_len(len: u8, level: u8) -> u8;
 }
 
 //------------ PrefixSet ----------------------------------------------------
@@ -611,14 +606,10 @@ impl<
 
                         // start calculation size of next set
                         let this_level =
-                            *PB::get_bits_for_len(pfx_id.get_len(), level)
-                                .unwrap();
+                            PB::get_bits_for_len(pfx_id.get_len(), level);
 
-                        let next_level = *PB::get_bits_for_len(
-                            pfx_id.get_len(),
-                            level + 1,
-                        )
-                        .unwrap();
+                        let next_level =
+                            PB::get_bits_for_len(pfx_id.get_len(), level + 1);
 
                         trace!(
                             "this level {} next level {}",
@@ -719,13 +710,12 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
+                    PB::get_bits_for_len(id.get_len(), level - 1)
                 } else {
                     0
                 };
 
-                let this_level =
-                    *PB::get_bits_for_len(id.get_len(), level).unwrap();
+                let this_level = PB::get_bits_for_len(id.get_len(), level);
 
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
@@ -747,7 +737,6 @@ impl<
                         id.get_len(),
                         level
                     )
-                    .unwrap()
                 );
 
                 let mut prefixes =
@@ -822,12 +811,11 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
+                    PB::get_bits_for_len(id.get_len(), level - 1)
                 } else {
                     0
                 };
-                let this_level =
-                    *PB::get_bits_for_len(id.get_len(), level).unwrap();
+                let this_level = PB::get_bits_for_len(id.get_len(), level);
 
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
@@ -846,7 +834,6 @@ impl<
                         id.get_len(),
                         level
                     )
-                    .unwrap()
                 );
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
@@ -902,12 +889,11 @@ impl<
 
         loop {
             let last_level = if level > 0 {
-                *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
+                PB::get_bits_for_len(id.get_len(), level - 1)
             } else {
                 0
             };
-            let this_level =
-                *PB::get_bits_for_len(id.get_len(), level).unwrap();
+            let this_level = PB::get_bits_for_len(id.get_len(), level);
             // The index of the prefix in this array (at this len and
             // level) is calculated by performing the hash function
             // over the prefix.
@@ -976,12 +962,12 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 let last_level = if level > 0 {
-                    *PB::get_bits_for_len(id.get_len(), level - 1).unwrap()
+                    PB::get_bits_for_len(id.get_len(), level - 1)
                 } else {
                     0
                 };
                 let this_level =
-                    *PB::get_bits_for_len(id.get_len(), level).unwrap();
+                    PB::get_bits_for_len(id.get_len(), level);
                 let index = ((id.get_net().dangerously_truncate_to_u32()
                     << last_level)
                     >> (AF::BITS - (this_level - last_level)))
@@ -1002,7 +988,6 @@ impl<
                         id.get_len(),
                         level
                     )
-                    .unwrap()
                 );
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
@@ -1036,10 +1021,7 @@ impl<
         )
     }
 
-    fn remove_prefix(
-        &mut self,
-        index: PrefixId<AF>,
-    ) -> Option<Meta> {
+    fn remove_prefix(&mut self, index: PrefixId<AF>) -> Option<Meta> {
         match index.is_empty() {
             false => self.prefixes.remove(index),
             true => None,
