@@ -8,7 +8,7 @@ use crate::{
     local_array::{
         bit_span::BitSpan,
         node::{
-            NodeChildIter, NodeMoreSpecificChildIter,
+            NodeMoreSpecificChildIter,
             NodeMoreSpecificsPrefixIter, PrefixId, SizedStrideRef, Stride3,
             Stride4, Stride5, StrideNodeId,
         },
@@ -227,23 +227,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 // since it uses the Nodes to select the more specifics. Am Iterator that
 // would only use the Prefixes in the store could exist, but iterating over
 // those in search of more specifics would be way more expensive.
-
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum SizedNodeIter<AF: AddressFamily> {
-    Stride3(NodeChildIter<AF, Stride3>),
-    Stride4(NodeChildIter<AF, Stride4>),
-    Stride5(NodeChildIter<AF, Stride5>),
-}
-
-impl<AF: AddressFamily> SizedNodeIter<AF> {
-    fn next(&mut self) -> Option<StrideNodeId<AF>> {
-        match self {
-            SizedNodeIter::Stride3(iter) => iter.next(),
-            SizedNodeIter::Stride4(iter) => iter.next(),
-            SizedNodeIter::Stride5(iter) => iter.next(),
-        }
-    }
-}
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum SizedNodeMoreSpecificIter<AF: AddressFamily> {

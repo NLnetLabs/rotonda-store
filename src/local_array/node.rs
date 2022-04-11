@@ -9,7 +9,7 @@ use log::{trace, info};
 // pub use super::atomic_stride::*;
 use super::bit_span::BitSpan;
 use super::store::iterators::SizedNodeMoreSpecificIter;
-use crate::local_array::store::iterators::{SizedNodeIter, SizedPrefixIter};
+use crate::local_array::store::iterators::SizedPrefixIter;
 pub use crate::local_array::query::*;
 pub use crate::local_array::tree::*;
 use crate::af::Zero;
@@ -388,8 +388,8 @@ where
     // the complete nibble, with the appropriate bits in the requested
     // prefix. Although this is rather efficient, there's no way to collect
     // less-specific prefixes from the search prefix.
-    pub(crate) fn search_stride_for_exact_match_at<'a>(
-        &'a self,
+    pub(crate) fn search_stride_for_exact_match_at(
+        &'_ self,
         search_pfx: PrefixId<AF>,
         nibble: u32,
         nibble_len: u8,
@@ -679,24 +679,6 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
             
         }
         None
-    }
-}
-
-impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride3> {
-    pub fn wrap(self) -> SizedNodeIter<AF> {
-        SizedNodeIter::<AF>::Stride3(self)
-    }
-}
-
-impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride4> {
-    pub fn wrap(self) -> SizedNodeIter<AF> {
-        SizedNodeIter::<AF>::Stride4(self)
-    }
-}
-
-impl<'a, AF: AddressFamily> NodeChildIter<AF, Stride5> {
-    pub fn wrap(self) -> SizedNodeIter<AF> {
-        SizedNodeIter::<AF>::Stride5(self)
     }
 }
 
