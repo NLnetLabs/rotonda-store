@@ -25,8 +25,6 @@ use routecore::record::Meta;
 
 // ----------- Node related structs -----------------------------------------
 
-pub(crate) type SizedNodeRefOption<'a, AF> = Option<SizedStrideRef<'a, AF>>;
-
 #[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<StoredNode<AF, S>>]>,
@@ -556,15 +554,6 @@ impl<
                 )
             }
         }
-    }
-
-    fn store_node_with_guard(
-        &self,
-        _current_node: SizedNodeRefOption<AF>,
-        _next_node: SizedStrideNode<AF>,
-        _guard: &epoch::Guard,
-    ) -> Option<StrideNodeId<AF>> {
-        unimplemented!()
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
@@ -1112,142 +1101,4 @@ impl<
         }
         panic!("prefix length for {:?} is too long", prefix);
     }
-
-    // Iterator over all more-specific prefixes, starting from the given
-    // prefix at the given level and cursor.
-//     pub(crate) fn more_specific_prefix_iter_from(
-//         &'a self,
-//         start_prefix_id: PrefixId<AF>,
-//         guard: &'a Guard,
-//     ) -> Result<MoreSpecificsPrefixIter<AF, Meta, NB, PB>, std::io::Error>
-//     {
-//         trace!("more specifics for {:?}", start_prefix_id);
-
-//         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
-//         if start_prefix_id.get_len() >= AF::BITS {
-//             return Err(std::io::Error::new(
-//                 std::io::ErrorKind::InvalidInput,
-//                 "prefix length is too long. No more-specifics can live here.",
-//             ));
-//         }
-
-//         // calculate the node start_prefix_id lives in.
-//         let (cur_node_id, cur_bit_span) =
-//             self.get_node_id_for_prefix(&start_prefix_id.inc_len());
-//         trace!("start node {}", cur_node_id);
-
-//         trace!(
-//             "start prefix id {:032b} (len {})",
-//             start_prefix_id.get_net(),
-//             start_prefix_id.get_len()
-//         );
-//         trace!(
-//             "start node id   {:032b} (bits {} len {})",
-//             cur_node_id.get_id().0,
-//             cur_node_id.get_id().0,
-//             cur_node_id.get_len()
-//         );
-//         trace!(
-//             "start bit span  {:032b} {}",
-//             cur_bit_span,
-//             cur_bit_span.bits
-//         );
-//         let cur_pfx_iter: SizedPrefixIter<AF>;
-//         let cur_ptr_iter: SizedNodeIter<AF>;
-
-//         match self.retrieve_node_with_guard(cur_node_id, guard).unwrap() {
-//             SizedStrideRef::Stride3(n) => {
-//                 cur_pfx_iter = SizedPrefixIter::Stride3(
-//                     n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
-//                 );
-//                 cur_ptr_iter = SizedNodeIter::Stride3(
-//                     n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
-//                 );
-//             }
-//             SizedStrideRef::Stride4(n) => {
-//                 cur_pfx_iter = SizedPrefixIter::Stride4(
-//                     n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
-//                 );
-//                 cur_ptr_iter = SizedNodeIter::Stride4(
-//                     n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
-//                 );
-//             }
-//             SizedStrideRef::Stride5(n) => {
-//                 cur_pfx_iter = SizedPrefixIter::Stride5(
-//                     n.more_specific_pfx_iter(cur_node_id, cur_bit_span),
-//                 );
-//                 cur_ptr_iter = SizedNodeIter::Stride5(
-//                     n.more_specific_ptr_iter(cur_node_id, cur_bit_span),
-//                 );
-//             }
-//         };
-
-//         Ok(MoreSpecificsPrefixIter {
-//             store: self,
-//             guard,
-//             cur_pfx_iter,
-//             cur_ptr_iter,
-//             parent_and_position: vec![],
-//         })
-//     }
-// }
-
-// impl<
-//         'a,
-//         AF: AddressFamily + 'a,
-//         M: Meta + MergeUpdate + 'a,
-//         NB: NodeBuckets<AF>,
-//         PB: PrefixBuckets<AF, M>,
-//     > CustomAllocStorage<AF, M, NB, PB>
-// {
-//     // Iterator over all the prefixes in the storage.
-//     pub fn prefixes_iter(
-//         &'a self,
-//         guard: &'a Guard,
-//     ) -> PrefixIter<AF, M, PB> {
-//         PrefixIter {
-//             prefixes: &self.prefixes,
-//             cur_bucket: self.prefixes.get_root_prefix_set(0),
-//             cur_len: 0,
-//             cur_level: 0,
-//             cursor: 0,
-//             parents: [None; 26],
-//             guard,
-//             _af: PhantomData,
-//             _meta: PhantomData,
-//         }
-//     }
-
-//     // Iterator over all less-specific prefixes, starting from the given
-//     // prefix at the given level and cursor.
-//     pub fn less_specific_prefix_iter(
-//         &'a self,
-//         start_prefix_id: PrefixId<AF>,
-//         guard: &'a Guard,
-//     ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
-//         trace!("less specifics for {:?}", start_prefix_id);
-//         trace!("level {}, len {}", 0, start_prefix_id.get_len());
-
-//         // We could just let the /0 prefix search the tree and have it return
-//         // an empty iterator, but to avoid having to read out the root node
-//         // for this prefix, we'll just return an empty iterator. The trade-off
-//         // is that the whole iterator has to be wrapped in a Box<dyn ...>
-//         if start_prefix_id.get_len() < 1 {
-//             None
-//         } else {
-//             let cur_len = start_prefix_id.get_len() - 1;
-//             let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
-
-//             Some(LessSpecificPrefixIter::new(
-//                 &self.prefixes,
-//                 cur_len,
-//                 cur_bucket,
-//                 0,
-//                 start_prefix_id,
-//                 guard,
-//             ))
-//         }
-//         .into_iter()
-//         .flatten()
-//     }
 }

@@ -10,7 +10,6 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
 use crate::custom_alloc::{CustomAllocStorage, NodeBuckets, PrefixBuckets};
-use crate::local_array::bit_span::BitSpan;
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
 
