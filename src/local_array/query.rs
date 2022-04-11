@@ -116,21 +116,36 @@ where
             .map(|p| p.0);
 
         // Check if we have an actual exact match, if not then fetch the
-        // first lesser-specific prefix, that's the longest matching prefix
-        let match_type = match &prefix {
-            Some(_pfx) => MatchType::ExactMatch,
-            None => {
+        // first lesser-specific with the greatest length, that's the Longest
+        // matching prefix, but only if the user requested a longest match or
+        // empty match.
+        let mut include_more_specifics = false;
+        let mut include_less_specifics = false;
+        let match_type = match (&options.match_type, &prefix) {
+            // we found an exact match, we don't need to do anything.
+            (_, Some(_pfx)) => {
+                include_more_specifics = options.include_more_specifics;
+                include_less_specifics = options.include_less_specifics;
+                MatchType::ExactMatch
+            }
+            // we didn't find an exact match, but the user requested it
+            // so we need to find the longest matching prefix.
+            (MatchType::LongestMatch | MatchType::EmptyMatch, None) => {
                 prefix = self
                     .store
                     .less_specific_prefix_iter(search_pfx, guard)
-                    .max_by(|p0, p1| { p0.len.cmp(&p1.len)});
-                println!("LMP prefix {:?}", prefix);
+                    .max_by(|p0, p1| p0.len.cmp(&p1.len));
+                include_more_specifics = options.include_more_specifics;
+                include_less_specifics = options.include_less_specifics;
+                trace!("LMP prefix {:?}", prefix);
                 if prefix.is_some() {
                     MatchType::LongestMatch
                 } else {
                     MatchType::EmptyMatch
                 }
             }
+            // We got an empty match, but the user requested an exact match
+            (MatchType::ExactMatch, None) => MatchType::EmptyMatch,
         };
 
         QueryResult {
@@ -140,8 +155,7 @@ where
             } else {
                 None
             },
-            less_specifics: if options.include_less_specifics
-            {
+            less_specifics: if include_less_specifics {
                 Some(
                     self.store
                         .less_specific_prefix_iter(
@@ -154,10 +168,15 @@ where
                         )
                         .collect(),
                 )
+            } else if options.include_less_specifics {
+                Some(RecordSet {
+                    v4: vec![],
+                    v6: vec![],
+                })
             } else {
                 None
             },
-            more_specifics: if options.include_more_specifics {
+            more_specifics: if include_more_specifics {
                 Some(
                     self.store
                         .more_specific_prefix_iter_from(
@@ -170,6 +189,13 @@ where
                         )
                         .collect(),
                 )
+            // The user requested more specifics, but there aren't any, so we
+            // need to return an empty vec, not a None.
+            } else if options.include_more_specifics {
+                Some(RecordSet {
+                    v4: vec![],
+                    v6: vec![],
+                })
             } else {
                 None
             },
