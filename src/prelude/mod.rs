@@ -1,5 +1,7 @@
 pub use crossbeam_epoch::{self as epoch, Guard};
+
 pub use routecore::bgp::PrefixRecord;
+pub use routecore::addr::Prefix;
 pub use routecore::record::{Meta, Record};
 
 pub use crate::{AddressFamily, IPv4, IPv6};
