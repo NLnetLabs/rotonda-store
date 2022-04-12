@@ -1,21 +1,16 @@
 use std::{sync::Arc, thread};
 
-use rotonda_store::prelude::*;
-
 use rotonda_store::{
-    MatchOptions, MatchType, MultiThreadedStore,
+    addr::Prefix, AddressFamily, MatchOptions, MultiThreadedStore, epoch
 };
 
-use routecore::addr::Prefix;
 use routecore::record::NoMeta;
 
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new());
 
     let _: Vec<_> = (0..16)
-        .map(|i| {
+        .map(|_| {
             let tree_bitmap = tree_bitmap.clone();
 
             thread::spawn(move || {
@@ -26,7 +21,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty).unwrap();
                 }
             })
-        }).map(|t| t.join()).collect();
+        })
+        .map(|t| t.join())
+        .collect();
 
     let guard = &epoch::pin();
 
@@ -37,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let s_spfx = tree_bitmap.match_prefix(
             &spfx.unwrap(),
             &MatchOptions {
-                match_type: MatchType::ExactMatch,
+                match_type: rotonda_store::MatchType::ExactMatch,
                 include_less_specifics: true,
                 include_more_specifics: true,
             },
