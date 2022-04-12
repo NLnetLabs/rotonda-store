@@ -32,3 +32,4 @@ pub use crate::rotonda_store::*;
 
 // re-exports
 pub use routecore::{addr, record};
+pub use crossbeam_epoch::{self as epoch, Guard};
