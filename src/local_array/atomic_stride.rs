@@ -1,4 +1,5 @@
 use std::fmt::{Binary, Debug};
+use log::trace;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };

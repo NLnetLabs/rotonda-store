@@ -90,7 +90,7 @@ impl<AF: AddressFamily> PrefixId<AF> {
     pub fn new(net: AF, len: u8) -> Self {
         PrefixId(Some((net, len)))
     }
-    
+
     pub fn is_empty(&self) -> bool {
         self.0.is_none()
     }
@@ -120,7 +120,7 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
 
 //--------------------- Per-Stride-Node-Id Type -----------------------------
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct StrideNodeId<AF: AddressFamily>(Option<(AF, u8)>);
 
 impl<AF: AddressFamily> StrideNodeId<AF> {

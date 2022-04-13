@@ -287,6 +287,7 @@ macro_rules! impl_primitive_atomic_stride {
                 const STRIDE_LEN: u8 = $len;
 
                 fn get_bit_pos(nibble: u32, len: u8) -> $pfxsize {
+                    trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
                     1 << (
                             <Self as Stride>::BITS - ((1 << len) - 1) as u8
                             - nibble as u8 - 1
@@ -357,8 +358,13 @@ macro_rules! impl_search_level {
                         //     >> (AF::BITS - <Buckets as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1,level).unwrap());
                         let last_level = if level > 0 { <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1) } else { 0 };
                         let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                        let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
-
+                        trace!("calculated index ({} << {}) >> {}", 
+                        $id.get_id().0, 
+                            last_level, 
+                            ((AF::BITS - (this_level - last_level)) % AF::BITS) as usize
+                        );
+                        // HASHING FUNCTION 
+                        let index = (($id.get_id().0 << last_level) >> ((AF::BITS - (this_level - last_level)) % AF::BITS)).dangerously_truncate_to_u32() as usize;
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
                         // let guard = &epoch::pin();
@@ -426,7 +432,13 @@ macro_rules! impl_search_level_mut {
                         // I'll explain later.
                         let last_level = if level > 0 { <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1) } else { 0 };
                         let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                        let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
+                        trace!("calculated index ({} << {}) >> {}", 
+                            $id.get_id().0.dangerously_truncate_to_u32(), 
+                            last_level, 
+                            ((32 - (this_level - last_level)) % 32) as usize
+                        );
+                        // HASHING FUNCTION
+                        let index = (($id.get_id().0 << last_level) >> ((AF::BITS - (this_level - last_level)) % AF::BITS)).dangerously_truncate_to_u32() as usize;
                         // let index = $id.get_id().0.dangerously_truncate_to_usize()
                         //     >> (AF::BITS - <Buckets as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level).unwrap());
 
@@ -496,14 +508,20 @@ macro_rules! impl_write_level {
                      mut level: u8| {
                     let last_level = if level > 0 { <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1) } else { 0 };
                     let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                    let index = (($id.get_id().0.dangerously_truncate_to_u32() << last_level) >> (AF::BITS - (this_level - last_level))) as usize;
-                    trace!("{:032b}", $id.get_id().0.dangerously_truncate_to_u32());
-                    trace!("this_level {}", this_level);
+                    trace!("{:032b}", $id.get_id().0);
                     trace!("last_level {}", last_level);
+                    trace!("this_level {}", this_level);
                     trace!("id {:?}", $id.get_id());
-                    trace!("calculated index {}", index);
                     trace!("level {}", level);
                     trace!("bits_division {}", <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1,level));
+                    trace!("calculated index ({} << {}) >> {}", 
+                        $id.get_id().0.dangerously_truncate_to_u32(), 
+                        last_level, 
+                        ((32 - (this_level - last_level)) % 32) as usize
+                    );
+                    // HASHING FUNCTION 
+                    let index = (($id.get_id().0 << last_level) >> ((AF::BITS - (this_level - last_level)) % AF::BITS)).dangerously_truncate_to_u32() as usize;
+
                     let guard = &epoch::pin();
                     let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
                     // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
@@ -515,7 +533,7 @@ macro_rules! impl_write_level {
                             trace!("Empty node found, creating new node {} len{} lvl{}", $id, $id.get_id().1, level + 1);
                             let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
                             trace!("next level {}", next_level);
-                            trace!("creating {} nodes", 1 << (next_level - this_level));
+                            trace!("creating {} nodes", if next_level >= this_level { 1 << (next_level - this_level) } else { 1 });
                             if next_level > 0 {
                                 std::mem::swap(
                                     node_ref,
@@ -536,7 +554,7 @@ macro_rules! impl_write_level {
                                     &mut MaybeUninit::new(StoredNode::NodeWithRef((
                                         $id,
                                         new_node,
-                                        NodeSet(Atomic::null())  
+                                        NodeSet(Atomic::null())
                                     ))),
                                 );
                             };

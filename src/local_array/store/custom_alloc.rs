@@ -717,9 +717,10 @@ impl<
 
                 let this_level = PB::get_bits_for_len(id.get_len(), level);
 
-                let index = ((id.get_net().dangerously_truncate_to_u32()
-                    << last_level)
-                    >> (AF::BITS - (this_level - last_level)))
+                // HASHING FUNCTION
+                let index = ((id.get_net() << last_level)
+                    >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
+                    .dangerously_truncate_to_u32()
                     as usize;
                 trace!("retrieve prefix with guard");
                 trace!(
@@ -817,9 +818,10 @@ impl<
                 };
                 let this_level = PB::get_bits_for_len(id.get_len(), level);
 
-                let index = ((id.get_net().dangerously_truncate_to_u32()
-                    << last_level)
-                    >> (AF::BITS - (this_level - last_level)))
+                // HASHING FUNCTION
+                let index = ((id.get_net() << last_level)
+                    >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
+                    .dangerously_truncate_to_u32()
                     as usize;
                 trace!("retrieve prefix");
                 trace!("{:032b}", id.get_net().dangerously_truncate_to_u32());
@@ -898,9 +900,10 @@ impl<
             // level) is calculated by performing the hash function
             // over the prefix.
 
+            // HASHING FUNCTION
             index = ((id.get_net().dangerously_truncate_to_u32()
                 << last_level)
-                >> (AF::BITS - (this_level - last_level)))
+                >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
                 as usize;
 
             let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
@@ -966,11 +969,12 @@ impl<
                 } else {
                     0
                 };
-                let this_level =
-                    PB::get_bits_for_len(id.get_len(), level);
-                let index = ((id.get_net().dangerously_truncate_to_u32()
-                    << last_level)
-                    >> (AF::BITS - (this_level - last_level)))
+                let this_level = PB::get_bits_for_len(id.get_len(), level);
+
+                // HASHING FUNCTION
+                let index = ((id.get_net() << last_level)
+                    >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
+                    .dangerously_truncate_to_u32()
                     as usize;
                 trace!("retrieve prefix");
                 trace!(
@@ -1072,10 +1076,11 @@ impl<
                         prefix.get_net(),
                         node_len,
                     ),
+                    // HASHING FUNCTION
                     BitSpan::new(
-                        (prefix.get_net().dangerously_truncate_to_u32()
-                            << node_len)
-                            >> (32 - (prefix.get_len() - node_len)),
+                        ((prefix.get_net() << node_len)
+                            >> (AF::BITS - (prefix.get_len() - node_len)))
+                            .dangerously_truncate_to_u32(),
                         prefix.get_len() - node_len,
                     ),
                 );
