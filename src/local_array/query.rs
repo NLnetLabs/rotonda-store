@@ -6,7 +6,7 @@ use crate::af::AddressFamily;
 use crate::custom_alloc::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
-use routecore::record::{MergeUpdate, Meta, Record};
+use routecore::record::{MergeUpdate, Meta};
 
 use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
