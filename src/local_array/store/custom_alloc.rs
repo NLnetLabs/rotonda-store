@@ -868,7 +868,6 @@ impl<
     ) {
         let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
         let mut parents = [None; 26];
-        let mut index: usize;
         let mut level: u8 = 0;
 
         loop {
@@ -937,7 +936,7 @@ impl<
                  prefix_set: &PrefixSet<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-                     
+
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(id, level);
 
@@ -1036,6 +1035,56 @@ impl<
         }
         panic!("prefix length for {:?} is too long", prefix);
     }
+
+    // ------- THE HASHING FUNCTION -----------------------------------------
+
+    // Ok, so hashing is really hard, but we're keeping it simple, and
+    // because we're keeping we're having lots of collisions, but we don't
+    // care!
+    //
+    // We're using a part of bitarray representation of the address part of
+    // a prefixas the as the hash. Sounds complicated, but isn't.
+    // Suppose we have an IPv4 prefix, say 130.24.55.0/24.
+    // The address part is 130.24.55.0 or as a bitarray that would be:
+    // 
+    // pos  0    4    8    12   16   20   24   28
+    // bit  1000 0010 0001 1000 0011 0111 0000 0000
+    //
+    // First, we're discarding the bits after the length of the prefix, so
+    // we'll have:
+    // 
+    // pos  0    4    8    12   16   20
+    // bit  1000 0010 0001 1000 0011 0111
+    //
+    // Now we're dividing this bitarray into one or more levels. A level can
+    // be an arbitrary number of bits between 1 and the length of the prefix,
+    // but the number of bits summed over all levels should be exactly the
+    // prefix length. So in our case they should add up to 24. A possible
+    // division could be: 4, 4, 4, 4, 4, 4. Another one would be: 12, 12. The
+    // actual division being used is described in the function
+    // `<NB>::get_bits_for_len` in the `rotonda-macros` crate. Each level has
+    // its own hash, so for our example prefix this would be:
+    // 
+    // pos   0    4    8    12   16   20
+    // level 0              1
+    // hash  1000 0010 0001 1000 0011 0111
+    // 
+    // level 1 hash: 1000 0010 0001
+    // level 2 hash: 1000 0011 0011
+    //
+    // The hash is now converted to a usize integer, by shifting it all the
+    // way to the right in a u32 and then converting to a usize. Why a usize
+    // you ask? Because the hash is used by teh CustomAllocStorage as the
+    // index to the array for that specific prefix length and level.
+    // So for our example this means that the hash on level 1 is now 0x821
+    // (decimal 2081) and the hash on level 2 is 0x833 (decimal 2099).
+    // Now, if we only consider the hash on level 1 and that we're going to
+    // use that as the index to the array that stores all prefixes, you'll
+    // notice very quickly that all prefixes starting with 130.[16..31] will
+    // cause a collision: they'll all point to the same array element. These
+    // collisions are resolved by creating a linked list from each array
+    // element, where each element in the list has an array of its own that
+    // uses the hash function with the level incremented.
 
 
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
