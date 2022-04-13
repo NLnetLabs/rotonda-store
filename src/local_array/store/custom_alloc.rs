@@ -570,6 +570,33 @@ impl<
             .fetch_add(1, Ordering::Acquire)
     }
 
+    // THE CRITICAL SECTION
+    //
+    // CREATING OR UPDATING A PREFIX IN THE STORE
+    //
+    // YES, THE MAGIC HAPPENS HERE!
+    //
+    // This uses the TAG feature of crossbeam_utils::epoch to ensure that we
+    // are not overwriting a prefix meta-data that already has been created
+    // or was updated by another thread.
+    // 
+    // Our plan:
+    // 
+    // 1. LOAD
+    //    Load the current prefix and meta-data from the store if any.
+    // 2. INSERT
+    //    If there is no current meta-data, create it.
+    // 3. UPDATE
+    //    If there is a prefix, meta-data combo, then load it and merge
+    //    the existing meta-dat with our meta-data using the `MergeUpdate`
+    //    trait (a so-called 'Read-Copy-Update').
+    // 4. SUCCESS
+    //    See if we can successfully store the updated meta-data in the store.
+    // 5. DONE
+    //    If Step 4 succeeded we're done!
+    // 6. FAILURE - REPEAT
+    //    If Step 4 failed we're going to do the whole thing again.
+    
     #[allow(clippy::type_complexity)]
     pub(crate) fn upsert_prefix(
         &self,
@@ -591,6 +618,8 @@ impl<
                  stored_prefix,
                  mut pfx_rec,
                  level: u8| {
+
+                // Load the prefix meta-data if any (Step 1)
                 let guard = &epoch::pin();
                 let atomic_curr_prefix =
                     stored_prefix.0.load(Ordering::SeqCst, guard);
@@ -600,7 +629,8 @@ impl<
                 let prev_rec;
                 let next_set;
                 match curr_prefix.1.as_ref() {
-                    // insert or...
+                    // There is no prefix here, create it (Step 2).
+                    // INSERT
                     None => {
                         prev_rec = None;
 
@@ -626,11 +656,12 @@ impl<
                             )
                         } else {
                             info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
-                            PrefixSet(Atomic::null())
+                            PrefixSet::empty()
                         };
                         // End of calculation
                     }
-                    // ...update
+                    // There is prefix here, load the meta-data and merge it
+                    // with our new data (Step 3)
                     Some(curr_pfx_rec) => {
                         trace!("UPDATE");
                         pfx_rec.meta = Some(
@@ -648,6 +679,9 @@ impl<
                     }
                 };
 
+                // The Atomic magic, see if we'll be able to save this new
+                // meta-data in our store without some other thread having 
+                // updated it in the meantime (Step 4)
                 match stored_prefix.0.compare_exchange(
                     atomic_curr_prefix,
                     Owned::new((tag + 1, Some(pfx_rec), next_set, prev_rec))
@@ -657,10 +691,20 @@ impl<
                     guard,
                 ) {
                     Ok(_) => {
+                        // SUCCESS! (Step 5)
+                        // Nobody messed with our prefix meta-data in between
+                        // us loading the tag and creating the entry with that 
+                        // tag.
                         trace!("prefix successfully updated {:?}", pfx_id);
                         Ok(())
                     }
                     Err(store_error) => {
+                        // FAILURE (Step 6)
+                        // Some other thread messed it up. Try again by
+                        // upping a newly-read tag once more, reading
+                        // the newly-current meta-data, updating it with
+                        // our meta-data and see if it works then. 
+                        // rinse-repeat.
                         trace!(
                             "Contention. Prefix update failed {:?}",
                             pfx_id
