@@ -202,7 +202,6 @@ impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
         PrefixId::new(addr_bits, len)
     }
 }
-
 #[derive(Debug)]
 pub struct AtomicStrideNodeId<AF: AddressFamily> {
     stride_type: StrideType,
@@ -515,7 +514,7 @@ impl<
 
     // Yes, we're hating this. But, the root node has no room for a serial
     // of the prefix 0/0 (the default route), which doesn't even matter,
-    // unless, UNLESS, somwbody want to store a default route. So we have
+    // unless, UNLESS, somebody wants to store a default route. So we have
     // to store a serial for this prefix. The normal place for a serial of
     // any prefix is on the pfxvec of its paren. But, hey, guess what, the
     // default-route-prefix lives *on* the root node, and, you know, the
@@ -566,10 +565,7 @@ impl<
         match self.store.retrieve_node_with_guard(start_node_id, guard) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
-                    n.pfx_iter(
-                        start_node_id,
-                    )
-                    .collect::<Vec<PrefixId<AF>>>(),
+                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -581,10 +577,7 @@ impl<
             }
             Some(SizedStrideRef::Stride4(n)) => {
                 found_pfx_vec.extend(
-                    n.pfx_iter(
-                        start_node_id,
-                    )
-                    .collect::<Vec<PrefixId<AF>>>(),
+                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -596,10 +589,7 @@ impl<
             }
             Some(SizedStrideRef::Stride5(n)) => {
                 found_pfx_vec.extend(
-                    n.pfx_iter(
-                        start_node_id,
-                    )
-                    .collect::<Vec<PrefixId<AF>>>(),
+                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
