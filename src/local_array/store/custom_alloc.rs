@@ -945,10 +945,9 @@ impl<
             // over the prefix.
 
             // HASHING FUNCTION
-            index = ((id.get_net().dangerously_truncate_to_u32()
-                << last_level)
+            index = ((id.get_net() << last_level)
                 >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
-                as usize;
+                .dangerously_truncate_to_u32() as usize;
 
             let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
             // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
