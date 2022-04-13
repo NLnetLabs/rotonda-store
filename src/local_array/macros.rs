@@ -164,17 +164,9 @@ macro_rules! impl_search_level {
                     nodes,
                     mut level: u8,
                     guard| {
-                        // Aaaaand, this is all of our hashing function.
-                        // I'll explain later.
-                        let last_level = if level > 0 { <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1) } else { 0 };
-                        let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                        trace!("calculated index ({} << {}) >> {}", 
-                        $id.get_id().0, 
-                            last_level, 
-                            ((AF::BITS - (this_level - last_level)) % AF::BITS) as usize
-                        );
-                        // HASHING FUNCTION 
-                        let index = (($id.get_id().0 << last_level) >> ((AF::BITS - (this_level - last_level)) % AF::BITS)).dangerously_truncate_to_u32() as usize;
+                        // HASHING FUNCTION
+                        let index = Self::hash_node_id($id, level);
+
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
                         let this_node = unsafe {
@@ -185,7 +177,8 @@ macro_rules! impl_search_level {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
-                            // hashing everywhere, this may be very well a node                            // we're not searching for, so check that.
+                            // hashing everywhere, this may be very well a node                            
+                            // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
                                 // trace!("found {} in level {}", node, level);
                                 // trace!("search id {}", $id);
@@ -203,10 +196,7 @@ macro_rules! impl_search_level {
                                         (search_level.f)(
                                             search_level,
                                             &node_set,
-                                            // new_node,
-                                            // bits_division,
                                             level,
-                                            // result_node,
                                             guard,
                                         )
                                     }
@@ -237,18 +227,8 @@ macro_rules! impl_search_level_mut {
                     // bits_division: [u8; 10],
                     mut level: u8,
                     guard| {
-                        // Aaaaand, this is all of our hashing function.
-                        // I'll explain later.
-                        let last_level = if level > 0 { <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1) } else { 0 };
-                        let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                        trace!("calculated index ({} << {}) >> {}", 
-                            $id.get_id().0.dangerously_truncate_to_u32(), 
-                            last_level, 
-                            ((32 - (this_level - last_level)) % 32) as usize
-                        );
                         // HASHING FUNCTION
-                        let index = (($id.get_id().0 << last_level) >> 
-                            ((AF::BITS - (this_level - last_level)) % AF::BITS)).dangerously_truncate_to_u32() as usize;
+                        let index = Self::hash_node_id($id, level);
 
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
@@ -308,23 +288,13 @@ macro_rules! impl_write_level {
                 f: &|search_level: &SearchLevel<AF, $stride>,
                      nodes,
                      new_node: TreeBitMapNode<AF, $stride>,
-                    //  bits_division: [u8; 10],
                      mut level: u8| {
-                    let last_level = if level > 0 { <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level - 1) } else { 0 };
                     let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                     trace!("{:032b}", $id.get_id().0);
-                    trace!("last_level {}", last_level);
-                    trace!("this_level {}", this_level);
                     trace!("id {:?}", $id.get_id());
-                    trace!("level {}", level);
-                    trace!("bits_division {}", <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1,level));
-                    trace!("calculated index ({} << {}) >> {}", 
-                        $id.get_id().0.dangerously_truncate_to_u32(), 
-                        last_level, 
-                        ((32 - (this_level - last_level)) % 32) as usize
-                    );
-                    // HASHING FUNCTION 
-                    let index = (($id.get_id().0 << last_level) >> ((AF::BITS - (this_level - last_level)) % AF::BITS)).dangerously_truncate_to_u32() as usize;
+
+                    // HASHING FUNCTION
+                    let index = Self::hash_node_id($id, level);
 
                     let guard = &epoch::pin();
                     let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);

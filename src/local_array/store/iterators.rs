@@ -483,7 +483,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             let this_level =
                 PB::get_bits_for_len(self.cur_len, self.cur_level);
 
-            // HASHING FUNCTION 
+            // NOT THE HASHING FUNCTION
             let index = ((self.cur_prefix_id.get_net() << last_level)
                 >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
                 .dangerously_truncate_to_u32()

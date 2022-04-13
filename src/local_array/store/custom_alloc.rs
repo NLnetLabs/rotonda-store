@@ -191,9 +191,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
 // Implementations of this trait are done by a proc-macro called
 // `stride_sizes`from the `rotonda-macros` crate.
 
-#[derive(Debug)]
-pub(crate) struct LenToBits([[u8; 10]; 33]);
-
 pub trait NodeBuckets<AF: AddressFamily> {
     fn init() -> Self;
     fn len_to_store_bits(len: u8, level: u8) -> u8;
@@ -215,6 +212,7 @@ where
     fn get_root_prefix_set(&self, len: u8) -> &'_ PrefixSet<AF, M>;
     fn get_bits_for_len(len: u8, level: u8) -> u8;
 }
+
 
 //------------ PrefixSet ----------------------------------------------------
 
@@ -743,39 +741,13 @@ impl<
         let search_level = SearchLevel {
             f: &|search_level: &SearchLevel<AF, Meta>,
                  prefix_set: &PrefixSet<AF, Meta>,
-                 //  new_prefix: InternalPrefixRecord<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-                let last_level = if level > 0 {
-                    PB::get_bits_for_len(id.get_len(), level - 1)
-                } else {
-                    0
-                };
-
-                let this_level = PB::get_bits_for_len(id.get_len(), level);
 
                 // HASHING FUNCTION
-                let index = ((id.get_net() << last_level)
-                    >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
-                    .dangerously_truncate_to_u32()
-                    as usize;
+                let index = Self::hash_prefix_id(id, level);
+
                 trace!("retrieve prefix with guard");
-                trace!(
-                    "{:032b} (pfx)",
-                    id.get_net().dangerously_truncate_to_u32()
-                );
-                trace!("this_level {}", this_level);
-                trace!("last_level {}", last_level);
-                trace!("id {:?}", id);
-                trace!("calculated index {}", index);
-                trace!("level {}", level);
-                trace!(
-                    "bits_division {}",
-                    <NB as NodeBuckets<AF>>::len_to_store_bits(
-                        id.get_len(),
-                        level
-                    )
-                );
 
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
@@ -841,35 +813,12 @@ impl<
         let search_level = SearchLevel {
             f: &|search_level: &SearchLevel<AF, Meta>,
                  prefix_set: &PrefixSet<AF, Meta>,
-                 //  new_prefix: InternalPrefixRecord<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-                let last_level = if level > 0 {
-                    PB::get_bits_for_len(id.get_len(), level - 1)
-                } else {
-                    0
-                };
-                let this_level = PB::get_bits_for_len(id.get_len(), level);
 
                 // HASHING FUNCTION
-                let index = ((id.get_net() << last_level)
-                    >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
-                    .dangerously_truncate_to_u32()
-                    as usize;
-                trace!("retrieve prefix");
-                trace!("{:032b}", id.get_net().dangerously_truncate_to_u32());
-                trace!("this_level {}", this_level);
-                trace!("last_level {}", last_level);
-                trace!("id {:?}", id);
-                trace!("calculated index {}", index);
-                trace!("level {}", level);
-                trace!(
-                    "bits_division {}",
-                    <NB as NodeBuckets<AF>>::len_to_store_bits(
-                        id.get_len(),
-                        level
-                    )
-                );
+                let index = Self::hash_prefix_id(id, level);
+
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
@@ -923,20 +872,12 @@ impl<
         let mut level: u8 = 0;
 
         loop {
-            let last_level = if level > 0 {
-                PB::get_bits_for_len(id.get_len(), level - 1)
-            } else {
-                0
-            };
-            let this_level = PB::get_bits_for_len(id.get_len(), level);
             // The index of the prefix in this array (at this len and
             // level) is calculated by performing the hash function
             // over the prefix.
 
             // HASHING FUNCTION
-            index = ((id.get_net() << last_level)
-                >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
-                .dangerously_truncate_to_u32() as usize;
+            let index = Self::hash_prefix_id(id, level);
 
             let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
             // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
@@ -996,35 +937,10 @@ impl<
                  prefix_set: &PrefixSet<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-                let last_level = if level > 0 {
-                    PB::get_bits_for_len(id.get_len(), level - 1)
-                } else {
-                    0
-                };
-                let this_level = PB::get_bits_for_len(id.get_len(), level);
-
+                     
                 // HASHING FUNCTION
-                let index = ((id.get_net() << last_level)
-                    >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
-                    .dangerously_truncate_to_u32()
-                    as usize;
-                trace!("retrieve prefix");
-                trace!(
-                    "{:032b} (pfx)",
-                    id.get_net().dangerously_truncate_to_u32()
-                );
-                trace!("this_level {}", this_level);
-                trace!("last_level {}", last_level);
-                trace!("id {:?}", id);
-                trace!("calculated index {}", index);
-                trace!("level {}", level);
-                trace!(
-                    "bits_division {}",
-                    <NB as NodeBuckets<AF>>::len_to_store_bits(
-                        id.get_len(),
-                        level
-                    )
-                );
+                let index = Self::hash_prefix_id(id, level);
+
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
@@ -1108,7 +1024,7 @@ impl<
                         prefix.get_net(),
                         node_len,
                     ),
-                    // HASHING FUNCTION
+                    // NOT THE HASHING FUNCTION!
                     BitSpan::new(
                         ((prefix.get_net() << node_len)
                             >> (AF::BITS - (prefix.get_len() - node_len)))
@@ -1119,5 +1035,50 @@ impl<
             }
         }
         panic!("prefix length for {:?} is too long", prefix);
+    }
+
+
+    pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
+        // Aaaaand, this is all of our hashing function.
+        // I'll explain later.
+        let last_level = if level > 0 {
+            <NB>::len_to_store_bits(id.get_id().1, level - 1)
+        } else {
+            0
+        };
+        let this_level = <NB>::len_to_store_bits(id.get_id().1, level);
+        trace!("bits division {}", this_level);
+        trace!(
+            "calculated index ({} << {}) >> {}",
+            id.get_id().0,
+            last_level,
+            ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
+        );
+        // HASHING FUNCTION
+        ((id.get_id().0 << last_level)
+            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
+            .dangerously_truncate_to_u32() as usize
+    }
+
+    pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
+        // Aaaaand, this is all of our hashing function.
+        // I'll explain later.
+        let last_level = if level > 0 {
+            <PB>::get_bits_for_len(id.get_len(), level - 1)
+        } else {
+            0
+        };
+        let this_level = <PB>::get_bits_for_len(id.get_len(), level);
+        trace!("bits division {}", this_level);
+        trace!(
+            "calculated index ({} << {}) >> {}",
+            id.get_net(),
+            last_level,
+            ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
+        );
+        // HASHING FUNCTION
+        ((id.get_net() << last_level)
+            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
+            .dangerously_truncate_to_u32() as usize
     }
 }
