@@ -778,7 +778,10 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         trace!("ptrbitarr {:032b}", self.ptrbitarr);
 
         let start = if let Some(bits) = self.cursor { bits } else { self.start_bit_span.bits };
-        let stop = (1 << (S::STRIDE_LEN - self.start_bit_span.len)) + start; 
+        // We either stop if we have reached the maximum number of bits that
+        // we should check for this bit_span or we stop at the end of the
+        // stride (in case of a start_bit_span.bits == 0).
+        let stop = <u32>::min((1 << (S::STRIDE_LEN - self.start_bit_span.len)) + start, (1 << S::STRIDE_LEN) - 1); 
 
         trace!("start {:?} stop {}", start, stop);
         for cursor in start..=stop {
@@ -962,13 +965,6 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
                 return None;
             }
 
-            // Previous iteration incremented the cursor beyond the end of
-            // stride size
-            if self.cursor.len > S::STRIDE_LEN {
-                trace!("cursor.len > S::STRIDE_LEN. This iterator is done.");
-                return None;
-            }
-
             // No early exits, We're in business.
             trace!("len_offset {}", ((1<< self.cursor.len) - 1));
             trace!("start_bit {}", self.start_bit_span.bits);
@@ -994,6 +990,13 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
                 self.skip_self = false;
                 trace!("new start bits {} len {}", self.start_bit_span.bits, self.start_bit_span.len);
                 trace!("new cursor bits {} len {}", self.cursor.bits, self.cursor.len);
+            }
+
+            // Previous iteration or the skip_self routine may have
+            // incremented the cursor beyond the end of the stride size.
+            if self.cursor.len > S::STRIDE_LEN {
+                trace!("cursor.len > S::STRIDE_LEN. This iterator is done.");
+                return None;
             }
             
             loop {
