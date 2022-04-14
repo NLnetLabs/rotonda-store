@@ -5,13 +5,13 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::QueryResult;
 use crate::{MatchOptions, Stats, Strides};
 
-use routecore::addr::Prefix;
 use crate::af::{IPv4, IPv6};
+use routecore::addr::Prefix;
 use routecore::record::{MergeUpdate, NoMeta};
 
 use super::tree::SizedStrideNode;
 /// A fast, memory-efficient Prefix Store, for use in single-threaded contexts.
-/// 
+///
 /// Can be used in multi-threaded contexts by wrapping it in a `Arc<Mutex<_>>`.
 /// Be aware that this is undesirable in cases with high contention.
 /// Use cases with high contention are best served by the [`crate::MultiThreadedStore`].
