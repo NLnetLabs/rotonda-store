@@ -250,7 +250,7 @@ where
                     };
                 }
 
-                serial => {
+                _serial => {
                     let prefix_meta = self
                         .store
                         .retrieve_prefix_with_guard(

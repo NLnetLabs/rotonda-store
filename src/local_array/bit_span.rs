@@ -1,7 +1,7 @@
 use log::trace;
 
 #[derive(Copy, Clone, Debug)]
-pub struct BitSpan {
+pub(crate) struct BitSpan {
     pub bits: u32,
     pub len: u8
 }
@@ -15,12 +15,14 @@ impl BitSpan {
     }
 
     // Increment the bit span by one and calcalate the new length.
+    #[allow(dead_code)]
     pub(crate) fn inc(&mut self) {
         self.bits += 1;
         self.len = <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
         trace!("inc result {:?}", self);
     }
 
+    #[allow(dead_code)]
     pub(crate) fn set_len_to_bits(&mut self) {
         self.len = <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
         trace!("adjust len result {:?}", self);

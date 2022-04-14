@@ -79,6 +79,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         StoredPrefix(Atomic::new((0, None, PrefixSet::empty(), None)))
     }
 
+    #[allow(dead_code)]
     pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
         StoredPrefix(Atomic::new((1, Some(record), PrefixSet::empty(), None)))
     }
@@ -89,6 +90,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         pfx.is_null() || unsafe { pfx.deref() }.1.is_none()
     }
 
+    #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
         unsafe { self.0.load(Ordering::Relaxed, guard).into_owned() }.0
@@ -388,7 +390,7 @@ impl<
         }
     }
 
-    #[allow(clippy::type_complexity)]
+    #[allow(clippy::type_complexity, dead_code)]
     fn update_node(
         &self,
         id: StrideNodeId<AF>,
@@ -557,6 +559,7 @@ impl<
         self.default_route_prefix_serial.load(Ordering::Acquire)
     }
 
+    #[allow(dead_code)]
     fn increment_default_route_prefix_serial(&self) -> usize {
         self.default_route_prefix_serial
             .fetch_add(1, Ordering::Acquire)
@@ -972,6 +975,7 @@ impl<
         )
     }
 
+    #[allow(dead_code)]
     fn remove_prefix(&mut self, index: PrefixId<AF>) -> Option<Meta> {
         match index.is_empty() {
             false => self.prefixes.remove(index),
