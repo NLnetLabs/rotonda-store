@@ -39,9 +39,6 @@ pub trait AddressFamily:
 
     fn from_ipaddr(net: std::net::IpAddr) -> Self;
 
-    #[cfg(feature = "dynamodb")]
-    fn into_addr(self) -> Addr;
-
     fn into_ipaddr(self) -> std::net::IpAddr;
 
     // temporary function, this will botch IPv6 completely.
@@ -128,11 +125,6 @@ impl AddressFamily for IPv4 {
         } else {
             panic!("Can't convert IPv6 to IPv4");
         }
-    }
-
-    #[cfg(feature = "dynamodb")]
-    fn into_addr(self) -> Addr {
-        Addr::from_bits(self as u128)
     }
 
     fn into_ipaddr(self) -> std::net::IpAddr {
@@ -244,11 +236,6 @@ impl AddressFamily for IPv6 {
         } else {
             panic!("Can't convert IPv4 to IPv6");
         }
-    }
-
-    #[cfg(feature = "dynamodb")]
-    fn into_addr(self) -> Addr {
-        Addr::from_bits(self)
     }
 
     fn into_ipaddr(self) -> std::net::IpAddr {

@@ -306,15 +306,6 @@ where
         self.store.retrieve_node(id)
     }
 
-    #[inline]
-    #[cfg(feature = "dynamodb")]
-    pub(crate) fn retrieve_node_with_guard(
-        &self,
-        id: Store::NodeType,
-    ) -> CacheGuard<Store::AF, Store::NodeType> {
-        self.store.retrieve_node_with_guard(id)
-    }
-
     pub(crate) fn get_root_node_id(&self) -> Store::NodeType {
         self.store.get_root_node_id()
     }
@@ -366,15 +357,6 @@ where
         index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
         self.store.retrieve_prefix(index)
-    }
-
-    #[inline]
-    #[cfg(feature = "dynamodb")]
-    pub(crate) fn retrieve_prefix_mut(
-        &mut self,
-        index: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
-    ) -> Option<&mut InternalPrefixRecord<Store::AF, Store::Meta>> {
-        self.store.retrieve_prefix_mut(index)
     }
 
     // This function assembles all entries in the `pfx_vec` of all child nodes of the

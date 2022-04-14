@@ -15,12 +15,6 @@ pub(crate) type PrefixIter<'a, AF, Meta> = Result<
     Box<dyn std::error::Error>,
 >;
 
-#[cfg(feature = "dynamodb")]
-type PrefixIterMut<'a, AF, Meta> = Result<
-    std::slice::IterMut<'a, InternalPrefixRecord<AF, Meta>>,
-    Box<dyn std::error::Error>,
->;
-
 pub(crate) trait StorageBackend
 where
     Self::NodeType: SortableNodeId + Copy,
@@ -37,11 +31,6 @@ where
         sort: <<Self as StorageBackend>::NodeType as SortableNodeId>::Sort,
         part: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> <Self as StorageBackend>::NodeType;
-    // store_node should return an index with the associated type `Part` of
-    // the associated type of this trait.
-    // `id` is optional, since a vec uses the indexes as the ids of the nodes
-    // other storage data-structures may use unordered lists, where the id is
-    // in the record, e.g., dynamodb
     fn store_node(
         &mut self,
         id: Option<Self::NodeType>,
@@ -99,10 +88,6 @@ where
     ) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
     fn get_prefixes_len(&self) -> usize;
     fn prefixes_iter(&self) -> PrefixIter<'_, Self::AF, Self::Meta>;
-    #[cfg(feature = "dynamodb")]
-    fn prefixes_iter_mut(
-        &mut self,
-    ) -> PrefixIterMut<'_, Self::AF, Self::Meta>;
 }
 
 #[derive(Debug)]
@@ -270,15 +255,5 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
         &self,
     ) -> PrefixIter<'_, AF, Meta> {
         Ok(self.prefixes.iter())
-    }
-
-    #[cfg(feature = "dynamodb")]
-    fn prefixes_iter_mut(
-        &mut self,
-    ) -> Result<
-        std::slice::IterMut<'_, InternalPrefixRecord<AF, Meta>>,
-        Box<dyn std::error::Error>,
-    > {
-        Ok(self.prefixes.iter_mut())
     }
 }
