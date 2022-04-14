@@ -1,4 +1,5 @@
 use rotonda_store::PrefixAs;
+use rotonda_store::prelude::*;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
 use rotonda_store::AddressFamily;
@@ -6,8 +7,8 @@ use routecore::addr::Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
-    let mut tree_bitmap =
-        MultiThreadedStore::<PrefixAs>::new(vec![4], vec![4]);
+    let tree_bitmap =
+        MultiThreadedStore::<PrefixAs>::new();
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -217,20 +218,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         tree_bitmap.insert(&p, PrefixAs(666))?;
     }
     println!("------ end of inserts\n");
-    println!(
-        "{:#?}",
-        tree_bitmap
-            .prefixes_iter()
-            .enumerate()
-            .collect::<Vec<(usize, _)>>()
-    );
-    println!(
-        "{:#?}",
-        tree_bitmap
-            .prefixes_iter()
-            .enumerate()
-            .collect::<Vec<(usize, _)>>()
-    );
+    // println!(
+    //     "{:#?}",
+    //     tree_bitmap
+    //         .prefixes_iter()
+    //         .enumerate()
+    //         .collect::<Vec<(usize, _)>>()
+    // );
+    // println!(
+    //     "{:#?}",
+    //     tree_bitmap
+    //         .prefixes_iter()
+    //         .enumerate()
+    //         .collect::<Vec<(usize, _)>>()
+    // );
 
     // println!("pfxbitarr: {:032b}", tree_bitmap.0.pfxbitarr);
 
@@ -275,6 +276,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
+        let guard = &epoch::pin();
         let s_spfx = tree_bitmap.match_prefix(
             &spfx.unwrap(),
             &MatchOptions {
@@ -282,6 +284,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_less_specifics: true,
                 include_more_specifics: true,
             },
+            guard
         );
         println!("em/m-s: {:#?}", s_spfx);
         println!("-----------");

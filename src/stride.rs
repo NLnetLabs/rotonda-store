@@ -119,7 +119,7 @@ impl Stride for Stride7 {
             }
             // if we move more than 128 bits to the right,
             // all of bitmap.1 wil be shifted out of sight,
-            // so we only have to count bitmap.0 zeroes than (after) shifting of course).
+            // so we only have to count bitmap.0 zeroes than (after shifting of course).
             n => (bitmap.0 >> (n - 128)).count_ones() as usize - 1,
         }
     }

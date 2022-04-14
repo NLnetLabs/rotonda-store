@@ -25,9 +25,11 @@ mod rotonda_store;
 
 // Public Interfaces
 
+pub mod prelude;
 /// Statistics for the two trees (IPv4 and IPv6).
 pub mod stats;
 pub use crate::rotonda_store::*;
 
 // re-exports
-pub use routecore::*;
+pub use routecore::{addr, record};
+pub use crossbeam_epoch::{self as epoch, Guard};

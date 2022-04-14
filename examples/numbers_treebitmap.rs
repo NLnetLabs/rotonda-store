@@ -1,5 +1,8 @@
-use rotonda_store::{MultiThreadedStore, PrefixAs};
-use routecore::addr::Prefix;
+use rotonda_store::prelude::*;
+
+use rotonda_store::PrefixAs;
+use rotonda_macros::create_store;
+// use routecore::addr::Prefix;
 use routecore::bgp::PrefixRecord;
 use routecore::record::Record;
 use std::env;
@@ -8,6 +11,12 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::net::{IpAddr, Ipv4Addr};
 use std::process;
+
+#[create_store((
+    [4, 4, 4, 4, 4, 4, 4, 4],
+    [3, 4, 5, 4]
+))]
+struct MyStore<PrefixAs>;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -47,15 +56,11 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let strides_vec = [
-        vec![4, 4, 4, 4, 4, 4, 4, 4],
-        vec![3, 4, 5, 4],
-    ];
+    let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
-    for strides in strides_vec.iter() {
+    for _strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-        let mut tree_bitmap =
-            MultiThreadedStore::new(strides.clone(), strides.clone());
+        let tree_bitmap: MyStore<PrefixAs> = MyStore::<PrefixAs>::new();
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

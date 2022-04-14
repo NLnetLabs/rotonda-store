@@ -2,6 +2,7 @@
 mod tests {
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+        prelude::*
     };
 
     use routecore::addr::Prefix;
@@ -11,10 +12,7 @@ mod tests {
     #[test]
     fn test_more_specifics_without_less_specifics(
     ) -> Result<(), Box<dyn Error>> {
-        let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-            vec![4, 4, 3, 3, 3, 3, 3, 3, 3, 3],
-            vec![4],
-        );
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18)?, // 0
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24)?, // 1
@@ -37,6 +35,8 @@ mod tests {
         }
         println!("------ end of inserts\n");
 
+        // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        let guard = &epoch::pin();
         for spfx in &[
             (
                 &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
@@ -57,6 +57,7 @@ mod tests {
                     include_less_specifics: false,
                     include_more_specifics: true,
                 },
+                guard
             );
             println!("em/m-s: {:#?}", found_result);
 
@@ -80,10 +81,7 @@ mod tests {
     #[test]
     fn test_more_specifics_with_less_specifics() -> Result<(), Box<dyn Error>>
     {
-        let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-            vec![4, 4, 3, 3, 3, 3, 3, 3, 3, 3],
-            vec![4],
-        );
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18), // 0
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24), // 1
@@ -105,7 +103,8 @@ mod tests {
             tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666))?;
         }
         println!("------ end of inserts\n");
-
+        let guard = &epoch::pin();
+        
         for spfx in &[
             (
                 &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
@@ -132,6 +131,7 @@ mod tests {
                     include_less_specifics: false,
                     include_more_specifics: true,
                 },
+                guard
             );
             println!("em/m-s: {}", found_result);
 

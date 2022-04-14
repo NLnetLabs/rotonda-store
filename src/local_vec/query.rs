@@ -675,7 +675,7 @@ where
                 None
             },
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.meta.as_ref()
+                pfx.meta.as_ref() //.clone() // .as_ref()
             } else {
                 None
             },

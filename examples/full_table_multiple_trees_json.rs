@@ -1,10 +1,19 @@
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, PrefixAs};
-use routecore::addr::Prefix;
+// extern crate self as roto;
+use rotonda_store::prelude::*;
+
+use rotonda_store::{MatchOptions, MatchType, PrefixAs};
+// use routecore::addr::Prefix;
 use routecore::bgp::PrefixRecord;
 use routecore::record::Record;
 use std::error::Error;
 use std::fs::File;
 use std::process;
+
+#[create_store((
+    [4, 4, 4, 4, 4, 4, 4, 4],
+    [3,4,5,4]
+))]
+struct MyStore;
 
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
@@ -33,19 +42,13 @@ fn main() -> Result<(), Box<dyn Error>> {
     }
 
     println!("[");
-    let strides_vec = [
-        vec![4, 4, 4, 4, 4, 4, 4, 4],
-        vec![3, 4, 5, 4]
-    ];
+    let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
     for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-                strides.1.to_owned(),
-                strides.1.to_owned(),
-            );
+            let tree_bitmap = MyStore::<PrefixAs>::new();
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -66,6 +69,8 @@ fn main() -> Result<(), Box<dyn Error>> {
             let len_max = 32;
 
             let start = std::time::Instant::now();
+            let guard = &epoch::pin();
+            // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
             for i_net in 0..inet_max {
                 for s_len in 0..len_max {
                     for ii_net in 0..inet_max {
@@ -75,12 +80,14 @@ fn main() -> Result<(), Box<dyn Error>> {
                             s_len,
                         ) {
                             tree_bitmap.match_prefix(
+                                // (&locks.0, &locks.1),
                                 &pfx,
                                 &MatchOptions {
                                     match_type: MatchType::LongestMatch,
                                     include_less_specifics: false,
                                     include_more_specifics: false,
                                 },
+                                guard
                             );
                         }
                     }
@@ -94,7 +101,26 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             println!("{{");
             println!("\"type\": \"treebitmap_univec\",");
-            println!("\"strides\": {:?},", &tree_bitmap.strides());
+            println!(
+                "\"strides v4 \": {:?},",
+                &tree_bitmap
+                    .v4
+                    .store
+                    .get_stride_sizes()
+                    .iter()
+                    .map_while(|s| if s > &0 { Some(*s) } else { None })
+                    .collect::<Vec<_>>()
+            );
+            println!(
+                "\"strides v6 \": {:?},",
+                &tree_bitmap
+                    .v6
+                    .store
+                    .get_stride_sizes()
+                    .iter()
+                    .map_while(|s| if s > &0 { Some(*s) } else { None })
+                    .collect::<Vec<_>>()
+            );
             println!("\"run_no\": {},", n);
             println!("\"inserts_num\": {},", inserts_num);
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);

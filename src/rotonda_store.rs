@@ -1,9 +1,6 @@
 use std::{fmt, slice};
 
-use crate::{
-    local_array::node::PrefixId, prefix_record::InternalPrefixRecord,
-    stats::StrideStats,
-};
+use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::{
     addr::Prefix,
@@ -13,9 +10,11 @@ use routecore::{
 
 pub use crate::af::{AddressFamily, IPv4, IPv6};
 
+pub use crate::local_array::store::custom_alloc;
+
 //------------ The publicly available Rotonda Stores ------------------------
 
-pub use crate::local_array::store::Store as MultiThreadedStore;
+pub use crate::local_array::store::DefaultStore as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
 
 //------------ Types for strides displaying/monitoring ----------------------
@@ -73,6 +72,12 @@ pub enum MatchType {
     ExactMatch,
     LongestMatch,
     EmptyMatch,
+}
+
+impl MatchType {
+    pub fn is_empty(&self) -> bool {
+        matches!(self, Self::EmptyMatch)
+    }
 }
 
 impl std::fmt::Display for MatchType {
@@ -148,51 +153,6 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-//------------ HashMapPrefixRecordIterator ----------------------------------
-
-#[derive(Debug)]
-pub struct HashMapPrefixRecordIterator<'a, Meta: routecore::record::Meta> {
-    pub(crate) v4: Option<
-        std::collections::hash_map::Values<
-            'a,
-            PrefixId<IPv4>,
-            InternalPrefixRecord<IPv4, Meta>,
-        >,
-    >,
-    pub(crate) v6: std::collections::hash_map::Values<
-        'a,
-        PrefixId<IPv6>,
-        InternalPrefixRecord<IPv6, Meta>,
-    >,
-}
-
-impl<'a, Meta: routecore::record::Meta + 'a> Iterator
-    for HashMapPrefixRecordIterator<'a, Meta>
-{
-    type Item = PrefixRecord<'a, Meta>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // V4 is already done.
-        if self.v4.is_none() {
-            return self.v6.next().map(|res| {
-                PrefixRecord::new(
-                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    res.meta.as_ref().unwrap(),
-                )
-            });
-        }
-
-        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
-            return Some(PrefixRecord::new(
-                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                res.meta.as_ref().unwrap(),
-            ));
-        }
-        self.v4 = None;
-        self.next()
-    }
-}
-
 //------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
@@ -230,31 +190,6 @@ impl<'a, Meta: routecore::record::Meta> Iterator
     }
 }
 
-// impl<'a, Meta: routecore::record::Meta> DoubleEndedIterator
-//     for PrefixRecordIter<'a, Meta>
-// {
-//     fn next_back(&mut self) -> Option<Self::Item> {
-//         // V4 is already done.
-//         if self.v4.is_none() {
-//             return self.v6.next_back().map(|res| {
-//                 PrefixRecord::new(
-//                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-//                     res.meta.as_ref().unwrap(),
-//                 )
-//             });
-//         }
-
-//         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next_back()) {
-//             return Some(PrefixRecord::new(
-//                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-//                 res.meta.as_ref().unwrap(),
-//             ));
-//         }
-//         self.v4 = None;
-//         self.next_back()
-//     }
-// }
-
 //------------- QueryResult -------------------------------------------------
 
 #[derive(Clone, Debug)]
@@ -274,7 +209,7 @@ impl<'a, Meta: routecore::record::Meta> fmt::Display
             Some(pfx) => format!("{}", pfx),
             None => "".to_string(),
         };
-        let pfx_meta_str = match self.prefix_meta {
+        let pfx_meta_str = match &self.prefix_meta {
             Some(pfx_meta) => format!("{}", pfx_meta),
             None => "".to_string(),
         };

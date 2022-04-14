@@ -4,6 +4,7 @@
 mod tests {
     use rotonda_store::{
         MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+        prelude::*
     };
     use routecore::addr::Prefix;
     use routecore::bgp::PrefixRecord;
@@ -52,12 +53,9 @@ mod tests {
             // vec![6, 6, 6, 6, 4, 4],
             // vec![3, 4, 4, 6, 7, 8],
         ];
-        for strides in strides_vec.iter().enumerate() {
+        for _strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-                strides.1.to_owned(),
-                vec![4],
-            );
+            let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -72,6 +70,7 @@ mod tests {
             let inet_max = 255;
             let len_max = 32;
 
+            let guard = &epoch::pin();
             let mut found_counter = 0_u32;
             let mut not_found_counter = 0_u32;
             (0..inet_max).into_iter().for_each(|i_net| {
@@ -90,6 +89,7 @@ mod tests {
                                 include_less_specifics: false,
                                 include_more_specifics: false,
                             },
+                            guard
                         );
                         if let Some(_pfx) = res.prefix {
                             println!("_pfx {:?}", _pfx);

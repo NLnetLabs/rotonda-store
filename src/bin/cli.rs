@@ -1,6 +1,7 @@
 #![cfg(feature = "cli")]
 
 use ansi_term::Colour;
+use rotonda_store::prelude::*;
 use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
@@ -43,7 +44,7 @@ fn load_prefixes(
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new_with_local_meta(
-            Prefix::new(ip.into(), len)?,
+            Prefix::new(ip, len)?,
             PrefixAs(asn),
         );
 
@@ -64,11 +65,10 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    env_logger::init();
+
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let mut tree_bitmap = MultiThreadedStore::<PrefixAs>::new(
-        vec![5, 5, 4, 3, 3, 3, 3, 3, 3],
-        vec![4],
-    );
+    let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -88,6 +88,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     tree_bitmap.print_funky_stats();
+    // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+    let guard = &epoch::pin();
 
     let mut rl = Editor::<()>::new();
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
@@ -102,24 +104,58 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if s_pref.len() < 2 {
                     if let Some(cmd) = line.chars().next() {
                         match cmd.to_string().as_ref() {
-                            "p" => {
-                                println!(
-                                    "total prefixes :\t{}",
-                                    tree_bitmap.prefixes_len()
-                                );
-                                println!(
-                                    "ipv4 prefixes :\t{}",
-                                    tree_bitmap.prefixes_v4_len()
-                                );
-                                println!(
-                                    "ipv6 prefixes :\t{}",
-                                    tree_bitmap.prefixes_v6_len()
-                                );
-                                println!(
-                                    "{:#?}",
-                                    tree_bitmap.prefixes_iter()
-                                );
-                            }
+                            "p" => match line.chars().as_str() {
+                                "p4" => {
+                                    tree_bitmap
+                                        .prefixes_iter_v4(guard)
+                                        .for_each(|pfx| {
+                                            println!(
+                                                "{} {}",
+                                                pfx.prefix, pfx.meta
+                                            );
+                                        });
+                                    println!(
+                                        "ipv4 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v4_len()
+                                    );
+                                }
+                                "p6" => {
+                                    tree_bitmap
+                                        .prefixes_iter_v6(guard)
+                                        .for_each(|pfx| {
+                                            println!(
+                                                "{} {}",
+                                                pfx.prefix, pfx.meta
+                                            );
+                                        });
+                                    println!(
+                                        "ipv6 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v6_len()
+                                    );
+                                }
+                                _ => {
+                                    println!(
+                                        "ipv4 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v4_len()
+                                    );
+                                    println!(
+                                        "ipv6 prefixes :\t{}",
+                                        tree_bitmap.prefixes_v6_len()
+                                    );
+                                    tree_bitmap
+                                        .prefixes_iter(guard)
+                                        .for_each(|pfx| {
+                                            println!(
+                                                "{} {}",
+                                                pfx.prefix, pfx.meta
+                                            );
+                                        });
+                                    println!(
+                                        "total prefixes :\t{}",
+                                        tree_bitmap.prefixes_len()
+                                    );
+                                }
+                            },
                             "n" => {
                                 // if let Some(num) = line.split(' ').collect::<Vec<&str>>().get(1) {
                                 //     for n in tree_bitmap
@@ -143,12 +179,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "ipv6 nodes :\t{}",
                                     tree_bitmap.nodes_v6_len()
                                 );
-                                println!(
-                                    "{:#?}",
-                                    tree_bitmap
-                                        .nodes_v4_iter()
-                                        .collect::<Vec<_>>()
-                                );
+                                // println!(
+                                //     "{:#?}",
+                                //     tree_bitmap
+                                //         .nodes_v4_iter()
+                                //         .collect::<Vec<_>>()
+                                // );
                             }
                             _ => {
                                 println!(
@@ -183,19 +219,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         rl.add_history_entry(line.as_str());
                         println!("Searching for prefix: {}/{}", ip, len);
 
-                        pfx = Prefix::new(ip.into(), len);
+                        pfx = Prefix::new(ip, len);
                         match pfx {
                             Ok(p) => {
+                                let query_result = tree_bitmap.match_prefix(
+                                    &p,
+                                    &MatchOptions {
+                                        match_type: MatchType::EmptyMatch,
+                                        include_less_specifics: true,
+                                        include_more_specifics: true,
+                                    },
+                                    guard,
+                                );
+                                println!("query result");
+                                println!("{}", query_result);
+                                println!(
+                                    "more_specifics: {}",
+                                    query_result.more_specifics.unwrap()
+                                );
+                                println!(
+                                    "less_specifics: {}",
+                                    query_result.less_specifics.unwrap()
+                                );
+
+                                println!("--- numatch");
+                                println!("more specifics");
                                 println!(
                                     "{}",
-                                    tree_bitmap.match_prefix(
-                                        &p,
-                                        &MatchOptions {
-                                            match_type: MatchType::EmptyMatch,
-                                            include_less_specifics: true,
-                                            include_more_specifics: true
-                                        }
-                                    )
+                                    tree_bitmap
+                                        .more_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .more_specifics
+                                        .unwrap()
+                                );
+                                println!("less specifics");
+                                println!(
+                                    "{}",
+                                    tree_bitmap
+                                        .less_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .less_specifics
+                                        .unwrap()
                                 );
                             }
                             Err(
@@ -205,13 +273,37 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
-                                        &Prefix::new_relaxed(ip.into(), len)?,
+                                        &Prefix::new_relaxed(ip, len)?,
                                         &MatchOptions {
                                             match_type: MatchType::EmptyMatch,
                                             include_less_specifics: true,
                                             include_more_specifics: true
-                                        }
+                                        },
+                                        guard
                                     )
+                                );
+                                println!("--- numatch");
+                                println!("more specifics");
+                                println!(
+                                    "{}",
+                                    tree_bitmap
+                                        .more_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .more_specifics
+                                        .unwrap()
+                                );
+                                println!("less specifics");
+                                println!(
+                                    "{}",
+                                    tree_bitmap
+                                        .less_specifics_from(
+                                            &Prefix::new_relaxed(ip, len)?,
+                                            guard
+                                        )
+                                        .less_specifics
+                                        .unwrap()
                                 );
                             }
                             Err(_) => {

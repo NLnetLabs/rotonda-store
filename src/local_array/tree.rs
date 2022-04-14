@@ -1,27 +1,25 @@
+use crossbeam_epoch::{self as epoch};
+use log::{info, trace};
+use routecore::record::{MergeUpdate, Meta};
+
 use std::hash::Hash;
 use std::sync::atomic::{
     AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::af::{AddressFamily, Zero};
-use crate::local_array::storage_backend::StorageBackend;
+use crate::af::AddressFamily;
+use crate::custom_alloc::{CustomAllocStorage, NodeBuckets, PrefixBuckets};
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
 
-#[cfg(feature = "dynamodb")]
-use crate::local_array::CacheGuard;
-
 pub(crate) use super::atomic_stride::*;
-use super::storage_backend::{SizedNodeRefOption, SizedNodeRefResult};
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
-
-use routecore::record::MergeUpdate;
 
 //------------------- Sized Node Enums ------------------------------------
 
@@ -30,17 +28,13 @@ use routecore::record::MergeUpdate;
 // generic code.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug)]
-pub(crate) enum SizedStrideNode<AF: AddressFamily> {
-    Stride3(TreeBitMapNode<AF, Stride3, 14, 8>),
-    Stride4(TreeBitMapNode<AF, Stride4, 30, 16>),
-    Stride5(TreeBitMapNode<AF, Stride5, 62, 32>),
-    // Stride6(TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+pub enum SizedStrideNode<AF: AddressFamily> {
+    Stride3(TreeBitMapNode<AF, Stride3>),
+    Stride4(TreeBitMapNode<AF, Stride4>),
+    Stride5(TreeBitMapNode<AF, Stride5>),
 }
 
-impl<AF, S, const PFXARRAYSIZE: usize, const PTRARRAYSIZE: usize> Default
-    for TreeBitMapNode<AF, S, PFXARRAYSIZE, PTRARRAYSIZE>
+impl<AF, S> Default for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride,
@@ -49,7 +43,6 @@ where
         Self {
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
             pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
-            pfx_vec: PrefixSet::empty(),
             _af: PhantomData,
         }
     }
@@ -63,7 +56,6 @@ where
         SizedStrideNode::Stride3(TreeBitMapNode {
             ptrbitarr: AtomicStride2(AtomicU8::new(0)),
             pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-            pfx_vec: PrefixSet::empty(),
             _af: PhantomData,
         })
     }
@@ -72,46 +64,35 @@ where
 // Used to create a public iterator over all nodes.
 #[derive(Debug)]
 pub enum SizedStrideRef<'a, AF: AddressFamily> {
-    Stride3(&'a TreeBitMapNode<AF, Stride3, 14, 8>),
-    Stride4(&'a TreeBitMapNode<AF, Stride4, 30, 16>),
-    Stride5(&'a TreeBitMapNode<AF, Stride5, 62, 32>),
-    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+    Stride3(&'a TreeBitMapNode<AF, Stride3>),
+    Stride4(&'a TreeBitMapNode<AF, Stride4>),
+    Stride5(&'a TreeBitMapNode<AF, Stride5>),
 }
 
 #[derive(Debug)]
-pub(crate) enum SizedStrideRefMut<'a, AF: AddressFamily> {
-    Stride3(&'a mut TreeBitMapNode<AF, Stride3, 14, 8>),
-    Stride4(&'a mut TreeBitMapNode<AF, Stride4, 30, 16>),
-    Stride5(&'a mut TreeBitMapNode<AF, Stride5, 62, 32>),
-    // Stride6(&'a TreeBitMapNode<AF, Stride6, NodeId, 126, 64>),
-    // Stride7(&'a TreeBitMapNode<AF, Stride7, NodeId, 254, 128>),
-    // Stride8(&'a TreeBitMapNode<AF, Stride8, NodeId, 510, 256>),
+pub enum SizedStrideRefMut<'a, AF: AddressFamily> {
+    Stride3(&'a mut TreeBitMapNode<AF, Stride3>),
+    Stride4(&'a mut TreeBitMapNode<AF, Stride4>),
+    Stride5(&'a mut TreeBitMapNode<AF, Stride5>),
 }
 
-#[allow(clippy::large_enum_variant)]
-pub(crate) enum NewNodeOrIndex<'a, AF: AddressFamily> {
+pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),
-    NewPrefix(u16),
-    ExistingPrefix(PrefixId<AF>, &'a mut AtomicUsize),
+    NewPrefix,
+    ExistingPrefix,
 }
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct PrefixId<AF: AddressFamily>(pub Option<(AF, u8, usize)>);
+pub struct PrefixId<AF: AddressFamily>(Option<(AF, u8)>);
 
 impl<AF: AddressFamily> PrefixId<AF> {
     pub fn new(net: AF, len: u8) -> Self {
-        PrefixId(Some((net, len, 1)))
-    }
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
+        PrefixId(Some((net, len)))
     }
 
-    pub fn set_serial(mut self, serial: usize) -> Self {
-        self.0.as_mut().unwrap().2 = serial;
-        self
+    pub fn is_empty(&self) -> bool {
+        self.0.is_none()
     }
 
     pub fn get_net(&self) -> AF {
@@ -121,6 +102,14 @@ impl<AF: AddressFamily> PrefixId<AF> {
     pub fn get_len(&self) -> u8 {
         self.0.unwrap().1
     }
+
+    // Increment the length of the prefix without changing the bits part.
+    // This is used to iterate over more-specific prefixes for this prefix,
+    // since the more specifics iterator includes the requested `base_prefix`
+    // itself.
+    pub fn inc_len(self) -> Self {
+        Self(self.0.map(|(net, len)| (net, len + 1)))
+    }
 }
 
 impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
@@ -129,9 +118,9 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
     }
 }
 
-//--------------------- Per-Stride-Node-Id Type ------------------------------------
+//--------------------- Per-Stride-Node-Id Type -----------------------------
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct StrideNodeId<AF: AddressFamily>(Option<(AF, u8)>);
 
 impl<AF: AddressFamily> StrideNodeId<AF> {
@@ -155,7 +144,9 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     pub fn get_id(&self) -> (AF, u8) {
         self.0.unwrap()
     }
-
+    pub fn get_len(&self) -> u8 {
+        self.0.unwrap().1
+    }
     pub fn set_len(mut self, len: u8) -> Self {
         self.0.as_mut().unwrap().1 = len;
         self
@@ -191,20 +182,6 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     }
 }
 
-// impl<AF: AddressFamily> Default for StrideNodeId<AF> {
-//     fn default() -> Self {
-//         Self(None)
-//     }
-// }
-
-// impl<AF: AddressFamily + From<u32> + From<u16>> std::convert::From<u16>
-//     for StrideNodeId<AF>
-// {
-//     fn from(id: u16) -> Self {
-//         Self(Some((id.into(), 0)))
-//     }
-// }
-
 impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -217,38 +194,14 @@ impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     }
 }
 
-impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>>
-    for StrideNodeId<AF>
+impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
+    for PrefixId<AF>
 {
-    fn from(id: AtomicStrideNodeId<AF>) -> Self {
-        let i = match id.index.load(Ordering::Relaxed) {
-            0 => None,
-            // THIS DOESN'T ACTUALLY WORK. TEMPORARY.
-            x => Some((x.into(), 0)),
-        };
-        Self(i)
-    }
-}
-
-impl<AF: AddressFamily> std::convert::From<&AtomicStrideNodeId<AF>>
-    for StrideNodeId<AF>
-{
-    fn from(id: &AtomicStrideNodeId<AF>) -> Self {
-        let i = match id.index.load(Ordering::Relaxed) {
-            0 => None,
-            x => Some((x.into(), 0)),
-        };
-        Self(i)
-    }
-}
-
-impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>> for PrefixId<AF> {
     fn from(id: StrideNodeId<AF>) -> Self {
         let (addr_bits, len) = id.0.unwrap();
         PrefixId::new(addr_bits, len)
     }
 }
-
 #[derive(Debug)]
 pub struct AtomicStrideNodeId<AF: AddressFamily> {
     stride_type: StrideType,
@@ -362,98 +315,6 @@ pub trait NodeCollection<AF: AddressFamily> {
     fn empty() -> Self;
 }
 
-//------------ PrefixSet ----------------------------------------------------
-
-// The PrefixSet is the type that powers pfx_vec, the ARRAY that holds all
-// the child prefixes in a node. Since we are storing these prefixes in the
-// global store in a HashMap that is keyed on the tuple (addr_bits, len,
-// serial number) we can get away with storing ONLY THE SERIAL NUMBER in the
-// pfx_vec: The addr_bits and len are implied in the position in the array a
-// serial numher has. A PrefixSet doesn't know anything about the node it is
-// contained in, so it needs a base address to be able to calculate the
-// complete prefix of a child prefix.
-
-#[derive(Debug)]
-pub struct PrefixSet<const ARRAYSIZE: usize>(
-    [AtomicUsize; ARRAYSIZE],
-);
-
-impl<const ARRAYSIZE: usize> std::fmt::Display
-    for PrefixSet<ARRAYSIZE>
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self)
-    }
-}
-
-impl<const ARRAYSIZE: usize> PrefixSet<ARRAYSIZE> {
-    // Collect all PrefixIds int a vec. Since the net and len of the
-    // PrefixIds are implied by the position in the pfx_vec we can
-    // calculate them with if we know the base address of the node
-    // this PrefixSet lives in.
-    pub(crate) fn to_vec<AF: AddressFamily> (
-        &self,
-        base_prefix: StrideNodeId<AF>,
-    ) -> Vec<PrefixId<AF>> {
-        let mut vec = vec![];
-        let mut i: usize = 0;
-        let mut nibble_len = 1;
-        while i < ARRAYSIZE {
-            for nibble in 0..1 << nibble_len {
-                match self.0[i].load(Ordering::Relaxed) {
-                    0 => (),
-                    serial => vec.push(
-                        PrefixId::<AF>::new(
-                            base_prefix
-                                .get_id()
-                                .0
-                                .add_nibble(
-                                    base_prefix.get_id().1,
-                                    nibble,
-                                    nibble_len,
-                                )
-                                .0,
-                            base_prefix.get_id().1 + nibble_len,
-                        )
-                        .set_serial(serial),
-                    ),
-                }
-                i += 1;
-            }
-            nibble_len += 1;
-        }
-        vec
-    }
-
-    pub(crate) fn empty() -> Self {
-        let arr =
-            array_init::array_init(|_| AtomicUsize::new(0));
-        PrefixSet(arr)
-    }
-
-    pub(crate) fn get_serial_at(&mut self, index: usize) -> &mut AtomicUsize {
-        &mut self.0[index as usize]
-    }
-}
-
-impl<const ARRAYSIZE: usize> std::ops::Index<usize>
-    for PrefixSet<ARRAYSIZE>
-{
-    type Output = AtomicUsize;
-
-    fn index(&self, idx: usize) -> &AtomicUsize {
-        &self.0[idx as usize]
-    }
-}
-
-impl<const ARRAYSIZE: usize> std::ops::IndexMut<usize>
-    for PrefixSet<ARRAYSIZE>
-{
-    fn index_mut(&mut self, idx: usize) -> &mut Self::Output {
-        &mut self.0[idx as usize]
-    }
-}
-
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub enum StrideType {
     Stride3,
@@ -484,49 +345,47 @@ impl std::fmt::Display for StrideType {
 
 //--------------------- TreeBitMap ------------------------------------------
 
-pub(crate) struct TreeBitMap<Store>
-where
-    Store: StorageBackend,
-{
-    pub strides: Vec<u8>,
+pub struct TreeBitMap<
+    AF: AddressFamily,
+    M: Meta + MergeUpdate,
+    NB: NodeBuckets<AF>,
+    PB: PrefixBuckets<AF, M>,
+> {
     pub stats: Vec<StrideStats>,
-    pub store: Store,
+    pub store: CustomAllocStorage<AF, M, NB, PB>,
 }
 
-impl<'a, Store> TreeBitMap<Store>
-where
-    Store: StorageBackend,
+impl<
+        'a,
+        AF: AddressFamily,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > TreeBitMap<AF, M, NB, PB>
 {
-    pub fn new(strides_vec: Vec<u8>) -> TreeBitMap<Store> {
-        // Check if the strides division makes sense
-        let mut strides = vec![];
-        let mut len_to_stride_size: [StrideType; 128] =
-            [StrideType::Stride3; 128];
-        let mut strides_sum = 0;
-        for s in strides_vec.iter().cycle() {
-            strides.push(*s);
-            len_to_stride_size[strides_sum as usize] = StrideType::from(*s);
-            strides_sum += s;
-            if strides_sum >= Store::AF::BITS - 1 {
-                break;
-            }
-        }
-        assert_eq!(strides.iter().sum::<u8>(), Store::AF::BITS);
-
+    pub fn new() -> TreeBitMap<AF, M, NB, PB> {
         let mut stride_stats: Vec<StrideStats> = vec![
-            StrideStats::new(SizedStride::Stride3, strides.len() as u8), // 0
-            StrideStats::new(SizedStride::Stride4, strides.len() as u8), // 1
-            StrideStats::new(SizedStride::Stride5, strides.len() as u8), // 2
+            StrideStats::new(
+                SizedStride::Stride3,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
+            ), // 0
+            StrideStats::new(
+                SizedStride::Stride4,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
+            ), // 1
+            StrideStats::new(
+                SizedStride::Stride5,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
+            ), // 2
         ];
 
-        let root_node: SizedStrideNode<<Store as StorageBackend>::AF>;
+        let root_node: SizedStrideNode<AF>;
 
-        match strides[0] {
+        match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
             3 => {
                 root_node = SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-                    pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[0].inc(0);
@@ -535,7 +394,6 @@ where
                 root_node = SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
-                    pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[1].inc(0);
@@ -544,20 +402,22 @@ where
                 root_node = SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
-                    pfx_vec: PrefixSet::empty(),
                     _af: PhantomData,
                 });
                 stride_stats[2].inc(0);
             }
             unknown_stride_size => {
-                panic!("unknown stride size {} encountered in STRIDES array", unknown_stride_size);
+                panic!(
+                    "unknown stride size {} encountered in STRIDES array",
+                    unknown_stride_size
+                );
             }
         };
 
         TreeBitMap {
-            strides,
+            // strides,
             stats: stride_stats,
-            store: Store::init(len_to_stride_size, root_node),
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node),
         }
     }
 
@@ -592,23 +452,22 @@ where
     // 5 - 5 - 5 - 4 - 4 - [4] - 5
     // startpos (2 ^ nibble length) - 1 + nibble as usize
 
-    pub(crate) fn insert(
-        &mut self,
-        pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
+    pub fn insert(
+        &self,
+        pfx: InternalPrefixRecord<AF, M>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         if pfx.len == 0 {
             let _res =
                 self.update_default_route_prefix_meta(pfx.meta.unwrap());
-            println!("--");
             return Ok(());
         }
 
         let mut stride_end: u8 = 0;
-        let mut cur_i = self.store.get_root_node_id(self.strides[0]);
+        let mut cur_i = self.store.get_root_node_id();
         let mut level: u8 = 0;
 
         loop {
-            let stride = self.strides[level as usize];
+            let stride = self.store.get_stride_sizes()[level as usize];
             stride_end += stride;
             let nibble_len = if pfx.len < stride_end {
                 stride + pfx.len - stride_end
@@ -616,17 +475,16 @@ where
                 stride
             };
 
-            let nibble = Store::AF::get_nibble(
-                pfx.net,
-                stride_end - stride,
-                nibble_len,
-            );
+            let nibble =
+                AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
+            let guard = &epoch::pin();
 
             let next_node_idx = match_node_for_strides![
                 // applicable to the whole outer match in the macro
                 self;
+                guard;
                 nibble_len;
                 nibble;
                 is_last_stride;
@@ -650,54 +508,13 @@ where
         }
     }
 
-    fn store_node(
-        &mut self,
-        id: StrideNodeId<Store::AF>,
-        next_node: SizedStrideNode<Store::AF>,
-    ) -> Option<StrideNodeId<Store::AF>> {
-        self.store.store_node(id, next_node)
-    }
-
-    #[inline]
-    pub(crate) fn retrieve_node(
-        &self,
-        id: StrideNodeId<Store::AF>,
-    ) -> SizedNodeRefOption<Store::AF> {
-        self.store.retrieve_node(id)
-    }
-
-    #[inline]
-    #[cfg(feature = "dynamodb")]
-    pub(crate) fn retrieve_node_with_guard(
-        &self,
-        id: StrideNodeId,
-    ) -> CacheGuard<Store::AF, StrideNodeId> {
-        self.store.retrieve_node_with_guard(id)
-    }
-
-    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<Store::AF> {
-        self.store.get_root_node_id(self.strides[0])
-    }
-
-    #[inline]
-    pub(crate) fn retrieve_node_mut(
-        &'a mut self,
-        index: StrideNodeId<Store::AF>,
-    ) -> SizedNodeRefResult<'a, Store::AF> {
-        self.store.retrieve_node_mut(index)
-    }
-
-    pub(crate) fn store_prefix(
-        &mut self,
-        next_node: InternalPrefixRecord<Store::AF, Store::Meta>,
-    ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
-        self.store
-            .store_prefix(PrefixId::from(next_node.clone()), next_node)
+    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
+        self.store.get_root_node_id()
     }
 
     // Yes, we're hating this. But, the root node has no room for a serial
     // of the prefix 0/0 (the default route), which doesn't even matter,
-    // unless, UNLESS, somwbody want to store a default route. So we have
+    // unless, UNLESS, somebody wants to store a default route. So we have
     // to store a serial for this prefix. The normal place for a serial of
     // any prefix is on the pfxvec of its paren. But, hey, guess what, the
     // default-route-prefix lives *on* the root node, and, you know, the
@@ -718,137 +535,16 @@ where
     //  for that prefix and make sure we start searching/inserting with one
     //   of those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
-        &mut self,
-        new_meta: Store::Meta,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        println!("Updating the default route...");
-        let mut old_serial =
-            self.store.increment_default_route_prefix_serial();
-        let new_serial = old_serial + 1;
-        let df_pfx_id =
-            PrefixId::new(Store::AF::zero(), 0).set_serial(old_serial);
-
-        loop {
-            match old_serial {
-                0 => {
-                    println!(
-                        "No default route prefix found, creating one..."
-                    );
-                    self.store_prefix(InternalPrefixRecord {
-                        net: Store::AF::zero(),
-                        len: 0,
-                        meta: Some(new_meta),
-                    })?;
-                    return Ok(());
-                }
-                // SUCCESS (Step 6) !
-                // Nobody messed with our prefix meta-data in between us loading the
-                // serial and creating the entry with that serial. Update the ptrbitarr
-                // in the current node in the global store and be done with it.
-                old_serial if old_serial == new_serial - 1 => {
-                    println!("Found default route prefix with serial {}, updating it to {}...", df_pfx_id.0.unwrap().2, new_serial);
-                    let pfx_idx_clone = df_pfx_id;
-                    self.update_prefix_meta(
-                        pfx_idx_clone,
-                        new_serial,
-                        &new_meta,
-                    )?;
-                    println!(
-                        "removing old default route prefix with serial {}...",
-                        old_serial
-                    );
-                    self.store
-                        .remove_prefix(pfx_idx_clone.set_serial(old_serial));
-                    return Ok(());
-                }
-                // FAILURE (Step 7)
-                // Some other thread messed it up. Try again by upping a newly-read serial once
-                // more, reading the newly-current meta-data, updating it with our meta-data and
-                // see if it works then. rinse-repeat.
-                newer_serial => {
-                    println!(
-                        "contention for {:?} with serial {} -> {}",
-                        df_pfx_id, old_serial, newer_serial
-                    );
-                    old_serial =
-                        self.store.increment_default_route_prefix_serial();
-                    self.store
-                        .retrieve_prefix(df_pfx_id.set_serial(old_serial))
-                        .unwrap();
-                    self.update_prefix_meta(
-                        df_pfx_id,
-                        newer_serial,
-                        &new_meta,
-                    )?;
-                }
-            };
-        }
-    }
-
-    // Upserts the meta-data in the global store.
-    //
-    // When updating an existing prefix the MergeUpdate trait implmented
-    // for the meta-data type will be used. Creates a new prefix entry
-    // in the global store with the serial number `new_serial`.
-    fn update_prefix_meta(
-        &mut self,
-        update_prefix_idx: PrefixId<Store::AF>,
-        new_serial: usize,
-        merge_meta: &Store::Meta,
-    ) -> Result<PrefixId<Store::AF>, Box<dyn std::error::Error>> {
-        // Create a clone of the meta-data of the current prefix, since we
-        // don't want to mutate the current entry in the store. Instead
-        // we want to create a new entry with the same prefix, but with
-        // the merged meta-data and a new serial number.
-        let new_meta = match self.store.retrieve_prefix(update_prefix_idx) {
-            Some(update_prefix) => update_prefix
-                .meta
-                .as_ref()
-                .unwrap()
-                .clone_merge_update(merge_meta)?,
-            None => {
-                println!("-");
-                // panic!(
-                //     "panic: {}/{} with serial {} not found.",
-                //     update_prefix_idx.get_net().into_ipaddr(),
-                //     update_prefix_idx.get_len(),
-                //     new_serial
-                // );
-                return Err(format!(
-                    "-Prefix {}/{} (serial {}) not found",
-                    update_prefix_idx.get_net().into_ipaddr(),
-                    update_prefix_idx.get_len(),
-                    new_serial
-                )
-                .into());
-            }
-        };
-        let new_prefix = InternalPrefixRecord::new_with_meta(
-            update_prefix_idx.get_net(),
-            update_prefix_idx.get_len(),
-            new_meta,
-        );
-        self.store.store_prefix(
-            update_prefix_idx.set_serial(new_serial),
-            new_prefix,
-        )
-    }
-
-    #[inline]
-    pub(crate) fn retrieve_prefix(
         &self,
-        index: PrefixId<Store::AF>,
-    ) -> Option<&InternalPrefixRecord<Store::AF, Store::Meta>> {
-        self.store.retrieve_prefix(index)
-    }
-
-    #[inline]
-    #[cfg(feature = "dynamodb")]
-    pub(crate) fn retrieve_prefix_mut(
-        &mut self,
-        index: StrideNodeId,
-    ) -> Option<&mut InternalPrefixRecord<Store::AF, Store::Meta>> {
-        self.store.retrieve_prefix_mut(index)
+        new_meta: M,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        trace!("Updating the default route...");
+        self.store
+            .upsert_prefix(InternalPrefixRecord::new_with_meta(
+                AF::zero(),
+                0,
+                new_meta,
+            ))
     }
 
     // This function assembles all entries in the `pfx_vec` of all child nodes of the
@@ -856,39 +552,55 @@ where
     // adding all `pfx_vec`s of its children.
     fn get_all_more_specifics_for_node(
         &self,
-        start_node_id: StrideNodeId<Store::AF>,
-        found_pfx_vec: &mut Vec<PrefixId<Store::AF>>,
+        start_node_id: StrideNodeId<AF>,
+        found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        match self.retrieve_node(start_node_id).unwrap() {
-            SizedStrideRef::Stride3(n) => {
-                found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
+        let guard = &epoch::pin();
 
-                for child_node in n.ptr_vec(start_node_id) {
+        info!("start assembling all more specific prefixes here");
+        info!(
+            "{:?}",
+            self.store.retrieve_node_with_guard(start_node_id, guard)
+        );
+        match self.store.retrieve_node_with_guard(start_node_id, guard) {
+            Some(SizedStrideRef::Stride3(n)) => {
+                found_pfx_vec.extend(
+                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
+                );
+
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
                     );
                 }
             }
-            SizedStrideRef::Stride4(n) => {
-                found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
+            Some(SizedStrideRef::Stride4(n)) => {
+                found_pfx_vec.extend(
+                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
+                );
 
-                for child_node in n.ptr_vec(start_node_id) {
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
                     );
                 }
             }
-            SizedStrideRef::Stride5(n) => {
-                found_pfx_vec.extend(n.pfx_vec.to_vec(start_node_id));
+            Some(SizedStrideRef::Stride5(n)) => {
+                found_pfx_vec.extend(
+                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
+                );
 
-                for child_node in n.ptr_vec(start_node_id) {
+                for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
                     );
                 }
+            }
+            _ => {
+                panic!("can't find node {}", start_node_id);
             }
         }
     }
@@ -897,28 +609,13 @@ where
     // specified bit position in a ptr_vec of `current_node` into a vec,
     // then adds all prefixes of these children recursively into a vec and
     // returns that.
-    //
-    // Silence Clippy about unnecessarily returning an Option as all of
-    // the many call sites would instead have to wrap the result in Some
-    // making the code there more verbose and harder to read, this is 
-    // perhaps preferable.
-    #[allow(clippy::unnecessary_wraps)]
-    pub(crate) fn get_all_more_specifics_from_nibble<
-        S: Stride,
-        const PFXARRAYSIZE: usize,
-        const PTRARRAYSIZE: usize,
-    >(
-        &self,
-        current_node: &TreeBitMapNode<
-            Store::AF,
-            S,
-            PFXARRAYSIZE,
-            PTRARRAYSIZE,
-        >,
+    pub(crate) fn get_all_more_specifics_from_nibble<S: Stride>(
+        &'a self,
+        current_node: &TreeBitMapNode<AF, S>,
         nibble: u32,
         nibble_len: u8,
-        base_prefix: StrideNodeId<Store::AF>,
-    ) -> Option<Vec<PrefixId<Store::AF>>>
+        base_prefix: StrideNodeId<AF>,
+    ) -> Option<Vec<PrefixId<AF>>>
     where
         S: Stride,
     {
@@ -935,32 +632,58 @@ where
     }
 }
 
+impl<
+        AF: AddressFamily,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > Default for TreeBitMap<AF, M, NB, PB>
+{
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
-impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
+impl<
+        'a,
+        AF: AddressFamily,
+        M: Meta + MergeUpdate,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
+{
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let total_nodes = self.store.get_nodes_len();
 
-        println!("prefix vec size {}", self.store.get_prefixes_len());
-        println!("finished building tree...");
-        println!("{:?} nodes created", total_nodes);
-        println!(
+        trace!("prefix vec size {}", self.store.get_prefixes_len());
+        trace!("finished building tree...");
+        trace!("{:?} nodes created", total_nodes);
+        trace!(
             "size of node: {} bytes",
             std::mem::size_of::<SizedStrideNode<u32>>()
         );
-        println!(
+        trace!(
             "memory used by nodes: {}kb",
             self.store.get_nodes_len()
                 * std::mem::size_of::<SizedStrideNode<u32>>()
                 / 1024
         );
 
-        println!("stride division {:?}", self.strides);
+        trace!(
+            "stride division {:?}",
+            self.store
+                .get_stride_sizes()
+                .iter()
+                .map_while(|s| if s > &0 { Some(*s) } else { None })
+                .collect::<Vec<_>>()
+        );
         for s in &self.stats {
-            println!("{:?}", s);
+            trace!("{:?}", s);
         }
 
-        println!(
+        trace!(
             "level\t[{}|{}] nodes occupied/max nodes percentage_max_nodes_occupied prefixes",
             Colour::Blue.paint("nodes"),
             Colour::Green.paint("prefixes")
@@ -969,20 +692,35 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         let mut stride_bits = [0, 0];
         const SCALE: u32 = 5500;
 
-        for stride in self.strides.iter().enumerate() {
+        trace!(
+            "stride_sizes {:?}",
+            self.store
+                .get_stride_sizes()
+                .iter()
+                .map_while(|s| if s > &0 { Some(*s) } else { None })
+                .enumerate()
+                .collect::<Vec<(usize, u8)>>()
+        );
+        for stride in self
+            .store
+            .get_stride_sizes()
+            .iter()
+            .map_while(|s| if s > &0 { Some(*s) } else { None })
+            .enumerate()
+        {
             // let level = stride.0;
             stride_bits = [stride_bits[1] + 1, stride_bits[1] + stride.1];
             let nodes_num = self
                 .stats
                 .iter()
-                .find(|s| s.stride_len == *stride.1)
+                .find(|s| s.stride_len == stride.1)
                 .unwrap()
                 .created_nodes[stride.0]
                 .count as u32;
             let prefixes_num = self
                 .stats
                 .iter()
-                .find(|s| s.stride_len == *stride.1)
+                .find(|s| s.stride_len == stride.1)
                 .unwrap()
                 .prefixes_num[stride.0]
                 .count as u32;
@@ -1023,7 +761,7 @@ impl<'a, Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 ) //  = scale / 7
             );
 
-            println!(" {}", prefixes_num);
+            trace!(" {}", prefixes_num);
         }
         Ok(())
     }

@@ -3,12 +3,12 @@ use std::fmt;
 use std::fmt::Debug;
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
-use routecore::record::{MergeUpdate, Meta};
+use routecore::record::{MergeUpdate, Meta, Record};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
 #[derive(Clone, Copy)]
-pub(crate) struct InternalPrefixRecord<AF, T>
+pub struct InternalPrefixRecord<AF, T>
 where
     T: Meta,
     AF: AddressFamily,
@@ -40,6 +40,12 @@ where
             len,
             meta: Some(meta),
         }
+    }
+    // This should never fail, since there shouldn't be a invalid prefix in
+    // this record in the first place.
+    pub fn prefix_into_pub(&self) -> routecore::addr::Prefix {
+        routecore::addr::Prefix::new(self.net.into_ipaddr(), self.len)
+            .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
     }
 }
 
@@ -133,6 +139,49 @@ where
     T: Meta,
 {
     fn from(record: InternalPrefixRecord<AF, T>) -> Self {
-        Self(Some((record.net, record.len, 1)))
+        Self::new(record.net, record.len)
+    }
+}
+
+impl<AF, T> From<&InternalPrefixRecord<AF, T>> for PrefixId<AF>
+where
+    AF: AddressFamily,
+    T: Meta,
+{
+    fn from(record: &InternalPrefixRecord<AF, T>) -> Self {
+        Self::new(record.net, record.len)
+    }
+}
+
+impl<'a, AF, M> From<&'a InternalPrefixRecord<AF, M>>
+    for routecore::bgp::PrefixRecord<'a, M>
+where
+    AF: AddressFamily,
+    M: Meta,
+{
+    fn from(record: &'a InternalPrefixRecord<AF, M>) -> Self {
+        routecore::bgp::PrefixRecord::new(
+            routecore::addr::Prefix::new(
+                record.net.into_ipaddr(),
+                record.len,
+            )
+            .unwrap(),
+            record.meta.as_ref().unwrap(),
+        )
+    }
+}
+
+impl<'a, AF, M> From<routecore::bgp::PrefixRecord<'a, M>>
+    for InternalPrefixRecord<AF, M>
+where
+    AF: AddressFamily,
+    M: Meta,
+{
+    fn from(record: routecore::bgp::PrefixRecord<'a, M>) -> Self {
+        Self {
+            net: AF::from_ipaddr(record.key().addr()),
+            len: record.key().len(),
+            meta: Some(record.meta().into_owned()),
+        }
     }
 }
