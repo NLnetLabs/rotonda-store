@@ -29,7 +29,7 @@ cli = ["csv", "ansi_term", "rustyline", "env_logger"]
 default = []
 
 [patch.crates-io]
-rotonda-macros = { path = "../rotonda-macros" }
+rotonda-macros = { git = "https://github.com/NLnetLabs/rotonda-macros.git" }
 
 [[bin]]
 name = "cli"
