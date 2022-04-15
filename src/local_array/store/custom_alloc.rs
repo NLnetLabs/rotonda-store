@@ -1,3 +1,96 @@
+// ----------- THE STORE ----------------------------------------------------
+// 
+// The CustomAllocStore provides in-memory storage for the BitTreeMapNodes
+// and for prefixes and their meta-data. The storage for node is on the
+// `buckets` field, and the prefixes are stored in, well, the `prefixes`
+// field. They are both organised in the same way, as chained hash tables,
+// one per (prefix|node)-length. The hashing function (that is detailed 
+// lower down in this file), basically takes the address part of the 
+// node|prefix and uses `(node|prefix)-address part % bucket size` 
+// as its index.
+//
+// Both the prefixes and the buckets field have one bucket per (prefix|node)
+// -length that start out with a fixed-size array. The size of the arrays is 
+// set in the rotonda_macros/maps.rs file.
+// 
+// For lower (prefix|node)-lengths the number of elements in the array is
+// equal to the number of prefixes in that length, so there's exactly one
+// element per (prefix|node). For greater lengths there will be collisions,
+// in that case the stored (prefix|node) will have a reference to another
+// bucket (also of a fixed size), that holds a (prefix|node) that collided
+// with the one that was already stored. A (node|prefix) lookup will have to
+// go over all (nore|prefix) buckets until it matches the requested (node|
+// prefix) or it reaches the end of the chain.
+//
+// The chained (node|prefixes) are occupied at a first-come, first-serve
+// basis, and are not re-ordered on new insertions of (node|prefixes). This
+// may change in the future, since it prevents iterators from being ordered.
+//
+// One of the nice things of having one table per (node|prefix)-length is that
+// a search can start directly at the prefix-length table it wishes, and go
+// go up and down into other tables if it needs to (e.g., because more- or
+// less-specifics were asked for). In contrast if you do a lookup by
+// traversing the tree of nodes, we would always have to go through the root-
+// node first and then go up the tree to the requested node. The lower nodes
+// of the tree (close to the root) would be a formidable bottle-neck then.
+//
+// The meta-data for a prefix is (also) stored as a linked-list of
+// references, where each meta-data object has a reference to its 
+// predecessor. New meta-data instances are stored atomically without further
+// ado, but updates to a piece of meta-data are done by merging the previous
+// meta-data with the new meta-data, through use of the `MergeUpdate` trait.
+// 
+// The `retrieve_prefix_*` methods retrieve only the most recent insert
+// for a prefix (for now).
+//     
+// Prefix example
+//
+//         (level 0 arrays)         prefixes  bucket                       
+//                                    /len     size                        
+//         ┌──┐                                                           
+// len /0  │ 0│                        1        1     ■                   
+//         └──┘                                       │                   
+//         ┌──┬──┐                                    │                   
+// len /1  │00│01│                     2        2     │                   
+//         └──┴──┘                                 perfect                
+//         ┌──┬──┬──┬──┐                             hash                 
+// len /2  │  │  │  │  │               4        4     │                   
+//         └──┴──┴──┴──┘                              │                   
+//         ┌──┬──┬──┬──┬──┬──┬──┬──┐                  │                   
+// len /3  │  │  │  │  │  │  │  │  │   8        8     ■                   
+//         └──┴──┴──┴──┴──┴──┴──┴──┘                                      
+//         ┌──┬──┬──┬──┬──┬──┬──┬──┐                        ┌────────────┐
+// len /4  │  │  │  │  │  │  │  │  │   8        16 ◀────────│ collision  │
+//         └──┴──┴──┴┬─┴──┴──┴──┴──┘                        └────────────┘                                                                                                    
+//                   └───┐                                              
+//                       │              ┌─collision─────────┐           
+//                   ┌───▼───┐          │                   │           
+//                   │       │ ◀────────│ 0x0110 and 0x0111 │           
+//                   │ 0x011 │          └───────────────────┘           
+//                   │       │                                          
+//                   ├───────┴──────────────┬──┬──┐                     
+//                   │ StoredPrefix 0x0111  │  │  │                     
+//                   └──────────────────────┴─┬┴─┬┘                     
+//                                            │  │                         
+//                       ┌────────────────────┘  └──┐                      
+//            ┌──────────▼──────────┬──┐          ┌─▼┬──┐                  
+//         ┌─▶│ metadata (current)  │  │          │ 0│ 1│ (level 1 array)                 
+//         │  └─────────────────────┴──┘          └──┴──┘                  
+//    merge└─┐                        │             │                      
+//    update │           ┌────────────┘             │                      
+//           │┌──────────▼──────────┬──┐        ┌───▼───┐                  
+//         ┌─▶│ metadata (previous) │  │        │       │                  
+//         │  └─────────────────────┴──┘        │  0x0  │                  
+//    merge└─┐                        │         │       │                  
+//    update │           ┌────────────┘         ├───────┴──────────────┬──┐
+//           │┌──────────▼──────────┬──┐        │ StoredPrefix 0x0110  │  │
+//            │ metadata (oldest)   │  │        └──────────────────────┴──┘
+//            └─────────────────────┴──┘                                 │ 
+//                                                         ┌─────────────┘ 
+//                                              ┌──────────▼──────────────┐
+//                                              │ metadata (current)      │
+//                                              └─────────────────────────┘
+//
 use std::{
     fmt::Debug,
     mem::MaybeUninit,
@@ -65,10 +158,14 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 #[derive(Debug)]
 pub struct StoredPrefix<AF: AddressFamily, Meta: routecore::record::Meta>(
     pub  Atomic<(
-        usize,                                       // 0 the serial
-        Option<InternalPrefixRecord<AF, Meta>>,      // 1 the record
-        PrefixSet<AF, Meta>, // 2 the next set of nodes
-        Option<Box<InternalPrefixRecord<AF, Meta>>>, // 3 the previous record that lived here (one serial down)
+        // 0 the serial
+        usize,      
+         // 1 the record                                 
+        Option<InternalPrefixRecord<AF, Meta>>,
+        // 2 the next set of nodes 
+        PrefixSet<AF, Meta>,
+        // 3 the previous record that lived here (one serial down)
+        Option<Box<InternalPrefixRecord<AF, Meta>>>, 
     )>,
 );
 
