@@ -12,7 +12,8 @@ use std::{marker::PhantomData, sync::atomic::Ordering};
 use crate::{
     af::AddressFamily,
     custom_alloc::{
-        CustomAllocStorage, NodeBuckets, PrefixBuckets, PrefixSet,
+        StoredPrefix, CustomAllocStorage, NodeBuckets, PrefixBuckets,
+        PrefixSet,
     },
     local_array::{
         bit_span::BitSpan,
@@ -514,7 +515,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             match unsafe {
                 s_pfx.0.load(Ordering::SeqCst, self.guard).deref()
             } {
-                (_serial, Some(pfx_rec), next_set, _prev_record) => {
+                StoredPrefix {
+                    // serial: _serial,
+                    record: Some(pfx_rec),
+                    next_set,
+                    prev_record: _prev_record,
+                    ..
+                } => {
                     // There is a prefix  here, but we need to checkt if it's
                     // the right one.
                     if self.cur_prefix_id
@@ -552,7 +559,11 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         }
                     }
                 }
-                (_serial, None, next_set, _prev_record) => {
+                StoredPrefix {
+                    record: None,
+                    next_set,
+                    ..
+                } => {
                     // No prefix here, let's see if there's a child here
                     trace!(
                         "no prefix found for {:?} in len {}",

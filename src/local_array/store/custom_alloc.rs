@@ -1,18 +1,18 @@
 // ----------- THE STORE ----------------------------------------------------
-// 
+//
 // The CustomAllocStore provides in-memory storage for the BitTreeMapNodes
 // and for prefixes and their meta-data. The storage for node is on the
 // `buckets` field, and the prefixes are stored in, well, the `prefixes`
 // field. They are both organised in the same way, as chained hash tables,
-// one per (prefix|node)-length. The hashing function (that is detailed 
-// lower down in this file), basically takes the address part of the 
-// node|prefix and uses `(node|prefix)-address part % bucket size` 
+// one per (prefix|node)-length. The hashing function (that is detailed
+// lower down in this file), basically takes the address part of the
+// node|prefix and uses `(node|prefix)-address part % bucket size`
 // as its index.
 //
 // Both the prefixes and the buckets field have one bucket per (prefix|node)
-// -length that start out with a fixed-size array. The size of the arrays is 
+// -length that start out with a fixed-size array. The size of the arrays is
 // set in the rotonda_macros/maps.rs file.
-// 
+//
 // For lower (prefix|node)-lengths the number of elements in the array is
 // equal to the number of prefixes in that length, so there's exactly one
 // element per (prefix|node). For greater lengths there will be collisions,
@@ -35,58 +35,58 @@
 // of the tree (close to the root) would be a formidable bottle-neck then.
 //
 // The meta-data for a prefix is (also) stored as a linked-list of
-// references, where each meta-data object has a reference to its 
+// references, where each meta-data object has a reference to its
 // predecessor. New meta-data instances are stored atomically without further
 // ado, but updates to a piece of meta-data are done by merging the previous
 // meta-data with the new meta-data, through use of the `MergeUpdate` trait.
-// 
+//
 // The `retrieve_prefix_*` methods retrieve only the most recent insert
 // for a prefix (for now).
-//     
+//
 // Prefix example
 //
-//         (level 0 arrays)         prefixes  bucket                       
-//                                    /len     size                        
-//         ┌──┐                                                           
-// len /0  │ 0│                        1        1     ■                   
-//         └──┘                                       │                   
-//         ┌──┬──┐                                    │                   
-// len /1  │00│01│                     2        2     │                   
-//         └──┴──┘                                 perfect                
-//         ┌──┬──┬──┬──┐                             hash                 
-// len /2  │  │  │  │  │               4        4     │                   
-//         └──┴──┴──┴──┘                              │                   
-//         ┌──┬──┬──┬──┬──┬──┬──┬──┐                  │                   
-// len /3  │  │  │  │  │  │  │  │  │   8        8     ■                   
-//         └──┴──┴──┴──┴──┴──┴──┴──┘                                      
+//         (level 0 arrays)         prefixes  bucket
+//                                    /len     size
+//         ┌──┐
+// len /0  │ 0│                        1        1     ■
+//         └──┘                                       │
+//         ┌──┬──┐                                    │
+// len /1  │00│01│                     2        2     │
+//         └──┴──┘                                 perfect
+//         ┌──┬──┬──┬──┐                             hash
+// len /2  │  │  │  │  │               4        4     │
+//         └──┴──┴──┴──┘                              │
+//         ┌──┬──┬──┬──┬──┬──┬──┬──┐                  │
+// len /3  │  │  │  │  │  │  │  │  │   8        8     ■
+//         └──┴──┴──┴──┴──┴──┴──┴──┘
 //         ┌──┬──┬──┬──┬──┬──┬──┬──┐                        ┌────────────┐
 // len /4  │  │  │  │  │  │  │  │  │   8        16 ◀────────│ collision  │
-//         └──┴──┴──┴┬─┴──┴──┴──┴──┘                        └────────────┘                                                                                                    
-//                   └───┐                                              
-//                       │              ┌─collision─────────┐           
-//                   ┌───▼───┐          │                   │           
-//                   │       │ ◀────────│ 0x0100 and 0x0101 │           
-//                   │ 0x010 │          └───────────────────┘           
-//                   │       │                                          
-//                   ├───────┴──────────────┬──┬──┐ 
-//                   │ StoredPrefix 0x0101  │  │  │                     
-//                   └──────────────────────┴─┬┴─┬┘                     
-//                                            │  │                         
-//                       ┌────────────────────┘  └──┐                      
-//            ┌──────────▼──────────┬──┐          ┌─▼┬──┐                  
-//         ┌─▶│ metadata (current)  │  │          │ 0│ 1│ (level 1 array)                 
-//         │  └─────────────────────┴──┘          └──┴──┘                  
-//    merge└─┐                        │             │                      
-//    update │           ┌────────────┘             │                      
-//           │┌──────────▼──────────┬──┐        ┌───▼───┐                  
-//         ┌─▶│ metadata (previous) │  │        │       │                  
-//         │  └─────────────────────┴──┘        │  0x0  │                  
-//    merge└─┐                        │         │       │                  
+//         └──┴──┴──┴┬─┴──┴──┴──┴──┘                        └────────────┘
+//                   └───┐
+//                       │              ┌─collision─────────┐
+//                   ┌───▼───┐          │                   │
+//                   │       │ ◀────────│ 0x0100 and 0x0101 │
+//                   │ 0x010 │          └───────────────────┘
+//                   │       │
+//                   ├───────┴──────────────┬──┬──┐
+//                   │ StoredPrefix 0x0101  │  │  │
+//                   └──────────────────────┴─┬┴─┬┘
+//                                            │  │
+//                       ┌────────────────────┘  └──┐
+//            ┌──────────▼──────────┬──┐          ┌─▼┬──┐
+//         ┌─▶│ metadata (current)  │  │          │ 0│ 1│ (level 1 array)
+//         │  └─────────────────────┴──┘          └──┴──┘
+//    merge└─┐                        │             │
+//    update │           ┌────────────┘             │
+//           │┌──────────▼──────────┬──┐        ┌───▼───┐
+//         ┌─▶│ metadata (previous) │  │        │       │
+//         │  └─────────────────────┴──┘        │  0x0  │
+//    merge└─┐                        │         │       │
 //    update │           ┌────────────┘         ├───────┴──────────────┬──┐
 //           │┌──────────▼──────────┬──┐        │ StoredPrefix 0x0110  │  │
 //            │ metadata (oldest)   │  │        └──────────────────────┴──┘
-//            └─────────────────────┴──┘                                 │ 
-//                                                         ┌─────────────┘ 
+//            └─────────────────────┴──┘                                 │
+//                                                         ┌─────────────┘
 //                                              ┌──────────▼──────────────┐
 //                                              │ metadata (current)      │
 //                                              └─────────────────────────┘
@@ -151,52 +151,68 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 
 // ----------- Prefix related structs ---------------------------------------
 
+pub struct StoredPrefix<
+    AF: AddressFamily,
+    Meta: routecore::record::Meta,
+> {
+    // the serial number
+    pub serial: usize,
+    // the user-defined hash for this prefix and hash.
+    hash_id: u64,
+    // the record for this prefix and hash_id.
+    pub record: Option<InternalPrefixRecord<AF, Meta>>,
+    // the next set of records for this prefix, if any.
+    pub next_set: PrefixSet<AF, Meta>,
+    // the previous record for this prefix and has_id (linked list)
+    pub prev_record: Option<Box<InternalPrefixRecord<AF, Meta>>>,
+    // the next linked list for this prefix, but another hash_id.
+    next_list: Option<Box<StoredPrefix<AF, Meta>>>,
+}
+
 // Unlike StoredNode, we don't need an Empty variant, since we're using
 // serial == 0 as the empty value. We're not using an Option here, to
 // avoid going outside our atomic procedure.
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
-pub struct StoredPrefix<AF: AddressFamily, Meta: routecore::record::Meta>(
-    pub  Atomic<(
-        // 0 the serial
-        usize,      
-         // 1 the record                                 
-        Option<InternalPrefixRecord<AF, Meta>>,
-        // 2 the next set of nodes 
-        PrefixSet<AF, Meta>,
-        // 3 the previous record that lived here (one serial down)
-        Option<Box<InternalPrefixRecord<AF, Meta>>>, 
-    )>,
+pub struct AtomicStoredPrefix<AF: AddressFamily, M: routecore::record::Meta>(
+    pub Atomic<StoredPrefix<AF, M>>, 
 );
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta>
-    StoredPrefix<AF, Meta>
+    AtomicStoredPrefix<AF, Meta>
 {
     pub(crate) fn empty() -> Self {
-        StoredPrefix(Atomic::new((0, None, PrefixSet::empty(), None)))
+        AtomicStoredPrefix(Atomic::new(StoredPrefix {
+            serial: 0,
+            record: None,
+            hash_id: 0,
+            next_set: PrefixSet::empty(),
+            prev_record: None,
+            next_list: None,
+        }))
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
-        StoredPrefix(Atomic::new((1, Some(record), PrefixSet::empty(), None)))
-    }
+    // #[allow(dead_code)]
+    // pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
+    //     StoredPrefix(Atomic::new((1, Some(record), PrefixSet::empty(), None)))
+    // }
 
     pub(crate) fn is_empty(&self) -> bool {
         let guard = &epoch::pin();
         let pfx = self.0.load(Ordering::Relaxed, guard);
-        pfx.is_null() || unsafe { pfx.deref() }.1.is_none()
+        pfx.is_null() || unsafe { pfx.deref() }.record.is_none()
     }
 
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::Relaxed, guard).into_owned() }.0
+        unsafe { self.0.load(Ordering::Relaxed, guard).into_owned() }.serial
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
         let guard = &epoch::pin();
         if let Some(pfx_rec) =
-            &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.1
+            &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.record
         {
             PrefixId::new(pfx_rec.net, pfx_rec.len)
         } else {
@@ -208,7 +224,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> &Option<InternalPrefixRecord<AF, Meta>> {
-        &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.1
+        &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.record
     }
 
     // PrefixSet is an Atomic that might be a null pointer, which is
@@ -223,9 +239,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         let stored_prefix =
             unsafe { self.0.load(Ordering::Relaxed, guard).deref() };
 
-        if stored_prefix.1.is_some() {
-            if !&stored_prefix.2 .0.load(Ordering::Relaxed, guard).is_null() {
-                Some(&stored_prefix.2)
+        if stored_prefix.record.is_some() {
+            if !&stored_prefix
+                .next_set
+                .0
+                .load(Ordering::Relaxed, guard)
+                .is_null()
+            {
+                Some(&stored_prefix.next_set)
             } else {
                 None
             }
@@ -239,24 +260,14 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     std::convert::From<
         crossbeam_epoch::Shared<
             '_,
-            (
-                usize,
-                Option<InternalPrefixRecord<AF, Meta>>,
-                PrefixSet<AF, Meta>,
-                Option<Box<InternalPrefixRecord<AF, Meta>>>,
-            ),
+            StoredPrefix<AF, Meta>,
         >,
-    > for &StoredPrefix<AF, Meta>
+    > for &AtomicStoredPrefix<AF, Meta>
 {
     fn from(
         p: crossbeam_epoch::Shared<
             '_,
-            (
-                usize,
-                Option<InternalPrefixRecord<AF, Meta>>,
-                PrefixSet<AF, Meta>,
-                Option<Box<InternalPrefixRecord<AF, Meta>>>,
-            ),
+            StoredPrefix<AF, Meta>,
         >,
     ) -> Self {
         unsafe { std::mem::transmute(p) }
@@ -271,7 +282,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
             PrefixSet<AF, Meta>,
             Option<Box<InternalPrefixRecord<AF, Meta>>>,
         )>,
-    > for &StoredPrefix<AF, Meta>
+    > for &AtomicStoredPrefix<AF, Meta>
 {
     fn from(
         p: crossbeam_epoch::Owned<(
@@ -312,7 +323,6 @@ where
     fn get_bits_for_len(len: u8, level: u8) -> u8;
 }
 
-
 //------------ PrefixSet ----------------------------------------------------
 
 // The PrefixSet is the ARRAY that holds all the child prefixes in a node.
@@ -325,7 +335,7 @@ where
 
 #[derive(Debug)]
 pub struct PrefixSet<AF: AddressFamily, M: routecore::record::Meta>(
-    pub Atomic<[MaybeUninit<StoredPrefix<AF, M>>]>,
+    pub Atomic<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>,
 );
 
 impl<AF: AddressFamily, M: Meta> std::fmt::Display for PrefixSet<AF, M> {
@@ -336,10 +346,10 @@ impl<AF: AddressFamily, M: Meta> std::fmt::Display for PrefixSet<AF, M> {
 
 impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
-        let mut l = Owned::<[MaybeUninit<StoredPrefix<AF, M>>]>::init(size);
+        let mut l = Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
         info!("creating space for {} prefixes in prefix_set", &size);
         for i in 0..size {
-            l[i] = MaybeUninit::new(StoredPrefix::empty());
+            l[i] = MaybeUninit::new(AtomicStoredPrefix::empty());
         }
         PrefixSet(l.into())
     }
@@ -377,7 +387,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         &'a self,
         index: usize,
         guard: &'a Guard,
-    ) -> &'a StoredPrefix<AF, M> {
+    ) -> &'a AtomicStoredPrefix<AF, M> {
         assert!(!self.0.load(Ordering::Relaxed, guard).is_null());
         unsafe {
             self.0.load(Ordering::Relaxed, guard).deref()[index as usize]
@@ -698,7 +708,7 @@ impl<
         struct UpdateMeta<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &UpdateMeta<AF, M>,
-                &StoredPrefix<AF, M>,
+                &AtomicStoredPrefix<AF, M>,
                 InternalPrefixRecord<AF, M>,
                 u8,
             )
@@ -717,13 +727,13 @@ impl<
                 let curr_prefix =
                     unsafe { atomic_curr_prefix.into_owned().into_box() };
                 let tag = atomic_curr_prefix.tag();
-                let prev_rec;
+                let prev_record;
                 let next_set;
-                match curr_prefix.1.as_ref() {
+                match curr_prefix.record.as_ref() {
                     // There is no prefix here, create it (Step 2).
                     // INSERT
                     None => {
-                        prev_rec = None;
+                        prev_record = None;
 
                         // start calculation size of next set
                         let this_level =
@@ -765,8 +775,9 @@ impl<
                         // Tuck the current record away on the heap.
                         // This doesn't have to be an atomic pointer, since
                         // we're doing this in one (atomic) transaction.
-                        prev_rec = Some(Box::new(curr_prefix.1.unwrap()));
-                        next_set = curr_prefix.2;
+                        prev_record =
+                            Some(Box::new(curr_prefix.record.unwrap()));
+                        next_set = curr_prefix.next_set;
                     }
                 };
 
@@ -775,8 +786,15 @@ impl<
                 // updated it in the meantime (Step 4)
                 match stored_prefix.0.compare_exchange(
                     atomic_curr_prefix,
-                    Owned::new((tag + 1, Some(pfx_rec), next_set, prev_rec))
-                        .with_tag(tag + 1),
+                    Owned::new(StoredPrefix {
+                        serial: tag + 1,
+                        record: Some(pfx_rec),
+                        next_set,
+                        prev_record,
+                        next_list: None,
+                        hash_id: 0,
+                    })
+                    .with_tag(tag + 1),
                     Ordering::SeqCst,
                     Ordering::SeqCst,
                     guard,
@@ -805,7 +823,7 @@ impl<
                         (update_meta.f)(
                             update_meta,
                             store_error.current.into(),
-                            store_error.new.1.clone().unwrap(),
+                            store_error.new.record.clone().unwrap(),
                             level,
                         )
                     }
@@ -827,7 +845,7 @@ impl<
         &'a self,
         id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> (&'a mut StoredPrefix<AF, Meta>, u8) {
+    ) -> (&'a mut AtomicStoredPrefix<AF, Meta>, u8) {
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
@@ -835,7 +853,7 @@ impl<
                 u8,
                 &'a Guard,
             )
-                -> (&'a mut StoredPrefix<AF, M>, u8),
+                -> (&'a mut AtomicStoredPrefix<AF, M>, u8),
         }
 
         let search_level = SearchLevel {
@@ -843,7 +861,6 @@ impl<
                  prefix_set: &PrefixSet<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(id, level);
 
@@ -863,7 +880,11 @@ impl<
                 match unsafe {
                     stored_prefix.0.load(Ordering::Relaxed, guard).deref_mut()
                 } {
-                    (_serial, Some(pfx_rec), next_set, _prev_record) => {
+                    StoredPrefix {
+                        record: Some(pfx_rec),
+                        next_set,
+                        ..
+                    } => {
                         if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
                             trace!("found requested prefix {:?}", id);
                             (stored_prefix, level)
@@ -877,7 +898,7 @@ impl<
                             )
                         }
                     }
-                    (_serial, None, _next_set, _prev_record) => {
+                    StoredPrefix { record: None, .. } => {
                         // No record at the deepest level, still we're returning a reference to it,
                         // so the caller can insert a new record here.
                         (stored_prefix, level)
@@ -915,7 +936,6 @@ impl<
                  prefix_set: &PrefixSet<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(id, level);
 
@@ -930,7 +950,11 @@ impl<
                         .load(Ordering::Relaxed, guard)
                         .deref()
                 } {
-                    (_serial, Some(pfx_rec), next_set, _prev_record) => {
+                    StoredPrefix {
+                        record: Some(pfx_rec),
+                        next_set,
+                        ..
+                    } => {
                         if id == PrefixId::from(pfx_rec) {
                             trace!("found requested prefix {:?}", id);
                             return Some(pfx_rec.clone());
@@ -938,7 +962,7 @@ impl<
                         level += 1;
                         (search_level.f)(search_level, next_set, level, guard)
                     }
-                    (_serial, None, _next_set, _prev_record) => None,
+                    StoredPrefix { record: None, .. } => None,
                 }
             },
         };
@@ -988,7 +1012,12 @@ impl<
                     .load(Ordering::SeqCst, guard)
                     .deref()
             } {
-                (serial, Some(pfx_rec), next_set, _prev_record) => {
+                StoredPrefix {
+                    serial,
+                    record: Some(pfx_rec),
+                    next_set,
+                    ..
+                } => {
                     if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
                         trace!("found requested prefix {:?}", id);
                         parents[level as usize] = Some((prefix_set, index));
@@ -1001,7 +1030,7 @@ impl<
                     prefix_set = next_set;
                     level += 1;
                 }
-                (_serial, None, _next_set, _prev_record) => {
+                StoredPrefix { record: None, .. } => {
                     trace!("no prefix found for {:?}", id);
                     parents[level as usize] = Some((prefix_set, index));
                     return (
@@ -1036,7 +1065,6 @@ impl<
                  prefix_set: &PrefixSet<AF, Meta>,
                  mut level: u8,
                  guard: &Guard| {
-
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(id, level);
 
@@ -1051,7 +1079,12 @@ impl<
                         .load(Ordering::SeqCst, guard)
                         .deref()
                 } {
-                    (serial, Some(pfx_rec), next_set, _prev_record) => {
+                    StoredPrefix {
+                        serial,
+                        record: Some(pfx_rec),
+                        next_set,
+                        ..
+                    } => {
                         if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
                             trace!("found requested prefix {:?}", id);
                             return Some((pfx_rec, serial));
@@ -1059,7 +1092,7 @@ impl<
                         level += 1;
                         (search_level.f)(search_level, next_set, level, guard)
                     }
-                    (_serial, None, _next_set, _prev_record) => None,
+                    StoredPrefix { record: None, .. } => None,
                 }
             },
         };
@@ -1147,13 +1180,13 @@ impl<
     // a prefixas the as the hash. Sounds complicated, but isn't.
     // Suppose we have an IPv4 prefix, say 130.24.55.0/24.
     // The address part is 130.24.55.0 or as a bitarray that would be:
-    // 
+    //
     // pos  0    4    8    12   16   20   24   28
     // bit  1000 0010 0001 1000 0011 0111 0000 0000
     //
     // First, we're discarding the bits after the length of the prefix, so
     // we'll have:
-    // 
+    //
     // pos  0    4    8    12   16   20
     // bit  1000 0010 0001 1000 0011 0111
     //
@@ -1165,11 +1198,11 @@ impl<
     // actual division being used is described in the function
     // `<NB>::get_bits_for_len` in the `rotonda-macros` crate. Each level has
     // its own hash, so for our example prefix this would be:
-    // 
+    //
     // pos   0    4    8    12   16   20
     // level 0              1
     // hash  1000 0010 0001 1000 0011 0111
-    // 
+    //
     // level 1 hash: 1000 0010 0001
     // level 2 hash: 1000 0011 0011
     //
@@ -1186,7 +1219,6 @@ impl<
     // collisions are resolved by creating a linked list from each array
     // element, where each element in the list has an array of its own that
     // uses the hash function with the level incremented.
-
 
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // Aaaaand, this is all of our hashing function.
