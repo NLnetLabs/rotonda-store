@@ -99,6 +99,172 @@ mod tests {
         Ok(())
     }
 
+    // This test aims to fill all the levels available in the PrefixBuckets
+    // mapping. This tests the prefix-length-to-bucket-sizes-per-storage-
+    // level mapping, most notably if the exit condition is met (a zero at
+    // the end of a prefix-length array).
+    #[test]
+    fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let pfxs = vec![
+            
+            // 0-7
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0000_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0001_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0010_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0011_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0100_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0101_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0110_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1000_0111_u128.into_ipaddr(),
+                128,
+            ),
+            // 8-15
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0000_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0001_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0010_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0011_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0100_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0101_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0110_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1001_0111_u128.into_ipaddr(),
+                128,
+            ),
+            // 16-23
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0000_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0001_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0010_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0011_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0100_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0101_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0110_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1010_0111_u128.into_ipaddr(),
+                128,
+            ),
+             // 32-21
+             Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0000_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0001_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0010_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0011_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0100_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0101_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0110_u128.into_ipaddr(),
+                128,
+            ),
+            Prefix::new_relaxed(
+                0b1111_1111_1111_1111_1111_1111_1011_0111_u128.into_ipaddr(),
+                128,
+            ),
+        ];
+
+        for pfx in pfxs.into_iter() {
+            tree_bitmap.insert(&pfx?, PrefixAs(666))?;
+        }
+
+        let guard = &epoch::pin();
+        for pfx in tree_bitmap.prefixes_iter(guard) {
+            // let pfx_nm = pfx.strip_meta();
+            let res = tree_bitmap.match_prefix(
+                &pfx.prefix,
+                &MatchOptions {
+                    match_type: MatchType::LongestMatch,
+                    include_less_specifics: false,
+                    include_more_specifics: false,
+                },
+                guard,
+            );
+            println!("{}", pfx);
+            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+        }
+
+        Ok(())
+    }
+
     #[test]
     fn test_tree_ipv6() -> Result<(), Box<dyn std::error::Error>> {
         let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
