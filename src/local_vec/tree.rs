@@ -5,15 +5,15 @@ use std::{
 
 use routecore::record::MergeUpdate;
 
+use crate::af::{AddressFamily, Zero};
+use crate::local_vec::node::TreeBitMapNode;
+use crate::local_vec::storage_backend::StorageBackend;
 use crate::match_node_for_strides_with_local_vec;
 use crate::node_id::SortableNodeId;
 use crate::prefix_record::InternalPrefixRecord;
+use crate::stats::{SizedStride, StrideStats};
 use crate::stride::*;
 use crate::synth_int::{U256, U512};
-use crate::local_vec::node::TreeBitMapNode;
-use crate::local_vec::storage_backend::StorageBackend;
-use crate::stats::{SizedStride, StrideStats};
-use crate::af::{AddressFamily, Zero};
 
 #[cfg(feature = "cli")]
 use crate::node_id::InMemNodeId;
@@ -336,15 +336,9 @@ where
         meta: Store::Meta,
     ) -> Result<(), Box<dyn std::error::Error>> {
         match self.store.retrieve_prefix_mut(update_node_idx) {
-            Some(update_pfx) => match update_pfx.meta.as_mut() {
-                Some(exist_meta) => {
-                    <Store::Meta>::merge_update(exist_meta, meta)
-                }
-                None => {
-                    update_pfx.meta = Some(meta);
-                    Ok(())
-                }
-            },
+            Some(update_pfx) => {
+                <Store::Meta>::merge_update(&mut update_pfx.meta, meta)
+            }
             // TODO
             // Use/create proper error types
             None => Err("Prefix not found".into()),
