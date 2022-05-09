@@ -12,8 +12,8 @@ use std::{marker::PhantomData, sync::atomic::Ordering};
 use crate::{
     af::AddressFamily,
     custom_alloc::{
-        StoredPrefix, CustomAllocStorage, NodeBuckets, PrefixBuckets,
-        PrefixSet,
+        CustomAllocStorage, NodeBuckets, PrefixBuckets, PrefixSet,
+        StoredPrefix,
     },
     local_array::{
         bit_span::BitSpan,
@@ -28,7 +28,7 @@ use crossbeam_epoch::Guard;
 use log::{info, trace};
 use routecore::{
     addr::Prefix,
-    record::{MergeUpdate, Meta, Record},
+    record::{Meta, Record},
 };
 
 // ----------- PrefixIter ---------------------------------------------------
@@ -287,7 +287,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    M: Meta + MergeUpdate,
+    M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
@@ -303,7 +303,7 @@ pub(crate) struct MoreSpecificPrefixIter<
 impl<
         'a,
         AF: AddressFamily + 'a,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
@@ -605,7 +605,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 impl<
         'a,
         AF: AddressFamily,
-        M: routecore::record::Meta + MergeUpdate,
+        M: routecore::record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > CustomAllocStorage<AF, M, NB, PB>
@@ -787,7 +787,7 @@ impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
                     v4.push(
                         routecore::bgp::PrefixRecord::new_with_local_meta(
                             Prefix::new(addr, pfx.len).unwrap(),
-                            pfx.meta.unwrap(),
+                            pfx.meta,
                         ),
                     );
                 }
@@ -795,7 +795,7 @@ impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
                     v6.push(
                         routecore::bgp::PrefixRecord::new_with_local_meta(
                             Prefix::new(addr, pfx.len).unwrap(),
-                            pfx.meta.unwrap(),
+                            pfx.meta,
                         ),
                     );
                 }
