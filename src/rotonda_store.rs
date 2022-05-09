@@ -92,7 +92,7 @@ impl std::fmt::Display for MatchType {
 
 //------------ Metadata Types -----------------------------------------------
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Hash)]
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
@@ -138,13 +138,13 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
                 std::net::IpAddr::V4(_) => {
                     v4.push(PrefixRecord::new(
                         u_pfx,
-                        pfx.meta.as_ref().unwrap(),
+                        &pfx.meta,
                     ));
                 }
                 std::net::IpAddr::V6(_) => {
                     v6.push(PrefixRecord::new(
                         u_pfx,
-                        pfx.meta.as_ref().unwrap(),
+                        &pfx.meta,
                     ));
                 }
             }
@@ -174,7 +174,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator
             return self.v6.next().map(|res| {
                 PrefixRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    res.meta.as_ref().unwrap(),
+                    &res.meta,
                 )
             });
         }
@@ -182,7 +182,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
             return Some(PrefixRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                res.meta.as_ref().unwrap(),
+                &res.meta,
             ));
         }
         self.v4 = None;
