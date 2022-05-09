@@ -21,56 +21,73 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match $self.store.retrieve_node_mut_with_guard($cur_i, $guard).expect(
-                format!(
-                    "\x1b[91mCouldn't load id {} from store l{}\x1b[0m",
-                    $cur_i,
-                    $self.store.get_stride_sizes()[$level as usize]
-                ).as_str()) {
-            $(
-            SizedStrideRefMut::$variant(current_node) => {
-            // eval_node_or_prefix_at mutates the node to reflect changes
-            // in the ptrbitarr & pfxbitarr.
-            match current_node.eval_node_or_prefix_at(
-                $nibble,
-                $nibble_len,
-                // All the bits of the search prefix, but with a length set to
-                // the start of the current stride.
-                StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
-                // the length of THIS stride
-                $stride_len,
-                // the length of the next stride
-                $self.store.get_stride_sizes().get(($level + 1) as usize),
-                $is_last_stride,
-            ) {
-                NewNodeOrIndex::NewNode(n) => {
-                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    // $self.stats[$stats_level].inc($level);
+        // Look up the current node in the store. This should never fail,
+        // since we're starting at the root node and retrieve that. If a node
+        // does not exist, it is created here. BUT, BUT, in a multi-threaded
+        // context, one thread creating the node may be outpaced by a thread
+        // reading the same node. Because the creation of a node actually
+        // consists of two independent atomic operations (first setting the
+        // right bit in the parent bitarry, second storing the node in the
+        // store with the meta-data), a thread creating a new node may have
+        // altered the parent bitarray, but not it didn't create the node
+        // in the store yet. The reading thread, however, saw the bit in the
+        // parent and wants to read the node in the store, but that doesn't
+        // exist yet. In that case, the reader thread needs to try again
+        // until it is actually created.
+        loop {
+            if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
+                match current_node {
+                    $(
+                        SizedStrideRefMut::$variant(current_node) => {
+                            // eval_node_or_prefix_at mutates the node to reflect changes
+                            // in the ptrbitarr & pfxbitarr.
+                            match current_node.eval_node_or_prefix_at(
+                                $nibble,
+                                $nibble_len,
+                                // All the bits of the search prefix, but with a length set to
+                                // the start of the current stride.
+                                StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
+                                // the length of THIS stride
+                                $stride_len,
+                                // the length of the next stride
+                                $self.store.get_stride_sizes().get(($level + 1) as usize),
+                                $is_last_stride,
+                            ) {
+                                NewNodeOrIndex::NewNode(n) => {
+                                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
+                                    // $self.stats[$stats_level].inc($level);
 
-                    // get a new identifier for the node we're going to create.
-                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
+                                    // get a new identifier for the node we're going to create.
+                                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
 
-                    // store the new node in the global store
-                    // let i: StrideNodeId<Store::AF>;
-                    // if $self.strides[($level + 1) as usize] != $stride_len {
-                    let i = $self.store.store_node(new_id, n).unwrap();
-                    Some(i)
+                                    // store the new node in the global store
+                                    // let i: StrideNodeId<Store::AF>;
+                                    // if $self.strides[($level + 1) as usize] != $stride_len {
+                                    let i = $self.store.store_node(new_id, n).unwrap();
+                                    break Some(i)
+                                }
+                                NewNodeOrIndex::ExistingNode(i) => {
+                                    // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
+                                    break Some(i)
+                                },
+                                NewNodeOrIndex::NewPrefix => {
+                                    return $self.store.upsert_prefix($pfx)
+                                    // Log
+                                    // $self.stats[$stats_level].inc_prefix_count($level);
+                                }
+                                NewNodeOrIndex::ExistingPrefix => {
+                                    return $self.store.upsert_prefix($pfx)
+                                }
+                            }   // end of eval_node_or_prefix_at
+                        }
+                    )*,    
                 }
-                NewNodeOrIndex::ExistingNode(i) => {
-                    // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
-                    Some(i)
-                },
-                NewNodeOrIndex::NewPrefix => {
-                    return $self.store.upsert_prefix($pfx)
-                    // Log
-                    // $self.stats[$stats_level].inc_prefix_count($level);
-                }
-                NewNodeOrIndex::ExistingPrefix => {
-                    return $self.store.upsert_prefix($pfx)
-                }
+            } else {
+                // BACKOFF SHOULD BE IMPLEMENTED HERE.
+                trace!("Couldn't load id {} from store l{}. Trying again.",
+                        $cur_i,
+                        $self.store.get_stride_sizes()[$level as usize]);
             }
-            }
-        )*,
         }
     };
 }
@@ -177,7 +194,7 @@ macro_rules! impl_search_level {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
-                            // hashing everywhere, this may be very well a node                            
+                            // hashing everywhere, this may be very well a node
                             // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
                                 // trace!("found {} in level {}", node, level);
