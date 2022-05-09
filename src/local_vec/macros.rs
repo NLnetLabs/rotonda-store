@@ -82,7 +82,7 @@ macro_rules! match_node_for_strides_with_local_vec {
                     // so we can return from here.
                     // If we don't then we cannot move pfx.meta into the update_prefix_meta function,
                     // since the compiler can't figure out that it will happen only once.
-                    if let Some(meta) = $pfx.meta { $self.update_prefix_meta(pfx_idx, meta)? };
+                    $self.update_prefix_meta(pfx_idx, $pfx.meta)?;
                     $self.store.update_node($cur_i,SizedStrideNode::$variant(current_node));
 
                     // let _default_val = std::mem::replace(

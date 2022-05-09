@@ -1,6 +1,10 @@
-use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
+use std::{
+    cmp::Ordering,
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
 use routecore::record::{MergeUpdate, Meta, Record};
@@ -8,38 +12,34 @@ use routecore::record::{MergeUpdate, Meta, Record};
 //------------ InternalPrefixRecord -----------------------------------------
 
 #[derive(Clone, Copy)]
-pub struct InternalPrefixRecord<AF, T>
+pub struct InternalPrefixRecord<AF, M>
 where
-    T: Meta,
+    M: Meta,
     AF: AddressFamily,
 {
     pub net: AF,
     pub len: u8,
-    pub meta: Option<T>,
+    pub meta: M,
 }
 
-impl<T, AF> InternalPrefixRecord<AF, T>
+impl<M, AF> InternalPrefixRecord<AF, M>
 where
-    T: Meta + MergeUpdate,
+    M: Meta + MergeUpdate,
     AF: AddressFamily,
 {
-    pub fn new(net: AF, len: u8) -> InternalPrefixRecord<AF, T> {
-        Self {
-            net,
-            len,
-            meta: None,
-        }
-    }
+    // pub fn new(net: AF, len: u8) -> InternalPrefixRecord<AF, M> {
+    //     Self {
+    //         net,
+    //         len,
+    //         meta: None,
+    //     }
+    // }
     pub fn new_with_meta(
         net: AF,
         len: u8,
-        meta: T,
-    ) -> InternalPrefixRecord<AF, T> {
-        Self {
-            net,
-            len,
-            meta: Some(meta),
-        }
+        meta: M,
+    ) -> InternalPrefixRecord<AF, M> {
+        Self { net, len, meta }
     }
     // This should never fail, since there shouldn't be a invalid prefix in
     // this record in the first place.
@@ -47,11 +47,21 @@ where
         routecore::addr::Prefix::new(self.net.into_ipaddr(), self.len)
             .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
     }
+
+    pub fn get_hash_id(&self) -> u64 {
+        let mut s = DefaultHasher::new();
+        self.meta.hash(&mut s);
+        s.finish()
+    }
+
+    pub fn get_prefix_id(&self) -> PrefixId<AF> {
+        PrefixId::new(self.net, self.len)
+    }
 }
 
-impl<T, AF> std::fmt::Display for InternalPrefixRecord<AF, T>
+impl<M, AF> std::fmt::Display for InternalPrefixRecord<AF, M>
 where
-    T: Meta + MergeUpdate,
+    M: Meta + MergeUpdate,
     AF: AddressFamily,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -60,14 +70,14 @@ where
             "{}/{} {}",
             AddressFamily::fmt_net(self.net),
             self.len,
-            self.meta.as_ref().unwrap().summary()
+            self.meta.summary()
         )
     }
 }
 
-impl<AF, T> Ord for InternalPrefixRecord<AF, T>
+impl<AF, M> Ord for InternalPrefixRecord<AF, M>
 where
-    T: Meta,
+    M: Meta,
     AF: AddressFamily,
 {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -76,9 +86,9 @@ where
     }
 }
 
-impl<AF, T> PartialEq for InternalPrefixRecord<AF, T>
+impl<AF, M> PartialEq for InternalPrefixRecord<AF, M>
 where
-    T: Meta,
+    M: Meta,
     AF: AddressFamily,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -87,9 +97,9 @@ where
     }
 }
 
-impl<AF, T> PartialOrd for InternalPrefixRecord<AF, T>
+impl<AF, M> PartialOrd for InternalPrefixRecord<AF, M>
 where
-    T: Meta,
+    M: Meta,
     AF: AddressFamily,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -100,9 +110,9 @@ where
     }
 }
 
-impl<AF, T> Eq for InternalPrefixRecord<AF, T>
+impl<AF, M> Eq for InternalPrefixRecord<AF, M>
 where
-    T: Meta,
+    M: Meta,
     AF: AddressFamily,
 {
 }
@@ -133,12 +143,12 @@ where
 //     }
 // }
 
-impl<AF, T> From<InternalPrefixRecord<AF, T>> for PrefixId<AF>
+impl<AF, M> From<InternalPrefixRecord<AF, M>> for PrefixId<AF>
 where
     AF: AddressFamily,
-    T: Meta,
+    M: Meta,
 {
-    fn from(record: InternalPrefixRecord<AF, T>) -> Self {
+    fn from(record: InternalPrefixRecord<AF, M>) -> Self {
         Self::new(record.net, record.len)
     }
 }
@@ -166,7 +176,7 @@ where
                 record.len,
             )
             .unwrap(),
-            record.meta.as_ref().unwrap(),
+            &record.meta,
         )
     }
 }
@@ -181,7 +191,7 @@ where
         Self {
             net: AF::from_ipaddr(record.key().addr()),
             len: record.key().len(),
-            meta: Some(record.meta().into_owned()),
+            meta: record.meta().into_owned(),
         }
     }
 }

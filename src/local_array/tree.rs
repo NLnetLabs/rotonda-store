@@ -458,7 +458,7 @@ impl<
     ) -> Result<(), Box<dyn std::error::Error>> {
         if pfx.len == 0 {
             let _res =
-                self.update_default_route_prefix_meta(pfx.meta.unwrap());
+                self.update_default_route_prefix_meta(pfx.meta);
             return Ok(());
         }
 

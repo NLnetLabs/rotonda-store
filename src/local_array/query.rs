@@ -46,7 +46,7 @@ where
                 None
             },
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.0.meta.as_ref()
+                Some(&pfx.0.meta)
             } else {
                 None
             },
@@ -80,7 +80,7 @@ where
                 None
             },
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.0.meta.as_ref()
+                Some(&pfx.0.meta)
             } else {
                 None
             },
@@ -151,7 +151,7 @@ where
         QueryResult {
             prefix: prefix.map(move |p| p.prefix_into_pub()),
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.meta.as_ref()
+                Some(&pfx.meta)
             } else {
                 None
             },
@@ -251,7 +251,7 @@ where
                 }
 
                 _serial => {
-                    let prefix_meta = self
+                    let prefix_meta = &self
                         .store
                         .retrieve_prefix_with_guard(
                             PrefixId::new(AF::zero(), 0),
@@ -259,15 +259,14 @@ where
                         )
                         .unwrap()
                         .0
-                        .meta
-                        .as_ref();
+                        .meta;
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
                             search_pfx.get_len(),
                         )
                         .ok(),
-                        prefix_meta,
+                        prefix_meta: Some(&prefix_meta),
                         // .meta
                         // .as_ref(),
                         match_type: MatchType::ExactMatch,
@@ -758,7 +757,7 @@ where
                 None
             },
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.0.meta.as_ref()
+                Some(&pfx.0.meta)
             } else {
                 None
             },
