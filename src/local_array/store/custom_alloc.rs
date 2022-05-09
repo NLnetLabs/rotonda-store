@@ -151,56 +151,403 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 
 // ----------- Prefix related structs ---------------------------------------
 
-pub struct StoredPrefix<
-    AF: AddressFamily,
-    Meta: routecore::record::Meta,
-> {
+// ----------- StoredPrefix -------------------------------------------------
+// This is the top-level struct that's linked from the slots in the buckets.
+// It contains a super_agg_record that is supposed to hold counters for the
+// records that are stored inside it, so that iterators over its linked lists
+// don't have to go into them if there's nothing there and could stop early.
+pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
     // the serial number
     pub serial: usize,
-    // the user-defined hash for this prefix and hash.
-    hash_id: u64,
-    // the record for this prefix and hash_id.
-    pub record: Option<InternalPrefixRecord<AF, Meta>>,
-    // the next set of records for this prefix, if any.
-    pub next_set: PrefixSet<AF, Meta>,
-    // the previous record for this prefix and has_id (linked list)
-    pub prev_record: Option<Box<InternalPrefixRecord<AF, Meta>>>,
-    // the next linked list for this prefix, but another hash_id.
-    next_list: Option<Box<StoredPrefix<AF, Meta>>>,
+    // the prefix itself,
+    pub prefix: PrefixId<AF>,
+    // the aggregated data for this prefix (all hash_ids)
+    pub(crate) super_agg_record: AtomicSuperAggRecord<AF, M>,
+    // the next aggregated record for this prefix and hash_id
+    pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
+    // the reference to the next set of records for this prefix, if any.
+    pub next_bucket: PrefixSet<AF, M>,
 }
 
+impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
+    pub fn new<PB: PrefixBuckets<AF, M>>(
+        record: InternalPrefixRecord<AF, M>,
+        level: u8,
+    ) -> Self {
+        // start calculation size of next set, it's dependent on the level
+        // we're in.
+        let pfx_id = PrefixId::new(record.net, record.len);
+        let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
+        let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+
+        trace!("this level {} next level {}", this_level, next_level);
+        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+            info!(
+                "INSERT with new bucket of size {} at prefix len {}",
+                1 << (next_level - this_level),
+                pfx_id.get_len()
+            );
+            PrefixSet::init((1 << (next_level - this_level)) as usize)
+        } else {
+            info!(
+                "INSERT at LAST LEVEL with empty bucket at prefix len {}",
+                pfx_id.get_len()
+            );
+            PrefixSet::empty()
+        };
+        // End of calculation
+
+        let mut new_super_agg_record =
+            InternalPrefixRecord::<AF, M>::new_with_meta(
+                record.net,
+                record.len,
+                record.meta.clone(),
+            );
+
+        // even though we're about to create the first record in this
+        // aggregation record, we still need to `clone_merge_update` to
+        // create the start data for the aggregation.
+        new_super_agg_record.meta = new_super_agg_record
+            .meta
+            .clone_merge_update(&record.meta)
+            .unwrap();
+
+        StoredPrefix {
+            serial: 1,
+            prefix: record.get_prefix_id(),
+            super_agg_record: AtomicSuperAggRecord::<AF, M>::new(
+                record.get_prefix_id(),
+                new_super_agg_record.meta,
+            ),
+            next_agg_record: Atomic::new(StoredAggRecord::<AF, M>::new(
+                record,
+            )),
+            next_bucket,
+        }
+    }
+
+    pub(crate) fn atomic_update_aggregate(
+        &mut self,
+        record: &InternalPrefixRecord<AF, M>,
+    ) {
+        let guard = &epoch::pin();
+        let mut inner_super_agg_record =
+            self.super_agg_record.0.load(Ordering::SeqCst, guard);
+        loop {
+            let tag = inner_super_agg_record.tag();
+            let mut super_agg_record =
+                unsafe { inner_super_agg_record.into_owned() };
+
+            super_agg_record.meta = super_agg_record
+                .meta
+                .clone_merge_update(&record.meta)
+                .unwrap();
+
+            let super_agg_record = self.super_agg_record.0.compare_exchange(
+                self.super_agg_record.0.load(Ordering::SeqCst, guard),
+                super_agg_record.with_tag(tag + 1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            );
+            match super_agg_record {
+                Ok(_) => return,
+                Err(next_agg) => {
+                    // Do it again
+                    // TODO BACKOFF
+                    inner_super_agg_record = next_agg.current;
+                }
+            };
+        }
+    }
+}
+
+// ----------- SuperAggRecord -----------------------------------------------
+// This is the record that holds the aggregates at the top-level for a given
+// prefix.
+
+#[derive(Debug)]
+pub(crate) struct SuperAggRecordExample<
+    AF: AddressFamily,
+    M: routecore::record::Meta,
+> where
+    Self: routecore::record::Meta,
+{
+    last: M,
+    total_count: usize,
+    _af: PhantomData<AF>,
+}
+
+#[derive(Debug)]
+pub(crate) struct AtomicSuperAggRecord<
+    AF: AddressFamily,
+    M: routecore::record::Meta,
+>(Atomic<InternalPrefixRecord<AF, M>>);
+
+impl<AF: AddressFamily, M: routecore::record::Meta>
+    AtomicSuperAggRecord<AF, M>
+{
+    pub fn new(prefix: PrefixId<AF>, record: M) -> Self {
+        AtomicSuperAggRecord(Atomic::new(InternalPrefixRecord {
+            net: prefix.get_net(),
+            len: prefix.get_len(),
+            meta: record,
+        }))
+    }
+
+    pub fn get_record<'a>(
+        &self,
+        guard: &'a Guard,
+    ) -> Option<&'a InternalPrefixRecord<AF, M>> {
+        trace!("get_record {:?}", self.0);
+        let rec = self.0.load(Ordering::SeqCst, guard);
+
+        match rec.is_null() {
+            true => None,
+            false => Some(unsafe { rec.deref() }),
+        }
+    }
+}
+
+// ----------- StoredAggRecord ----------------------------------------------
+// This is the second-level struct that's linked from the `StoredPrefix` top-
+// level struct. It has an aggregated record field that holds counters and
+// other aggregated data for the records that are stored inside it.
+pub(crate) struct StoredAggRecord<
+    AF: AddressFamily,
+    M: routecore::record::Meta,
+> {
+    // the aggregated meta-data for this prefix and hash_id.
+    pub agg_record: Atomic<InternalPrefixRecord<AF, M>>,
+    // the reference to the next record for this prefix and hash_id.
+    pub(crate) next_record: Atomic<LinkedListRecord<AF, M>>,
+    // the reference to the next record for this prefix and another hash_id.
+    pub next_agg: AtomicInternalPrefixRecord<AF, M>,
+}
+
+impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
+    // This creates a new aggregation record with the record supplied in the
+    // argument atomically linked to it. It doesn't make sense to have a
+    // aggregation record without a record.
+    pub(crate) fn new(record: InternalPrefixRecord<AF, M>) -> Self {
+        let mut new_agg_record = InternalPrefixRecord::<AF, M>::new_with_meta(
+            record.net,
+            record.len,
+            record.meta.clone(),
+        );
+
+        // even though we're about to create the first record in this
+        // aggregation record, we still need to `clone_merge_update` to
+        // create the start data for the aggregation.
+        new_agg_record.meta = new_agg_record
+            .meta
+            .clone_merge_update(&record.meta)
+            .unwrap();
+
+        StoredAggRecord {
+            agg_record: Atomic::new(new_agg_record),
+            next_record: Atomic::new(LinkedListRecord::new(record)),
+            next_agg: AtomicInternalPrefixRecord::empty(),
+        }
+    }
+
+    // aggregated records don't need to be prepended (you, know, HEAD), but
+    // can just be appended to the tail.
+    pub(crate) fn atomic_tail_agg(
+        &mut self,
+        agg_record: InternalPrefixRecord<AF, M>,
+    ) {
+        let guard = &epoch::pin();
+        let mut inner_next_agg =
+            self.next_agg.0.load(Ordering::SeqCst, guard);
+        let tag = inner_next_agg.tag();
+        let agg_record = Owned::new(agg_record).into_shared(guard);
+
+        loop {
+            let next_agg = self.next_agg.0.compare_exchange(
+                inner_next_agg,
+                agg_record.with_tag(tag + 1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            );
+            match next_agg {
+                Ok(_) => return,
+                Err(next_agg) => {
+                    // Do it again
+                    // TODO BACKOFF
+                    inner_next_agg = next_agg.current;
+                }
+            };
+        }
+    }
+
+    // only 'normal', non-aggegation records need to be prependend, so that
+    // the most recent record is the first in the list.
+    pub(crate) fn atomic_prepend_record(
+        &mut self,
+        record: InternalPrefixRecord<AF, M>,
+    ) {
+        let guard = &epoch::pin();
+        let mut inner_next_record =
+            self.next_record.load(Ordering::SeqCst, guard);
+        let tag = inner_next_record.tag();
+        let new_inner_next_record = Owned::new(LinkedListRecord {
+            record,
+            prev: unsafe { inner_next_record.into_owned() }.into(),
+        })
+        .into_shared(guard);
+
+        loop {
+            let next_record = self.next_record.compare_exchange(
+                inner_next_record,
+                new_inner_next_record.with_tag(tag + 1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            );
+
+            match next_record {
+                Ok(_) => return,
+                Err(next_record) => {
+                    // Do it again
+                    // TODO BACKOFF
+                    inner_next_record = next_record.current;
+                }
+            }
+        }
+    }
+}
+
+// ----------- LinkedListRecord ---------------------------------------------
+// This is the third-and-lowest-level struct that holds the actual record and
+// a link to (a list) of another one, if any.
+pub(crate) struct LinkedListRecord<
+    AF: AddressFamily,
+    M: routecore::record::Meta,
+> {
+    record: InternalPrefixRecord<AF, M>,
+    prev: Atomic<LinkedListRecord<AF, M>>,
+}
+
+impl<'a, AF: AddressFamily, M: routecore::record::Meta>
+    LinkedListRecord<AF, M>
+{
+    fn new(record: InternalPrefixRecord<AF, M>) -> Self {
+        LinkedListRecord {
+            record,
+            prev: Atomic::null(),
+        }
+    }
+
+    fn iter(&'a self, guard: &'a Guard) -> LinkedListIterator<'a, AF, M> {
+        LinkedListIterator {
+            current: Some(self),
+            guard,
+        }
+    }
+}
+
+pub(crate) struct LinkedListIterator<
+    'a,
+    AF: AddressFamily + 'a,
+    M: routecore::record::Meta + 'a,
+> {
+    current: Option<&'a LinkedListRecord<AF, M>>,
+    guard: &'a Guard,
+}
+
+impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
+    for LinkedListIterator<'a, AF, M>
+{
+    type Item = &'a InternalPrefixRecord<AF, M>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        //     let rec = self.current.map(move |rec| {
+        //         let r = rec.prev.load(Ordering::SeqCst, self.guard);
+        //         match r.is_null() {
+        //             true => None,
+        //             false => Some(unsafe { r.as_ref().unwrap().record }),
+        //         }
+        //     });
+
+        //     rec.flatten()
+        // }
+
+        match self.current {
+            Some(rec) => {
+                let inner_next = rec.prev.load(Ordering::SeqCst, self.guard);
+                if inner_next.is_null() {
+                    return None;
+                }
+                let linner_next = unsafe { inner_next.deref() };
+                // self.current = unsafe {
+                //     linner_next
+                //         .prev
+                //         .load(Ordering::SeqCst, self.guard)
+                //         .as_ref()
+                // };
+                self.current = Some(unsafe { inner_next.deref() });
+                Some(&linner_next.record)
+            }
+            None => None,
+        }
+    }
+}
+// ----------- AtomicStoredPrefix -------------------------------------------
 // Unlike StoredNode, we don't need an Empty variant, since we're using
 // serial == 0 as the empty value. We're not using an Option here, to
 // avoid going outside our atomic procedure.
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
 pub struct AtomicStoredPrefix<AF: AddressFamily, M: routecore::record::Meta>(
-    pub Atomic<StoredPrefix<AF, M>>, 
+    pub Atomic<StoredPrefix<AF, M>>,
 );
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta>
     AtomicStoredPrefix<AF, Meta>
 {
     pub(crate) fn empty() -> Self {
-        AtomicStoredPrefix(Atomic::new(StoredPrefix {
-            serial: 0,
-            record: None,
-            hash_id: 0,
-            next_set: PrefixSet::empty(),
-            prev_record: None,
-            next_list: None,
-        }))
+        // AtomicStoredPrefix(Atomic::new(StoredPrefix {
+        //     serial: 0,
+        //     super_agg_record: AtomicInternalPrefixRecord::empty(),
+        //     next_bucket: PrefixSet::empty(),
+        //     next_agg_record: Atomic::null(),
+        // }))
+        AtomicStoredPrefix(Atomic::null())
     }
-
-    // #[allow(dead_code)]
-    // pub(crate) fn new(record: InternalPrefixRecord<AF, Meta>) -> Self {
-    //     StoredPrefix(Atomic::new((1, Some(record), PrefixSet::empty(), None)))
-    // }
 
     pub(crate) fn is_empty(&self) -> bool {
         let guard = &epoch::pin();
         let pfx = self.0.load(Ordering::Relaxed, guard);
-        pfx.is_null() || unsafe { pfx.deref() }.record.is_none()
+        pfx.is_null()
+            || unsafe { pfx.deref() }
+                .super_agg_record
+                .0
+                .load(Ordering::Relaxed, guard)
+                .is_null()
+    }
+
+    pub(crate) fn get_stored_prefix<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> Option<&'a StoredPrefix<AF, Meta>> {
+        let pfx = self.0.load(Ordering::SeqCst, guard);
+        match pfx.is_null() {
+            true => None,
+            false => Some(unsafe { pfx.deref() }),
+        }
+    }
+
+    pub(crate) fn get_stored_prefix_mut<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> Option<&'a mut StoredPrefix<AF, Meta>> {
+        let mut pfx = self.0.load(Ordering::SeqCst, guard);
+        match pfx.is_null() {
+            true => None,
+            false => Some(unsafe { pfx.deref_mut() }),
+        }
     }
 
     #[allow(dead_code)]
@@ -211,20 +558,25 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
         let guard = &epoch::pin();
-        if let Some(pfx_rec) =
-            &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.record
-        {
-            PrefixId::new(pfx_rec.net, pfx_rec.len)
-        } else {
-            panic!("Empty prefix encountered and that's fatal.");
+        match self.get_stored_prefix(guard) {
+            None => {
+                panic!("AtomicStoredPrefix::get_prefix_id: empty prefix");
+            }
+            Some(pfx) => pfx.prefix,
         }
     }
 
-    pub(crate) fn get_prefix_record<'a>(
+    pub(crate) fn get_agg_record<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> &Option<InternalPrefixRecord<AF, Meta>> {
-        &unsafe { self.0.load(Ordering::Relaxed, guard).deref() }.record
+    ) -> Option<&InternalPrefixRecord<AF, Meta>> {
+        self.get_stored_prefix(guard).map(|stored_prefix| unsafe {
+            stored_prefix
+                .super_agg_record
+                .0
+                .load(Ordering::SeqCst, guard)
+                .deref()
+        })
     }
 
     // PrefixSet is an Atomic that might be a null pointer, which is
@@ -236,17 +588,15 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         guard: &'a Guard,
     ) -> Option<&PrefixSet<AF, Meta>> {
         // let guard = &epoch::pin();
-        let stored_prefix =
-            unsafe { self.0.load(Ordering::Relaxed, guard).deref() };
-
-        if stored_prefix.record.is_some() {
+        if let Some(stored_prefix) = self.get_stored_prefix(guard) {
+            // if stored_prefix.super_agg_record.is_some() {
             if !&stored_prefix
-                .next_set
+                .next_bucket
                 .0
                 .load(Ordering::Relaxed, guard)
                 .is_null()
             {
-                Some(&stored_prefix.next_set)
+                Some(&stored_prefix.next_bucket)
             } else {
                 None
             }
@@ -257,19 +607,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
 }
 
 impl<AF: AddressFamily, Meta: routecore::record::Meta>
-    std::convert::From<
-        crossbeam_epoch::Shared<
-            '_,
-            StoredPrefix<AF, Meta>,
-        >,
-    > for &AtomicStoredPrefix<AF, Meta>
+    std::convert::From<crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>>
+    for &AtomicStoredPrefix<AF, Meta>
 {
-    fn from(
-        p: crossbeam_epoch::Shared<
-            '_,
-            StoredPrefix<AF, Meta>,
-        >,
-    ) -> Self {
+    fn from(p: crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>) -> Self {
         unsafe { std::mem::transmute(p) }
     }
 }
@@ -292,6 +633,47 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
             Option<Box<InternalPrefixRecord<AF, Meta>>>,
         )>,
     ) -> Self {
+        unsafe { std::mem::transmute(p) }
+    }
+}
+
+// ----------  AtomicInternalPrefixRecord -----------------------------------
+
+pub(crate) struct AtomicInternalPrefixRecord<
+    AF: AddressFamily,
+    M: routecore::record::Meta,
+>(Atomic<InternalPrefixRecord<AF, M>>);
+
+impl<AF: AddressFamily, M: routecore::record::Meta>
+    AtomicInternalPrefixRecord<AF, M>
+{
+    pub(crate) fn empty() -> Self {
+        Self(Atomic::null())
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        let guard = &epoch::pin();
+        let pfx = self.0.load(Ordering::Relaxed, guard);
+        pfx.is_null()
+    }
+
+    pub(crate) fn get_record<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> Option<&InternalPrefixRecord<AF, M>> {
+        let pfx = self.0.load(Ordering::Relaxed, guard);
+        match pfx.is_null() {
+            true => None,
+            false => Some(unsafe { pfx.deref() }),
+        }
+    }
+}
+
+impl<AF: AddressFamily, M: routecore::record::Meta>
+    std::convert::From<crossbeam_epoch::Atomic<InternalPrefixRecord<AF, M>>>
+    for AtomicInternalPrefixRecord<AF, M>
+{
+    fn from(p: crossbeam_epoch::Atomic<InternalPrefixRecord<AF, M>>) -> Self {
         unsafe { std::mem::transmute(p) }
     }
 }
@@ -346,7 +728,8 @@ impl<AF: AddressFamily, M: Meta> std::fmt::Display for PrefixSet<AF, M> {
 
 impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
-        let mut l = Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
+        let mut l =
+            Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
         info!("creating space for {} prefixes in prefix_set", &size);
         for i in 0..size {
             l[i] = MaybeUninit::new(AtomicStoredPrefix::empty());
@@ -421,7 +804,7 @@ pub struct CustomAllocStorage<
 impl<
         'a,
         AF: AddressFamily,
-        Meta: routecore::record::Meta + MergeUpdate,
+        Meta: routecore::record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, Meta>,
     > CustomAllocStorage<AF, Meta, NB, PB>
@@ -699,146 +1082,589 @@ impl<
     // 6. FAILURE - REPEAT
     //    If Step 4 failed we're going to do the whole thing again.
 
-    #[allow(clippy::type_complexity)]
     pub(crate) fn upsert_prefix(
         &self,
-        pfx_rec: InternalPrefixRecord<AF, Meta>,
+        record: InternalPrefixRecord<AF, Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let pfx_id = PrefixId::new(pfx_rec.net, pfx_rec.len);
-        struct UpdateMeta<'s, AF: AddressFamily, M: routecore::record::Meta> {
-            f: &'s dyn for<'a> Fn(
-                &UpdateMeta<AF, M>,
-                &AtomicStoredPrefix<AF, M>,
-                InternalPrefixRecord<AF, M>,
-                u8,
-            )
-                -> Result<(), Box<dyn std::error::Error>>,
-        }
+        let guard = &epoch::pin();
+        let (atomic_stored_prefix, level) = self
+            .retrieve_prefix_mut_with_guard(
+                PrefixId::new(record.net, record.len),
+                guard,
+            );
 
-        let update_meta = UpdateMeta {
-            f: &|update_meta: &UpdateMeta<AF, Meta>,
-                 stored_prefix,
-                 mut pfx_rec,
-                 level: u8| {
-                // Load the prefix meta-data if any (Step 1)
-                let guard = &epoch::pin();
-                let atomic_curr_prefix =
-                    stored_prefix.0.load(Ordering::SeqCst, guard);
-                let curr_prefix =
-                    unsafe { atomic_curr_prefix.into_owned().into_box() };
-                let tag = atomic_curr_prefix.tag();
-                let prev_record;
-                let next_set;
-                match curr_prefix.record.as_ref() {
-                    // There is no prefix here, create it (Step 2).
-                    // INSERT
-                    None => {
-                        prev_record = None;
+        match atomic_stored_prefix
+            .0
+            .load(Ordering::SeqCst, guard)
+            .is_null()
+        {
+            true => {
+                trace!("create new super-aggregated prefix record");
+                let new_stored_prefix =
+                    StoredPrefix::new::<PB>(record, level);
 
-                        // start calculation size of next set
-                        let this_level =
-                            PB::get_bits_for_len(pfx_id.get_len(), level);
-
-                        let next_level =
-                            PB::get_bits_for_len(pfx_id.get_len(), level + 1);
-
-                        trace!(
-                            "this level {} next level {}",
-                            this_level,
-                            next_level
-                        );
-                        next_set = if next_level > 0 {
-                            info!(
-                                "INSERT with new bucket of size {} at prefix len {}",
-                                1 << (next_level - this_level), pfx_id.get_len()
-                            );
-                            PrefixSet::init(
-                                (1 << (next_level - this_level)) as usize,
-                            )
-                        } else {
-                            info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
-                            PrefixSet::empty()
-                        };
-                        // End of calculation
-                    }
-                    // There is prefix here, load the meta-data and merge it
-                    // with our new data (Step 3)
-                    Some(curr_pfx_rec) => {
-                        trace!("UPDATE");
-                        pfx_rec.meta = Some(
-                            curr_pfx_rec
-                                .meta
-                                .as_ref()
-                                .unwrap()
-                                .clone_merge_update(&pfx_rec.meta.unwrap())?,
-                        );
-                        // Tuck the current record away on the heap.
-                        // This doesn't have to be an atomic pointer, since
-                        // we're doing this in one (atomic) transaction.
-                        prev_record =
-                            Some(Box::new(curr_prefix.record.unwrap()));
-                        next_set = curr_prefix.next_set;
-                    }
-                };
-
-                // The Atomic magic, see if we'll be able to save this new
-                // meta-data in our store without some other thread having
-                // updated it in the meantime (Step 4)
-                match stored_prefix.0.compare_exchange(
-                    atomic_curr_prefix,
-                    Owned::new(StoredPrefix {
-                        serial: tag + 1,
-                        record: Some(pfx_rec),
-                        next_set,
-                        prev_record,
-                        next_list: None,
-                        hash_id: 0,
-                    })
-                    .with_tag(tag + 1),
+                match atomic_stored_prefix.0.compare_exchange(
+                    atomic_stored_prefix.0.load(Ordering::SeqCst, guard),
+                    Owned::new(new_stored_prefix),
                     Ordering::SeqCst,
                     Ordering::SeqCst,
                     guard,
                 ) {
-                    Ok(_) => {
-                        // SUCCESS! (Step 5)
-                        // Nobody messed with our prefix meta-data in between
-                        // us loading the tag and creating the entry with that
-                        // tag.
-                        trace!("prefix successfully updated {:?}", pfx_id);
-                        Ok(())
+                    Ok(pfx) => {
+                        trace!("inserted new prefix record {:?}", &pfx);
+                        return Ok(());
                     }
-                    Err(store_error) => {
-                        // FAILURE (Step 6)
-                        // Some other thread messed it up. Try again by
-                        // upping a newly-read tag once more, reading
-                        // the newly-current meta-data, updating it with
-                        // our meta-data and see if it works then.
-                        // rinse-repeat.
+                    Err(stored_prefix) => {
                         trace!(
-                            "Contention. Prefix update failed {:?}",
-                            pfx_id
+                            "prefix can't be inserted as new {:?}",
+                            stored_prefix.current
                         );
-                        // Try again. TODO: backoff neeeds to be implemented
-                        // hers.
-                        (update_meta.f)(
-                            update_meta,
-                            store_error.current.into(),
-                            store_error.new.record.clone().unwrap(),
-                            level,
-                        )
                     }
                 }
-            },
+            }
+            false => {
+                trace!(
+                    "existing super-aggregated prefix record for {}/{}",
+                    record.net,
+                    record.len
+                );
+                if let Some(inner_stored_prefix) =
+                    atomic_stored_prefix.get_stored_prefix_mut(guard)
+                {
+                    let mut next_agg_record = inner_stored_prefix
+                        .next_agg_record
+                        .load(Ordering::SeqCst, guard);
+                    match next_agg_record.is_null() {
+                        true => {
+                            trace!("no aggregation record. Create new aggregation record");
+                            inner_stored_prefix
+                                .atomic_update_aggregate(&record);
+                        }
+                        false => {
+                            trace!("aggregation record exists. Update it");
+                            let inner_next_agg_record =
+                                unsafe { next_agg_record.deref_mut() };
+                            let next_record = inner_next_agg_record
+                                .next_record
+                                .load(Ordering::SeqCst, guard);
+                            let rec_hash_id = record.get_hash_id();
+                            match next_record.is_null() {
+                                true => {
+                                    trace!("add record in the list (first entry).");
+                                    inner_next_agg_record
+                                        .atomic_tail_agg(record);
+                                }
+                                false => {
+                                    trace!("look for matching unique routes list");
+                                    let inner_next_record =
+                                        unsafe { next_record.deref() };
+                                    for next_rec in
+                                        inner_next_record.iter(guard)
+                                    {
+                                        // Yes! You came to the right place! This is the
+                                        // crux of the whole store.
+                                        match rec_hash_id
+                                            == next_rec.get_hash_id()
+                                        {
+                                            // This is the same id, so we're going to prepend this record
+                                            // to the linked-list of records.
+                                            true => {
+                                                trace!("found existing route for this record. prepend record to the list.");
+                                                inner_next_agg_record
+                                                    .atomic_prepend_record(
+                                                        record,
+                                                    );
+                                                return Ok(());
+                                            }
+
+                                            false => {}
+                                        }
+                                    }
+
+                                    trace!("Create new route list and add the record.");
+                                    inner_next_agg_record
+                                        .atomic_tail_agg(record);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         };
 
-        let guard = &epoch::pin();
-        trace!("UPSERT PREFIX {:?}", pfx_rec);
-
-        let (stored_prefix, level) =
-            self.retrieve_prefix_mut_with_guard(pfx_id, guard);
-
-        (update_meta.f)(&update_meta, stored_prefix, pfx_rec, level)
+        Ok(())
     }
+
+    // #[allow(clippy::type_complexity)]
+    // pub(crate) fn upsert_prefix(
+    //     &self,
+    //     pfx_rec: InternalPrefixRecord<AF, Meta>,
+    // ) -> Result<(), Box<dyn std::error::Error>> {
+    //     let pfx_id = PrefixId::new(pfx_rec.net, pfx_rec.len);
+    //     struct UpdateMeta<'s, AF: AddressFamily, M: routecore::record::Meta> {
+    //         retry_record:
+    //             &'s dyn for<'a> Fn(
+    //                 &UpdateMeta<AF, M>,
+    //                 &AtomicStoredPrefix<AF, M>,
+    //                 Box<InternalPrefixRecord<AF, M>>,
+    //                 u8,
+    //             )
+    //                 -> Result<(), Box<dyn std::error::Error>>,
+    //     }
+
+    //     let update_meta = UpdateMeta {
+    //         retry_record: &|update_meta: &UpdateMeta<AF, Meta>,
+    //                         // the memory location where we want to write our updated
+    //                         // prefix
+    //                         stored_prefix,
+    //                         // the new record we want to write.
+    //                         mut pfx_rec,
+    //                         // the current level in this prefix-length set of arrays
+    //                         level: u8| {
+    //             // Load the prefix meta-data if any (Step 1)
+    //             let guard = &epoch::pin();
+    //             let inner_stored_prefix =
+    //                 stored_prefix.0.load(Ordering::SeqCst, guard);
+    //             let curr_prefix =
+    //                 unsafe { inner_stored_prefix.into_owned().into_box() };
+    //             // let curr_prefix = unsafe { unwrapped_curr_prefix.deref_mut() };
+    //             let tag = inner_stored_prefix.tag();
+    //             let pfx_rec = *pfx_rec;
+
+    //             // fields for the new to-be-created StoredPrefix
+    //             let mut prev_vert_list;
+    //             let mut next_set = PrefixSet::empty();
+    //             let mut prev_hor_list;
+    //             let mut pfx_rec_hash = 0;
+    //             let atomic_last_rec = curr_prefix
+    //                 .super_agg_record
+    //                 .load(Ordering::SeqCst, guard);
+    //             let last_rec = unsafe { atomic_last_rec.deref() };
+
+    //             match inner_stored_prefix.is_null() {
+    //                 // There is no super_agg_record here, create it (Step 2).
+    //                 // INSERT
+    //                 true => {
+    //                     // // start calculation size of next set
+    //                     // let this_level =
+    //                     //     PB::get_bits_for_len(pfx_id.get_len(), level);
+
+    //                     // let next_level =
+    //                     //     PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+
+    //                     // trace!(
+    //                     //     "this level {} next level {}",
+    //                     //     this_level,
+    //                     //     next_level
+    //                     // );
+    //                     // let next_set = if next_level > 0 {
+    //                     //     info!(
+    //                     //         "INSERT with new bucket of size {} at prefix len {}",
+    //                     //         1 << (next_level - this_level), pfx_id.get_len()
+    //                     //     );
+    //                     //     PrefixSet::init(
+    //                     //         (1 << (next_level - this_level)) as usize,
+    //                     //     )
+    //                     // } else {
+    //                     //     info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
+    //                     //     PrefixSet::empty()
+    //                     // };
+    //                     // // End of calculation
+
+    //                     // pfx_rec.meta = Some(
+    //                     //     last_rec
+    //                     //         .meta
+    //                     //         .as_ref()
+    //                     //         .unwrap()
+    //                     //         .clone_merge_update(
+    //                     //             &pfx_rec.meta.as_ref().unwrap(),
+    //                     //         )?,
+    //                     // );
+
+    //                     match stored_prefix.0.compare_exchange(
+    //                         inner_stored_prefix,
+    //                         Owned::new(StoredPrefix {
+    //                             serial: 1,
+    //                             super_agg_record: Atomic::new(pfx_rec),
+    //                             next_bucket: next_set,
+    //                             next_agg_record: Atomic::new(StoredAggRecord::new(pfx_rec))
+    //                             // next_agg_record: Atomic::new(
+    //                             //     LinkedListRecord::new(pfx_rec),
+    //                             // ),
+    //                             // agg_list: Atomic::null(),
+    //                         })
+    //                         .with_tag(tag + 1),
+    //                         Ordering::SeqCst,
+    //                         Ordering::SeqCst,
+    //                         guard,
+    //                     ) {
+    //                         Ok(_) => {
+    //                             // SUCCESS! (Step 5)
+    //                             // Nobody messed with our prefix meta-data in between
+    //                             // us loading the tag and creating the entry with that
+    //                             // tag.
+    //                             trace!(
+    //                                 "prefix successfully updated {:?}",
+    //                                 pfx_id
+    //                             );
+    //                             Ok(())
+    //                         }
+    //                         Err(store_error) => {
+    //                             // FAILURE (Step 6)
+    //                             // Some other thread messed it up. Try again by
+    //                             // upping a newly-read tag once more, reading
+    //                             // the newly-current meta-data, updating it with
+    //                             // our meta-data and see if it works then.
+    //                             // rinse-repeat.
+    //                             trace!(
+    //                                 "Contention. Prefix update failed {:?}",
+    //                                 pfx_id
+    //                             );
+    //                             // Try again. TODO: backoff neeeds to be implemented
+    //                             // hers.
+    //                             (update_meta.retry_record)(
+    //                                 update_meta,
+    //                                 store_error.current.into(),
+    //                                 unsafe {
+    //                                     store_error
+    //                                         .new
+    //                                         .super_agg_record
+    //                                         .load(Ordering::SeqCst, guard)
+    //                                         .into_owned()
+    //                                         .into_box()
+    //                                 },
+    //                                 level,
+    //                             )
+    //                         }
+    //                     };
+    //                 }
+    //                 // There is a prefix here, load the meta-data and merge
+    //                 // it with our new data (Step 3)
+    //                 // UPDATE
+    //                 false => {
+    //                     trace!("UPDATE");
+    //                     // Check to see if we should be inserting in the
+    //                     // "vertical" list, in case the hashes for the
+    //                     // existing record and the newly created one are
+    //                     // the same, or if we should be inserting into the
+    //                     // "horizontal" list, in case of the hashes are
+    //                     // different.
+
+    //                     trace!(
+    //                         "new hash {} exist hash {}",
+    //                         pfx_rec.get_hash_id(),
+    //                         last_rec.get_hash_id()
+    //                     );
+    //                     match pfx_rec.get_hash_id() == last_rec.get_hash_id()
+    //                     {
+    //                         // THE "VERTICAL" LIST
+    //                         // Non-unique meta-data as defined by its hash.
+    //                         // Create new record at the HEAD of the
+    //                         // `prev_record` linked-list.
+    //                         true => {
+    //                             // Tuck the current record away on the heap.
+    //                             // This doesn't have to be an atomic pointer, since
+    //                             // we're doing this in one (atomic) transaction.
+    //                             let next_list = curr_prefix
+    //                                 .record_list
+    //                                 .load(Ordering::SeqCst, guard);
+    //                             let tag = next_list.tag();
+    //                             match next_list.is_null() {
+    //                                 true => {
+    //                                     prev_vert_list =
+    //                                         LinkedListRecord::new(
+    //                                             pfx_rec, None,
+    //                                         );
+    //                                 }
+    //                                 false => {
+    //                                     prev_vert_list =
+    //                                         unsafe { next_list.deref() }
+    //                                             .prepend(pfx_rec);
+    //                                 }
+    //                             };
+    //                             match curr_prefix
+    //                                 .record_list
+    //                                 .compare_exchange(
+    //                                     next_list,
+    //                                     Owned::new(prev_vert_list)
+    //                                         .with_tag(tag + 1),
+    //                                     Ordering::SeqCst,
+    //                                     Ordering::SeqCst,
+    //                                     guard,
+    //                                 ) {
+    //                                 Ok(_) => {
+    //                                     // SUCCESS! (Step 5)
+    //                                     // Nobody messed with our prefix meta-data in between
+    //                                     // us loading the tag and creating the entry with that
+    //                                     // tag.
+    //                                     trace!("prefix successfully updated {:?}", pfx_id);
+    //                                     return Ok(());
+    //                                 }
+    //                                 Err(store_error) => {
+    //                                     // FAILURE (Step 6)
+    //                                     // Some other thread messed it up. Try again by
+    //                                     // upping a newly-read tag once more, reading
+    //                                     // the newly-current meta-data, updating it with
+    //                                     // our meta-data and see if it works then.
+    //                                     // rinse-repeat.
+    //                                     trace!(
+    //                                             "Contention. Prefix update failed {:?}",
+    //                                             pfx_id
+    //                                         );
+    //                                     // Try again. TODO: backoff neeeds to be implemented
+    //                                     // hers.
+    //                                     // return (update_meta.f)(
+    //                                     //     update_meta,
+    //                                     //     store_error.current.into(),
+    //                                     //     store_error
+    //                                     //         .new
+    //                                     //         .record
+    //                                     //         .clone()
+    //                                     //         .unwrap(),
+    //                                     //     level,
+    //                                     // )
+    //                                 }
+    //                             }
+    //                         }
+    //                         // THE "HORIZONTAL" LIST
+    //                         // Unique for the meta-data at this point.
+    //                         // Move to the element in the `next_list`
+    //                         // linked list, if any.
+    //                         false => {
+    //                             let next_list = curr_prefix
+    //                                 .agg_list
+    //                                 .load(Ordering::SeqCst, guard);
+    //                             match next_list.is_null() {
+    //                                 // No list exists, create the list and
+    //                                 // fill the HEAD
+    //                                 true => {
+    //                                     trace!("create new horizontal list for unique hash_id {}", pfx_rec_hash);
+    //                                     prev_hor_list = LinkedListRecord::new(
+    //                                         pfx_rec, None,
+    //                                     );
+    //                                 }
+    //                                 // A list exists, move to the HEAD of it,
+    //                                 // and run this closure again.
+    //                                 false => {
+    //                                     // pfx_rec.meta = Some(
+    //                                     //     curr_pfx_rec
+    //                                     //         .meta
+    //                                     //         .as_ref()
+    //                                     //         .unwrap()
+    //                                     //         .clone_merge_update(
+    //                                     //             next_list
+    //                                     //                 .record
+    //                                     //                 .meta
+    //                                     //                 .as_ref()
+    //                                     //                 .unwrap(),
+    //                                     //         )?,
+    //                                     // );
+    //                                     prev_hor_list =
+    //                                         unsafe { next_list.deref() }
+    //                                             .prepend(pfx_rec);
+    //                                 }
+    //                             };
+    //                             match curr_prefix
+    //                                 .record_list
+    //                                 .compare_exchange(
+    //                                     next_list,
+    //                                     Owned::new(prev_vert_list)
+    //                                         .with_tag(tag + 1),
+    //                                     Ordering::SeqCst,
+    //                                     Ordering::SeqCst,
+    //                                     guard,
+    //                                 ) {
+    //                                 Ok(_) => {
+    //                                     // SUCCESS! (Step 5)
+    //                                     // Nobody messed with our prefix meta-data in between
+    //                                     // us loading the tag and creating the entry with that
+    //                                     // tag.
+    //                                     trace!("prefix successfully updated {:?}", pfx_id);
+    //                                     return Ok(());
+    //                                 }
+    //                                 Err(store_error) => {
+    //                                     // FAILURE (Step 6)
+    //                                     // Some other thread messed it up. Try again by
+    //                                     // upping a newly-read tag once more, reading
+    //                                     // the newly-current meta-data, updating it with
+    //                                     // our meta-data and see if it works then.
+    //                                     // rinse-repeat.
+    //                                     trace!(
+    //                                             "Contention. Prefix update failed {:?}",
+    //                                             pfx_id
+    //                                         );
+    //                                     // Try again. TODO: backoff neeeds to be implemented
+    //                                     // hers.
+    //                                     // return (update_meta.f)(
+    //                                     //     update_meta,
+    //                                     //     store_error.current.into(),
+    //                                     //     store_error
+    //                                     //         .new
+    //                                     //         .record
+    //                                     //         .clone()
+    //                                     //         .unwrap(),
+    //                                     //     level,
+    //                                     // )
+    //                                 }
+    //                             }
+    //                         }
+    //                     };
+    //                 }
+    //             };
+
+    //             // START
+
+    //             let atomic_stored_prefix =
+    //                 stored_prefix.0.load(Ordering::SeqCst, guard);
+
+    //             if atomic_stored_prefix.is_null() {
+    //                 // start calculation size of next set
+    //                 let this_level =
+    //                     PB::get_bits_for_len(pfx_id.get_len(), level);
+
+    //                 let next_level =
+    //                     PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+
+    //                 trace!(
+    //                     "this level {} next level {}",
+    //                     this_level,
+    //                     next_level
+    //                 );
+    //                 let next_set = if next_level > 0 {
+    //                     info!(
+    //                             "INSERT with new bucket of size {} at prefix len {}",
+    //                             1 << (next_level - this_level), pfx_id.get_len()
+    //                         );
+    //                     PrefixSet::init(
+    //                         (1 << (next_level - this_level)) as usize,
+    //                     )
+    //                 } else {
+    //                     info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
+    //                     PrefixSet::empty()
+    //                 };
+    //                 // End of calculation
+
+    //                 // pfx_rec.meta = Some(
+    //                 //     last_rec.meta.as_ref().unwrap().clone_merge_update(
+    //                 //         &pfx_rec.meta.as_ref().unwrap(),
+    //                 //     )?,
+    //                 // );
+
+    //                 match stored_prefix.0.compare_exchange(
+    //                     atomic_stored_prefix,
+    //                     Owned::new(StoredPrefix {
+    //                         serial: 1,
+    //                         hash_id: pfx_rec.get_hash_id(),
+    //                         super_agg_record: Atomic::new(pfx_rec),
+    //                         next_bucket: next_set,
+    //                         record_list: Atomic::new(LinkedListRecord::new(
+    //                             pfx_rec, None,
+    //                         )),
+    //                         agg_list: Atomic::null(),
+    //                     })
+    //                     .with_tag(tag + 1),
+    //                     Ordering::SeqCst,
+    //                     Ordering::SeqCst,
+    //                     guard,
+    //                 ) {
+    //                     Ok(_) => {
+    //                         // SUCCESS! (Step 5)
+    //                         // Nobody messed with our prefix meta-data in between
+    //                         // us loading the tag and creating the entry with that
+    //                         // tag.
+    //                         trace!(
+    //                             "prefix successfully updated {:?}",
+    //                             pfx_id
+    //                         );
+    //                         Ok(())
+    //                     }
+    //                     Err(store_error) => {
+    //                         // FAILURE (Step 6)
+    //                         // Some other thread messed it up. Try again by
+    //                         // upping a newly-read tag once more, reading
+    //                         // the newly-current meta-data, updating it with
+    //                         // our meta-data and see if it works then.
+    //                         // rinse-repeat.
+    //                         trace!(
+    //                             "Contention. Prefix update failed {:?}",
+    //                             pfx_id
+    //                         );
+    //                         // Try again. TODO: backoff neeeds to be implemented
+    //                         // hers.
+    //                         (update_meta.retry_record)(
+    //                             update_meta,
+    //                             store_error.current.into(),
+    //                             unsafe {
+    //                                 store_error
+    //                                     .new
+    //                                     .super_agg_record
+    //                                     .load(Ordering::SeqCst, guard)
+    //                                     .into_owned()
+    //                                     .into_box()
+    //                             },
+    //                             level,
+    //                         )
+    //                     }
+    //                 };
+    //             };
+
+    //             // END OF THE START
+
+    //             // The Atomic magic, see if we'll be able to save this new
+    //             // meta-data in our store without some other thread having
+    //             // updated it in the meantime (Step 4)
+    //             match curr_prefix.super_agg_record.compare_exchange(
+    //                 atomic_last_rec,
+    //                 Owned::new(pfx_rec).with_tag(tag + 1),
+    //                 Ordering::SeqCst,
+    //                 Ordering::SeqCst,
+    //                 guard,
+    //             ) {
+    //                 Ok(_) => {
+    //                     // SUCCESS! (Step 5)
+    //                     // Nobody messed with our prefix meta-data in between
+    //                     // us loading the tag and creating the entry with that
+    //                     // tag.
+    //                     trace!("prefix successfully updated {:?}", pfx_id);
+    //                     Ok(())
+    //                 }
+    //                 Err(store_error) => {
+    //                     // FAILURE (Step 6)
+    //                     // Some other thread messed it up. Try again by
+    //                     // upping a newly-read tag once more, reading
+    //                     // the newly-current meta-data, updating it with
+    //                     // our meta-data and see if it works then.
+    //                     // rinse-repeat.
+    //                     trace!(
+    //                         "Contention. Prefix update failed {:?}",
+    //                         pfx_id
+    //                     );
+    //                     // Try again. TODO: backoff neeeds to be implemented
+    //                     // hers.
+    //                     (update_meta.retry_record)(
+    //                         update_meta,
+    //                         store_error.current.into(),
+    //                         store_error.new.into_box(),
+    //                         level,
+    //                     )
+    //                 }
+    //             }
+    //         },
+    //     };
+
+    //     let guard = &epoch::pin();
+    //     trace!("UPSERT PREFIX {:?}", pfx_rec);
+
+    //     let (stored_prefix, level) =
+    //         self.retrieve_prefix_mut_with_guard(pfx_id, guard);
+
+    //     (update_meta.retry_record)(
+    //         &update_meta,
+    //         stored_prefix,
+    //         Box::new(pfx_rec),
+    //         level,
+    //     )
+    // }
 
     #[allow(clippy::type_complexity)]
     fn retrieve_prefix_mut_with_guard(
@@ -868,7 +1694,6 @@ impl<
 
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
-                // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 trace!(
                     "prefixes at level {}? {:?}",
                     level,
@@ -877,33 +1702,31 @@ impl<
                 let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
                 let stored_prefix = unsafe { prefix_ref.assume_init_mut() };
 
-                match unsafe {
-                    stored_prefix.0.load(Ordering::Relaxed, guard).deref_mut()
-                } {
-                    StoredPrefix {
-                        record: Some(pfx_rec),
-                        next_set,
-                        ..
-                    } => {
-                        if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
+                if let Some(StoredPrefix {
+                    super_agg_record: pfx_rec,
+                    prefix,
+                    next_bucket,
+                    ..
+                }) = stored_prefix.get_stored_prefix(guard)
+                {
+                    if let Some(pfx_rec) = pfx_rec.get_record(guard) {
+                        if id == pfx_rec.into() {
                             trace!("found requested prefix {:?}", id);
-                            (stored_prefix, level)
+                            return (stored_prefix, level);
                         } else {
                             level += 1;
-                            (search_level.f)(
+                            return (search_level.f)(
                                 search_level,
-                                next_set,
+                                next_bucket,
                                 level,
                                 guard,
-                            )
+                            );
                         }
-                    }
-                    StoredPrefix { record: None, .. } => {
-                        // No record at the deepest level, still we're returning a reference to it,
-                        // so the caller can insert a new record here.
-                        (stored_prefix, level)
-                    }
+                    };
                 }
+                // No record at the deepest level, still we're returning a reference to it,
+                // so the caller can insert a new record here.
+                (stored_prefix, level)
             },
         };
 
@@ -941,29 +1764,31 @@ impl<
 
                 let mut prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
-                // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-                match unsafe {
-                    prefix_ref
-                        .assume_init_ref()
-                        .0
-                        .load(Ordering::Relaxed, guard)
-                        .deref()
-                } {
-                    StoredPrefix {
-                        record: Some(pfx_rec),
-                        next_set,
-                        ..
-                    } => {
+
+                if let Some(StoredPrefix {
+                    super_agg_record: pfx_rec,
+                    next_bucket: next_set,
+                    ..
+                }) = unsafe { prefix_ref.assume_init_ref() }
+                    .get_stored_prefix(guard)
+                {
+                    if let Some(pfx_rec) = pfx_rec.get_record(guard) {
                         if id == PrefixId::from(pfx_rec) {
                             trace!("found requested prefix {:?}", id);
                             return Some(pfx_rec.clone());
                         };
                         level += 1;
-                        (search_level.f)(search_level, next_set, level, guard)
+                        return (search_level.f)(
+                            search_level,
+                            &next_set,
+                            level,
+                            guard,
+                        );
                     }
-                    StoredPrefix { record: None, .. } => None,
                 }
+
+                None
             },
         };
 
@@ -1003,21 +1828,16 @@ impl<
             let index = Self::hash_prefix_id(id, level);
 
             let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
-            // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
             let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-            match unsafe {
-                prefix_ref
-                    .assume_init_ref()
-                    .0
-                    .load(Ordering::SeqCst, guard)
-                    .deref()
-            } {
-                StoredPrefix {
-                    serial,
-                    record: Some(pfx_rec),
-                    next_set,
-                    ..
-                } => {
+            if let Some(StoredPrefix {
+                serial,
+                super_agg_record: pfx_rec,
+                next_bucket: next_set,
+                ..
+            }) = unsafe { prefix_ref.assume_init_ref() }
+                .get_stored_prefix(guard)
+            {
+                if let Some(pfx_rec) = pfx_rec.get_record(guard) {
                     if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
                         trace!("found requested prefix {:?}", id);
                         parents[level as usize] = Some((prefix_set, index));
@@ -1029,16 +1849,13 @@ impl<
                     // Advance to the next level.
                     prefix_set = next_set;
                     level += 1;
+                    continue;
                 }
-                StoredPrefix { record: None, .. } => {
-                    trace!("no prefix found for {:?}", id);
-                    parents[level as usize] = Some((prefix_set, index));
-                    return (
-                        None,
-                        Some((id, level, prefix_set, parents, index)),
-                    );
-                }
-            };
+            }
+
+            trace!("no prefix found for {:?}", id);
+            parents[level as usize] = Some((prefix_set, index));
+            return (None, Some((id, level, prefix_set, parents, index)));
         }
     }
 
@@ -1072,28 +1889,29 @@ impl<
                     prefix_set.0.load(Ordering::Relaxed, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-                match unsafe {
-                    prefix_ref
-                        .assume_init_ref()
-                        .0
-                        .load(Ordering::SeqCst, guard)
-                        .deref()
-                } {
-                    StoredPrefix {
-                        serial,
-                        record: Some(pfx_rec),
-                        next_set,
-                        ..
-                    } => {
+                if let Some(StoredPrefix {
+                    serial,
+                    super_agg_record: pfx_rec,
+                    next_bucket: next_set,
+                    ..
+                }) = unsafe { prefix_ref.assume_init_ref() }
+                    .get_stored_prefix(guard)
+                {
+                    if let Some(pfx_rec) = pfx_rec.get_record(guard) {
                         if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
                             trace!("found requested prefix {:?}", id);
                             return Some((pfx_rec, serial));
                         };
                         level += 1;
-                        (search_level.f)(search_level, next_set, level, guard)
-                    }
-                    StoredPrefix { record: None, .. } => None,
+                        (search_level.f)(
+                            search_level,
+                            next_set,
+                            level,
+                            guard,
+                        );
+                    };
                 }
+                None
             },
         };
 

@@ -199,8 +199,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
                     // If there's a child here there MUST be a prefix here,
                     // as well.
-                    if let Some(prefix) = s_pfx.get_prefix_record(self.guard)
-                    {
+                    if let Some(prefix) = s_pfx.get_agg_record(self.guard) {
                         // There's a prefix here, that's the next one
                         info!("D. found prefix {:?}", prefix);
                         return Some(prefix);
@@ -212,8 +211,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // No reference to another PrefixSet, all that's
                     // left, is checking for a prefix at the current
                     // cursor position.
-                    if let Some(prefix) = s_pfx.get_prefix_record(self.guard)
-                    {
+                    if let Some(prefix) = s_pfx.get_agg_record(self.guard) {
                         // There's a prefix here, that's the next one
                         info!("E. found prefix {:?}", prefix);
                         self.cursor += 1;
@@ -512,87 +510,89 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             let s_pfx =
                 self.cur_bucket.get_by_index(index as usize, self.guard);
             // trace!("s_pfx {:?}", s_pfx);
-            match unsafe {
-                s_pfx.0.load(Ordering::SeqCst, self.guard).deref()
-            } {
-                StoredPrefix {
-                    // serial: _serial,
-                    record: Some(pfx_rec),
-                    next_set,
-                    prev_record: _prev_record,
-                    ..
-                } => {
-                    // There is a prefix  here, but we need to checkt if it's
-                    // the right one.
-                    if self.cur_prefix_id
-                        == PrefixId::new(pfx_rec.net, pfx_rec.len)
-                    {
+
+            if let Some(StoredPrefix {
+                // serial: _serial,
+                super_agg_record: rec,
+                next_bucket,
+                ..
+            }) = s_pfx.get_stored_prefix(self.guard)
+            {
+                trace!("get_record {:?}", rec);
+                match rec.get_record(self.guard) {
+                    Some(pfx_rec) => {
+                        // There is a prefix  here, but we need to checkt if it's
+                        // the right one.
+                        if self.cur_prefix_id
+                            == PrefixId::new(pfx_rec.net, pfx_rec.len)
+                        {
+                            trace!(
+                                "found requested prefix {:?}",
+                                self.cur_prefix_id
+                            );
+                            self.cur_len -= 1;
+                            self.cur_level = 0;
+                            self.cur_bucket = self
+                                .prefixes
+                                .get_root_prefix_set(self.cur_len);
+                            return Some(pfx_rec);
+                        };
+                        // Advance to the next level or the next len.
+                        match next_bucket
+                            .0
+                            .load(Ordering::SeqCst, self.guard)
+                            .is_null()
+                        {
+                            // No child here, move one length down.
+                            true => {
+                                self.cur_len -= 1;
+                                self.cur_level = 0;
+                                self.cur_bucket = self
+                                    .prefixes
+                                    .get_root_prefix_set(self.cur_len);
+                            }
+                            // There's a child, move a level up and set the child
+                            // as current. Length remains the same.
+                            false => {
+                                self.cur_bucket = next_bucket;
+                                self.cur_level += 1;
+                            }
+                        }
+                    }
+                    None => {
+                        // No prefix here, let's see if there's a child here
                         trace!(
-                            "found requested prefix {:?}",
-                            self.cur_prefix_id
+                            "no prefix found for {:?} in len {}",
+                            self.cur_prefix_id,
+                            self.cur_len
                         );
-                        self.cur_len -= 1;
-                        self.cur_level = 0;
-                        self.cur_bucket =
-                            self.prefixes.get_root_prefix_set(self.cur_len);
-                        return Some(pfx_rec);
-                    };
-                    // Advance to the next level or the next len.
-                    match next_set
-                        .0
-                        .load(Ordering::SeqCst, self.guard)
-                        .is_null()
-                    {
-                        // No child here, move one length down.
-                        true => {
-                            self.cur_len -= 1;
-                            self.cur_level = 0;
-                            self.cur_bucket = self
-                                .prefixes
-                                .get_root_prefix_set(self.cur_len);
-                        }
-                        // There's a child, move a level up and set the child
-                        // as current. Length remains the same.
-                        false => {
-                            self.cur_bucket = next_set;
-                            self.cur_level += 1;
+                        // Advance to the next level or the next len.
+                        match next_bucket
+                            .0
+                            .load(Ordering::SeqCst, self.guard)
+                            .is_null()
+                        {
+                            // No child here, move one length down.
+                            true => {
+                                self.cur_len -= 1;
+                                self.cur_level = 0;
+                                self.cur_bucket = self
+                                    .prefixes
+                                    .get_root_prefix_set(self.cur_len);
+                            }
+                            // There's a child, move a level up and set the child
+                            // as current. Length remains the same.
+                            false => {
+                                self.cur_bucket = next_bucket;
+                                self.cur_level += 1;
+                            }
                         }
                     }
-                }
-                StoredPrefix {
-                    record: None,
-                    next_set,
-                    ..
-                } => {
-                    // No prefix here, let's see if there's a child here
-                    trace!(
-                        "no prefix found for {:?} in len {}",
-                        self.cur_prefix_id,
-                        self.cur_len
-                    );
-                    // Advance to the next level or the next len.
-                    match next_set
-                        .0
-                        .load(Ordering::SeqCst, self.guard)
-                        .is_null()
-                    {
-                        // No child here, move one length down.
-                        true => {
-                            self.cur_len -= 1;
-                            self.cur_level = 0;
-                            self.cur_bucket = self
-                                .prefixes
-                                .get_root_prefix_set(self.cur_len);
-                        }
-                        // There's a child, move a level up and set the child
-                        // as current. Length remains the same.
-                        false => {
-                            self.cur_bucket = next_set;
-                            self.cur_level += 1;
-                        }
-                    }
-                }
-            };
+                };
+            }
+            else {
+                return None;
+            }
         }
     }
 }
