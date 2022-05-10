@@ -80,7 +80,7 @@ macro_rules! match_node_for_strides {
                                 }
                             }   // end of eval_node_or_prefix_at
                         }
-                    )*,    
+                    )*,
                 }
             } else {
                 // BACKOFF SHOULD BE IMPLEMENTED HERE.
@@ -375,35 +375,39 @@ macro_rules! impl_write_level {
                             };
                             Some($id)
                         }
-                        // A node exists, since `store_node` only creates new
-                        // nodes, we should not get here with the SAME
-                        // esiting node as already in place.
+                        // A node exists, might be ours, might be another one
                         StoredNode::NodeWithRef((node_id, _node, node_set)) => {
                             trace!("node here exists {:?}", _node);
                             trace!("node_id {:?}", node_id.get_id());
                             trace!("node_id {:032b}", node_id.get_id().0);
                             trace!("id {}", $id);
                             trace!("     id {:032b}", $id.get_id().0);
+                            // See if somebody beat us to creating our node
+                            // already, if so, we're done. Nodes do not
+                            // carry meta-data (they just "exist"), so we
+                            // don't have to update anything, just return it.
                             if $id == *node_id {
-                                trace!("found node {}, STOP", $id);
-                                // Node already exists, nothing to do
-                                panic!("node already exists, should not happen");
-                                // return Some($id);
-                            };
-                            level += 1;
-                            trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
-                            match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                                // on to the next level!
-                                next_bit_shift if next_bit_shift > 0 => {
-                                    (search_level.f)(
-                                        search_level,
-                                        node_set,
-                                        new_node,
-                                        level,
-                                    )
+                                // yes, it exists
+                                trace!("node {} already created.", $id);
+                                Some($id)
+                            } else {
+                                // it's not "our" node, make a (recursive)
+                                // call to create it.
+                                level += 1;
+                                trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
+                                match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                                    // on to the next level!
+                                    next_bit_shift if next_bit_shift > 0 => {
+                                        (search_level.f)(
+                                            search_level,
+                                            node_set,
+                                            new_node,
+                                            level,
+                                        )
+                                    }
+                                    // There's no next level!
+                                    _ => panic!("out of storage levels, current level is {}", level),
                                 }
-                                // There's no next level!
-                                _ => panic!("out of storage levels, current level is {}", level),
                             }
                         }
                     }
