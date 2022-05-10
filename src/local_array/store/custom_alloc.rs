@@ -850,7 +850,7 @@ impl<
                 trace!("retrieve prefix with guard");
 
                 let mut prefixes =
-                    prefix_set.0.load(Ordering::Relaxed, guard);
+                    prefix_set.0.load(Ordering::SeqCst, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 trace!(
                     "prefixes at level {}? {:?}",
@@ -861,7 +861,7 @@ impl<
                 let stored_prefix = unsafe { prefix_ref.assume_init_mut() };
 
                 match unsafe {
-                    stored_prefix.0.load(Ordering::Relaxed, guard).deref_mut()
+                    stored_prefix.0.load(Ordering::SeqCst, guard).deref_mut()
                 } {
                     (_serial, Some(pfx_rec), next_set, _prev_record) => {
                         if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
