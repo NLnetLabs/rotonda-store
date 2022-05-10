@@ -84,9 +84,11 @@ macro_rules! match_node_for_strides {
                 }
             } else {
                 // BACKOFF SHOULD BE IMPLEMENTED HERE.
-                trace!("Couldn't load id {} from store l{}. Trying again.",
-                        $cur_i,
-                        $self.store.get_stride_sizes()[$level as usize]);
+                if log_enabled!(Trace) {
+                    trace!("Couldn't load id {} from store l{}. Trying again.",
+                            $cur_i,
+                            $self.store.get_stride_sizes()[$level as usize]);
+                }
             }
         }
     };
