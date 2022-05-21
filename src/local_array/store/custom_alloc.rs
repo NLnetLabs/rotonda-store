@@ -1158,11 +1158,20 @@ impl<
                                     trace!("look for matching unique routes list");
                                     let inner_next_record =
                                         unsafe { next_record.deref() };
+                                    trace!(
+                                        "next_record {:?}",
+                                        inner_next_record
+                                    );
                                     for next_rec in
                                         inner_next_record.iter(guard)
                                     {
                                         // Yes! You came to the right place! This is the
                                         // crux of the whole store.
+                                        trace!(
+                                            "{} == {}?",
+                                            rec_hash_id,
+                                            next_rec.get_hash_id()
+                                        );
                                         match rec_hash_id
                                             == next_rec.get_hash_id()
                                         {
@@ -1170,6 +1179,10 @@ impl<
                                             // to the linked-list of records.
                                             true => {
                                                 trace!("found existing route for this record. prepend record to the list.");
+                                                trace!(
+                                                    "new record {}",
+                                                    record
+                                                );
                                                 inner_next_agg_record
                                                     .atomic_prepend_record(
                                                         record,
