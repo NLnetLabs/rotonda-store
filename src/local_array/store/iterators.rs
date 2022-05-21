@@ -11,10 +11,6 @@ use std::{marker::PhantomData, sync::atomic::Ordering};
 
 use crate::{
     af::AddressFamily,
-    custom_alloc::{
-        CustomAllocStorage, NodeBuckets, PrefixBuckets, PrefixSet,
-        StoredPrefix,
-    },
     local_array::{
         bit_span::BitSpan,
         node::{
@@ -24,6 +20,9 @@ use crate::{
     },
     prefix_record::InternalPrefixRecord,
 };
+use super::custom_alloc::CustomAllocStorage;
+use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet, StoredPrefix};
+
 use crossbeam_epoch::Guard;
 use log::{info, trace};
 use routecore::{

@@ -9,7 +9,8 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, NodeBuckets, PrefixBuckets};
+use crate::custom_alloc::CustomAllocStorage;
+use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
 

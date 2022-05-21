@@ -3,7 +3,7 @@ use epoch::Guard;
 use log::{info, trace};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{NodeBuckets, PrefixBuckets};
+use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
 use routecore::record::{MergeUpdate, Meta};
