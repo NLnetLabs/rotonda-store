@@ -319,7 +319,7 @@ pub(crate) struct StoredAggRecord<
 > {
     // the aggregated meta-data for this prefix and hash_id.
     pub agg_record: Atomic<InternalPrefixRecord<AF, M>>,
-    // the reference to the next record for this prefix and hash_id.
+    // the reference to the next record for this prefix and the same hash_id.
     pub(crate) next_record: Atomic<LinkedListRecord<AF, M>>,
     // the reference to the next record for this prefix and another hash_id.
     pub next_agg: AtomicInternalPrefixRecord<AF, M>,
@@ -399,9 +399,11 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         &mut self,
         record: InternalPrefixRecord<AF, M>,
     ) {
+        trace!("New record: {}", record);
         let guard = &epoch::pin();
         let mut inner_next_record =
             self.next_record.load(Ordering::SeqCst, guard);
+        trace!("Existing record {:?}", inner_next_record);
         let tag = inner_next_record.tag();
         let new_inner_next_record = Owned::new(LinkedListRecord {
             record,
@@ -419,13 +421,16 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
             );
 
             match next_record {
-                Ok(_) => return,
+                Ok(rec) => {
+                    trace!("wrote record {:?}", rec);
+                    return;
+                }
                 Err(next_record) => {
                     // Do it again
                     // TODO BACKOFF
                     inner_next_record = next_record.current;
                 }
-            }
+            };
         }
     }
 }
@@ -433,6 +438,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 // ----------- LinkedListRecord ---------------------------------------------
 // This is the third-and-lowest-level struct that holds the actual record and
 // a link to (a list) of another one, if any.
+#[derive(Debug)]
 pub(crate) struct LinkedListRecord<
     AF: AddressFamily,
     M: routecore::record::Meta,
