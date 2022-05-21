@@ -2,8 +2,8 @@ use std::fmt;
 use std::fmt::Debug;
 use std::{
     cmp::Ordering,
-    collections::hash_map::DefaultHasher,
-    hash::{Hash, Hasher},
+    // collections::hash_map::DefaultHasher,
+    // hash::{Hash, Hasher},
 };
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
@@ -49,9 +49,15 @@ where
     }
 
     pub fn get_hash_id(&self) -> u64 {
-        let mut s = DefaultHasher::new();
-        self.meta.hash(&mut s);
-        s.finish()
+
+        // // Example of a hasher that maps all unique
+        // // meta-data to different record list.
+        // let mut s = DefaultHasher::new();
+        // self.meta.hash(&mut s);
+        // s.finish()
+        // returning a fixed integer here will write all records to the same
+        // list.
+        1
     }
 
     pub fn get_prefix_id(&self) -> PrefixId<AF> {
