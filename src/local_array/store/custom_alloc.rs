@@ -480,7 +480,6 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
     type Item = &'a InternalPrefixRecord<AF, M>;
 
     fn next(&mut self) -> Option<Self::Item> {
-
         match self.current {
             Some(rec) => {
                 let inner_next = rec.prev.load(Ordering::SeqCst, self.guard);
@@ -489,7 +488,7 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
                 } else {
                     self.current = None;
                 }
-  
+
                 Some(&rec.record)
             }
             None => None,
@@ -585,7 +584,8 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&InternalPrefixRecord<AF, Meta>> {
-        self.get_stored_prefix(guard).and_then(|stored_prefix| unsafe {
+        self.get_stored_prefix(guard)
+            .and_then(|stored_prefix| unsafe {
                 stored_prefix
                     .next_agg_record
                     .load(Ordering::SeqCst, guard)
@@ -1699,7 +1699,7 @@ impl<
         &'a self,
         id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> (&'a mut AtomicStoredPrefix<AF, Meta>, u8) {
+    ) -> (&'a AtomicStoredPrefix<AF, Meta>, u8) {
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
@@ -1707,7 +1707,7 @@ impl<
                 u8,
                 &'a Guard,
             )
-                -> (&'a mut AtomicStoredPrefix<AF, M>, u8),
+                -> (&'a AtomicStoredPrefix<AF, M>, u8),
         }
 
         let search_level = SearchLevel {
@@ -1720,15 +1720,15 @@ impl<
 
                 trace!("retrieve prefix with guard");
 
-                let mut prefixes =
+                let prefixes =
                     prefix_set.0.load(Ordering::Relaxed, guard);
                 trace!(
                     "prefixes at level {}? {:?}",
                     level,
                     !prefixes.is_null()
                 );
-                let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-                let stored_prefix = unsafe { prefix_ref.assume_init_mut() };
+                let prefix_ref = unsafe { &prefixes.deref()[index] };
+                let stored_prefix = unsafe { prefix_ref.assume_init_ref() };
 
                 if let Some(StoredPrefix {
                     super_agg_record: pfx_rec,
@@ -1913,10 +1913,9 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(id, level);
 
-                let mut prefixes =
-                    prefix_set.0.load(Ordering::Relaxed, guard);
+                let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
-                let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
+                let prefix_ref = unsafe { &prefixes.deref()[index] };
                 if let Some(StoredPrefix {
                     serial,
                     super_agg_record: pfx_rec,
