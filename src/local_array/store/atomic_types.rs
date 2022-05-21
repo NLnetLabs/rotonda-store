@@ -160,6 +160,39 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
             };
         }
     }
+
+    pub(crate) fn iter_agg_records<'a>(
+        &'a self,
+        guard: &'a epoch::Guard,
+    ) -> impl Iterator<Item = &'a StoredAggRecord<AF, M>> {
+        let start_r = self.next_agg_record.load(Ordering::SeqCst, guard);
+
+        match start_r.is_null() {
+            true => None,
+            false => Some(AggRecordIterator {
+                current: unsafe { start_r.deref() },
+                guard,
+            }),
+        }
+        .into_iter()
+        .flatten()
+    }
+
+    pub(crate) fn get_latest_unique_records<'a>(
+        &'a self,
+        guard: &'a epoch::Guard,
+    ) -> Vec<&'a InternalPrefixRecord<AF, M>> {
+        let mut records = Vec::new();
+        for agg_r in self.iter_agg_records(guard) {
+            // We're only trying once to get the most recent record:
+            // receiving a None from get_most_recent_record indicates that
+            // the record is busy being written to.
+            if let Some(agg_r) = agg_r.get_last_record(guard) {
+                records.push(agg_r);
+            }
+        }
+        records
+    }
 }
 
 // ----------- SuperAggRecord -----------------------------------------------
@@ -222,7 +255,7 @@ pub(crate) struct StoredAggRecord<
     // the reference to the next record for this prefix and the same hash_id.
     pub(crate) next_record: Atomic<LinkedListRecord<AF, M>>,
     // the reference to the next record for this prefix and another hash_id.
-    pub next_agg: AtomicInternalPrefixRecord<AF, M>,
+    pub next_agg: Atomic<StoredAggRecord<AF, M>>,
 }
 
 impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
@@ -247,15 +280,17 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         StoredAggRecord {
             agg_record: Atomic::new(new_agg_record),
             next_record: Atomic::new(LinkedListRecord::new(record)),
-            next_agg: AtomicInternalPrefixRecord::empty(),
+            next_agg: Atomic::null(),
         }
     }
 
-    pub(crate) fn get_most_recent_record<'a>(
+    pub(crate) fn get_last_record<'a>(
         &self,
         guard: &'a Guard,
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
         let next_record = self.next_record.load(Ordering::SeqCst, guard);
+        // Note that an Atomic::null() indicates that a thread is busy creating it.
+        // It's the responsability of the caller to retry if it wants that data.
         match next_record.is_null() {
             true => None,
             false => Some(unsafe { &next_record.deref().record }),
@@ -269,13 +304,12 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         agg_record: InternalPrefixRecord<AF, M>,
     ) {
         let guard = &epoch::pin();
-        let mut inner_next_agg =
-            self.next_agg.0.load(Ordering::SeqCst, guard);
+        let mut inner_next_agg = self.next_agg.load(Ordering::SeqCst, guard);
         let tag = inner_next_agg.tag();
-        let agg_record = Owned::new(agg_record).into_shared(guard);
+        let agg_record = Owned::new(Self::new(agg_record)).into_shared(guard);
 
         loop {
-            let next_agg = self.next_agg.0.compare_exchange(
+            let next_agg = self.next_agg.compare_exchange(
                 inner_next_agg,
                 agg_record.with_tag(tag + 1),
                 Ordering::SeqCst,
@@ -331,6 +365,33 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
                     inner_next_record = next_record.current;
                 }
             };
+        }
+    }
+}
+
+pub(crate) struct AggRecordIterator<
+    'a,
+    AF: AddressFamily,
+    M: routecore::record::Meta,
+> {
+    current: &'a StoredAggRecord<AF, M>,
+    guard: &'a Guard,
+}
+
+impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
+    for AggRecordIterator<'a, AF, M>
+{
+    type Item = &'a StoredAggRecord<AF, M>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let inner_next =
+            self.current.next_agg.load(Ordering::SeqCst, self.guard);
+        if !inner_next.is_null() {
+            let n = unsafe { inner_next.deref() };
+            self.current = n;
+            Some(n)
+        } else {
+            None
         }
     }
 }
@@ -483,7 +544,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         })
     }
 
-    pub(crate) fn get_most_recent_record<'a>(
+    pub(crate) fn get_last_record<'a>(
         &'a self,
         guard: &'a Guard,
     ) -> Option<&InternalPrefixRecord<AF, Meta>> {
@@ -493,7 +554,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
                     .next_agg_record
                     .load(Ordering::SeqCst, guard)
                     .deref()
-                    .get_most_recent_record(guard)
+                    .get_last_record(guard)
             })
     }
 

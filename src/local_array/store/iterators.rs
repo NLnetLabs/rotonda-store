@@ -199,7 +199,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // If there's a child here there MUST be a prefix here,
                     // as well.
                     if let Some(prefix) =
-                        s_pfx.get_most_recent_record(self.guard)
+                        s_pfx.get_last_record(self.guard)
                     {
                         // There's a prefix here, that's the next one
                         info!("D. found prefix {:?}", prefix);
@@ -213,7 +213,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // left, is checking for a prefix at the current
                     // cursor position.
                     if let Some(prefix) =
-                        s_pfx.get_most_recent_record(self.guard)
+                        s_pfx.get_last_record(self.guard)
                     {
                         // There's a prefix here, that's the next one
                         info!("E. found prefix {:?}", prefix);
