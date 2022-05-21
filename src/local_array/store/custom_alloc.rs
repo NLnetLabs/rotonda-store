@@ -463,32 +463,17 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
     type Item = &'a InternalPrefixRecord<AF, M>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        //     let rec = self.current.map(move |rec| {
-        //         let r = rec.prev.load(Ordering::SeqCst, self.guard);
-        //         match r.is_null() {
-        //             true => None,
-        //             false => Some(unsafe { r.as_ref().unwrap().record }),
-        //         }
-        //     });
-
-        //     rec.flatten()
-        // }
 
         match self.current {
             Some(rec) => {
                 let inner_next = rec.prev.load(Ordering::SeqCst, self.guard);
-                if inner_next.is_null() {
-                    return None;
+                if !inner_next.is_null() {
+                    self.current = Some(unsafe { inner_next.deref() });
+                } else {
+                    self.current = None;
                 }
-                let linner_next = unsafe { inner_next.deref() };
-                // self.current = unsafe {
-                //     linner_next
-                //         .prev
-                //         .load(Ordering::SeqCst, self.guard)
-                //         .as_ref()
-                // };
-                self.current = Some(unsafe { inner_next.deref() });
-                Some(&linner_next.record)
+  
+                Some(&rec.record)
             }
             None => None,
         }
