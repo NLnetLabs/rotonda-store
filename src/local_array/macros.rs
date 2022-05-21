@@ -21,56 +21,73 @@ macro_rules! match_node_for_strides {
         // $len is the index of the stats level, so 0..5
         $( $variant: ident; $stats_level: expr ), *
     ) => {
-        match $self.store.retrieve_node_mut_with_guard($cur_i, $guard).expect(
-                format!(
-                    "\x1b[91mCouldn't load id {} from store l{}\x1b[0m",
-                    $cur_i,
-                    $self.store.get_stride_sizes()[$level as usize]
-                ).as_str()) {
-            $(
-            SizedStrideRefMut::$variant(current_node) => {
-            // eval_node_or_prefix_at mutates the node to reflect changes
-            // in the ptrbitarr & pfxbitarr.
-            match current_node.eval_node_or_prefix_at(
-                $nibble,
-                $nibble_len,
-                // All the bits of the search prefix, but with a length set to
-                // the start of the current stride.
-                StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
-                // the length of THIS stride
-                $stride_len,
-                // the length of the next stride
-                $self.store.get_stride_sizes().get(($level + 1) as usize),
-                $is_last_stride,
-            ) {
-                NewNodeOrIndex::NewNode(n) => {
-                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                    // $self.stats[$stats_level].inc($level);
+        // Look up the current node in the store. This should never fail,
+        // since we're starting at the root node and retrieve that. If a node
+        // does not exist, it is created here. BUT, BUT, in a multi-threaded
+        // context, one thread creating the node may be outpaced by a thread
+        // reading the same node. Because the creation of a node actually
+        // consists of two independent atomic operations (first setting the
+        // right bit in the parent bitarry, second storing the node in the
+        // store with the meta-data), a thread creating a new node may have
+        // altered the parent bitarray, but not it didn't create the node
+        // in the store yet. The reading thread, however, saw the bit in the
+        // parent and wants to read the node in the store, but that doesn't
+        // exist yet. In that case, the reader thread needs to try again
+        // until it is actually created.
+        loop {
+            if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
+                match current_node {
+                    $(
+                        SizedStrideRefMut::$variant(current_node) => {
+                            // eval_node_or_prefix_at mutates the node to reflect changes
+                            // in the ptrbitarr & pfxbitarr.
+                            match current_node.eval_node_or_prefix_at(
+                                $nibble,
+                                $nibble_len,
+                                // All the bits of the search prefix, but with a length set to
+                                // the start of the current stride.
+                                StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
+                                // the length of THIS stride
+                                $stride_len,
+                                // the length of the next stride
+                                $self.store.get_stride_sizes().get(($level + 1) as usize),
+                                $is_last_stride,
+                            ) {
+                                NewNodeOrIndex::NewNode(n) => {
+                                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
+                                    // $self.stats[$stats_level].inc($level);
 
-                    // get a new identifier for the node we're going to create.
-                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
+                                    // get a new identifier for the node we're going to create.
+                                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
 
-                    // store the new node in the global store
-                    // let i: StrideNodeId<Store::AF>;
-                    // if $self.strides[($level + 1) as usize] != $stride_len {
-                    let i = $self.store.store_node(new_id, n).unwrap();
-                    Some(i)
+                                    // store the new node in the global store
+                                    // let i: StrideNodeId<Store::AF>;
+                                    // if $self.strides[($level + 1) as usize] != $stride_len {
+                                    let i = $self.store.store_node(new_id, n).unwrap();
+                                    break Some(i)
+                                }
+                                NewNodeOrIndex::ExistingNode(i) => {
+                                    // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
+                                    break Some(i)
+                                },
+                                NewNodeOrIndex::NewPrefix => {
+                                    return $self.store.upsert_prefix($pfx)
+                                    // Log
+                                    // $self.stats[$stats_level].inc_prefix_count($level);
+                                }
+                                NewNodeOrIndex::ExistingPrefix => {
+                                    return $self.store.upsert_prefix($pfx)
+                                }
+                            }   // end of eval_node_or_prefix_at
+                        }
+                    )*,    
                 }
-                NewNodeOrIndex::ExistingNode(i) => {
-                    // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
-                    Some(i)
-                },
-                NewNodeOrIndex::NewPrefix => {
-                    return $self.store.upsert_prefix($pfx)
-                    // Log
-                    // $self.stats[$stats_level].inc_prefix_count($level);
-                }
-                NewNodeOrIndex::ExistingPrefix => {
-                    return $self.store.upsert_prefix($pfx)
-                }
+            } else {
+                // BACKOFF SHOULD BE IMPLEMENTED HERE.
+                trace!("Couldn't load id {} from store l{}. Trying again.",
+                        $cur_i,
+                        $self.store.get_stride_sizes()[$level as usize]);
             }
-            }
-        )*,
         }
     };
 }
@@ -358,35 +375,39 @@ macro_rules! impl_write_level {
                             };
                             Some($id)
                         }
-                        // A node exists, since `store_node` only creates new
-                        // nodes, we should not get here with the SAME
-                        // esiting node as already in place.
+                        // A node exists, might be ours, might be another one
                         StoredNode::NodeWithRef((node_id, _node, node_set)) => {
                             trace!("node here exists {:?}", _node);
                             trace!("node_id {:?}", node_id.get_id());
                             trace!("node_id {:032b}", node_id.get_id().0);
                             trace!("id {}", $id);
                             trace!("     id {:032b}", $id.get_id().0);
+                            // See if somebody beat us to creating our node
+                            // already, if so, we're done. Nodes do not
+                            // carry meta-data (they just "exist"), so we
+                            // don't have to update anything, just return it.
                             if $id == *node_id {
-                                trace!("found node {}, STOP", $id);
-                                // Node already exists, nothing to do
-                                panic!("node already exists, should not happen");
-                                // return Some($id);
-                            };
-                            level += 1;
-                            trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
-                            match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                                // on to the next level!
-                                next_bit_shift if next_bit_shift > 0 => {
-                                    (search_level.f)(
-                                        search_level,
-                                        node_set,
-                                        new_node,
-                                        level,
-                                    )
+                                // yes, it exists
+                                trace!("node {} already created.", $id);
+                                Some($id)
+                            } else {
+                                // it's not "our" node, make a (recursive)
+                                // call to create it.
+                                level += 1;
+                                trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
+                                match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                                    // on to the next level!
+                                    next_bit_shift if next_bit_shift > 0 => {
+                                        (search_level.f)(
+                                            search_level,
+                                            node_set,
+                                            new_node,
+                                            level,
+                                        )
+                                    }
+                                    // There's no next level!
+                                    _ => panic!("out of storage levels, current level is {}", level),
                                 }
-                                // There's no next level!
-                                _ => panic!("out of storage levels, current level is {}", level),
                             }
                         }
                     }
