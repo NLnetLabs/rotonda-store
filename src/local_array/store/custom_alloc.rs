@@ -351,6 +351,17 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         }
     }
 
+    pub(crate) fn get_most_recent_record<'a>(
+        &self,
+        guard: &'a Guard,
+    ) -> Option<&'a InternalPrefixRecord<AF, M>> {
+        let next_record = self.next_record.load(Ordering::SeqCst, guard);
+        match next_record.is_null() {
+            true => None,
+            false => Some(unsafe { &next_record.deref().record }),
+        }
+    }
+
     // aggregated records don't need to be prepended (you, know, HEAD), but
     // can just be appended to the tail.
     pub(crate) fn atomic_tail_agg(
@@ -562,6 +573,19 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
                 .load(Ordering::SeqCst, guard)
                 .deref()
         })
+    }
+
+    pub(crate) fn get_most_recent_record<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> Option<&InternalPrefixRecord<AF, Meta>> {
+        self.get_stored_prefix(guard).and_then(|stored_prefix| unsafe {
+                stored_prefix
+                    .next_agg_record
+                    .load(Ordering::SeqCst, guard)
+                    .deref()
+                    .get_most_recent_record(guard)
+            })
     }
 
     // PrefixSet is an Atomic that might be a null pointer, which is

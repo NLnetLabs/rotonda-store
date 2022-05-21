@@ -199,7 +199,9 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
                     // If there's a child here there MUST be a prefix here,
                     // as well.
-                    if let Some(prefix) = s_pfx.get_agg_record(self.guard) {
+                    if let Some(prefix) =
+                        s_pfx.get_most_recent_record(self.guard)
+                    {
                         // There's a prefix here, that's the next one
                         info!("D. found prefix {:?}", prefix);
                         return Some(prefix);
@@ -211,7 +213,9 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // No reference to another PrefixSet, all that's
                     // left, is checking for a prefix at the current
                     // cursor position.
-                    if let Some(prefix) = s_pfx.get_agg_record(self.guard) {
+                    if let Some(prefix) =
+                        s_pfx.get_most_recent_record(self.guard)
+                    {
                         // There's a prefix here, that's the next one
                         info!("E. found prefix {:?}", prefix);
                         self.cursor += 1;
@@ -589,8 +593,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         }
                     }
                 };
-            }
-            else {
+            } else {
                 return None;
             }
         }
