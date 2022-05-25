@@ -3,7 +3,6 @@ use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
 use crate::{MatchOptions, MatchType};
-use crate::QueryResult;
 
 use crate::af::AddressFamily;
 use routecore::addr::Prefix;
@@ -26,7 +25,48 @@ impl<AF: AddressFamily> PrefixId<AF> {
     }
 }
 
+//------------- QueryResult -------------------------------------------------
 
+#[derive(Clone, Debug)]
+pub struct QueryResult<'a, Meta: routecore::record::Meta> {
+    pub match_type: MatchType,
+    pub prefix: Option<Prefix>,
+    pub prefix_meta: Option<&'a Meta>,
+    pub less_specifics: Option<RecordSet<'a, Meta>>,
+    pub more_specifics: Option<RecordSet<'a, Meta>>,
+}
+
+impl<'a, Meta: routecore::record::Meta> std::fmt::Display
+    for QueryResult<'a, Meta>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let pfx_str = match self.prefix {
+            Some(pfx) => format!("{}", pfx),
+            None => "".to_string(),
+        };
+        let pfx_meta_str = match &self.prefix_meta {
+            Some(pfx_meta) => format!("{}", pfx_meta),
+            None => "".to_string(),
+        };
+        write!(
+            f,
+            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
+            self.match_type,
+            pfx_str,
+            pfx_meta_str,
+            if let Some(ls) = self.less_specifics.as_ref() {
+                format!("{}", ls)
+            } else {
+                "".to_string()
+            },
+            if let Some(ms) = self.more_specifics.as_ref() {
+                format!("{}", ms)
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
 
 //------------ Longest Matching Prefix  -------------------------------------
 

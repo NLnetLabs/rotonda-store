@@ -2,7 +2,7 @@ use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::node_id::InMemNodeId;
 use crate::prefix_record::InternalPrefixRecord;
-use crate::QueryResult;
+use super::query::QueryResult;
 use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
