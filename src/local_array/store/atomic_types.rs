@@ -374,7 +374,7 @@ pub(crate) struct AggRecordIterator<
     AF: AddressFamily,
     M: routecore::record::Meta,
 > {
-    current: &'a StoredAggRecord<AF, M>,
+    current: Option<&'a StoredAggRecord<AF, M>>,
     guard: &'a Guard,
 }
 
@@ -384,14 +384,20 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
     type Item = &'a StoredAggRecord<AF, M>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let inner_next =
-            self.current.next_agg.load(Ordering::SeqCst, self.guard);
-        if !inner_next.is_null() {
-            let n = unsafe { inner_next.deref() };
-            self.current = n;
-            Some(n)
-        } else {
-            None
+        trace!("next agg_rec {:?}", self.current);
+        match self.current {
+            Some(agg_rec) => {
+                let inner_next =
+                    agg_rec.next_agg.load(Ordering::SeqCst, self.guard);
+                if !inner_next.is_null() {
+                    self.current = Some(unsafe { inner_next.deref() });
+                } else {
+                    self.current = None;
+                }
+
+                Some(agg_rec)
+            }
+            None => None,
         }
     }
 }
