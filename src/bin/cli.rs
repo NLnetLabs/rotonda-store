@@ -225,21 +225,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let query_result = tree_bitmap.match_prefix(
                                     &p,
                                     &MatchOptions {
-                                        match_type: MatchType::EmptyMatch,
-                                        include_less_specifics: true,
-                                        include_more_specifics: true,
+                                        match_type: MatchType::LongestMatch,
+                                        include_less_specifics: false,
+                                        include_more_specifics: false,
                                     },
                                     guard,
                                 );
-                                println!("query result");
+                                println!("start query result");
                                 println!("{}", query_result);
+                                println!("end query result");
                                 println!(
                                     "more_specifics: {}",
-                                    query_result.more_specifics.unwrap()
+                                    query_result
+                                        .more_specifics
+                                        .map_or("None".to_string(), |x| x
+                                            .to_string())
                                 );
                                 println!(
                                     "less_specifics: {}",
-                                    query_result.less_specifics.unwrap()
+                                    query_result
+                                        .less_specifics
+                                        .map_or("None".to_string(), |x| x
+                                            .to_string())
                                 );
 
                                 println!("--- numatch");
@@ -252,7 +259,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             guard
                                         )
                                         .more_specifics
-                                        .unwrap()
+                                        .map_or("None".to_string(), |x| x
+                                            .to_string())
                                 );
                                 println!("less specifics");
                                 println!(
@@ -263,7 +271,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             guard
                                         )
                                         .less_specifics
-                                        .unwrap()
+                                        .map_or("None".to_string(), |x| x
+                                            .to_string())
                                 );
                             }
                             Err(
@@ -275,9 +284,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap.match_prefix(
                                         &Prefix::new_relaxed(ip, len)?,
                                         &MatchOptions {
-                                            match_type: MatchType::EmptyMatch,
-                                            include_less_specifics: true,
-                                            include_more_specifics: true
+                                            match_type:
+                                                MatchType::LongestMatch,
+                                            include_less_specifics: false,
+                                            include_more_specifics: false
                                         },
                                         guard
                                     )
@@ -292,7 +302,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             guard
                                         )
                                         .more_specifics
-                                        .unwrap()
+                                        .map_or("None".to_string(), |x| x
+                                            .to_string())
                                 );
                                 println!("less specifics");
                                 println!(
@@ -303,7 +314,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             guard
                                         )
                                         .less_specifics
-                                        .unwrap()
+                                        .map_or("None".to_string(), |x| x
+                                            .to_string())
                                 );
                             }
                             Err(_) => {
