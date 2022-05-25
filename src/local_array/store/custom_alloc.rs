@@ -99,7 +99,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{info, trace, warn};
+use log::{trace, warn};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
@@ -110,10 +110,8 @@ use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
 use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
 
-use crate::AddressFamily;
-use routecore::record::MergeUpdate;
-use routecore::record::Meta;
 use super::atomic_types::*;
+use crate::AddressFamily;
 
 // ----------- CustomAllocStorage -------------------------------------------
 //
@@ -1037,8 +1035,7 @@ impl<
 
                 trace!("retrieve prefix with guard");
 
-                let prefixes =
-                    prefix_set.0.load(Ordering::Relaxed, guard);
+                let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
                 trace!(
                     "prefixes at level {}? {:?}",
                     level,
@@ -1049,7 +1046,7 @@ impl<
 
                 if let Some(StoredPrefix {
                     super_agg_record: pfx_rec,
-                    prefix,
+                    // prefix,
                     next_bucket,
                     ..
                 }) = stored_prefix.get_stored_prefix(guard)
@@ -1126,7 +1123,7 @@ impl<
                         level += 1;
                         return (search_level.f)(
                             search_level,
-                            &next_set,
+                            next_set,
                             level,
                             guard,
                         );
@@ -1151,7 +1148,7 @@ impl<
         id: PrefixId<AF>,
         guard: &'a Guard,
     ) -> (
-        Option<(&InternalPrefixRecord<AF, Meta>, &'a usize)>,
+        Option<&StoredPrefix<AF, Meta>>,
         Option<(
             PrefixId<AF>,
             u8,
@@ -1174,28 +1171,28 @@ impl<
 
             let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
             let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-            if let Some(StoredPrefix {
-                serial,
-                super_agg_record: pfx_rec,
-                next_bucket: next_set,
-                ..
-            }) = unsafe { prefix_ref.assume_init_ref() }
+            if let Some(pfx_rec) //StoredPrefix {
+                // serial,
+                // super_agg_record: pfx_rec,
+                // next_bucket: next_set,
+                // ..}_
+            = unsafe { prefix_ref.assume_init_ref() }
                 .get_stored_prefix(guard)
             {
-                if let Some(pfx_rec) = pfx_rec.get_record(guard) {
-                    if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
+                
+                    if id == pfx_rec.prefix {
                         trace!("found requested prefix {:?}", id);
                         parents[level as usize] = Some((prefix_set, index));
                         return (
-                            Some((pfx_rec, serial)),
+                            Some(pfx_rec),
                             Some((id, level, prefix_set, parents, index)),
                         );
                     };
                     // Advance to the next level.
-                    prefix_set = next_set;
+                    prefix_set = &pfx_rec.next_bucket;
                     level += 1;
                     continue;
-                }
+                
             }
 
             trace!("no prefix found for {:?}", id);
@@ -1207,9 +1204,9 @@ impl<
     #[allow(clippy::type_complexity)]
     pub(crate) fn retrieve_prefix_with_guard(
         &'a self,
-        id: PrefixId<AF>,
+        prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<(&InternalPrefixRecord<AF, Meta>, &'a usize)> {
+    ) -> Option<(&StoredPrefix<AF, Meta>, &'a usize)> {
         struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
@@ -1217,7 +1214,7 @@ impl<
                 u8,
                 &'a Guard,
             ) -> Option<(
-                &'a InternalPrefixRecord<AF, M>,
+                &'a StoredPrefix<AF, M>,
                 &'a usize,
             )>,
         }
@@ -1228,28 +1225,23 @@ impl<
                  mut level: u8,
                  guard: &Guard| {
                 // HASHING FUNCTION
-                let index = Self::hash_prefix_id(id, level);
+                let index = Self::hash_prefix_id(prefix_id, level);
 
                 let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
-                if let Some(StoredPrefix {
-                    serial,
-                    super_agg_record: pfx_rec,
-                    next_bucket: next_set,
-                    ..
-                }) = unsafe { prefix_ref.assume_init_ref() }
+                if let Some(stored_prefix) = unsafe { prefix_ref.assume_init_ref() }
                     .get_stored_prefix(guard)
                 {
-                    if let Some(pfx_rec) = pfx_rec.get_record(guard) {
-                        if id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
-                            trace!("found requested prefix {:?}", id);
-                            return Some((pfx_rec, serial));
+                    if let Some(pfx_rec) = stored_prefix.super_agg_record.get_record(guard) {
+                        if prefix_id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
+                            trace!("found requested prefix {:?}", prefix_id);
+                            return Some((stored_prefix, &stored_prefix.serial));
                         };
                         level += 1;
                         (search_level.f)(
                             search_level,
-                            next_set,
+                            &stored_prefix.next_bucket,
                             level,
                             guard,
                         );
@@ -1261,7 +1253,7 @@ impl<
 
         (search_level.f)(
             &search_level,
-            self.prefixes.get_root_prefix_set(id.get_len()),
+            self.prefixes.get_root_prefix_set(prefix_id.get_len()),
             0,
             guard,
         )
