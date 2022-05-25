@@ -514,15 +514,9 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 self.cur_bucket.get_by_index(index as usize, self.guard);
             // trace!("s_pfx {:?}", s_pfx);
 
-            if let Some(StoredPrefix {
-                // serial: _serial,
-                super_agg_record: rec,
-                next_bucket,
-                ..
-            }) = s_pfx.get_stored_prefix(self.guard)
-            {
-                trace!("get_record {:?}", rec);
-                match rec.get_record(self.guard) {
+            if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
+                trace!("get_record {:?}", stored_prefix.super_agg_record);
+                match stored_prefix.super_agg_record.get_record(self.guard) {
                     Some(pfx_rec) => {
                         // There is a prefix  here, but we need to checkt if it's
                         // the right one.
@@ -538,10 +532,11 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             self.cur_bucket = self
                                 .prefixes
                                 .get_root_prefix_set(self.cur_len);
-                            return Some(pfx_rec);
+                            return Some(stored_prefix);
                         };
                         // Advance to the next level or the next len.
-                        match next_bucket
+                        match stored_prefix
+                            .next_bucket
                             .0
                             .load(Ordering::SeqCst, self.guard)
                             .is_null()
@@ -557,7 +552,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             // There's a child, move a level up and set the child
                             // as current. Length remains the same.
                             false => {
-                                self.cur_bucket = next_bucket;
+                                self.cur_bucket = &stored_prefix.next_bucket;
                                 self.cur_level += 1;
                             }
                         }
@@ -570,7 +565,8 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             self.cur_len
                         );
                         // Advance to the next level or the next len.
-                        match next_bucket
+                        match stored_prefix
+                            .next_bucket
                             .0
                             .load(Ordering::SeqCst, self.guard)
                             .is_null()
@@ -586,14 +582,18 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             // There's a child, move a level up and set the child
                             // as current. Length remains the same.
                             false => {
-                                self.cur_bucket = next_bucket;
+                                self.cur_bucket = &stored_prefix.next_bucket;
                                 self.cur_level += 1;
                             }
                         }
                     }
                 };
             } else {
-                return None;
+                trace!("no prefix at this level. Move one down.");
+                self.cur_len -= 1;
+                self.cur_level = 0;
+                self.cur_bucket =
+                    self.prefixes.get_root_prefix_set(self.cur_len);
             }
         }
     }
