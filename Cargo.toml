@@ -30,6 +30,7 @@ default = []
 
 [patch.crates-io]
 rotonda-macros = { git = "https://github.com/NLnetLabs/rotonda-macros", branch = "main" }
+routecore = { git = "https://github.com/NLnetLabs/routecore", branch = "hashed_record" }
 
 [[bin]]
 name = "cli"
