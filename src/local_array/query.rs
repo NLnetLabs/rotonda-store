@@ -1,21 +1,20 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::{info, trace};
+use log::{info, trace, warn};
 
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
-use routecore::bgp::RecordSet;
 use routecore::record::{MergeUpdate, Meta};
 
-use crate::prefix_record::InternalPrefixRecord;
-use crate::QueryResult;
+use crate::{PrefixRecordMap, QueryResult};
 
 use crate::local_array::node::TreeBitMapNode;
 use crate::local_array::tree::TreeBitMap;
 use crate::{MatchOptions, MatchType};
 
 use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
+use super::store::atomic_types::StoredPrefix;
 
 //------------ Prefix Matching ----------------------------------------------
 
@@ -34,25 +33,29 @@ where
         let result = self
             .store
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
-        trace!("more specifics iter from {:?}", result);
+        // trace!("more specifics iter from {:?}", result);
         let prefix = result.0;
         let more_specifics_vec =
             self.store.more_specific_prefix_iter_from(prefix_id, guard);
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
-                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
+                Prefix::new(
+                    pfx.prefix.get_net().into_ipaddr(),
+                    pfx.prefix.get_len(),
+                )
+                .ok()
             } else {
                 None
             },
-            prefix_meta: if let Some(pfx) = prefix {
-                Some(&pfx.0.meta)
-            } else {
-                None
-            },
+            prefix_meta: prefix
+                .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
-            more_specifics: Some(more_specifics_vec.collect()),
+            more_specifics: Some(PrefixRecordMap::into_prefix_record_map(
+                more_specifics_vec,
+                guard,
+            )),
         }
     }
 
@@ -75,17 +78,20 @@ where
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
-                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
+                Prefix::new(
+                    pfx.prefix.get_net().into_ipaddr(),
+                    pfx.prefix.get_len(),
+                )
+                .ok()
             } else {
                 None
             },
-            prefix_meta: if let Some(pfx) = prefix {
-                Some(&pfx.0.meta)
-            } else {
-                None
-            },
+            prefix_meta: prefix
+                .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
             match_type: MatchType::EmptyMatch,
-            less_specifics: less_specifics_vec.map(|iter| iter.collect()),
+            less_specifics: less_specifics_vec.map(|iter| {
+                PrefixRecordMap::into_prefix_record_map(iter, guard)
+            }),
             more_specifics: None,
         }
     }
@@ -94,10 +100,8 @@ where
         &'a self,
         prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Result<
-        impl Iterator<Item = &'a InternalPrefixRecord<AF, M>>,
-        std::io::Error,
-    > {
+    ) -> Result<impl Iterator<Item = &'a StoredPrefix<AF, M>>, std::io::Error>
+    {
         Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
     }
 
@@ -109,11 +113,10 @@ where
     ) -> QueryResult<'a, M> {
         // `non_recursive_retrieve_prefix_with_guard` return an exact match
         // only, so no longest matching prefix!
-        let mut prefix = self
+        let mut stored_prefix = self
             .store
             .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
-            .0
-            .map(|p| p.0);
+            .0;
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -121,7 +124,7 @@ where
         // empty match.
         let mut include_more_specifics = false;
         let mut include_less_specifics = false;
-        let match_type = match (&options.match_type, &prefix) {
+        let match_type = match (&options.match_type, &stored_prefix) {
             // we found an exact match, we don't need to do anything.
             (_, Some(_pfx)) => {
                 include_more_specifics = options.include_more_specifics;
@@ -131,14 +134,17 @@ where
             // we didn't find an exact match, but the user requested it
             // so we need to find the longest matching prefix.
             (MatchType::LongestMatch | MatchType::EmptyMatch, None) => {
-                prefix = self
+                warn!("less specific iter");
+                stored_prefix = self
                     .store
                     .less_specific_prefix_iter(search_pfx, guard)
-                    .max_by(|p0, p1| p0.len.cmp(&p1.len));
+                    .max_by(|p0, p1| {
+                        p0.prefix.get_len().cmp(&p1.prefix.get_len())
+                    });
                 include_more_specifics = options.include_more_specifics;
                 include_less_specifics = options.include_less_specifics;
-                trace!("LMP prefix {:?}", prefix);
-                if prefix.is_some() {
+                trace!("LMP prefix {:?}", stored_prefix);
+                if stored_prefix.is_some() {
                     MatchType::LongestMatch
                 } else {
                     MatchType::EmptyMatch
@@ -149,30 +155,23 @@ where
         };
 
         QueryResult {
-            prefix: prefix.map(move |p| p.prefix_into_pub()),
-            prefix_meta: if let Some(pfx) = prefix {
-                Some(&pfx.meta)
-            } else {
-                None
-            },
+            prefix: stored_prefix.map(move |p| p.prefix.into_pub()),
+            prefix_meta: stored_prefix
+                .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
             less_specifics: if include_less_specifics {
-                Some(
-                    self.store
-                        .less_specific_prefix_iter(
-                            if let Some(pfx) = prefix {
-                                PrefixId::new(pfx.net, pfx.len)
-                            } else {
-                                search_pfx
-                            },
-                            guard,
-                        )
-                        .collect(),
-                )
+                Some(PrefixRecordMap::into_prefix_record_map(
+                    self.store.less_specific_prefix_iter(
+                        if let Some(pfx) = stored_prefix {
+                            pfx.prefix
+                        } else {
+                            search_pfx
+                        },
+                        guard,
+                    ),
+                    guard,
+                ))
             } else if options.include_less_specifics {
-                Some(RecordSet {
-                    v4: vec![],
-                    v6: vec![],
-                })
+                Some(PrefixRecordMap::empty())
             } else {
                 None
             },
@@ -180,22 +179,26 @@ where
                 Some(
                     self.store
                         .more_specific_prefix_iter_from(
-                            if let Some(pfx) = prefix {
-                                PrefixId::new(pfx.net, pfx.len)
+                            if let Some(pfx) = stored_prefix {
+                                pfx.prefix
                             } else {
                                 search_pfx
                             },
                             guard,
                         )
+                        .map(|p| {
+                            (
+                                p.prefix.into_pub(),
+                                p.iter_latest_unique_meta_data(guard)
+                                    .collect(),
+                            )
+                        })
                         .collect(),
                 )
             // The user requested more specifics, but there aren't any, so we
             // need to return an empty vec, not a None.
             } else if options.include_more_specifics {
-                Some(RecordSet {
-                    v4: vec![],
-                    v6: vec![],
-                })
+                Some(PrefixRecordMap::empty())
             } else {
                 None
             },
@@ -251,7 +254,7 @@ where
                 }
 
                 _serial => {
-                    let prefix_meta = &self
+                    let prefix_meta = self
                         .store
                         .retrieve_prefix_with_guard(
                             PrefixId::new(AF::zero(), 0),
@@ -259,14 +262,15 @@ where
                         )
                         .unwrap()
                         .0
-                        .meta;
+                        .iter_latest_unique_meta_data(guard)
+                        .collect();
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
                             search_pfx.get_len(),
                         )
                         .ok(),
-                        prefix_meta: Some(&prefix_meta),
+                        prefix_meta: Some(prefix_meta),
                         // .meta
                         // .as_ref(),
                         match_type: MatchType::ExactMatch,
@@ -735,56 +739,65 @@ where
         // type) may end up here.
 
         let mut match_type: MatchType = MatchType::EmptyMatch;
-        let mut prefix = None;
+        let prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
             info!(
                 "prefix {}/{}",
                 pfx_idx.get_net().into_ipaddr(),
                 pfx_idx.get_len(),
             );
-            prefix = self.store.retrieve_prefix_with_guard(pfx_idx, guard); //.map(|p| PrefixId::new(p.net, p.len));
-            match_type = if prefix.unwrap().0.len == search_pfx.get_len() {
-                MatchType::ExactMatch
-            } else {
-                MatchType::LongestMatch
-            }
+            match_type =
+                match self.store.retrieve_prefix_with_guard(pfx_idx, guard) {
+                    Some(prefix) => {
+                        if prefix.0.prefix.get_len() == search_pfx.get_len() {
+                            MatchType::ExactMatch
+                        } else {
+                            MatchType::LongestMatch
+                        }
+                    }
+                    None => MatchType::EmptyMatch,
+                };
         };
 
         QueryResult {
-            prefix: if let Some(pfx) = prefix {
-                Prefix::new(pfx.0.net.into_ipaddr(), pfx.0.len).ok()
-            } else {
-                None
-            },
-            prefix_meta: if let Some(pfx) = prefix {
-                Some(&pfx.0.meta)
-            } else {
-                None
-            },
+            prefix: prefix.map(|pfx: (&StoredPrefix<AF, M>, usize)| {
+                pfx.0.prefix.into_pub()
+            }),
+            prefix_meta: prefix.map(|pfx| {
+                pfx.0.iter_latest_unique_meta_data(guard).collect()
+            }),
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
-                    vec.iter()
-                        .map(move |p| self.store.retrieve_prefix(*p).unwrap())
-                        .collect::<RecordSet<'a, M>>()
+                    PrefixRecordMap::into_prefix_record_map(
+                        vec.iter().map(move |p| {
+                            self.store
+                                .retrieve_prefix_with_guard(*p, guard)
+                                .unwrap()
+                                .0
+                        }),
+                        guard,
+                    )
                 })
             } else {
                 None
             },
             more_specifics: if options.include_more_specifics {
                 more_specifics_vec.map(|vec| {
-                    vec.into_iter()
-                        .map(|p| {
-                            self.store.retrieve_prefix(p).unwrap_or_else(
-                                || {
+                    PrefixRecordMap::into_prefix_record_map(
+                        vec.into_iter().map(|p| {
+                            self.store
+                                .retrieve_prefix_with_guard(p, guard)
+                                .unwrap_or_else(|| {
                                     panic!(
                                         "more specific {:?} does not exist",
                                         p
                                     )
-                                },
-                            )
-                        })
-                        .collect()
+                                })
+                                .0
+                        }),
+                        guard,
+                    )
                 })
             } else {
                 None

@@ -1,7 +1,13 @@
+use std::collections::HashMap;
 use std::{fmt, slice};
 
+use crossbeam_epoch::{self as epoch};
+use epoch::Guard;
+
+use crate::local_array::store::atomic_types::StoredPrefix;
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
+use routecore::bgp::MetaDataSet;
 use routecore::{
     addr::Prefix,
     bgp::{PrefixRecord, RecordSet},
@@ -136,16 +142,10 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
             let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PrefixRecord::new(
-                        u_pfx,
-                        &pfx.meta,
-                    ));
+                    v4.push(PrefixRecord::new(u_pfx, &pfx.meta));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PrefixRecord::new(
-                        u_pfx,
-                        &pfx.meta,
-                    ));
+                    v6.push(PrefixRecord::new(u_pfx, &pfx.meta));
                 }
             }
         }
@@ -190,20 +190,93 @@ impl<'a, Meta: routecore::record::Meta> Iterator
     }
 }
 
+//------------- PrefixRecordMap ---------------------------------------------
+
+// A HashMap that's keyed on prefix and contains multiple meta-data instances
+
+#[derive(Debug, Clone)]
+pub struct PrefixRecordMap<'a, M: routecore::record::Meta>(
+    HashMap<Prefix, MetaDataSet<'a, M>>,
+);
+
+impl<'a, M: routecore::record::Meta> PrefixRecordMap<'a, M> {
+    pub fn new(prefix: Prefix, meta_data_set: MetaDataSet<'a, M>) -> Self {
+        let mut map = HashMap::new();
+        map.insert(prefix, meta_data_set);
+        Self(map)
+    }
+
+    pub fn empty() -> Self {
+        Self(HashMap::new())
+    }
+
+    pub fn into_prefix_record_map<AF: AddressFamily + 'a>(
+        iter: impl Iterator<Item = &'a StoredPrefix<AF, M>>,
+        guard: &'a Guard,
+    ) -> Self {
+        let mut map = HashMap::new();
+        for rec in iter {
+            map.entry(rec.prefix.into_pub()).or_insert_with(|| {
+                rec.iter_latest_unique_meta_data(guard)
+                    .collect::<MetaDataSet<'a, M>>()
+            });
+        }
+        Self(map)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (&Prefix, &MetaDataSet<'a, M>)> {
+        self.0.iter()
+    }
+}
+
+impl<'a, M: routecore::record::Meta>
+    std::iter::FromIterator<(Prefix, MetaDataSet<'a, M>)>
+    for PrefixRecordMap<'a, M>
+{
+    fn from_iter<I: IntoIterator<Item = (Prefix, MetaDataSet<'a, M>)>>(
+        iter: I,
+    ) -> Self {
+        let mut map = PrefixRecordMap::empty();
+        for (prefix, meta_data_set) in iter {
+            map.0.entry(prefix).or_insert(meta_data_set);
+        }
+        map
+    }
+}
+
+impl<'a, M: routecore::record::Meta> std::fmt::Display
+    for PrefixRecordMap<'a, M>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (pfx, meta) in self.0.iter() {
+            writeln!(f, "{} {}", pfx, meta)?;
+        }
+        Ok(())
+    }
+}
+
 //------------- QueryResult -------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<'a, Meta: routecore::record::Meta> {
+pub struct QueryResult<'a, M: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
-    pub prefix_meta: Option<&'a Meta>,
-    pub less_specifics: Option<RecordSet<'a, Meta>>,
-    pub more_specifics: Option<RecordSet<'a, Meta>>,
+    pub prefix_meta: Option<MetaDataSet<'a, M>>,
+    pub less_specifics: Option<PrefixRecordMap<'a, M>>,
+    pub more_specifics: Option<PrefixRecordMap<'a, M>>,
 }
 
-impl<'a, Meta: routecore::record::Meta> fmt::Display
-    for QueryResult<'a, Meta>
-{
+impl<'a, M: routecore::record::Meta> fmt::Display for QueryResult<'a, M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),
@@ -220,12 +293,12 @@ impl<'a, Meta: routecore::record::Meta> fmt::Display
             pfx_str,
             pfx_meta_str,
             if let Some(ls) = self.less_specifics.as_ref() {
-                format!("{}", ls)
+                ls.0.iter().map(|(k, v)| format!("{} -> {:?}", k, v)).collect::<Vec<_>>().join("\n")
             } else {
                 "".to_string()
             },
             if let Some(ms) = self.more_specifics.as_ref() {
-                format!("{}", ms)
+                ms.0.iter().map(|(k, v)| format!("{} -> {:?}", k, v)).collect::<Vec<_>>().join("\n")
             } else {
                 "".to_string()
             },
