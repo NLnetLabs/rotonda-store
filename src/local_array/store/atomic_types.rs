@@ -5,6 +5,7 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use log::{info, trace};
 
 use epoch::{Guard, Owned};
+use routecore::bgp::PrefixRecord;
 use std::marker::PhantomData;
 
 use crate::local_array::tree::*;
@@ -56,6 +57,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 // It contains a super_agg_record that is supposed to hold counters for the
 // records that are stored inside it, so that iterators over its linked lists
 // don't have to go into them if there's nothing there and could stop early.
+#[derive(Debug)]
 pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
     // the serial number
     pub serial: usize,
@@ -168,30 +170,39 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         let start_r = self.next_agg_record.load(Ordering::SeqCst, guard);
 
         match start_r.is_null() {
-            true => None,
-            false => Some(AggRecordIterator {
-                current: unsafe { start_r.deref() },
-                guard,
-            }),
+            true => {
+                trace!("no record");
+                None
+            }
+            false => {
+                let rec = unsafe { start_r.deref() };
+                trace!("agg_record {:?}", rec);
+                Some(AggRecordIterator {
+                    current: Some(rec),
+                    guard,
+                })
+            }
         }
         .into_iter()
         .flatten()
     }
 
-    pub(crate) fn get_latest_unique_records<'a>(
+    pub(crate) fn iter_latest_unique_meta_data<'a>(
         &'a self,
         guard: &'a epoch::Guard,
-    ) -> Vec<&'a InternalPrefixRecord<AF, M>> {
-        let mut records = Vec::new();
-        for agg_r in self.iter_agg_records(guard) {
-            // We're only trying once to get the most recent record:
-            // receiving a None from get_most_recent_record indicates that
-            // the record is busy being written to.
-            if let Some(agg_r) = agg_r.get_last_record(guard) {
-                records.push(agg_r);
-            }
-        }
-        records
+    ) -> impl Iterator<Item = &'a M> {
+        trace!("iter_latest {:?}", self);
+        self.iter_agg_records(guard)
+            .inspect(|p| trace!("pp {:?}", p))
+            .filter_map(|p| p.get_last_record(guard).map(|r| &r.meta))
+    }
+
+    pub fn iter_latest_unique_pub_records<'a>(
+        &'a self,
+        guard: &'a epoch::Guard,
+    ) -> impl Iterator<Item = PrefixRecord<'a, M>> {
+        self.iter_agg_records(guard)
+            .filter_map(|p| p.get_last_record(guard).map(|p| p.into()))
     }
 }
 
@@ -246,6 +257,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
 // This is the second-level struct that's linked from the `StoredPrefix` top-
 // level struct. It has an aggregated record field that holds counters and
 // other aggregated data for the records that are stored inside it.
+#[derive(Debug)]
 pub(crate) struct StoredAggRecord<
     AF: AddressFamily,
     M: routecore::record::Meta,
@@ -288,12 +300,20 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         &self,
         guard: &'a Guard,
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
+        trace!("get_last_record {:?}", self);
         let next_record = self.next_record.load(Ordering::SeqCst, guard);
         // Note that an Atomic::null() indicates that a thread is busy creating it.
         // It's the responsability of the caller to retry if it wants that data.
         match next_record.is_null() {
-            true => None,
-            false => Some(unsafe { &next_record.deref().record }),
+            true => {
+                trace!("no last record");
+                None
+            }
+            false => {
+                let rec = unsafe { &next_record.deref().record };
+                trace!("last_record {:?}", rec);
+                Some(rec)
+            }
         }
     }
 
