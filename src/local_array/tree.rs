@@ -104,6 +104,13 @@ impl<AF: AddressFamily> PrefixId<AF> {
         self.0.unwrap().1
     }
 
+    // This should never fail, since there shouldn't be a invalid prefix in
+    // this prefix id in the first place.
+    pub fn into_pub(&self) -> routecore::addr::Prefix {
+        routecore::addr::Prefix::new(self.get_net().into_ipaddr(), self.get_len())
+            .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
+    }
+
     // Increment the length of the prefix without changing the bits part.
     // This is used to iterate over more-specific prefixes for this prefix,
     // since the more specifics iterator includes the requested `base_prefix`
