@@ -107,7 +107,6 @@ mod tests {
     fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
         let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
         let pfxs = vec![
-            
             // 0-7
             Prefix::new_relaxed(
                 0b1111_1111_1111_1111_1111_1111_1000_0000_u128.into_ipaddr(),
@@ -207,8 +206,8 @@ mod tests {
                 0b1111_1111_1111_1111_1111_1111_1010_0111_u128.into_ipaddr(),
                 128,
             ),
-             // 32-21
-             Prefix::new_relaxed(
+            // 32-21
+            Prefix::new_relaxed(
                 0b1111_1111_1111_1111_1111_1111_1011_0000_u128.into_ipaddr(),
                 128,
             ),
@@ -455,8 +454,7 @@ mod tests {
                 64,
             ),
             Prefix::new_relaxed(
-                std::net::Ipv6Addr::new(2006, 193, 10, 10, 0, 0, 0, 0)
-                    .into(),
+                std::net::Ipv6Addr::new(2006, 193, 10, 10, 0, 0, 0, 0).into(),
                 32,
             ),
             Prefix::new_relaxed(
@@ -550,22 +548,18 @@ mod tests {
         let less_specifics = res.less_specifics.unwrap();
 
         assert!(less_specifics.iter().any(|r| {
-            r.prefix
-                == Prefix::new(
-                    std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0)
-                        .into(),
-                    48,
-                )
-                .unwrap()
+            *r.0 == Prefix::new(
+                std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0).into(),
+                48,
+            )
+            .unwrap()
         }));
         assert!(less_specifics.iter().any(|r| {
-            r.prefix
-                == Prefix::new(
-                    std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0)
-                        .into(),
-                    32,
-                )
-                .unwrap()
+            *r.0 == Prefix::new(
+                std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0).into(),
+                32,
+            )
+            .unwrap()
         }));
         Ok(())
     }

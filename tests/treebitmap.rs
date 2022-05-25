@@ -340,22 +340,19 @@ mod tests {
         let less_specifics = res.less_specifics.unwrap();
 
         assert!(less_specifics.iter().any(|r| {
-            r.prefix
-                == Prefix::new(
-                    std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                    16,
-                )
-                .unwrap()
+            *r.0 == Prefix::new(
+                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
+                16,
+            )
+            .unwrap()
         }));
-        assert!(
-            less_specifics.iter().any(|r| {
-                r.prefix
-                    == Prefix::new(
-                        std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                        4,
-                    ).unwrap()
-            })
-        );
+        assert!(less_specifics.iter().any(|r| {
+            *r.0 == Prefix::new(
+                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
+                4,
+            )
+            .unwrap()
+        }));
         Ok(())
     }
 

@@ -181,7 +181,7 @@ mod tests {
 
                 let result_pfx = more_specifics
                     .iter()
-                    .find(|pfx| pfx.prefix == pfxs[*i].unwrap());
+                    .find(|pfx| *pfx.0 == pfxs[*i].unwrap());
                 assert!(result_pfx.is_some());
             }
             println!("-----------");
