@@ -81,7 +81,7 @@ mod tests {
                                 .into(),
                             s_len,
                         );
-                        print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
+                        // print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
                         let res = tree_bitmap.match_prefix(
                             &pfx.unwrap(),
                             &MatchOptions {
@@ -92,13 +92,14 @@ mod tests {
                             guard
                         );
                         if let Some(_pfx) = res.prefix {
-                            println!("_pfx {:?}", _pfx);
-                            println!("pfx {:?}", pfx);
-                            println!("{:#?}", res);
+                            // println!("_pfx {:?}", _pfx);
+                            // println!("pfx {:?}", pfx);
+                            // println!("{:#?}", res);
                             assert!(_pfx.len() <= pfx.unwrap().len());
                             assert!(_pfx.addr() <= pfx.unwrap().addr());
                             found_counter += 1;
                         } else {
+                            println!("not found {:?}", if let Ok(e) = pfx { e.to_string() } else { "ok".to_string() });
                             not_found_counter += 1;
                         }
                     });
