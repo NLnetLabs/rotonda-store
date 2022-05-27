@@ -217,8 +217,8 @@ pub(crate) struct SuperAggRecordExample<
 > where
     Self: routecore::record::Meta,
 {
-    last: M,
-    total_count: usize,
+    _last: M,
+    _total_count: usize,
     _af: PhantomData<AF>,
 }
 
@@ -257,13 +257,14 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
 // This is the second-level struct that's linked from the `StoredPrefix` top-
 // level struct. It has an aggregated record field that holds counters and
 // other aggregated data for the records that are stored inside it.
+#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct StoredAggRecord<
     AF: AddressFamily,
     M: routecore::record::Meta,
 > {
     // the aggregated meta-data for this prefix and hash_id.
-    pub(crate) agg_record: Atomic<InternalPrefixRecord<AF, M>>,
+    pub agg_record: Atomic<InternalPrefixRecord<AF, M>>,
     // the reference to the next record for this prefix and the same hash_id.
     pub(crate) next_record: Atomic<LinkedListRecord<AF, M>>,
     // the reference to the next record for this prefix and another hash_id.
@@ -499,12 +500,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     AtomicStoredPrefix<AF, Meta>
 {
     pub(crate) fn empty() -> Self {
-        // AtomicStoredPrefix(Atomic::new(StoredPrefix {
-        //     serial: 0,
-        //     super_agg_record: AtomicInternalPrefixRecord::empty(),
-        //     next_bucket: PrefixSet::empty(),
-        //     next_agg_record: Atomic::null(),
-        // }))
         AtomicStoredPrefix(Atomic::null())
     }
 
@@ -557,7 +552,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         }
     }
 
-    pub(crate) fn get_agg_record<'a>(
+    pub fn get_agg_record<'a>(
         &'a self,
         guard: &'a Guard,
     ) -> Option<&InternalPrefixRecord<AF, Meta>> {
@@ -644,44 +639,44 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
 
 // ----------  AtomicInternalPrefixRecord -----------------------------------
 
-pub(crate) struct AtomicInternalPrefixRecord<
-    AF: AddressFamily,
-    M: routecore::record::Meta,
->(Atomic<InternalPrefixRecord<AF, M>>);
+// pub(crate) struct AtomicInternalPrefixRecord<
+//     AF: AddressFamily,
+//     M: routecore::record::Meta,
+// >(Atomic<InternalPrefixRecord<AF, M>>);
 
-impl<AF: AddressFamily, M: routecore::record::Meta>
-    AtomicInternalPrefixRecord<AF, M>
-{
-    pub(crate) fn empty() -> Self {
-        Self(Atomic::null())
-    }
+// impl<AF: AddressFamily, M: routecore::record::Meta>
+//     AtomicInternalPrefixRecord<AF, M>
+// {
+//     pub fn empty() -> Self {
+//         Self(Atomic::null())
+//     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        let guard = &epoch::pin();
-        let pfx = self.0.load(Ordering::Relaxed, guard);
-        pfx.is_null()
-    }
+//     pub(crate) fn is_empty(&self) -> bool {
+//         let guard = &epoch::pin();
+//         let pfx = self.0.load(Ordering::Relaxed, guard);
+//         pfx.is_null()
+//     }
 
-    pub(crate) fn get_record<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&InternalPrefixRecord<AF, M>> {
-        let pfx = self.0.load(Ordering::Relaxed, guard);
-        match pfx.is_null() {
-            true => None,
-            false => Some(unsafe { pfx.deref() }),
-        }
-    }
-}
+//     pub(crate) fn get_record<'a>(
+//         &'a self,
+//         guard: &'a Guard,
+//     ) -> Option<&InternalPrefixRecord<AF, M>> {
+//         let pfx = self.0.load(Ordering::Relaxed, guard);
+//         match pfx.is_null() {
+//             true => None,
+//             false => Some(unsafe { pfx.deref() }),
+//         }
+//     }
+// }
 
-impl<AF: AddressFamily, M: routecore::record::Meta>
-    std::convert::From<crossbeam_epoch::Atomic<InternalPrefixRecord<AF, M>>>
-    for AtomicInternalPrefixRecord<AF, M>
-{
-    fn from(p: crossbeam_epoch::Atomic<InternalPrefixRecord<AF, M>>) -> Self {
-        unsafe { std::mem::transmute(p) }
-    }
-}
+// impl<AF: AddressFamily, M: routecore::record::Meta>
+//     std::convert::From<crossbeam_epoch::Atomic<InternalPrefixRecord<AF, M>>>
+//     for AtomicInternalPrefixRecord<AF, M>
+// {
+//     fn from(p: crossbeam_epoch::Atomic<InternalPrefixRecord<AF, M>>) -> Self {
+//         unsafe { std::mem::transmute(p) }
+//     }
+// }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
 //
