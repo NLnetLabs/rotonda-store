@@ -356,7 +356,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         trace!("New record: {}", record);
         let guard = &epoch::pin();
         let mut inner_next_record =
-            self.next_record.load(Ordering::SeqCst, guard);
+            self.next_record.load(Ordering::Acquire, guard);
         trace!("Existing record {:?}", inner_next_record);
         let tag = inner_next_record.tag();
         let new_inner_next_record = Owned::new(LinkedListRecord {
@@ -369,8 +369,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
             let next_record = self.next_record.compare_exchange(
                 inner_next_record,
                 new_inner_next_record.with_tag(tag + 1),
-                Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::AcqRel,
+                Ordering::Acquire,
                 guard,
             );
 
