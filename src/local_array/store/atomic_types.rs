@@ -263,11 +263,11 @@ pub(crate) struct StoredAggRecord<
     M: routecore::record::Meta,
 > {
     // the aggregated meta-data for this prefix and hash_id.
-    pub agg_record: Atomic<InternalPrefixRecord<AF, M>>,
+    pub(crate) agg_record: Atomic<InternalPrefixRecord<AF, M>>,
     // the reference to the next record for this prefix and the same hash_id.
     pub(crate) next_record: Atomic<LinkedListRecord<AF, M>>,
     // the reference to the next record for this prefix and another hash_id.
-    pub next_agg: Atomic<StoredAggRecord<AF, M>>,
+    pub(crate) next_agg: Atomic<StoredAggRecord<AF, M>>,
 }
 
 impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
