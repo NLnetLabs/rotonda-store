@@ -13,7 +13,6 @@ use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
 
 use crate::AddressFamily;
-use routecore::record::Meta;
 
 // ----------- Node related structs -----------------------------------------
 
@@ -719,12 +718,6 @@ where
 pub struct PrefixSet<AF: AddressFamily, M: routecore::record::Meta>(
     pub Atomic<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>,
 );
-
-impl<AF: AddressFamily, M: Meta> std::fmt::Display for PrefixSet<AF, M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "{}", self)
-    }
-}
 
 impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
