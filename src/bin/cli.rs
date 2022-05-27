@@ -65,6 +65,8 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+    
+    #[cfg(feature = "cli")]
     env_logger::init();
 
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];

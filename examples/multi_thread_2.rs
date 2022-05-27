@@ -9,7 +9,10 @@ use rotonda_store::{
 use rotonda_store::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
+
+    #[cfg(feature = "cli")]
     env_logger::init();
+
     trace!("Starting multi-threaded yolo testing....");
     let tree_bitmap = Arc::new(MultiThreadedStore::<PrefixAs>::new());
     let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
