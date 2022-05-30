@@ -62,7 +62,7 @@ pub(crate) struct PrefixIter<
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for PrefixIter<'a, AF, M, PB>
 {
-    type Item = &'a InternalPrefixRecord<AF, M>;
+    type Item = (routecore::addr::Prefix, &'a M);
 
     fn next(&mut self) -> Option<Self::Item> {
         info!(
@@ -203,7 +203,10 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     if let Some(prefix) = s_pfx.get_last_record(self.guard) {
                         // There's a prefix here, that's the next one
                         info!("D. found prefix {:?}", prefix);
-                        return Some(prefix);
+                        return Some((
+                            s_pfx.get_prefix_id().into_pub(),
+                            prefix,
+                        ));
                     } else {
                         panic!("No prefix here, but there's a child here?");
                     }
@@ -216,7 +219,10 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         // There's a prefix here, that's the next one
                         info!("E. found prefix {:?}", prefix);
                         self.cursor += 1;
-                        return Some(prefix);
+                        return Some((
+                            s_pfx.get_prefix_id().into_pub(),
+                            prefix,
+                        ));
                     }
                 }
             };
@@ -754,7 +760,7 @@ impl<
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
+    ) -> impl Iterator<Item = (Prefix, &'a M)> {
         PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),

@@ -477,7 +477,7 @@ impl<
                             let next_record = inner_next_agg_record
                                 .next_record
                                 .load(Ordering::SeqCst, guard);
-                            let rec_hash_id = record.get_hash_id();
+                            let rec_hash_id = record.meta.get_hash_id();
                             match next_record.is_null() {
                                 true => {
                                     trace!("add record in the list (first entry).");
@@ -515,7 +515,7 @@ impl<
                                                 );
                                                 inner_next_agg_record
                                                     .atomic_prepend_record(
-                                                        record,
+                                                        record.meta,
                                                     );
                                                 return Ok(());
                                             }

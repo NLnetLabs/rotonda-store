@@ -6,6 +6,7 @@ use log::{info, trace};
 
 use epoch::{Guard, Owned};
 use routecore::bgp::PrefixRecord;
+use routecore::record::Record;
 use std::marker::PhantomData;
 
 use crate::local_array::tree::*;
@@ -193,15 +194,21 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         trace!("iter_latest {:?}", self);
         self.iter_agg_records(guard)
             .inspect(|p| trace!("pp {:?}", p))
-            .filter_map(|p| p.get_last_record(guard).map(|r| &r.meta))
+            .filter_map(|p| p.get_last_record(guard))
     }
 
     pub fn iter_latest_unique_pub_records<'a>(
         &'a self,
         guard: &'a epoch::Guard,
     ) -> impl Iterator<Item = PrefixRecord<'a, M>> {
-        self.iter_agg_records(guard)
-            .filter_map(|p| p.get_last_record(guard).map(|p| p.into()))
+        self.iter_agg_records(guard).filter_map(|p| {
+            p.get_last_record(guard).map(|meta| {
+                routecore::bgp::PrefixRecord::new(
+                    self.prefix.into_pub(),
+                    meta,
+                )
+            })
+        })
     }
 }
 
@@ -265,7 +272,7 @@ pub(crate) struct StoredAggRecord<
     // the aggregated meta-data for this prefix and hash_id.
     pub agg_record: Atomic<InternalPrefixRecord<AF, M>>,
     // the reference to the next record for this prefix and the same hash_id.
-    pub(crate) next_record: Atomic<LinkedListRecord<AF, M>>,
+    pub(crate) next_record: Atomic<LinkedListRecord<M>>,
     // the reference to the next record for this prefix and another hash_id.
     pub(crate) next_agg: Atomic<StoredAggRecord<AF, M>>,
 }
@@ -291,7 +298,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
         StoredAggRecord {
             agg_record: Atomic::new(new_agg_record),
-            next_record: Atomic::new(LinkedListRecord::new(record)),
+            next_record: Atomic::new(LinkedListRecord::new(record.meta)),
             next_agg: Atomic::null(),
         }
     }
@@ -299,7 +306,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
     pub(crate) fn get_last_record<'a>(
         &self,
         guard: &'a Guard,
-    ) -> Option<&'a InternalPrefixRecord<AF, M>> {
+    ) -> Option<&'a M> {
         trace!("get_last_record {:?}", self);
         let next_record = self.next_record.load(Ordering::SeqCst, guard);
         // Note that an Atomic::null() indicates that a thread is busy creating it.
@@ -349,10 +356,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
     // only 'normal', non-aggegation records need to be prependend, so that
     // the most recent record is the first in the list.
-    pub(crate) fn atomic_prepend_record(
-        &mut self,
-        record: InternalPrefixRecord<AF, M>,
-    ) {
+    pub(crate) fn atomic_prepend_record(&mut self, record: M) {
         trace!("New record: {}", record);
         let guard = &epoch::pin();
         let mut inner_next_record =
@@ -427,17 +431,15 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
 // a link to (a list) of another one, if any.
 #[derive(Debug)]
 pub(crate) struct LinkedListRecord<
-    AF: AddressFamily,
+    // AF: AddressFamily,
     M: routecore::record::Meta,
 > {
-    record: InternalPrefixRecord<AF, M>,
-    prev: Atomic<LinkedListRecord<AF, M>>,
+    record: M,
+    prev: Atomic<LinkedListRecord<M>>,
 }
 
-impl<'a, AF: AddressFamily, M: routecore::record::Meta>
-    LinkedListRecord<AF, M>
-{
-    fn new(record: InternalPrefixRecord<AF, M>) -> Self {
+impl<'a, M: routecore::record::Meta> LinkedListRecord<M> {
+    fn new(record: M) -> Self {
         LinkedListRecord {
             record,
             prev: Atomic::null(),
@@ -447,7 +449,7 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta>
     pub(crate) fn iter(
         &'a self,
         guard: &'a Guard,
-    ) -> LinkedListIterator<'a, AF, M> {
+    ) -> LinkedListIterator<'a, M> {
         LinkedListIterator {
             current: Some(self),
             guard,
@@ -457,17 +459,17 @@ impl<'a, AF: AddressFamily, M: routecore::record::Meta>
 
 pub(crate) struct LinkedListIterator<
     'a,
-    AF: AddressFamily + 'a,
+    // AF: AddressFamily + 'a,
     M: routecore::record::Meta + 'a,
 > {
-    current: Option<&'a LinkedListRecord<AF, M>>,
+    current: Option<&'a LinkedListRecord<M>>,
     guard: &'a Guard,
 }
 
-impl<'a, AF: AddressFamily, M: routecore::record::Meta> std::iter::Iterator
-    for LinkedListIterator<'a, AF, M>
+impl<'a, M: routecore::record::Meta> std::iter::Iterator
+    for LinkedListIterator<'a, M>
 {
-    type Item = &'a InternalPrefixRecord<AF, M>;
+    type Item = &'a M;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.current {
@@ -567,7 +569,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     pub(crate) fn get_last_record<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> Option<&InternalPrefixRecord<AF, Meta>> {
+    ) -> Option<&Meta> {
         self.get_stored_prefix(guard)
             .and_then(|stored_prefix| unsafe {
                 stored_prefix
