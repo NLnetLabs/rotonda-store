@@ -1,10 +1,6 @@
+use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
-use std::{
-    cmp::Ordering,
-    collections::hash_map::DefaultHasher,
-    hash::Hasher,
-};
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
 use routecore::record::{MergeUpdate, Meta, Record};
@@ -41,19 +37,12 @@ where
     ) -> InternalPrefixRecord<AF, M> {
         Self { net, len, meta }
     }
+
     // This should never fail, since there shouldn't be a invalid prefix in
     // this record in the first place.
     pub fn prefix_into_pub(&self) -> routecore::addr::Prefix {
         routecore::addr::Prefix::new(self.net.into_ipaddr(), self.len)
             .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
-    }
-
-    pub fn get_hash_id(&self) -> u64 {
-        // The actual hash should be defined by implementing the Hash trait
-        // on the Meta type
-        let mut s = DefaultHasher::new();
-        self.meta.hash(&mut s);
-        s.finish()
     }
 
     pub fn get_prefix_id(&self) -> PrefixId<AF> {
