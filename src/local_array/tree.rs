@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{info, trace};
+use log::{info, trace, warn, log_enabled};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
@@ -249,7 +249,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
     // 5. check the result of update_serial(). When succesful, we're done,
     //    otherwise, rollback the work result & repeat from step 1.
     pub fn get_serial(&self) -> usize {
-        let serial = self.serial.load(Ordering::Relaxed);
+        let serial = self.serial.load(Ordering::Acquire);
         std::sync::atomic::fence(Ordering::Acquire);
         serial
     }
@@ -262,8 +262,8 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         self.serial.compare_exchange(
             current_serial,
             current_serial + 1,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::AcqRel,
+            Ordering::Acquire,
         )
     }
 
@@ -275,21 +275,21 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         self.index.compare_exchange(
             0,
             index,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::AcqRel,
+            Ordering::Acquire,
         )
     }
 
     pub fn is_empty(&self) -> bool {
-        self.serial.load(Ordering::Relaxed) == 0
+        self.serial.load(Ordering::Acquire) == 0
     }
 
     pub fn into_inner(self) -> (StrideType, Option<u32>) {
-        match self.serial.load(Ordering::Relaxed) {
+        match self.serial.load(Ordering::SeqCst) {
             0 => (self.stride_type, None),
             _ => (
                 self.stride_type,
-                Some(self.index.load(Ordering::Relaxed) as u32),
+                Some(self.index.load(Ordering::SeqCst) as u32),
             ),
         }
     }
@@ -310,7 +310,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
 
 impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
     fn from(id: AtomicStrideNodeId<AF>) -> Self {
-        id.index.load(Ordering::Relaxed) as usize
+        id.index.load(Ordering::Acquire) as usize
     }
 }
 
@@ -487,6 +487,9 @@ impl<
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
             let guard = &epoch::pin();
+            // used for counting the number of reloads the
+            // match_node_for_strides macro will tolerate.
+            let mut i = 0;
 
             let next_node_idx = match_node_for_strides![
                 // applicable to the whole outer match in the macro
@@ -500,6 +503,7 @@ impl<
                 stride;
                 cur_i;
                 level;
+                i;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
                 Stride4; 1,

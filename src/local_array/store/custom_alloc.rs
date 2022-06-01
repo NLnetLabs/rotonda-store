@@ -93,13 +93,12 @@
 //
 use std::{
     fmt::Debug,
-    mem::MaybeUninit,
     sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{trace, warn};
+use log::{trace, warn, error, debug, log_enabled};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
@@ -165,7 +164,7 @@ impl<
         StrideNodeId::new_with_cleaned_id(prefix_net, sub_prefix_len)
     }
 
-    // Create a new node in the store with paylaod `next_node`.
+    // Create a new node in the store with payload `next_node`.
     //
     // Next node will be ignored if a node with the same `id` already exists.
     #[allow(clippy::type_complexity)]
@@ -187,7 +186,10 @@ impl<
         let search_level_4 = impl_write_level![Stride4; id;];
         let search_level_5 = impl_write_level![Stride5; id;];
 
-        trace!("insert node {}: {:?}", id, next_node);
+        if log_enabled!(log::Level::Debug) {
+            debug!("{} insert node {}: {:?}", 
+                std::thread::current().name().unwrap(), id, next_node);
+        }
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
@@ -1035,7 +1037,7 @@ impl<
 
                 trace!("retrieve prefix with guard");
 
-                let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
+                let prefixes = prefix_set.0.load(Ordering::Acquire, guard);
                 trace!(
                     "prefixes at level {}? {:?}",
                     level,
@@ -1169,7 +1171,7 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            let mut prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
+            let mut prefixes = prefix_set.0.load(Ordering::Acquire, guard);
             let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
             if let Some(pfx_rec) //StoredPrefix {
                 // serial,
@@ -1227,7 +1229,7 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-                let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
+                let prefixes = prefix_set.0.load(Ordering::Acquire, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
                 if let Some(stored_prefix) = unsafe { prefix_ref.assume_init_ref() }

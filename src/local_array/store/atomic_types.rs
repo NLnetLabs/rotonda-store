@@ -17,9 +17,10 @@ use crate::AddressFamily;
 
 // ----------- Node related structs -----------------------------------------
 
+#[allow(clippy::type_complexity)]
 #[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
-    pub Atomic<[MaybeUninit<StoredNode<AF, S>>]>,
+    pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
 );
 
 #[derive(Debug)]
@@ -41,10 +42,11 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
-        info!("creating space for {} nodes", &size);
-        let mut l = Owned::<[MaybeUninit<StoredNode<AF, S>>]>::init(size);
+        info!("creating space for {} nodes!", &size);
+        let mut l =
+            Owned::<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>::init(size);
         for i in 0..size {
-            l[i] = MaybeUninit::new(StoredNode::Empty);
+            l[i] = MaybeUninit::new(Atomic::new(StoredNode::Empty));
         }
         NodeSet(l.into())
     }
@@ -506,12 +508,12 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
 
     pub(crate) fn is_empty(&self) -> bool {
         let guard = &epoch::pin();
-        let pfx = self.0.load(Ordering::Relaxed, guard);
+        let pfx = self.0.load(Ordering::Acquire, guard);
         pfx.is_null()
             || unsafe { pfx.deref() }
                 .super_agg_record
                 .0
-                .load(Ordering::Relaxed, guard)
+                .load(Ordering::Acquire, guard)
                 .is_null()
     }
 
@@ -519,7 +521,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let pfx = self.0.load(Ordering::SeqCst, guard);
+        let pfx = self.0.load(Ordering::Acquire, guard);
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref() }),
@@ -530,7 +532,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a mut StoredPrefix<AF, Meta>> {
-        let mut pfx = self.0.load(Ordering::SeqCst, guard);
+        let mut pfx = self.0.load(Ordering::Acquire, guard);
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref_mut() }),
@@ -540,7 +542,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::Relaxed, guard).into_owned() }.serial
+        unsafe { self.0.load(Ordering::Acquire, guard).into_owned() }.serial
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
@@ -594,7 +596,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
             if !&stored_prefix
                 .next_bucket
                 .0
-                .load(Ordering::Relaxed, guard)
+                .load(Ordering::Acquire, guard)
                 .is_null()
             {
                 Some(&stored_prefix.next_bucket)
@@ -738,7 +740,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         ) -> usize {
             let mut size: usize = 0;
             let guard = &epoch::pin();
-            let start_set = start_set.0.load(Ordering::Relaxed, guard);
+            let start_set = start_set.0.load(Ordering::Acquire, guard);
             for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty() {
@@ -766,9 +768,9 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         index: usize,
         guard: &'a Guard,
     ) -> &'a AtomicStoredPrefix<AF, M> {
-        assert!(!self.0.load(Ordering::Relaxed, guard).is_null());
+        assert!(!self.0.load(Ordering::Acquire, guard).is_null());
         unsafe {
-            self.0.load(Ordering::Relaxed, guard).deref()[index as usize]
+            self.0.load(Ordering::Acquire, guard).deref()[index as usize]
                 .assume_init_ref()
         }
     }

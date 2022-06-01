@@ -15,6 +15,7 @@ macro_rules! match_node_for_strides {
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
         $level: expr;
+        $i: expr;
         // $enum: ident;
         // The strides to generate match arms for,
         // $variant is the name of the enum varian (Stride[3..8]) and
@@ -63,8 +64,9 @@ macro_rules! match_node_for_strides {
                                     // store the new node in the global store
                                     // let i: StrideNodeId<Store::AF>;
                                     // if $self.strides[($level + 1) as usize] != $stride_len {
-                                    let i = $self.store.store_node(new_id, n).unwrap();
-                                    break Some(i)
+                                    // store_node may return None, which means that another thread
+                                    // is busy creating the node.
+                                    break $self.store.store_node(new_id, n)
                                 }
                                 NewNodeOrIndex::ExistingNode(i) => {
                                     // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
@@ -80,13 +82,23 @@ macro_rules! match_node_for_strides {
                                 }
                             }   // end of eval_node_or_prefix_at
                         }
-                    )*,    
+                    )*,
                 }
             } else {
                 // BACKOFF SHOULD BE IMPLEMENTED HERE.
-                trace!("Couldn't load id {} from store l{}. Trying again.",
-                        $cur_i,
-                        $self.store.get_stride_sizes()[$level as usize]);
+                if log_enabled!(log::Level::Warn) {
+                    warn!("{} Couldn't load id {} from store l{}. Trying again.",
+                            std::thread::current().name().unwrap(),
+                            $cur_i,
+                            $self.store.get_stride_sizes()[$level as usize]);
+                }
+                $i += 1;
+                // THIS IS A FAIRLY ARBITRARY NUMBER.
+                // We're giving up after a number of tries.
+                if $i >= 24 {
+                    warn!("STOP LOOPING {}", $cur_i);
+                    break None;
+                }
             }
         }
     };
@@ -190,11 +202,11 @@ macro_rules! impl_search_level {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
                         // trace!("this node {:?}", this_node);
-                        match unsafe { this_node.assume_init_ref() } {
+                        match unsafe { this_node.assume_init_ref().load(Ordering::Acquire, guard).deref() } {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
-                            // hashing everywhere, this may be very well a node                            
+                            // hashing everywhere, this may be very well a node
                             // we're not searching for, so check that.
                             StoredNode::NodeWithRef((node_id, node, node_set)) => {
                                 // trace!("found {} in level {}", node, level);
@@ -250,10 +262,9 @@ macro_rules! impl_search_level_mut {
                         // Read the node from the block pointed to by the
                         // Atomic pointer.
                         let this_node = unsafe {
-                            &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
+                            &mut nodes.0.load(Ordering::Acquire, guard).deref_mut()[index]
                         };
-                        // trace!("this node {:?}", this_node);
-                        match unsafe { this_node.assume_init_mut() } {
+                        match unsafe { this_node.assume_init_mut().load(Ordering::Acquire, guard).deref_mut() } {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
@@ -312,105 +323,115 @@ macro_rules! impl_write_level {
 
                     // HASHING FUNCTION
                     let index = Self::hash_node_id($id, level);
-
                     let guard = &epoch::pin();
-                    let mut unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
+                    let unwrapped_nodes = nodes.0.load(Ordering::Acquire, guard);
                     // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
-                    let node_ref =
-                        unsafe { &mut unwrapped_nodes.deref_mut()[index] };
-                    match unsafe { node_ref.assume_init_mut() } {
-                        // No node exists, so we crate one here.
-                        StoredNode::Empty => {
-                            trace!("Empty node found, creating new node {} len{} lvl{}", $id, $id.get_id().1, level + 1);
-                            let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
-                            trace!("next level {}", next_level);
-                            trace!("creating {} nodes", if next_level >= this_level { 1 << (next_level - this_level) } else { 1 });
-                            if next_level > 0 {
-                                std::mem::swap(
-                                    node_ref,
-                                    &mut MaybeUninit::new(StoredNode::NodeWithRef((
-                                        $id,
-                                        new_node,
-                                        NodeSet::init((1 << (next_level - this_level)
-                                        ) as usize),
-                                    ))),
-                                );
-                            } else {
-                                // the last level gets to have nodes without children.
-                                std::mem::swap(
-                                    node_ref,
-                                    &mut MaybeUninit::new(StoredNode::NodeWithRef((
-                                        $id,
-                                        new_node,
-                                        NodeSet(Atomic::null())
-                                    ))),
-                                );
-                            };
-                            // ABA Baby!
-                            match nodes.0.compare_exchange(
-                                unwrapped_nodes,
-                                unwrapped_nodes,
-                                Ordering::SeqCst,
-                                Ordering::SeqCst,
-                                guard,
-                            ) {
-                                Ok(_) => Some($id),
-                                Err(_) => {
-                                    // TODO: This needs some kind of backoff,
-                                    // I guess.
-                                    loop {
-                                        warn!("contention while creating node {}", $id);
-                                        match nodes.0.compare_exchange(
-                                            unwrapped_nodes,
-                                            unwrapped_nodes,
-                                            Ordering::SeqCst,
-                                            Ordering::SeqCst,
-                                            guard,
-                                        ) {
-                                            Ok(_) => { return Some($id); },
-                                            Err(_) => {}
-                                        };
-                                    };
-                                },
-                            };
-                            Some($id)
-                        }
-                        // A node exists, might be ours, might be another one
-                        StoredNode::NodeWithRef((node_id, _node, node_set)) => {
-                            trace!("node here exists {:?}", _node);
-                            trace!("node_id {:?}", node_id.get_id());
-                            trace!("node_id {:032b}", node_id.get_id().0);
-                            trace!("id {}", $id);
-                            trace!("     id {:032b}", $id.get_id().0);
-                            // See if somebody beat us to creating our node
-                            // already, if so, we're done. Nodes do not
-                            // carry meta-data (they just "exist"), so we
-                            // don't have to update anything, just return it.
-                            if $id == *node_id {
-                                // yes, it exists
-                                trace!("node {} already created.", $id);
-                                Some($id)
-                            } else {
-                                // it's not "our" node, make a (recursive)
-                                // call to create it.
-                                level += 1;
-                                trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
-                                match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                                    // on to the next level!
-                                    next_bit_shift if next_bit_shift > 0 => {
-                                        (search_level.f)(
-                                            search_level,
-                                            node_set,
-                                            new_node,
-                                            level,
-                                        )
+                    match unwrapped_nodes.is_null() {
+                        false => {
+                            trace!("unwrapped_nodes {:?}", unwrapped_nodes);
+                            let node_ref =
+                                unsafe { unwrapped_nodes.deref()[index].assume_init_ref() };
+                            let n_r = node_ref.load(Ordering::Acquire, guard);
+                            match n_r.is_null() {
+                                false => {
+                                    match unsafe { n_r.deref() } {
+                                        // No node exists, so we create one here.
+                                        StoredNode::Empty => {
+                                            if log_enabled!(log::Level::Debug) {
+                                                debug!("{} Empty node found, creating new node {} len{} lvl{}", 
+                                                    std::thread::current().name().unwrap(), 
+                                                    $id, $id.get_id().1, level + 1);
+                                            }
+                                            let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
+                                            trace!("next level {}", next_level);
+                                            trace!("creating {} nodes", if next_level >= this_level { 1 << (next_level - this_level) } else { 1 });
+                                            let node_set = if next_level > 0 { NodeSet::init((1 << (next_level - this_level)) as usize ) } else { NodeSet(Atomic::null()) };
+                                            match node_ref.compare_exchange(
+                                                n_r,
+                                                Owned::new(StoredNode::NodeWithRef((
+                                                    $id,
+                                                    new_node,
+                                                    node_set,
+                                                ))),
+                                                Ordering::AcqRel,
+                                                Ordering::Acquire,
+                                                guard
+                                            ) {
+                                                Ok(_) => {
+                                                    if log_enabled!(log::Level::Debug) {
+                                                        debug!("{} created node {}", std::thread::current().name().unwrap(), $id);
+                                                    }
+                                                    return Some($id);
+                                                },
+                                                Err(_) => {
+                                                    if log_enabled!(log::Level::Warn) {
+                                                        warn!(
+                                                            "{} failed to create node {}. Someone is busy creating it.",
+                                                                std::thread::current().name().unwrap(), 
+                                                                $id
+                                                        );
+                                                    }
+                                                    error!("failed to create node {}. Someone is busy creating it.", $id);
+                                                    return None;
+                                                }
+                                            };
+                                        }
+                                        // A node exists, might be ours, might be another one
+                                        StoredNode::NodeWithRef((node_id, _node, node_set)) => {
+                                            if log_enabled!(log::Level::Warn) {
+                                                warn!("
+                                                    {} node here exists {:?}", 
+                                                        std::thread::current().name().unwrap(), 
+                                                        node_id
+                                                    );
+                                                }
+                                            trace!("node_id {:?}", node_id.get_id());
+                                            trace!("node_id {:032b}", node_id.get_id().0);
+                                            trace!("id {}", $id);
+                                            trace!("     id {:032b}", $id.get_id().0);
+                                            // See if somebody beat us to creating our node
+                                            // already, if so, we're done. Nodes do not
+                                            // carry meta-data (they just "exist"), so we
+                                            // don't have to update anything, just return it.
+                                            if $id == *node_id {
+                                                // yes, it exists
+                                                if log_enabled!(log::Level::Warn) {
+                                                    warn!(
+                                                        "{} node {} already created.", 
+                                                        std::thread::current().name().unwrap(), $id
+                                                    );
+                                                }
+                                                return Some($id);
+                                            } else {
+                                                // it's not "our" node, make a (recursive)
+                                                // call to create it.
+                                                level += 1;
+                                                trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}", node_id, $id, $id.get_id().1, level, index);
+                                                return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                                                    // on to the next level!
+                                                    next_bit_shift if next_bit_shift > 0 => {
+                                                        (search_level.f)(
+                                                            search_level,
+                                                            node_set,
+                                                            new_node,
+                                                            level,
+                                                        )
+                                                    }
+                                                    // There's no next level!
+                                                    _ => panic!("out of storage levels, current level is {}", level),
+                                                }
+                                            }
+                                        }
                                     }
-                                    // There's no next level!
-                                    _ => panic!("out of storage levels, current level is {}", level),
+                                },
+                                true => {
+                                    return None;
                                 }
-                            }
-                        }
+                            };
+                        },
+                        true => { return None; }
                     }
+
                 }
             }
 
