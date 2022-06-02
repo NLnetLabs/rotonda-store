@@ -98,7 +98,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{trace, warn, error, debug, log_enabled};
+use log::{trace, warn, debug, log_enabled};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
@@ -107,7 +107,7 @@ use crate::local_array::bit_span::BitSpan;
 use crate::local_array::tree::*;
 
 use crate::prefix_record::InternalPrefixRecord;
-use crate::{impl_search_level, impl_search_level_mut, impl_write_level};
+use crate::{impl_search_level, retrieve_node_mut_with_guard_closure, store_node_closure};
 
 use super::atomic_types::*;
 use crate::AddressFamily;
@@ -172,7 +172,7 @@ impl<
         &self,
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<AF>,
-    ) -> Option<StrideNodeId<AF>> {
+    ) -> Result<StrideNodeId<AF>, Box<dyn std::error::Error>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
@@ -180,6 +180,7 @@ impl<
                 TreeBitMapNode<AF, S>,
                 u8,
                 bool
+            ) -> Result<StrideNodeId<AF>, Box<dyn std::error::Error>>,
         }
 
         let back_off = crossbeam_utils::Backoff::new();
@@ -286,9 +287,9 @@ impl<
                 -> Option<SizedStrideRefMut<'a, AF>>,
         }
 
-        let search_level_3 = impl_search_level_mut![Stride3; id;];
-        let search_level_4 = impl_search_level_mut![Stride4; id;];
-        let search_level_5 = impl_search_level_mut![Stride5; id;];
+        let search_level_3 = retrieve_node_mut_with_guard_closure![Stride3; id;];
+        let search_level_4 = retrieve_node_mut_with_guard_closure![Stride4; id;];
+        let search_level_5 = retrieve_node_mut_with_guard_closure![Stride5; id;];
 
         match self.buckets.get_stride_for_id(id) {
             3 => {
