@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{info, trace, warn, log_enabled};
+use log::{info, log_enabled, trace, warn};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
@@ -10,8 +10,8 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
 use crate::custom_alloc::CustomAllocStorage;
+use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
-use crate::match_node_for_strides;
 use crate::prefix_record::InternalPrefixRecord;
 
 pub(crate) use super::atomic_stride::*;
@@ -107,8 +107,11 @@ impl<AF: AddressFamily> PrefixId<AF> {
     // This should never fail, since there shouldn't be a invalid prefix in
     // this prefix id in the first place.
     pub fn into_pub(&self) -> routecore::addr::Prefix {
-        routecore::addr::Prefix::new(self.get_net().into_ipaddr(), self.get_len())
-            .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
+        routecore::addr::Prefix::new(
+            self.get_net().into_ipaddr(),
+            self.get_len(),
+        )
+        .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
     }
 
     // Increment the length of the prefix without changing the bits part.
