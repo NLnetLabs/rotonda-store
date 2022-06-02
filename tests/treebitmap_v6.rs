@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn test_arbitrary_insert_ipv6() -> Result<(), Box<dyn std::error::Error>>
     {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new();
+        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
         let guard = &epoch::pin();
         let a_pfx = Prefix::new_relaxed(
             ("2001:67c:1bfc::").parse::<std::net::Ipv6Addr>()?.into(),
@@ -42,7 +42,7 @@ mod tests {
 
     #[test]
     fn test_insert_extremes_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new();
+        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(),
             1,
@@ -105,7 +105,7 @@ mod tests {
     // the end of a prefix-length array).
     #[test]
     fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
             // 0-7
             Prefix::new_relaxed(
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_tree_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u128.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::new();
+            let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()

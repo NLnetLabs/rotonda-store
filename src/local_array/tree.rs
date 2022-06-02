@@ -374,7 +374,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > TreeBitMap<AF, M, NB, PB>
 {
-    pub fn new() -> TreeBitMap<AF, M, NB, PB> {
+    pub fn new() -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(
                 SizedStride::Stride3,
@@ -425,11 +425,11 @@ impl<
             }
         };
 
-        TreeBitMap {
+        Ok(TreeBitMap {
             // strides,
             stats: stride_stats,
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node),
-        }
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node)?,
+        })
     }
 
     // Partition for stride 4
@@ -666,7 +666,7 @@ impl<
     > Default for TreeBitMap<AF, M, NB, PB>
 {
     fn default() -> Self {
-        Self::new()
+        Self::new().unwrap()
     }
 }
 

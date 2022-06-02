@@ -5,7 +5,7 @@ use rotonda_store::prelude::*;
 type Prefix4<'a> = Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = MultiThreadedStore::new();
+    let tree_bitmap = MultiThreadedStore::new()?;
     let pfxs = vec![
         Prefix::new(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

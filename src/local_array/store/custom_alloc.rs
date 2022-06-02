@@ -138,7 +138,7 @@ impl<
         PB: PrefixBuckets<AF, Meta>,
     > CustomAllocStorage<AF, Meta, NB, PB>
 {
-    pub(crate) fn init(root_node: SizedStrideNode<AF>) -> Self {
+    pub(crate) fn init(root_node: SizedStrideNode<AF>) -> Result<Self, Box<dyn std::error::Error>> {
         trace!("initialize storage backend");
 
         let store = CustomAllocStorage {
@@ -153,8 +153,9 @@ impl<
         store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
-        );
-        store
+        )?;
+        
+        Ok(store)
     }
 
     pub(crate) fn acquire_new_node_id(

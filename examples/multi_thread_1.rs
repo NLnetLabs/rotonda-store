@@ -7,7 +7,7 @@ use rotonda_store::{
 use routecore::record::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new());
+    let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new()?);
 
     let _: Vec<_> = (0..16)
         .map(|_| {
