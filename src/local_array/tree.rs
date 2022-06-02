@@ -490,8 +490,11 @@ impl<
             // used for counting the number of reloads the
             // match_node_for_strides macro will tolerate.
             let mut i = 0;
+            let back_off = crossbeam_utils::Backoff::new();
 
-            let next_node_idx = match_node_for_strides![
+            // insert_match! returns the node_id of the next node to be
+            // traversed. It was created if it did not exist.
+            let next_node_idx = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
                 guard;
@@ -503,6 +506,7 @@ impl<
                 stride;
                 cur_i;
                 level;
+                back_off;
                 i;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
@@ -510,11 +514,19 @@ impl<
                 Stride5; 2
             ];
 
-            if let Some(i) = next_node_idx {
-                cur_i = i;
-                level += 1;
-            } else {
-                return Ok(());
+            match next_node_idx {
+                Ok(next_id) => {
+                    cur_i = next_id;
+                    level += 1;
+                }
+                Err(err) => {
+                    warn!(
+                        "{} {} {}",
+                        std::thread::current().name().unwrap(),
+                        cur_i,
+                        err
+                    );
+                }
             }
         }
     }

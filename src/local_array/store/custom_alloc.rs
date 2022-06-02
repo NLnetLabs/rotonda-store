@@ -179,12 +179,14 @@ impl<
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
                 u8,
-            ) -> Option<StrideNodeId<AF>>,
+                bool
         }
 
-        let search_level_3 = impl_write_level![Stride3; id;];
-        let search_level_4 = impl_write_level![Stride4; id;];
-        let search_level_5 = impl_write_level![Stride5; id;];
+        let back_off = crossbeam_utils::Backoff::new();
+
+        let search_level_3 = store_node_closure![Stride3; id; back_off;];
+        let search_level_4 = store_node_closure![Stride4; id; back_off;];
+        let search_level_5 = store_node_closure![Stride5; id; back_off;];
 
         if log_enabled!(log::Level::Debug) {
             debug!("{} insert node {}: {:?}", 
@@ -196,70 +198,23 @@ impl<
                 self.buckets.get_store3(id),
                 new_node,
                 0,
+                false
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
                 0,
+                false
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
                 0,
+                false
             ),
         }
-    }
-
-    #[allow(clippy::type_complexity, dead_code)]
-    fn update_node(
-        &self,
-        id: StrideNodeId<AF>,
-        updated_node: SizedStrideRefMut<AF>,
-    ) {
-        struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
-            f: &'s dyn Fn(
-                &SearchLevel<AF, S>,
-                &NodeSet<AF, S>,
-                TreeBitMapNode<AF, S>,
-                u8,
-            ) -> Option<StrideNodeId<AF>>,
-        }
-
-        let search_level_3 = impl_write_level![Stride3; id;];
-        let search_level_4 = impl_write_level![Stride4; id;];
-        let search_level_5 = impl_write_level![Stride5; id;];
-
-        match updated_node {
-            SizedStrideRefMut::Stride3(new_node) => {
-                let new_node = std::mem::take(new_node);
-                (search_level_3.f)(
-                    &search_level_3,
-                    self.buckets.get_store3(id),
-                    new_node,
-                    0,
-                )
-            }
-            SizedStrideRefMut::Stride4(new_node) => {
-                let new_node = std::mem::take(new_node);
-                (search_level_4.f)(
-                    &search_level_4,
-                    self.buckets.get_store4(id),
-                    new_node,
-                    0,
-                )
-            }
-            SizedStrideRefMut::Stride5(new_node) => {
-                let new_node = std::mem::take(new_node);
-                (search_level_5.f)(
-                    &search_level_5,
-                    self.buckets.get_store5(id),
-                    new_node,
-                    0,
-                )
-            }
-        };
     }
 
     #[allow(clippy::type_complexity)]

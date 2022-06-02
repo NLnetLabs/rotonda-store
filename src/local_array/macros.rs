@@ -3,7 +3,7 @@
 // with match arms for all SizedStrideNode::Stride[3-8]
 // for use in insert()
 #[doc(hidden)]
-macro_rules! match_node_for_strides {
+macro_rules! insert_match {
     (
         $self: ident;
         $guard: ident;
@@ -15,6 +15,7 @@ macro_rules! match_node_for_strides {
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
         $level: expr;
+        $back_off: expr;
         $i: expr;
         // $enum: ident;
         // The strides to generate match arms for,
@@ -34,7 +35,7 @@ macro_rules! match_node_for_strides {
         // in the store yet. The reading thread, however, saw the bit in the
         // parent and wants to read the node in the store, but that doesn't
         // exist yet. In that case, the reader thread needs to try again
-        // until it is actually created.
+        // until it is actually created
         loop {
             if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
                 match current_node {
@@ -66,11 +67,34 @@ macro_rules! match_node_for_strides {
                                     // if $self.strides[($level + 1) as usize] != $stride_len {
                                     // store_node may return None, which means that another thread
                                     // is busy creating the node.
-                                    break $self.store.store_node(new_id, n)
+                                    match $self.store.store_node(new_id, n) {
+                                        Ok(node) => {
+                                            break Ok(node);
+                                        },
+                                        Err(err) => {
+                                            if log_enabled!(log::Level::Warn) {
+                                                warn!("{} backing off {} -> next id {}",
+                                                        std::thread::current().name().unwrap(),
+                                                        $cur_i,
+                                                        new_id
+                                                    )
+                                            }
+                                            warn!("{} c_n2 {} {:?}", 
+                                                std::thread::current().name().unwrap(), 
+                                                new_id, 
+                                                $self.store.retrieve_node_mut_with_guard(new_id, $guard)
+                                            );
+                                            break Err(err);
+                                        }
+                                    };
+                                    // break $self.store.store_node(new_id, n)
                                 }
                                 NewNodeOrIndex::ExistingNode(i) => {
                                     // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
-                                    break Some(i)
+                                    if $i > 0 { 
+                                        warn!("{} existing node {}", std::thread::current().name().unwrap(), i);
+                                    }
+                                    break Ok(i)
                                 },
                                 NewNodeOrIndex::NewPrefix => {
                                     return $self.store.upsert_prefix($pfx)
@@ -85,7 +109,6 @@ macro_rules! match_node_for_strides {
                     )*,
                 }
             } else {
-                // BACKOFF SHOULD BE IMPLEMENTED HERE.
                 if log_enabled!(log::Level::Warn) {
                     warn!("{} Couldn't load id {} from store l{}. Trying again.",
                             std::thread::current().name().unwrap(),
@@ -95,11 +118,18 @@ macro_rules! match_node_for_strides {
                 $i += 1;
                 // THIS IS A FAIRLY ARBITRARY NUMBER.
                 // We're giving up after a number of tries.
-                if $i >= 24 {
+                if $i >= 3 {
                     warn!("STOP LOOPING {}", $cur_i);
-                    break None;
-                }
+                    return Err(
+                        Box::new(
+                            crate::local_array::store::errors::PrefixStoreError::NodeCreationMaxRetryError
+                        )
+                    );
+                } 
+                $back_off.spin();
             }
+            // std::thread::sleep(std::time::Duration::from_millis(1000));
+            // warn!("{} loop {} {:?}", std::thread::current().name().unwrap(), $cur_i, $self.store.retrieve_node_mut_with_guard($cur_i, $guard));
         }
     };
 }
