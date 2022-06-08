@@ -517,7 +517,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         info!("record count {}", self.get_count());
         let record_count = self.update_agg_record(&record);
         self.atomic_prepend_record(record);
-        if record_count > 3 {
+        if record_count > crate::RECORDS_MAX_NUM {
             self.remove_last_record();
             info!("rotated record");
         } else {
