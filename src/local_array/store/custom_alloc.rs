@@ -98,7 +98,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{trace, warn, debug, info, log_enabled};
+use log::{trace, warn, debug, log_enabled};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
@@ -483,7 +483,7 @@ impl<
                                         }
                                     }
 
-                                    info!("Create new route list and add the record.");
+                                    debug!("Create new route list and add the record.");
                                     inner_next_agg_record
                                         .atomic_prepend_agg_record(record);
                                 }
@@ -560,7 +560,7 @@ impl<
     //                     //     next_level
     //                     // );
     //                     // let next_set = if next_level > 0 {
-    //                     //     info!(
+    //                     //     debug!(
     //                     //         "INSERT with new bucket of size {} at prefix len {}",
     //                     //         1 << (next_level - this_level), pfx_id.get_len()
     //                     //     );
@@ -568,7 +568,7 @@ impl<
     //                     //         (1 << (next_level - this_level)) as usize,
     //                     //     )
     //                     // } else {
-    //                     //     info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
+    //                     //     debug!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
     //                     //     PrefixSet::empty()
     //                     // };
     //                     // // End of calculation
@@ -833,7 +833,7 @@ impl<
     //                     next_level
     //                 );
     //                 let next_set = if next_level > 0 {
-    //                     info!(
+    //                     debug!(
     //                             "INSERT with new bucket of size {} at prefix len {}",
     //                             1 << (next_level - this_level), pfx_id.get_len()
     //                         );
@@ -841,7 +841,7 @@ impl<
     //                         (1 << (next_level - this_level)) as usize,
     //                     )
     //                 } else {
-    //                     info!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
+    //                     debug!("INSERT at LAST LEVEL with empty bucket at prefix len {}", pfx_id.get_len());
     //                     PrefixSet::empty()
     //                 };
     //                 // End of calculation

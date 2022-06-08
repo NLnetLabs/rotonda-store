@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::{info, trace, warn};
+use log::{trace, warn, debug};
 
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
@@ -761,7 +761,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            info!(
+            debug!(
                 "prefix {}/{}",
                 pfx_idx.get_net().into_ipaddr(),
                 pfx_idx.get_len(),

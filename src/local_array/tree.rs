@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{info, log_enabled, trace, warn};
+use log::{log_enabled, trace, warn};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
@@ -583,8 +583,8 @@ impl<
     ) {
         let guard = &epoch::pin();
 
-        info!("start assembling all more specific prefixes here");
-        info!(
+        trace!("start assembling all more specific prefixes here");
+        trace!(
             "{:?}",
             self.store.retrieve_node_with_guard(start_node_id, guard)
         );

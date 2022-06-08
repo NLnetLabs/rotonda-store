@@ -2,7 +2,7 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{info, trace};
+use log::{trace, debug};
 
 use epoch::{Guard, Owned, Shared};
 use routecore::bgp::PrefixRecord;
@@ -42,7 +42,7 @@ impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
-        info!("creating space for {} nodes!", &size);
+        debug!("creating space for {} nodes!", &size);
         let mut l =
             Owned::<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>::init(size);
         for i in 0..size {
@@ -86,14 +86,14 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
 
         trace!("this level {} next level {}", this_level, next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-            info!(
+            trace!(
                 "INSERT with new bucket of size {} at prefix len {}",
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
             PrefixSet::init((1 << (next_level - this_level)) as usize)
         } else {
-            info!(
+            trace!(
                 "INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 pfx_id.get_len()
             );
@@ -193,7 +193,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         &'a self,
         guard: &'a epoch::Guard,
     ) -> impl Iterator<Item = &'a M> {
-        info!(
+        debug!(
             "iter_latest {:?}",
             self.iter_agg_records(guard).collect::<Vec<_>>()
         );
@@ -407,7 +407,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         &mut self,
         agg_record: InternalPrefixRecord<AF, M>,
     ) {
-        info!("New aggregation record: {:?}", agg_record);
+        debug!("New aggregation record: {:?}", agg_record);
         let guard = &epoch::pin();
         let mut inner_next_agg_record =
             self.next_agg.load(Ordering::Acquire, guard);
@@ -437,7 +437,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
             match next_agg_record {
                 Ok(rec) => {
-                    info!("wrote aggregation record {:?}", rec);
+                    debug!("wrote aggregation record {:?}", rec);
                     return;
                 }
                 Err(next_agg_record) => {
@@ -515,14 +515,14 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
     }
 
     pub(crate) fn rotate_record(&mut self, record: M) {
-        info!("record count {}", self.get_count());
+        debug!("record count {}", self.get_count());
         let record_count = self.update_agg_record(&record);
         self.atomic_prepend_record(record);
         if record_count > crate::RECORDS_MAX_NUM {
             self.remove_last_record();
-            info!("rotated record");
+            debug!("rotated record");
         } else {
-            info!("added record");
+            debug!("added record");
         }
     }
 }
@@ -858,7 +858,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
         let mut l =
             Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
-        info!("creating space for {} prefixes in prefix_set", &size);
+        debug!("creating space for {} prefixes in prefix_set", &size);
         for i in 0..size {
             l[i] = MaybeUninit::new(AtomicStoredPrefix::empty());
         }
@@ -876,7 +876,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty() {
                     size += 1;
-                    info!(
+                    debug!(
                         "recurse found pfx {:?} cur size {}",
                         pfx.get_prefix_id(),
                         size

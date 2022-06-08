@@ -26,7 +26,7 @@ use crate::{
 };
 
 use crossbeam_epoch::Guard;
-use log::{info, trace};
+use log::{trace, debug};
 use routecore::{
     addr::Prefix,
     record::{Meta, Record},
@@ -65,7 +65,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     type Item = (routecore::addr::Prefix, &'a M);
 
     fn next(&mut self) -> Option<Self::Item> {
-        info!(
+        debug!(
             "starting next loop for level {} cursor {} (len {})",
             self.cur_level, self.cursor, self.cur_len
         );
@@ -202,7 +202,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // as well.
                     if let Some(prefix) = s_pfx.get_last_record(self.guard) {
                         // There's a prefix here, that's the next one
-                        info!("D. found prefix {:?}", prefix);
+                        debug!("D. found prefix {:?}", prefix);
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
                             prefix,
@@ -217,7 +217,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // cursor position.
                     if let Some(prefix) = s_pfx.get_last_record(self.guard) {
                         // There's a prefix here, that's the next one
-                        info!("E. found prefix {:?}", prefix);
+                        debug!("E. found prefix {:?}", prefix);
                         self.cursor += 1;
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),

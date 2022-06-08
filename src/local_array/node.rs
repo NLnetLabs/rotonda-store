@@ -4,7 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
-use log::{trace, info};
+use log::trace;
 
 // pub use super::atomic_stride::*;
 use super::bit_span::BitSpan;
@@ -1012,7 +1012,7 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
                 trace!("pfxbitarr {:064b}", self.pfxbitarr);
 
                 if (S::get_bit_pos(self.cursor.bits, self.cursor.len) | self.pfxbitarr) == self.pfxbitarr {
-                    info!("found prefix with len {} at pos {} pfx len {}",
+                    trace!("found prefix with len {} at pos {} pfx len {}",
                         self.cursor.len, 
                         self.cursor.bits,
                         self.base_prefix.get_len() + self.cursor.len,
