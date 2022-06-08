@@ -265,6 +265,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
 }
 
 // ----------- AggMetaData --------------------------------------------------
+#[allow(dead_code)]
 #[derive(Debug)]
 struct AggMetaData<M: Meta> {
     count: usize,
