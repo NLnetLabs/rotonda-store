@@ -98,7 +98,7 @@ impl std::fmt::Display for MatchType {
 
 //------------ Metadata Types -----------------------------------------------
 
-#[derive(Debug, Copy, Clone, Hash)]
+#[derive(Debug, Copy, Clone)]
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
@@ -150,6 +150,14 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
             }
         }
         Self { v4, v6 }
+    }
+}
+
+// Hash implementation that always returns the same hash, so that all
+// records get thrown on one big heap.
+impl std::hash::Hash for PrefixAs {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        0.hash(state);
     }
 }
 
