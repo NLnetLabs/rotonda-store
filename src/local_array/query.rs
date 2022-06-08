@@ -5,6 +5,7 @@ use log::{info, trace, warn};
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
+use routecore::bgp::MetaDataSet;
 use routecore::record::{MergeUpdate, Meta};
 
 use crate::{PrefixRecordMap, QueryResult};
@@ -50,6 +51,7 @@ where
             },
             prefix_meta: prefix
                 .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
+            all_records: None,
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
             more_specifics: Some(PrefixRecordMap::into_prefix_record_map(
@@ -88,6 +90,7 @@ where
             },
             prefix_meta: prefix
                 .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
+            all_records: None,
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| {
                 PrefixRecordMap::into_prefix_record_map(iter, guard)
@@ -158,6 +161,24 @@ where
             prefix: stored_prefix.map(move |p| p.prefix.into_pub()),
             prefix_meta: stored_prefix
                 .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
+            all_records: if options.include_all_records {
+                Some(
+                    stored_prefix
+                        .map(|pfx| {
+                            pfx.iter_agg_records(guard)
+                                // .collect::<Vec<_>>()
+                                .map(|rec| {
+                                    MetaDataSet::from(
+                                        rec.iter_records(guard).collect(),
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap(),
+                )
+            } else {
+                None
+            },
             less_specifics: if include_less_specifics {
                 Some(PrefixRecordMap::into_prefix_record_map(
                     self.store.less_specific_prefix_iter(
@@ -247,6 +268,7 @@ where
                     return QueryResult {
                         prefix: None,
                         prefix_meta: None,
+                        all_records: None,
                         match_type: MatchType::EmptyMatch,
                         less_specifics: None,
                         more_specifics: None,
@@ -271,6 +293,7 @@ where
                         )
                         .ok(),
                         prefix_meta: Some(prefix_meta),
+                        all_records: None,
                         // .meta
                         // .as_ref(),
                         match_type: MatchType::ExactMatch,
@@ -766,6 +789,7 @@ where
             prefix_meta: prefix.map(|pfx| {
                 pfx.0.iter_latest_unique_meta_data(guard).collect()
             }),
+            all_records: None,
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {

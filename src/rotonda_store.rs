@@ -69,6 +69,7 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 
 pub struct MatchOptions {
     pub match_type: MatchType,
+    pub include_all_records: bool,
     pub include_less_specifics: bool,
     pub include_more_specifics: bool,
 }
@@ -280,6 +281,7 @@ pub struct QueryResult<'a, M: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
     pub prefix_meta: Option<MetaDataSet<'a, M>>,
+    pub all_records: Option<Vec<MetaDataSet<'a, M>>>,
     pub less_specifics: Option<PrefixRecordMap<'a, M>>,
     pub more_specifics: Option<PrefixRecordMap<'a, M>>,
 }
@@ -296,10 +298,14 @@ impl<'a, M: routecore::record::Meta> fmt::Display for QueryResult<'a, M> {
         };
         write!(
             f,
-            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
+            "match_type: {}\nprefix: {}\nmetadata: {}\nall records: {}\nless_specifics: {}\nmore_specifics: {}",
             self.match_type,
             pfx_str,
             pfx_meta_str,
+            match &self.all_records {
+                Some(all_records) => all_records.iter().map(|ms| format!("{}", ms)).collect::<Vec<_>>().join("\n"),
+                None => "(not requested)".to_string(),
+            },
             if let Some(ls) = self.less_specifics.as_ref() {
                 ls.0.iter().map(|(k, v)| format!("{} -> {:?}", k, v)).collect::<Vec<_>>().join("\n")
             } else {

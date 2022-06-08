@@ -27,6 +27,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -60,6 +61,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -89,6 +91,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -252,6 +255,7 @@ mod tests {
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
+                    include_all_records: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                 },
@@ -513,6 +517,7 @@ mod tests {
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
+                    include_all_records: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                 },
@@ -529,6 +534,7 @@ mod tests {
             )?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -604,6 +610,7 @@ mod tests {
                         &pfx,
                         &MatchOptions {
                             match_type: MatchType::LongestMatch,
+                            include_all_records: false,
                             include_less_specifics: false,
                             include_more_specifics: false,
                         },

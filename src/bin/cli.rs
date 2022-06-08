@@ -65,7 +65,6 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    
     #[cfg(feature = "cli")]
     env_logger::init();
 
@@ -228,6 +227,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &p,
                                     &MatchOptions {
                                         match_type: MatchType::LongestMatch,
+                                        include_all_records: true,
                                         include_less_specifics: false,
                                         include_more_specifics: false,
                                     },
@@ -288,6 +288,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         &MatchOptions {
                                             match_type:
                                                 MatchType::LongestMatch,
+                                            include_all_records: true,
                                             include_less_specifics: false,
                                             include_more_specifics: false
                                         },

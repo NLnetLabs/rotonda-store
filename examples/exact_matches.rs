@@ -345,6 +345,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
+                include_all_records: false,
                 include_less_specifics: false,
                 include_more_specifics: false,
             },
