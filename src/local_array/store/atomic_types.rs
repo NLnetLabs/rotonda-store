@@ -282,10 +282,6 @@ impl<M: Meta> AggMetaData<M> {
     fn get_count(&self) -> usize {
         self.count
     }
-
-    fn inc_count(&mut self) {
-        self.count += 1;
-    }
 }
 
 // ----------- StoredAggRecord ----------------------------------------------

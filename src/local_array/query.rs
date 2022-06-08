@@ -5,7 +5,6 @@ use log::{info, trace, warn};
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use routecore::addr::Prefix;
-use routecore::bgp::MetaDataSet;
 use routecore::record::{MergeUpdate, Meta};
 
 use crate::{PrefixRecordMap, QueryResult};
@@ -168,9 +167,7 @@ where
                             pfx.iter_agg_records(guard)
                                 // .collect::<Vec<_>>()
                                 .map(|rec| {
-                                    MetaDataSet::from(
-                                        rec.iter_records(guard).collect(),
-                                    )
+                                    rec.iter_records(guard).collect()
                                 })
                                 .collect::<Vec<_>>()
                         })
