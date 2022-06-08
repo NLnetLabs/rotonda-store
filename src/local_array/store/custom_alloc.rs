@@ -98,7 +98,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{trace, warn, debug, log_enabled};
+use log::{trace, warn, debug, info, log_enabled};
 
 use epoch::{Guard, Owned};
 use std::marker::PhantomData;
@@ -441,7 +441,7 @@ impl<
                                 true => {
                                     trace!("add record in the list (first entry).");
                                     inner_next_agg_record
-                                        .atomic_tail_agg(record);
+                                        .atomic_prepend_agg_record(record);
                                 }
                                 false => {
                                     trace!("look for matching unique routes list");
@@ -473,7 +473,7 @@ impl<
                                                     record
                                                 );
                                                 inner_next_agg_record
-                                                    .atomic_prepend_record(
+                                                    .rotate_record(
                                                         record.meta,
                                                     );
                                                 return Ok(());
@@ -483,9 +483,9 @@ impl<
                                         }
                                     }
 
-                                    trace!("Create new route list and add the record.");
+                                    info!("Create new route list and add the record.");
                                     inner_next_agg_record
-                                        .atomic_tail_agg(record);
+                                        .atomic_prepend_agg_record(record);
                                 }
                             }
                         }

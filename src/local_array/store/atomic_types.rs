@@ -4,9 +4,9 @@ use crossbeam_epoch::{self as epoch, Atomic};
 
 use log::{info, trace};
 
-use epoch::{Guard, Owned};
+use epoch::{Guard, Owned, Shared};
 use routecore::bgp::PrefixRecord;
-use routecore::record::Record;
+use routecore::record::{Meta, Record};
 use std::marker::PhantomData;
 
 use crate::local_array::tree::*;
@@ -193,7 +193,10 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         &'a self,
         guard: &'a epoch::Guard,
     ) -> impl Iterator<Item = &'a M> {
-        trace!("iter_latest {:?}", self);
+        info!(
+            "iter_latest {:?}",
+            self.iter_agg_records(guard).collect::<Vec<_>>()
+        );
         self.iter_agg_records(guard)
             .inspect(|p| trace!("pp {:?}", p))
             .filter_map(|p| p.get_last_record(guard))
@@ -261,6 +264,30 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
     }
 }
 
+// ----------- AggMetaData --------------------------------------------------
+#[derive(Debug)]
+struct AggMetaData<M: Meta> {
+    count: usize,
+    meta_data: M,
+}
+
+impl<M: Meta> AggMetaData<M> {
+    fn new(meta_data: M) -> Self {
+        AggMetaData {
+            count: 1,
+            meta_data,
+        }
+    }
+
+    fn get_count(&self) -> usize {
+        self.count
+    }
+
+    fn inc_count(&mut self) {
+        self.count += 1;
+    }
+}
+
 // ----------- StoredAggRecord ----------------------------------------------
 // This is the second-level struct that's linked from the `StoredPrefix` top-
 // level struct. It has an aggregated record field that holds counters and
@@ -272,7 +299,7 @@ pub(crate) struct StoredAggRecord<
     M: routecore::record::Meta,
 > {
     // the aggregated meta-data for this prefix and hash_id.
-    pub agg_record: Atomic<InternalPrefixRecord<AF, M>>,
+    agg_record: Atomic<AggMetaData<M>>,
     // the reference to the next record for this prefix and the same hash_id.
     pub(crate) next_record: Atomic<LinkedListRecord<M>>,
     // the reference to the next record for this prefix and another hash_id.
@@ -284,22 +311,15 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
     // argument atomically linked to it. It doesn't make sense to have a
     // aggregation record without a record.
     pub(crate) fn new(record: InternalPrefixRecord<AF, M>) -> Self {
-        let mut new_agg_record = InternalPrefixRecord::<AF, M>::new_with_meta(
-            record.net,
-            record.len,
-            record.meta.clone(),
-        );
+        let mut new_meta = record.meta.clone();
 
         // even though we're about to create the first record in this
         // aggregation record, we still need to `clone_merge_update` to
         // create the start data for the aggregation.
-        new_agg_record.meta = new_agg_record
-            .meta
-            .clone_merge_update(&record.meta)
-            .unwrap();
+        new_meta = new_meta.clone_merge_update(&record.meta).unwrap();
 
         StoredAggRecord {
-            agg_record: Atomic::new(new_agg_record),
+            agg_record: Atomic::new(AggMetaData::new(new_meta)),
             next_record: Atomic::new(LinkedListRecord::new(record.meta)),
             next_agg: Atomic::null(),
         }
@@ -326,39 +346,115 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         }
     }
 
+    pub(crate) fn iter_records<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> impl Iterator<Item = &'a M> {
+        let next_record = self.next_record.load(Ordering::SeqCst, guard);
+
+        match next_record.is_null() {
+            true => None,
+            false => Some(LinkedListIterator {
+                current: unsafe { next_record.as_ref() },
+                guard,
+            }),
+        }
+        .into_iter()
+        .flatten()
+    }
+
+    pub(crate) fn get_count(&self) -> usize {
+        let guard = &epoch::pin();
+        let agg_record = self.agg_record.load(Ordering::SeqCst, guard);
+        if !agg_record.is_null() {
+            unsafe { agg_record.deref() }.get_count()
+        } else {
+            0
+        }
+    }
+
+    pub(crate) fn update_agg_record(&mut self, meta_data: &M) -> usize {
+        let guard = &epoch::pin();
+
+        let mut agg_record = self.agg_record.load(Ordering::SeqCst, guard);
+        if !agg_record.is_null() {
+            loop {
+                let mut meta_data = meta_data.clone();
+                let count =
+                    unsafe { agg_record.as_ref() }.unwrap().get_count() + 1;
+                meta_data = meta_data.clone_merge_update(&meta_data).unwrap();
+                match self.agg_record.compare_exchange(
+                    agg_record,
+                    Owned::new(AggMetaData { count, meta_data }),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                    guard,
+                ) {
+                    Ok(_) => {
+                        trace!("inc_count {:?}", self);
+                        return count;
+                    }
+                    Err(new_agg_record) => {
+                        agg_record = new_agg_record.current;
+                    }
+                }
+            }
+        } else {
+            0
+        }
+    }
+
     // aggregated records don't need to be prepended (you, know, HEAD), but
     // can just be appended to the tail.
-    pub(crate) fn atomic_tail_agg(
+    pub(crate) fn atomic_prepend_agg_record(
         &mut self,
         agg_record: InternalPrefixRecord<AF, M>,
     ) {
+        info!("New aggregation record: {:?}", agg_record);
         let guard = &epoch::pin();
-        let mut inner_next_agg = self.next_agg.load(Ordering::SeqCst, guard);
-        let tag = inner_next_agg.tag();
-        let agg_record = Owned::new(Self::new(agg_record)).into_shared(guard);
+        let mut inner_next_agg_record =
+            self.next_agg.load(Ordering::Acquire, guard);
+        trace!("Existing record {:?}", inner_next_agg_record);
+        let tag = inner_next_agg_record.tag();
+        let new_inner_next_agg_record = Owned::new(StoredAggRecord {
+            agg_record: Atomic::new(AggMetaData::new(
+                agg_record.meta.clone(),
+            )),
+            next_record: Atomic::new(LinkedListRecord {
+                record: agg_record.meta,
+                prev: Atomic::null(),
+            }),
+            next_agg: unsafe { inner_next_agg_record.into_owned() }.into(),
+            // prev: unsafe { inner_next_agg_record.into_owned() }.into(),
+        })
+        .into_shared(guard);
 
         loop {
-            let next_agg = self.next_agg.compare_exchange(
-                inner_next_agg,
-                agg_record.with_tag(tag + 1),
-                Ordering::SeqCst,
-                Ordering::SeqCst,
+            let next_agg_record = self.next_agg.compare_exchange(
+                inner_next_agg_record,
+                new_inner_next_agg_record.with_tag(tag + 1),
+                Ordering::AcqRel,
+                Ordering::Acquire,
                 guard,
             );
-            match next_agg {
-                Ok(_) => return,
-                Err(next_agg) => {
+
+            match next_agg_record {
+                Ok(rec) => {
+                    info!("wrote aggregation record {:?}", rec);
+                    return;
+                }
+                Err(next_agg_record) => {
                     // Do it again
                     // TODO BACKOFF
-                    inner_next_agg = next_agg.current;
+                    inner_next_agg_record = next_agg_record.current;
                 }
             };
         }
     }
 
-    // only 'normal', non-aggegation records need to be prependend, so that
+    // only 'normal', non-aggregation records need to be prependend, so that
     // the most recent record is the first in the list.
-    pub(crate) fn atomic_prepend_record(&mut self, record: M) {
+    fn atomic_prepend_record(&mut self, record: M) {
         trace!("New record: {}", record);
         let guard = &epoch::pin();
         let mut inner_next_record =
@@ -393,8 +489,46 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
             };
         }
     }
-}
 
+    fn remove_last_record(&mut self) {
+        let guard = &epoch::pin();
+        let mut inner_next_record =
+            self.next_record.load(Ordering::SeqCst, guard);
+        let mut parent = Shared::null();
+
+        while !inner_next_record.is_null() {
+            let rec = unsafe { inner_next_record.deref() };
+
+            if rec.prev.load(Ordering::SeqCst, guard).is_null() {
+                break;
+            }
+
+            parent = inner_next_record;
+            inner_next_record = unsafe { inner_next_record.deref() }
+                .prev
+                .load(Ordering::SeqCst, guard);
+        }
+
+        unsafe { parent.deref() }.prev.swap(
+            Shared::null(),
+            Ordering::SeqCst,
+            guard,
+        );
+        unsafe { drop(inner_next_record.into_owned()) }
+    }
+
+    pub(crate) fn rotate_record(&mut self, record: M) {
+        info!("record count {}", self.get_count());
+        let record_count = self.update_agg_record(&record);
+        self.atomic_prepend_record(record);
+        if record_count > 3 {
+            self.remove_last_record();
+            info!("rotated record");
+        } else {
+            info!("added record");
+        }
+    }
+}
 pub(crate) struct AggRecordIterator<
     'a,
     AF: AddressFamily,
