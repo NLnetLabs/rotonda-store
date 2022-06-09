@@ -161,18 +161,11 @@ where
             prefix_meta: stored_prefix
                 .map(|pfx| pfx.iter_latest_unique_meta_data(guard).collect()),
             all_records: if options.include_all_records {
-                Some(
-                    stored_prefix
-                        .map(|pfx| {
-                            pfx.iter_agg_records(guard)
-                                // .collect::<Vec<_>>()
-                                .map(|rec| {
-                                    rec.iter_records(guard).collect()
-                                })
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap(),
-                )
+                stored_prefix.map(|pfx| {
+                    pfx.iter_agg_records(guard)
+                        .map(|rec| rec.iter_records(guard).collect())
+                        .collect::<Vec<_>>()
+                })
             } else {
                 None
             },
