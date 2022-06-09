@@ -2,7 +2,7 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{trace, debug};
+use log::{debug, trace, warn};
 
 use epoch::{Guard, Owned, Shared};
 use routecore::bgp::PrefixRecord;
@@ -370,8 +370,12 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         }
     }
 
-    pub(crate) fn update_agg_record(&mut self, meta_data: &M) -> usize {
-        let guard = &epoch::pin();
+    pub(crate) fn update_agg_record(
+        &mut self,
+        meta_data: &M,
+        guard: &Guard,
+    ) -> usize {
+        // let guard = &epoch::pin();
 
         let mut agg_record = self.agg_record.load(Ordering::SeqCst, guard);
         if !agg_record.is_null() {
@@ -451,9 +455,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
     // only 'normal', non-aggregation records need to be prependend, so that
     // the most recent record is the first in the list.
-    fn atomic_prepend_record(&mut self, record: M) {
+    fn atomic_prepend_record(&mut self, record: M, guard: &Guard) {
         trace!("New record: {}", record);
-        let guard = &epoch::pin();
         let mut inner_next_record =
             self.next_record.load(Ordering::Acquire, guard);
         trace!("Existing record {:?}", inner_next_record);
@@ -487,39 +490,45 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         }
     }
 
-    fn remove_last_record(&mut self) {
-        let guard = &epoch::pin();
-        let mut inner_next_record =
-            self.next_record.load(Ordering::SeqCst, guard);
-        let mut parent = Shared::null();
+    fn remove_last_record(&mut self, guard: &Guard) {
+        let mut next_record = &self.next_record;
+        let mut inner_next = next_record.load(Ordering::Acquire, guard);
 
-        while !inner_next_record.is_null() {
-            let rec = unsafe { inner_next_record.deref() };
+        loop {
+            // See if somebody beat us to it.
+            if inner_next.is_null() {
+                return;
+            }
 
+            let rec = unsafe { inner_next.deref() };
+
+            // No, this is not somebody beating us to it, this is just the
+            // end of the list.
             if rec.prev.load(Ordering::SeqCst, guard).is_null() {
                 break;
             }
 
-            parent = inner_next_record;
-            inner_next_record = unsafe { inner_next_record.deref() }
-                .prev
-                .load(Ordering::SeqCst, guard);
+            next_record = &rec.prev;
+            inner_next = next_record.load(Ordering::SeqCst, guard);
         }
 
-        unsafe { parent.deref() }.prev.swap(
-            Shared::null(),
-            Ordering::SeqCst,
-            guard,
-        );
-        unsafe { drop(inner_next_record.into_owned()) }
+        // detach the last record
+        let last_record =
+            next_record.swap(Shared::null(), Ordering::AcqRel, guard);
+
+        // yes, here somebody might have beaten us to it once more.
+        if !last_record.is_null() {
+            unsafe { guard.defer_destroy(last_record) };
+        }
     }
 
     pub(crate) fn rotate_record(&mut self, record: M) {
-        debug!("record count {}", self.get_count());
-        let record_count = self.update_agg_record(&record);
-        self.atomic_prepend_record(record);
+        let guard = &epoch::pin();
+        warn!("record count {}", self.get_count());
+        let record_count = self.update_agg_record(&record, guard);
+        self.atomic_prepend_record(record, guard);
         if record_count > crate::RECORDS_MAX_NUM {
-            self.remove_last_record();
+            self.remove_last_record(guard);
             debug!("rotated record");
         } else {
             debug!("added record");
