@@ -599,15 +599,7 @@ where
 
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
-                        base_prefix.add_nibble(ms_nibble, ms_nibble_len).into()
-                        // PrefixId::from(
-                        //     base_prefix.get_id().0
-                        //     .add_nibble(
-                        //         base_prefix.get_id().1, ms_nibble, ms_nibble_len
-                        //     ) 
-                            // base_prefix.get_id().1 + ms_nibble_len)
-                            // .set_serial(self.get_pfx_serial(base_prefix.into(), ms_nibble, ms_nibble_len, guard).load(Ordering::Acquire))
-                    )
+                        base_prefix.add_nibble(ms_nibble, ms_nibble_len).into()                    )
                 }
             }
         }
