@@ -375,8 +375,6 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         meta_data: &M,
         guard: &Guard,
     ) -> usize {
-        // let guard = &epoch::pin();
-
         let mut agg_record = self.agg_record.load(Ordering::SeqCst, guard);
         if !agg_record.is_null() {
             loop {
