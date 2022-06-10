@@ -252,8 +252,8 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
     // 5. check the result of update_serial(). When succesful, we're done,
     //    otherwise, rollback the work result & repeat from step 1.
     pub fn get_serial(&self) -> usize {
-        let serial = self.serial.load(Ordering::Acquire);
-        std::sync::atomic::fence(Ordering::Acquire);
+        let serial = self.serial.load(Ordering::SeqCst);
+        std::sync::atomic::fence(Ordering::SeqCst);
         serial
     }
 
@@ -265,8 +265,8 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         self.serial.compare_exchange(
             current_serial,
             current_serial + 1,
-            Ordering::AcqRel,
-            Ordering::Acquire,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
         )
     }
 
@@ -278,13 +278,13 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         self.index.compare_exchange(
             0,
             index,
-            Ordering::AcqRel,
-            Ordering::Acquire,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
         )
     }
 
     pub fn is_empty(&self) -> bool {
-        self.serial.load(Ordering::Acquire) == 0
+        self.serial.load(Ordering::SeqCst) == 0
     }
 
     pub fn into_inner(self) -> (StrideType, Option<u32>) {
@@ -313,7 +313,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
 
 impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
     fn from(id: AtomicStrideNodeId<AF>) -> Self {
-        id.index.load(Ordering::Acquire) as usize
+        id.index.load(Ordering::SeqCst) as usize
     }
 }
 

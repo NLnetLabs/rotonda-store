@@ -335,13 +335,13 @@ impl<
     // Prefixes related methods
 
     pub(crate) fn load_default_route_prefix_serial(&self) -> usize {
-        self.default_route_prefix_serial.load(Ordering::Acquire)
+        self.default_route_prefix_serial.load(Ordering::SeqCst)
     }
 
     #[allow(dead_code)]
     fn increment_default_route_prefix_serial(&self) -> usize {
         self.default_route_prefix_serial
-            .fetch_add(1, Ordering::Acquire)
+            .fetch_add(1, Ordering::SeqCst)
     }
 
     // THE CRITICAL SECTION
@@ -427,7 +427,7 @@ impl<
                         true => {
                             trace!("no aggregation record. Create new aggregation record");
                             inner_stored_prefix
-                                .atomic_update_aggregate(&record);
+                                .atomic_update_aggregate(&record, guard);
                         }
                         false => {
                             trace!("aggregation record exists. Update it");
@@ -441,7 +441,7 @@ impl<
                                 true => {
                                     trace!("add record in the list (first entry).");
                                     inner_next_agg_record
-                                        .atomic_prepend_agg_record(record);
+                                        .atomic_prepend_agg_record(record, guard);
                                 }
                                 false => {
                                     trace!("look for matching unique routes list");
@@ -475,6 +475,7 @@ impl<
                                                 inner_next_agg_record
                                                     .rotate_record(
                                                         record.meta,
+                                                        guard
                                                     );
                                                 return Ok(());
                                             }
@@ -485,7 +486,7 @@ impl<
 
                                     debug!("Create new route list and add the record.");
                                     inner_next_agg_record
-                                        .atomic_prepend_agg_record(record);
+                                        .atomic_prepend_agg_record(record, guard);
                                 }
                             }
                         }
@@ -994,7 +995,7 @@ impl<
 
                 trace!("retrieve prefix with guard");
 
-                let prefixes = prefix_set.0.load(Ordering::Acquire, guard);
+                let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
                 trace!(
                     "prefixes at level {}? {:?}",
                     level,
@@ -1128,7 +1129,7 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            let mut prefixes = prefix_set.0.load(Ordering::Acquire, guard);
+            let mut prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
             let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
             if let Some(pfx_rec) //StoredPrefix {
                 // serial,
@@ -1186,7 +1187,7 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-                let prefixes = prefix_set.0.load(Ordering::Acquire, guard);
+                let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
                 if let Some(stored_prefix) = unsafe { prefix_ref.assume_init_ref() }

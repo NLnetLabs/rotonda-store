@@ -2,7 +2,7 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{debug, trace, warn};
+use log::{debug, log_enabled, trace, warn};
 
 use epoch::{Guard, Owned, Shared};
 use routecore::bgp::PrefixRecord;
@@ -133,8 +133,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
     pub(crate) fn atomic_update_aggregate(
         &mut self,
         record: &InternalPrefixRecord<AF, M>,
+        guard: &Guard,
     ) {
-        let guard = &epoch::pin();
         let mut inner_super_agg_record =
             self.super_agg_record.0.load(Ordering::SeqCst, guard);
         loop {
@@ -387,8 +387,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
                 match self.agg_record.compare_exchange(
                     agg_record,
                     Owned::new(AggMetaData { count, meta_data }),
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
                     guard,
                 ) {
                     Ok(_) => {
@@ -410,11 +410,11 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
     pub(crate) fn atomic_prepend_agg_record(
         &mut self,
         agg_record: InternalPrefixRecord<AF, M>,
+        guard: &Guard,
     ) {
         debug!("New aggregation record: {:?}", agg_record);
-        let guard = &epoch::pin();
         let mut inner_next_agg_record =
-            self.next_agg.load(Ordering::Acquire, guard);
+            self.next_agg.load(Ordering::SeqCst, guard);
         trace!("Existing record {:?}", inner_next_agg_record);
         let tag = inner_next_agg_record.tag();
         let new_inner_next_agg_record = Owned::new(StoredAggRecord {
@@ -434,8 +434,8 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
             let next_agg_record = self.next_agg.compare_exchange(
                 inner_next_agg_record,
                 new_inner_next_agg_record.with_tag(tag + 1),
-                Ordering::AcqRel,
-                Ordering::Acquire,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
                 guard,
             );
 
@@ -518,7 +518,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
     fn remove_last_record(&mut self, guard: &Guard) {
         let mut next_record = &self.next_record;
-        let mut inner_next = next_record.load(Ordering::Acquire, guard);
+        let mut inner_next = next_record.load(Ordering::SeqCst, guard);
 
         loop {
             // See if somebody beat us to it.
@@ -540,16 +540,15 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
         // detach the last record
         let last_record =
-            next_record.swap(Shared::null(), Ordering::AcqRel, guard);
+            next_record.swap(Shared::null(), Ordering::SeqCst, guard);
 
         // yes, here somebody might have beaten us to it once more.
         if !last_record.is_null() {
             unsafe { guard.defer_destroy(last_record) };
-        }
+        };
     }
 
-    pub(crate) fn rotate_record(&mut self, record: M) {
-        let guard = &epoch::pin();
+    pub(crate) fn rotate_record(&mut self, record: M, guard: &Guard) {
         warn!("record count {}", self.get_count());
         let record_count = self.update_agg_record(&record, guard);
         self.atomic_prepend_record(record, guard);
@@ -672,14 +671,13 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         AtomicStoredPrefix(Atomic::null())
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        let guard = &epoch::pin();
-        let pfx = self.0.load(Ordering::Acquire, guard);
+    pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
+        let pfx = self.0.load(Ordering::SeqCst, guard);
         pfx.is_null()
             || unsafe { pfx.deref() }
                 .super_agg_record
                 .0
-                .load(Ordering::Acquire, guard)
+                .load(Ordering::SeqCst, guard)
                 .is_null()
     }
 
@@ -687,7 +685,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let pfx = self.0.load(Ordering::Acquire, guard);
+        let pfx = self.0.load(Ordering::SeqCst, guard);
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref() }),
@@ -698,7 +696,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a mut StoredPrefix<AF, Meta>> {
-        let mut pfx = self.0.load(Ordering::Acquire, guard);
+        let mut pfx = self.0.load(Ordering::SeqCst, guard);
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref_mut() }),
@@ -708,7 +706,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::Acquire, guard).into_owned() }.serial
+        unsafe { self.0.load(Ordering::SeqCst, guard).into_owned() }.serial
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
@@ -762,7 +760,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
             if !&stored_prefix
                 .next_bucket
                 .0
-                .load(Ordering::Acquire, guard)
+                .load(Ordering::SeqCst, guard)
                 .is_null()
             {
                 Some(&stored_prefix.next_bucket)
@@ -906,10 +904,10 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         ) -> usize {
             let mut size: usize = 0;
             let guard = &epoch::pin();
-            let start_set = start_set.0.load(Ordering::Acquire, guard);
+            let start_set = start_set.0.load(Ordering::SeqCst, guard);
             for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };
-                if !pfx.is_empty() {
+                if !pfx.is_empty(guard) {
                     size += 1;
                     debug!(
                         "recurse found pfx {:?} cur size {}",
@@ -934,9 +932,9 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         index: usize,
         guard: &'a Guard,
     ) -> &'a AtomicStoredPrefix<AF, M> {
-        assert!(!self.0.load(Ordering::Acquire, guard).is_null());
+        assert!(!self.0.load(Ordering::SeqCst, guard).is_null());
         unsafe {
-            self.0.load(Ordering::Acquire, guard).deref()[index as usize]
+            self.0.load(Ordering::SeqCst, guard).deref()[index as usize]
                 .assume_init_ref()
         }
     }

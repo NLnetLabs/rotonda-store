@@ -22,7 +22,7 @@ macro_rules! impl_search_level {
                             &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index]
                         };
                         // trace!("this node {:?}", this_node);
-                        match unsafe { this_node.assume_init_ref().load(Ordering::Acquire, guard).deref() } {
+                        match unsafe { this_node.assume_init_ref().load(Ordering::SeqCst, guard).deref() } {
                             // No node exists, here
                             StoredNode::Empty => None,
                             // A node exists, but since we're not using perfect
@@ -149,14 +149,14 @@ macro_rules! store_node_closure {
                     // HASHING FUNCTION
                     let index = Self::hash_node_id($id, level);
                     let guard = &epoch::pin();
-                    let unwrapped_nodes = nodes.0.load(Ordering::Acquire, guard);
+                    let unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
                     
                     match unwrapped_nodes.is_null() {
                         false => {
                             trace!("unwrapped_nodes {:?}", unwrapped_nodes);
                             let node_ref =
                                 unsafe { unwrapped_nodes.deref()[index].assume_init_ref() };
-                            let n_r = node_ref.load(Ordering::Acquire, guard);
+                            let n_r = node_ref.load(Ordering::SeqCst, guard);
                             match n_r.is_null() {
                                 false => {
                                     match unsafe { n_r.deref() } {
@@ -178,8 +178,8 @@ macro_rules! store_node_closure {
                                                     new_node,
                                                     node_set,
                                                 ))),
-                                                Ordering::AcqRel,
-                                                Ordering::Acquire,
+                                                Ordering::SeqCst,
+                                                Ordering::SeqCst,
                                                 guard
                                             ) {
                                                 Ok(_) => {
