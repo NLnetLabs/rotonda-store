@@ -289,7 +289,6 @@ impl<M: Meta> AggMetaData<M> {
 // This is the second-level struct that's linked from the `StoredPrefix` top-
 // level struct. It has an aggregated record field that holds counters and
 // other aggregated data for the records that are stored inside it.
-#[allow(dead_code)]
 #[derive(Debug)]
 pub(crate) struct StoredAggRecord<
     AF: AddressFamily,
