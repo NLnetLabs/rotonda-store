@@ -18,7 +18,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 for pfx in pfxs.into_iter() {
                     println!("insert {}", pfx.unwrap());
-                    tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty).unwrap();
+
+                    match tree_bitmap
+                        .insert(&pfx.unwrap(), NoMeta::Empty)
+                    {
+                        Ok(_) => {}
+                        Err(e) => {
+                            println!("{}", e);
+                        }
+                    };
                 }
             }).unwrap()
         })
