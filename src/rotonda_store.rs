@@ -18,7 +18,7 @@ pub use crate::af::{AddressFamily, IPv4, IPv6};
 
 pub use crate::local_array::store::custom_alloc;
 
-pub const RECORDS_MAX_NUM: usize = 3;
+pub const RECORDS_MAX_NUM: usize = 1;
 
 //------------ The publicly available Rotonda Stores ------------------------
 
