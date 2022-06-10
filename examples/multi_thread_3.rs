@@ -1,6 +1,6 @@
+use log::trace;
 use std::time::Duration;
 use std::{sync::Arc, thread};
-use log::trace;
 
 use rotonda_store::{
     addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,
@@ -9,7 +9,6 @@ use rotonda_store::{
 use rotonda_store::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-
     #[cfg(feature = "cli")]
     env_logger::init();
 
@@ -26,16 +25,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let tree_bitmap = tree_bitmap.clone();
         let start_flag = Arc::clone(&f);
 
-        thread::Builder::new().name(i.to_string()).spawn(move || {
-            while !start_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                trace!("park thread {}", i);
-                thread::park();
-            }
+        std::thread::Builder::new().name(i.to_string()).spawn(
+            move || -> Result<(), Box<dyn std::error::Error + Send>> {
+                while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
+                    trace!("park thread {}", i);
+                    thread::park();
+                }
 
-            tree_bitmap
-                .insert(&pfx.unwrap(), PrefixAs(i as u32))
-                .unwrap();
-        }).unwrap()
+                print!("\nstart ---");
+                let mut x = 0;
+                while x < 100 {
+                    x += 1;
+                    // print!("{}-", i);
+                    match tree_bitmap
+                        .insert(&pfx.unwrap(), PrefixAs(i as u32))
+                    {
+                        Ok(_) => {}
+                        Err(e) => {
+                            println!("{}", e);
+                        }
+                    };
+                }
+                println!("--thread {} done.", i);
+                Ok(())
+            },
+        ).unwrap()
     });
 
     thread::sleep(Duration::from_millis(1000));
@@ -53,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &pfx.unwrap(),
         &MatchOptions {
             match_type: rotonda_store::MatchType::ExactMatch,
-            include_all_records: false,
+            include_all_records: true,
             include_less_specifics: true,
             include_more_specifics: true,
         },

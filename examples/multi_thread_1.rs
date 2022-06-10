@@ -10,17 +10,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new()?);
 
     let _: Vec<_> = (0..16)
-        .map(|_| {
+        .map(|i: i32| {
             let tree_bitmap = tree_bitmap.clone();
 
-            thread::spawn(move || {
+            thread::Builder::new().name(i.to_string()).spawn(move || {
                 let pfxs = get_pfx();
 
                 for pfx in pfxs.into_iter() {
                     println!("insert {}", pfx.unwrap());
                     tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty).unwrap();
                 }
-            })
+            }).unwrap()
         })
         .map(|t| t.join())
         .collect();
