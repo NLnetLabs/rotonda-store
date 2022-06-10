@@ -457,22 +457,48 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
     // the most recent record is the first in the list.
     fn atomic_prepend_record(&mut self, record: M, guard: &Guard) {
         trace!("New record: {}", record);
-        let mut inner_next_record =
-            self.next_record.load(Ordering::Acquire, guard);
-        trace!("Existing record {:?}", inner_next_record);
-        let tag = inner_next_record.tag();
-        let new_inner_next_record = Owned::new(LinkedListRecord {
+        let back_off = crossbeam_utils::Backoff::new();
+
+        let mut cur_record = {
+            let mut i = 0;
+            loop {
+                let cur_record = self.next_record.swap(
+                    Shared::null(),
+                    Ordering::SeqCst,
+                    guard,
+                );
+
+                if !cur_record.is_null() {
+                    trace!("Existing record {:?}", cur_record);
+                    break cur_record;
+                }
+
+                i += 1;
+                if log_enabled!(log::Level::Warn) {
+                    warn!(
+                        "{} Couldn't prepend record {}. Trying again. {}",
+                        std::thread::current().name().unwrap(),
+                        record,
+                        i
+                    )
+                }
+
+                back_off.spin();
+            }
+        };
+
+        let new_record = Owned::new(LinkedListRecord {
             record,
-            prev: unsafe { inner_next_record.into_owned() }.into(),
+            prev: unsafe { cur_record.into_owned() }.into(),
         })
         .into_shared(guard);
 
         loop {
             let next_record = self.next_record.compare_exchange(
-                inner_next_record,
-                new_inner_next_record.with_tag(tag + 1),
-                Ordering::AcqRel,
-                Ordering::Acquire,
+                cur_record,
+                new_record,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
                 guard,
             );
 
@@ -484,7 +510,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
                 Err(next_record) => {
                     // Do it again
                     // TODO BACKOFF
-                    inner_next_record = next_record.current;
+                    cur_record = next_record.current;
                 }
             };
         }
