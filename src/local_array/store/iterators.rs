@@ -9,9 +9,7 @@
 
 use std::{marker::PhantomData, sync::atomic::Ordering};
 
-use super::atomic_types::{
-    NodeBuckets, PrefixBuckets, PrefixSet,
-};
+use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
 use crate::{
     af::AddressFamily,
@@ -202,13 +200,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // as well.
                     if let Some(prefix) = s_pfx
                         .get_stored_prefix(self.guard)
-                        .map(|p| p.get_record(self.guard)).flatten()
+                        .and_then(|p| p.get_record(self.guard))
                     {
                         // There's a prefix here, that's the next one
                         debug!("D. found prefix {:?}", prefix);
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
-                            &prefix.meta
+                            &prefix.meta,
                         ));
                     } else {
                         panic!("No prefix here, but there's a child here?");
@@ -220,7 +218,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // cursor position.
                     if let Some(prefix) = s_pfx
                         .get_stored_prefix(self.guard)
-                        .map(|p| p.get_record(self.guard)).flatten()
+                        .and_then(|p| p.get_record(self.guard))
                     {
                         // There's a prefix here, that's the next one
                         debug!("E. found prefix {:?}", prefix);
