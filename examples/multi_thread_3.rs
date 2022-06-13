@@ -24,7 +24,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let threads =
         (0..256).enumerate().map(|(i, _)| {
             let tree_bitmap = tree_bitmap.clone();
-            let start_flag = Arc::clone(&f);
+            // let start_flag = Arc::clone(&f);
 
             std::thread::Builder::new().name(i.to_string()).spawn(
             move || -> Result<(), Box<dyn std::error::Error + Send>> {

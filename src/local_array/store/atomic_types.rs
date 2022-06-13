@@ -2,8 +2,7 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use crossbeam_utils::Backoff;
-use log::{debug, error, log_enabled, trace, warn};
+use log::{debug, log_enabled, trace, warn};
 
 use epoch::{Guard, Owned, Shared};
 use routecore::bgp::PrefixRecord;
