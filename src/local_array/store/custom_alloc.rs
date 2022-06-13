@@ -433,20 +433,20 @@ impl<
                             trace!("aggregation record exists. Update it");
                             let inner_next_agg_record =
                                 unsafe { next_agg_record.deref_mut() };
-                            let next_record = inner_next_agg_record
-                                .next_record
-                                .load(Ordering::SeqCst, guard);
+                            // let next_record = inner_next_agg_record
+                            //     .next_record
+                            //     .load(Ordering::SeqCst, guard);
                             let rec_hash_id = record.meta.get_hash_id();
-                            match next_record.is_null() {
-                                true => {
-                                    trace!("add record in the list (first entry).");
-                                    inner_next_agg_record
-                                        .atomic_prepend_agg_record(record, guard);
+                            match inner_next_agg_record.try_create_first_record(&record, guard) {
+                                Ok(_) => {
+                                    warn!("added record in the list (first entry).");
+                                    // inner_next_agg_record
+                                    //     .try_create_first_record( record, guard)?;
                                 }
-                                false => {
+                                Err(mut next_agg_record) => {
                                     trace!("look for matching unique routes list");
                                     let inner_next_record =
-                                        unsafe { next_record.deref() };
+                                        unsafe { next_agg_record.deref_mut().next_record.load(Ordering::SeqCst, guard).deref_mut() };
                                     trace!(
                                         "next_record {:?}",
                                         inner_next_record
@@ -456,7 +456,7 @@ impl<
                                     {
                                         // Yes! You came to the right place! This is the
                                         // crux of the whole store.
-                                        trace!(
+                                        warn!(
                                             "{} == {}?",
                                             rec_hash_id,
                                             next_rec.get_hash_id()
@@ -467,16 +467,18 @@ impl<
                                             // This is the same id, so we're going to prepend this record
                                             // to the linked-list of records.
                                             true => {
-                                                trace!("found existing route for this record. prepend record to the list.");
-                                                trace!(
+                                                warn!("found existing route for this record. prepend record to the list.");
+                                                warn!(
                                                     "new record {}",
                                                     record
                                                 );
+                                                let guard2 = &epoch::pin();
                                                 inner_next_agg_record
                                                     .rotate_record(
                                                         record.meta,
-                                                        guard
+                                                        guard2
                                                     );
+                                                guard2.flush();
                                                 return Ok(());
                                             }
 
@@ -484,7 +486,7 @@ impl<
                                         }
                                     }
 
-                                    debug!("Create new route list and add the record.");
+                                    warn!("Create new route list and add the record.");
                                     inner_next_agg_record
                                         .atomic_prepend_agg_record(record, guard);
                                 }
@@ -494,7 +496,6 @@ impl<
                 }
             }
         };
-
         Ok(())
     }
 

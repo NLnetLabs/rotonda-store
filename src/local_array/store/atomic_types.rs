@@ -2,7 +2,8 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{debug, log_enabled, trace, warn};
+use crossbeam_utils::Backoff;
+use log::{debug, error, log_enabled, trace, warn};
 
 use epoch::{Guard, Owned, Shared};
 use routecore::bgp::PrefixRecord;
@@ -402,6 +403,46 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         }
     }
 
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn try_create_first_record<'a>(
+        &'a mut self,
+        new_agg_record: &'a InternalPrefixRecord<AF, M>,
+        guard: &'a Guard,
+    ) -> Result<Shared<StoredAggRecord<AF, M>>, Shared<StoredAggRecord<AF, M>>>
+    {
+        let check_record = self.next_agg.load(Ordering::SeqCst, guard);
+        if !check_record.is_null() {
+            return Err(check_record);
+        }
+
+        warn!("New aggregation record: {:?}", new_agg_record);
+        let new_inner_next_agg_record = Owned::new(StoredAggRecord {
+            agg_record: Atomic::new(AggMetaData::new(
+                new_agg_record.meta.clone(),
+            )),
+            next_record: Atomic::new(LinkedListRecord {
+                record: new_agg_record.meta.clone(),
+                prev: Atomic::null(),
+            }),
+            next_agg: Atomic::null(),
+            // prev: unsafe { inner_next_agg_record.into_owned() }.into(),
+        })
+        .into_shared(guard);
+
+        self.next_agg
+            .compare_exchange(
+                Shared::null(),
+                new_inner_next_agg_record.with_tag(1),
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+                guard,
+            )
+            .map_err(|err| {
+                warn!("try create first record failed. already exists.");
+                err.current
+            })
+    }
+
     // aggregated records don't need to be prepended (you, know, HEAD), but
     // can just be appended to the tail.
     pub(crate) fn atomic_prepend_agg_record(
@@ -515,7 +556,9 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
     fn remove_last_record(&mut self, guard: &Guard) {
         let mut next_record = &self.next_record;
-        let mut inner_next = next_record.load(Ordering::SeqCst, guard);
+        let mut inner_next = next_record.load(Ordering::Acquire, guard);
+        // let back_off = Backoff::new();
+        // guard = unsafe { epoch::unprotected() };
 
         loop {
             // See if somebody beat us to it.
@@ -527,20 +570,22 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
 
             // No, this is not somebody beating us to it, this is just the
             // end of the list.
-            if rec.prev.load(Ordering::SeqCst, guard).is_null() {
+            if rec.prev.load(Ordering::Acquire, guard).is_null() {
                 break;
             }
 
             next_record = &rec.prev;
-            inner_next = next_record.load(Ordering::SeqCst, guard);
+            inner_next = next_record.load(Ordering::Acquire, guard);
+            // back_off.spin();
         }
 
         // detach the last record
         let last_record =
-            next_record.swap(Shared::null(), Ordering::SeqCst, guard);
+            next_record.swap(Shared::null(), Ordering::Release, guard);
 
         // yes, here somebody might have beaten us to it once more.
         if !last_record.is_null() {
+            debug!("destroying last record {:?}", last_record);
             unsafe { guard.defer_destroy(last_record) };
         };
     }
