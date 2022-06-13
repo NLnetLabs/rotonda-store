@@ -431,66 +431,6 @@ impl<
                             trace!("aggregation record exists. Update it");
                             inner_stored_prefix
                                 .atomic_update_aggregate(record, guard);
-                            // let inner_next_agg_record =
-                            //     unsafe { next_agg_record.deref_mut() };
-                            // let next_record = inner_next_agg_record
-                            //     .next_record
-                            //     .load(Ordering::SeqCst, guard);
-                            // let rec_hash_id = record.meta.get_hash_id();
-                            // match inner_next_agg_record.try_create_first_record(&record, guard) {
-                            //     Ok(_) => {
-                            //         warn!("added record in the list (first entry).");
-                            //         // inner_next_agg_record
-                            //         //     .try_create_first_record( record, guard)?;
-                            //     }
-                            //     Err(mut next_agg_record) => {
-                            //         trace!("look for matching unique routes list");
-                            //         let inner_next_record =
-                            //             unsafe { next_agg_record.deref_mut().next_record.load(Ordering::SeqCst, guard).deref_mut() };
-                            //         trace!(
-                            //             "next_record {:?}",
-                            //             inner_next_record
-                            //         );
-                            //         for next_rec in
-                            //             inner_next_record.iter(guard)
-                            //         {
-                            //             // Yes! You came to the right place! This is the
-                            //             // crux of the whole store.
-                            //             warn!(
-                            //                 "{} == {}?",
-                            //                 rec_hash_id,
-                            //                 next_rec.get_hash_id()
-                            //             );
-                            //             match rec_hash_id
-                            //                 == next_rec.get_hash_id()
-                            //             {
-                            //                 // This is the same id, so we're going to prepend this record
-                            //                 // to the linked-list of records.
-                            //                 true => {
-                            //                     warn!("found existing route for this record. prepend record to the list.");
-                            //                     warn!(
-                            //                         "new record {}",
-                            //                         record
-                            //                     );
-                            //                     let guard2 = &epoch::pin();
-                            //                     inner_next_agg_record
-                            //                         .rotate_record(
-                            //                             record.meta,
-                            //                             guard2
-                            //                         );
-                            //                     guard2.flush();
-                            //                     return Ok(());
-                            //                 }
-
-                            //                 false => {}
-                            //             }
-                            //         }
-
-                            //         warn!("Create new route list and add the record.");
-                            //         inner_next_agg_record
-                            //             .atomic_prepend_agg_record(record, guard);
-                            //     }
-                            // }
                         }
                     }
                 }
@@ -569,68 +509,6 @@ impl<
             guard,
         )
     }
-
-    // #[allow(clippy::type_complexity)]
-    // pub(crate) fn retrieve_prefix(
-    //     &self,
-    //     id: PrefixId<AF>,
-    // ) -> Option<InternalPrefixRecord<AF, Meta>> {
-    //     let guard = epoch::pin();
-    //     struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
-    //         f: &'s dyn for<'a> Fn(
-    //             &SearchLevel<AF, M>,
-    //             &PrefixSet<AF, M>,
-    //             u8,
-    //             &'a Guard,
-    //         )
-    //             -> Option<InternalPrefixRecord<AF, M>>,
-    //     }
-
-    //     let search_level = SearchLevel {
-    //         f: &|search_level: &SearchLevel<AF, Meta>,
-    //              prefix_set: &PrefixSet<AF, Meta>,
-    //              mut level: u8,
-    //              guard: &Guard| {
-    //             // HASHING FUNCTION
-    //             let index = Self::hash_prefix_id(id, level);
-
-    //             let mut prefixes =
-    //                 prefix_set.0.load(Ordering::Relaxed, guard);
-    //             let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-
-    //             if let Some(StoredPrefix {
-    //                 super_agg_record: pfx_rec,
-    //                 next_bucket: next_set,
-    //                 ..
-    //             }) = unsafe { prefix_ref.assume_init_ref() }
-    //                 .get_stored_prefix(guard)
-    //             {
-    //                 if let Some(pfx_rec) = pfx_rec.get_record(guard) {
-    //                     if id == PrefixId::from(pfx_rec) {
-    //                         trace!("found requested prefix {:?}", id);
-    //                         return Some(pfx_rec.clone());
-    //                     };
-    //                     level += 1;
-    //                     return (search_level.f)(
-    //                         search_level,
-    //                         next_set,
-    //                         level,
-    //                         guard,
-    //                     );
-    //                 }
-    //             }
-
-    //             None
-    //         },
-    //     };
-
-    //     (search_level.f)(
-    //         &search_level,
-    //         self.prefixes.get_root_prefix_set(id.get_len()),
-    //         0,
-    //         &guard,
-    //     )
-    // }
 
     #[allow(clippy::type_complexity)]
     pub(crate) fn non_recursive_retrieve_prefix_with_guard(
