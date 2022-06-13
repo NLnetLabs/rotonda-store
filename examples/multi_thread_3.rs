@@ -21,20 +21,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         32,
     );
 
-    let threads = (0..256).enumerate().map(|(i, _)| {
-        let tree_bitmap = tree_bitmap.clone();
-        let start_flag = Arc::clone(&f);
+    let threads =
+        (0..256).enumerate().map(|(i, _)| {
+            let tree_bitmap = tree_bitmap.clone();
+            let start_flag = Arc::clone(&f);
 
-        std::thread::Builder::new().name(i.to_string()).spawn(
+            std::thread::Builder::new().name(i.to_string()).spawn(
             move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
-                    trace!("park thread {}", i);
+                // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
+                    println!("park thread {}", i);
                     thread::park();
-                }
+                // }
 
-                print!("\nstart ---");
+                print!("\nstart {} ---", i);
                 let mut x = 0;
-                while x < 100 {
+                while x < 1024 {
                     x += 1;
                     // print!("{}-", i);
                     match tree_bitmap
@@ -50,14 +51,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Ok(())
             },
         ).unwrap()
-    });
+        });
 
-    thread::sleep(Duration::from_millis(1000));
+    thread::sleep(Duration::from_secs(1));
 
     f.store(true, std::sync::atomic::Ordering::Release);
     threads.for_each(|t| {
         t.thread().unpark();
     });
+
+    thread::sleep(Duration::from_secs(10));
 
     println!("------ end of inserts\n");
 
@@ -76,6 +79,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());
+    let pfx_vec = s_spfx.all_records.unwrap();
+    println!("length {}", pfx_vec.len());
+    for pfxs in pfx_vec.iter() {
+        println!("{}", pfxs.len());
+    }
     println!("-----------");
 
     Ok(())
