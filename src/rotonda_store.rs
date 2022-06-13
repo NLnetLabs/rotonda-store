@@ -1,10 +1,6 @@
 use std::collections::HashMap;
 use std::{fmt, slice};
 
-use crossbeam_epoch::{self as epoch};
-use epoch::Guard;
-
-use crate::local_array::store::atomic_types::StoredPrefix;
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::bgp::MetaDataSet;
@@ -221,19 +217,19 @@ impl<'a, M: routecore::record::Meta> PrefixRecordMap<'a, M> {
         Self(HashMap::new())
     }
 
-    pub fn into_prefix_record_map<AF: AddressFamily + 'a>(
-        iter: impl Iterator<Item = &'a StoredPrefix<AF, M>>,
-        guard: &'a Guard,
-    ) -> Self {
-        let mut map = HashMap::new();
-        for rec in iter {
-            map.entry(rec.prefix.into_pub()).or_insert_with(|| {
-                rec.iter_latest_unique_meta_data(guard)
-                    .collect::<MetaDataSet<'a, M>>()
-            });
-        }
-        Self(map)
-    }
+    // pub fn into_prefix_record_map<AF: AddressFamily + 'a>(
+    //     iter: impl Iterator<Item = &'a StoredPrefix<AF, M>>,
+    //     guard: &'a Guard,
+    // ) -> Self {
+    //     let mut map = HashMap::new();
+    //     for rec in iter {
+    //         map.entry(rec.prefix.into_pub()).or_insert_with(|| {
+    //             rec.iter_latest_unique_meta_data(guard)
+    //                 .collect::<MetaDataSet<'a, M>>()
+    //         });
+    //     }
+    //     Self(map)
+    // }
 
     pub fn len(&self) -> usize {
         self.0.len()
@@ -282,10 +278,9 @@ impl<'a, M: routecore::record::Meta> std::fmt::Display
 pub struct QueryResult<'a, M: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
-    pub prefix_meta: Option<MetaDataSet<'a, M>>,
-    pub all_records: Option<Vec<MetaDataSet<'a, M>>>,
-    pub less_specifics: Option<PrefixRecordMap<'a, M>>,
-    pub more_specifics: Option<PrefixRecordMap<'a, M>>,
+    pub prefix_meta: Option<M>,
+    pub less_specifics: Option<RecordSet<'a, M>>,
+    pub more_specifics: Option<RecordSet<'a, M>>,
 }
 
 impl<'a, M: routecore::record::Meta> fmt::Display for QueryResult<'a, M> {
@@ -300,21 +295,17 @@ impl<'a, M: routecore::record::Meta> fmt::Display for QueryResult<'a, M> {
         };
         write!(
             f,
-            "match_type: {}\nprefix: {}\nmetadata: {}\nall records: {}\nless_specifics: {}\nmore_specifics: {}",
+            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
             self.match_type,
             pfx_str,
             pfx_meta_str,
-            match &self.all_records {
-                Some(all_records) => all_records.iter().map(|ms| format!("{}", ms)).collect::<Vec<_>>().join("\n"),
-                None => "(not requested)".to_string(),
-            },
             if let Some(ls) = self.less_specifics.as_ref() {
-                ls.0.iter().map(|(k, v)| format!("{} -> {:?}", k, v)).collect::<Vec<_>>().join("\n")
+                format!("{}", ls)
             } else {
                 "".to_string()
             },
             if let Some(ms) = self.more_specifics.as_ref() {
-                ms.0.iter().map(|(k, v)| format!("{} -> {:?}", k, v)).collect::<Vec<_>>().join("\n")
+                format!("{}", ms)
             } else {
                 "".to_string()
             },

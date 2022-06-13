@@ -2,11 +2,11 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
+use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace, warn};
 
 use epoch::{Guard, Owned, Shared};
-use routecore::bgp::PrefixRecord;
-use routecore::record::{Meta, Record};
+use routecore::record::Meta;
 use std::marker::PhantomData;
 
 use crate::local_array::tree::*;
@@ -68,7 +68,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
     // the aggregated data for this prefix (all hash_ids)
     pub(crate) super_agg_record: AtomicSuperAggRecord<AF, M>,
     // the next aggregated record for this prefix and hash_id
-    pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
+    // pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
     // the reference to the next set of records for this prefix, if any.
     pub next_bucket: PrefixSet<AF, M>,
 }
@@ -123,11 +123,18 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
                 record.get_prefix_id(),
                 new_super_agg_record.meta,
             ),
-            next_agg_record: Atomic::new(StoredAggRecord::<AF, M>::new(
-                record,
-            )),
+            // next_agg_record: Atomic::new(StoredAggRecord::<AF, M>::new(
+            //     record,
+            // )),
             next_bucket,
         }
+    }
+
+    pub(crate) fn get_record<'a>(
+        &self,
+        guard: &'a Guard,
+    ) -> Option<&'a InternalPrefixRecord<AF, M>> {
+        self.super_agg_record.get_record(guard)
     }
 
     pub(crate) fn atomic_update_aggregate(
@@ -135,86 +142,95 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         record: &InternalPrefixRecord<AF, M>,
         guard: &Guard,
     ) {
+        let back_off = Backoff::new();
         let mut inner_super_agg_record =
             self.super_agg_record.0.load(Ordering::SeqCst, guard);
         loop {
             let tag = inner_super_agg_record.tag();
-            let mut super_agg_record =
-                unsafe { inner_super_agg_record.into_owned() };
+            let super_agg_record = unsafe { inner_super_agg_record.deref() };
 
-            super_agg_record.meta = super_agg_record
+            let new_meta = super_agg_record
                 .meta
                 .clone_merge_update(&record.meta)
                 .unwrap();
 
+            let new_record = Owned::new(InternalPrefixRecord::<AF, M> {
+                net: record.net,
+                len: record.len,
+                meta: new_meta,
+            });
+
             let super_agg_record = self.super_agg_record.0.compare_exchange(
-                self.super_agg_record.0.load(Ordering::SeqCst, guard),
-                super_agg_record.with_tag(tag + 1),
+                inner_super_agg_record,
+                new_record.with_tag(tag + 1),
                 Ordering::SeqCst,
                 Ordering::SeqCst,
                 guard,
             );
             match super_agg_record {
-                Ok(_) => return,
+                Ok(_) => {
+                    return;
+                }
                 Err(next_agg) => {
                     // Do it again
                     // TODO BACKOFF
+                    back_off.spin();
                     inner_super_agg_record = next_agg.current;
                 }
             };
         }
     }
 
-    pub(crate) fn iter_agg_records<'a>(
-        &'a self,
-        guard: &'a epoch::Guard,
-    ) -> impl Iterator<Item = &'a StoredAggRecord<AF, M>> {
-        let start_r = self.next_agg_record.load(Ordering::SeqCst, guard);
+    // pub(crate) fn iter_agg_records<'a>(
+    //     &'a self,
+    //     guard: &'a epoch::Guard,
+    // ) -> impl Iterator<Item = &'a StoredAggRecord<AF, M>> {
+    //     let start_r = self.next_agg_record.load(Ordering::SeqCst, guard);
 
-        match start_r.is_null() {
-            true => {
-                trace!("no record");
-                None
-            }
-            false => {
-                let rec = unsafe { start_r.deref() };
-                trace!("agg_record {:?}", rec);
-                Some(AggRecordIterator {
-                    current: Some(rec),
-                    guard,
-                })
-            }
-        }
-        .into_iter()
-        .flatten()
-    }
+    //     match start_r.is_null() {
+    //         true => {
+    //             trace!("no record");
+    //             None
+    //         }
+    //         false => {
+    //             let rec = unsafe { start_r.deref() };
+    //             trace!("agg_record {:?}", rec);
+    //             Some(AggRecordIterator {
+    //                 current: Some(rec),
+    //                 guard,
+    //             })
+    //         }
+    //     }
+    //     .into_iter()
+    //     .flatten()
+    // }
 
-    pub(crate) fn iter_latest_unique_meta_data<'a>(
-        &'a self,
-        guard: &'a epoch::Guard,
-    ) -> impl Iterator<Item = &'a M> {
-        debug!(
-            "iter_latest {:?}",
-            self.iter_agg_records(guard).collect::<Vec<_>>()
-        );
-        self.iter_agg_records(guard)
-            .inspect(|p| trace!("pp {:?}", p))
-            .filter_map(|p| p.get_last_record(guard))
-    }
+    // pub(crate) fn iter_latest_unique_meta_data<'a>(
+    //     &'a self,
+    //     guard: &'a epoch::Guard,
+    // ) -> impl Iterator<Item = &'a M> {
+    //     debug!(
+    //         "iter_latest {:?}",
+    //         self.iter_agg_records(guard).collect::<Vec<_>>()
+    //     );
+    //     self.iter_agg_records(guard)
+    //         .inspect(|p| trace!("pp {:?}", p))
+    //         .filter_map(|p| p.get_last_record(guard))
+    // }
 
-    pub fn iter_latest_unique_pub_records<'a>(
-        &'a self,
-        guard: &'a epoch::Guard,
-    ) -> impl Iterator<Item = PrefixRecord<'a, M>> {
-        self.iter_agg_records(guard).filter_map(|p| {
-            p.get_last_record(guard).map(|meta| {
-                routecore::bgp::PrefixRecord::new(
-                    self.prefix.into_pub(),
-                    meta,
-                )
-            })
-        })
-    }
+    // pub fn iter_latest_unique_pub_records<'a>(
+    //     &'a self,
+    //     guard: &'a epoch::Guard,
+    // ) -> impl Iterator<Item = PrefixRecord<'a, M>> {
+    //     self.iter_agg_records(guard).filter_map(|p| {
+    //         p.get_last_record(guard).map(|meta| {
+    //             routecore::bgp::PrefixRecord::new(
+    //                 self.prefix.into_pub(),
+    //                 meta,
+    //             )
+    //         })
+    //     })
+    // }
 }
 
 // ----------- SuperAggRecord -----------------------------------------------
@@ -553,53 +569,53 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredAggRecord<AF, M> {
         }
     }
 
-    fn remove_last_record(&mut self, guard: &Guard) {
-        let mut next_record = &self.next_record;
-        let mut inner_next = next_record.load(Ordering::Acquire, guard);
-        // let back_off = Backoff::new();
-        // guard = unsafe { epoch::unprotected() };
+    // fn remove_last_record(&mut self, guard: &Guard) {
+    //     let mut next_record = &self.next_record;
+    //     let mut inner_next = next_record.load(Ordering::Acquire, guard);
+    //     // let back_off = Backoff::new();
+    //     // guard = unsafe { epoch::unprotected() };
 
-        loop {
-            // See if somebody beat us to it.
-            if inner_next.is_null() {
-                return;
-            }
+    //     loop {
+    //         // See if somebody beat us to it.
+    //         if inner_next.is_null() {
+    //             return;
+    //         }
 
-            let rec = unsafe { inner_next.deref() };
+    //         let rec = unsafe { inner_next.deref() };
 
-            // No, this is not somebody beating us to it, this is just the
-            // end of the list.
-            if rec.prev.load(Ordering::Acquire, guard).is_null() {
-                break;
-            }
+    //         // No, this is not somebody beating us to it, this is just the
+    //         // end of the list.
+    //         if rec.prev.load(Ordering::Acquire, guard).is_null() {
+    //             break;
+    //         }
 
-            next_record = &rec.prev;
-            inner_next = next_record.load(Ordering::Acquire, guard);
-            // back_off.spin();
-        }
+    //         next_record = &rec.prev;
+    //         inner_next = next_record.load(Ordering::Acquire, guard);
+    //         // back_off.spin();
+    //     }
 
-        // detach the last record
-        let last_record =
-            next_record.swap(Shared::null(), Ordering::Release, guard);
+    //     // detach the last record
+    //     let last_record =
+    //         next_record.swap(Shared::null(), Ordering::Release, guard);
 
-        // yes, here somebody might have beaten us to it once more.
-        if !last_record.is_null() {
-            debug!("destroying last record {:?}", last_record);
-            unsafe { guard.defer_destroy(last_record) };
-        };
-    }
+    //     // yes, here somebody might have beaten us to it once more.
+    //     if !last_record.is_null() {
+    //         debug!("destroying last record {:?}", last_record);
+    //         unsafe { guard.defer_destroy(last_record) };
+    //     };
+    // }
 
-    pub(crate) fn rotate_record(&mut self, record: M, guard: &Guard) {
-        warn!("record count {}", self.get_count());
-        let record_count = self.update_agg_record(&record, guard);
-        self.atomic_prepend_record(record, guard);
-        if record_count > crate::RECORDS_MAX_NUM {
-            self.remove_last_record(guard);
-            debug!("rotated record");
-        } else {
-            debug!("added record");
-        }
-    }
+    // pub(crate) fn rotate_record(&mut self, record: M, guard: &Guard) {
+    //     warn!("record count {}", self.get_count());
+    //     let record_count = self.update_agg_record(&record, guard);
+    //     self.atomic_prepend_record(record, guard);
+    //     if record_count > crate::RECORDS_MAX_NUM {
+    //         self.remove_last_record(guard);
+    //         debug!("rotated record");
+    //     } else {
+    //         debug!("added record");
+    //     }
+    // }
 }
 pub(crate) struct AggRecordIterator<
     'a,
@@ -773,19 +789,19 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         })
     }
 
-    pub(crate) fn get_last_record<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&Meta> {
-        self.get_stored_prefix(guard)
-            .and_then(|stored_prefix| unsafe {
-                stored_prefix
-                    .next_agg_record
-                    .load(Ordering::SeqCst, guard)
-                    .deref()
-                    .get_last_record(guard)
-            })
-    }
+    // pub(crate) fn get_last_record<'a>(
+    //     &'a self,
+    //     guard: &'a Guard,
+    // ) -> Option<&Meta> {
+    //     self.get_stored_prefix(guard)
+    //         .and_then(|stored_prefix| unsafe {
+    //             stored_prefix
+    //                 .next_agg_record
+    //                 .load(Ordering::SeqCst, guard)
+    //                 .deref()
+    //                 .get_last_record(guard)
+    //         })
+    // }
 
     // PrefixSet is an Atomic that might be a null pointer, which is
     // UB! Therefore we keep the prefix record in an Option: If

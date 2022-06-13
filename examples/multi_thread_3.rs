@@ -79,11 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());
-    let pfx_vec = s_spfx.all_records.unwrap();
-    println!("length {}", pfx_vec.len());
-    for pfxs in pfx_vec.iter() {
-        println!("{}", pfxs.len());
-    }
+   
     println!("-----------");
 
     Ok(())

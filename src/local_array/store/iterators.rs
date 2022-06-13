@@ -10,7 +10,7 @@
 use std::{marker::PhantomData, sync::atomic::Ordering};
 
 use super::atomic_types::{
-    NodeBuckets, PrefixBuckets, PrefixSet, StoredPrefix,
+    NodeBuckets, PrefixBuckets, PrefixSet,
 };
 use super::custom_alloc::CustomAllocStorage;
 use crate::{
@@ -26,7 +26,7 @@ use crate::{
 };
 
 use crossbeam_epoch::Guard;
-use log::{trace, debug};
+use log::{debug, trace};
 use routecore::{
     addr::Prefix,
     record::{Meta, Record},
@@ -200,12 +200,15 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
                     // If there's a child here there MUST be a prefix here,
                     // as well.
-                    if let Some(prefix) = s_pfx.get_last_record(self.guard) {
+                    if let Some(prefix) = s_pfx
+                        .get_stored_prefix(self.guard)
+                        .map(|p| p.get_record(self.guard)).flatten()
+                    {
                         // There's a prefix here, that's the next one
                         debug!("D. found prefix {:?}", prefix);
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
-                            prefix,
+                            &prefix.meta
                         ));
                     } else {
                         panic!("No prefix here, but there's a child here?");
@@ -215,13 +218,16 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // No reference to another PrefixSet, all that's
                     // left, is checking for a prefix at the current
                     // cursor position.
-                    if let Some(prefix) = s_pfx.get_last_record(self.guard) {
+                    if let Some(prefix) = s_pfx
+                        .get_stored_prefix(self.guard)
+                        .map(|p| p.get_record(self.guard)).flatten()
+                    {
                         // There's a prefix here, that's the next one
                         debug!("E. found prefix {:?}", prefix);
                         self.cursor += 1;
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
-                            prefix,
+                            &prefix.meta,
                         ));
                     }
                 }
@@ -313,7 +319,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
 {
-    type Item = &'a StoredPrefix<AF, M>;
+    type Item = &'a InternalPrefixRecord<AF, M>;
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!("MoreSpecificsPrefixIter");
@@ -334,8 +340,7 @@ impl<
                         ),
                         self.guard,
                     )
-                    .0;
-                // .map(|p| p.iter_agg_records(self.guard).collect());
+                    .0.and_then(|p| p.get_record(self.guard));
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -454,7 +459,7 @@ pub(crate) struct LessSpecificPrefixIter<
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for LessSpecificPrefixIter<'a, AF, M, PB>
 {
-    type Item = &'a StoredPrefix<AF, M>;
+    type Item = &'a InternalPrefixRecord<AF, M>;
 
     // This iterator moves down all prefix lengths, starting with the length
     // of the (search prefix - 1), looking for shorter prefixes, where the
@@ -536,7 +541,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             self.cur_bucket = self
                                 .prefixes
                                 .get_root_prefix_set(self.cur_len);
-                            return Some(stored_prefix);
+                            return Some(pfx_rec);
                         };
                         // Advance to the next level or the next len.
                         match stored_prefix
@@ -622,7 +627,7 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = &'a StoredPrefix<AF, M>> {
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
@@ -726,7 +731,7 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = &'a StoredPrefix<AF, M>> {
+    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
         trace!("less specifics for {:?}", start_prefix_id);
         trace!("level {}, len {}", 0, start_prefix_id.get_len());
 

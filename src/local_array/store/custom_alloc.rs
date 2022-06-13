@@ -420,77 +420,77 @@ impl<
                 if let Some(inner_stored_prefix) =
                     atomic_stored_prefix.get_stored_prefix_mut(guard)
                 {
-                    let mut next_agg_record = inner_stored_prefix
-                        .next_agg_record
-                        .load(Ordering::SeqCst, guard);
-                    match next_agg_record.is_null() {
-                        true => {
+                    match inner_stored_prefix
+                        .super_agg_record.get_record(guard) {
+                        None => {
                             trace!("no aggregation record. Create new aggregation record");
                             inner_stored_prefix
                                 .atomic_update_aggregate(&record, guard);
                         }
-                        false => {
+                        Some(record) => {
                             trace!("aggregation record exists. Update it");
-                            let inner_next_agg_record =
-                                unsafe { next_agg_record.deref_mut() };
+                            inner_stored_prefix
+                                .atomic_update_aggregate(record, guard);
+                            // let inner_next_agg_record =
+                            //     unsafe { next_agg_record.deref_mut() };
                             // let next_record = inner_next_agg_record
                             //     .next_record
                             //     .load(Ordering::SeqCst, guard);
-                            let rec_hash_id = record.meta.get_hash_id();
-                            match inner_next_agg_record.try_create_first_record(&record, guard) {
-                                Ok(_) => {
-                                    warn!("added record in the list (first entry).");
-                                    // inner_next_agg_record
-                                    //     .try_create_first_record( record, guard)?;
-                                }
-                                Err(mut next_agg_record) => {
-                                    trace!("look for matching unique routes list");
-                                    let inner_next_record =
-                                        unsafe { next_agg_record.deref_mut().next_record.load(Ordering::SeqCst, guard).deref_mut() };
-                                    trace!(
-                                        "next_record {:?}",
-                                        inner_next_record
-                                    );
-                                    for next_rec in
-                                        inner_next_record.iter(guard)
-                                    {
-                                        // Yes! You came to the right place! This is the
-                                        // crux of the whole store.
-                                        warn!(
-                                            "{} == {}?",
-                                            rec_hash_id,
-                                            next_rec.get_hash_id()
-                                        );
-                                        match rec_hash_id
-                                            == next_rec.get_hash_id()
-                                        {
-                                            // This is the same id, so we're going to prepend this record
-                                            // to the linked-list of records.
-                                            true => {
-                                                warn!("found existing route for this record. prepend record to the list.");
-                                                warn!(
-                                                    "new record {}",
-                                                    record
-                                                );
-                                                let guard2 = &epoch::pin();
-                                                inner_next_agg_record
-                                                    .rotate_record(
-                                                        record.meta,
-                                                        guard2
-                                                    );
-                                                guard2.flush();
-                                                return Ok(());
-                                            }
+                            // let rec_hash_id = record.meta.get_hash_id();
+                            // match inner_next_agg_record.try_create_first_record(&record, guard) {
+                            //     Ok(_) => {
+                            //         warn!("added record in the list (first entry).");
+                            //         // inner_next_agg_record
+                            //         //     .try_create_first_record( record, guard)?;
+                            //     }
+                            //     Err(mut next_agg_record) => {
+                            //         trace!("look for matching unique routes list");
+                            //         let inner_next_record =
+                            //             unsafe { next_agg_record.deref_mut().next_record.load(Ordering::SeqCst, guard).deref_mut() };
+                            //         trace!(
+                            //             "next_record {:?}",
+                            //             inner_next_record
+                            //         );
+                            //         for next_rec in
+                            //             inner_next_record.iter(guard)
+                            //         {
+                            //             // Yes! You came to the right place! This is the
+                            //             // crux of the whole store.
+                            //             warn!(
+                            //                 "{} == {}?",
+                            //                 rec_hash_id,
+                            //                 next_rec.get_hash_id()
+                            //             );
+                            //             match rec_hash_id
+                            //                 == next_rec.get_hash_id()
+                            //             {
+                            //                 // This is the same id, so we're going to prepend this record
+                            //                 // to the linked-list of records.
+                            //                 true => {
+                            //                     warn!("found existing route for this record. prepend record to the list.");
+                            //                     warn!(
+                            //                         "new record {}",
+                            //                         record
+                            //                     );
+                            //                     let guard2 = &epoch::pin();
+                            //                     inner_next_agg_record
+                            //                         .rotate_record(
+                            //                             record.meta,
+                            //                             guard2
+                            //                         );
+                            //                     guard2.flush();
+                            //                     return Ok(());
+                            //                 }
 
-                                            false => {}
-                                        }
-                                    }
+                            //                 false => {}
+                            //             }
+                            //         }
 
-                                    warn!("Create new route list and add the record.");
-                                    inner_next_agg_record
-                                        .atomic_prepend_agg_record(record, guard);
-                                }
-                            }
+                            //         warn!("Create new route list and add the record.");
+                            //         inner_next_agg_record
+                            //             .atomic_prepend_agg_record(record, guard);
+                            //     }
+                            // }
                         }
                     }
                 }
@@ -661,7 +661,7 @@ impl<
 
             let mut prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
             let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-            if let Some(pfx_rec) //StoredPrefix {
+            if let Some(stored_prefix) //StoredPrefix {
                 // serial,
                 // super_agg_record: pfx_rec,
                 // next_bucket: next_set,
@@ -669,20 +669,20 @@ impl<
             = unsafe { prefix_ref.assume_init_ref() }
                 .get_stored_prefix(guard)
             {
-                
-                    if id == pfx_rec.prefix {
+                if let Some(pfx_rec) = stored_prefix.get_record(guard) {
+                    if id == pfx_rec.get_prefix_id() {
                         trace!("found requested prefix {:?}", id);
                         parents[level as usize] = Some((prefix_set, index));
                         return (
-                            Some(pfx_rec),
+                            Some(stored_prefix),
                             Some((id, level, prefix_set, parents, index)),
                         );
                     };
                     // Advance to the next level.
-                    prefix_set = &pfx_rec.next_bucket;
+                    prefix_set = &stored_prefix.next_bucket;
                     level += 1;
                     continue;
-                
+                }                
             }
 
             trace!("no prefix found for {:?}", id);

@@ -554,14 +554,14 @@ mod tests {
         let less_specifics = res.less_specifics.unwrap();
 
         assert!(less_specifics.iter().any(|r| {
-            *r.0 == Prefix::new(
+            r.prefix == Prefix::new(
                 std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0).into(),
                 48,
             )
             .unwrap()
         }));
         assert!(less_specifics.iter().any(|r| {
-            *r.0 == Prefix::new(
+            r.prefix == Prefix::new(
                 std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0).into(),
                 32,
             )
