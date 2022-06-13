@@ -51,7 +51,7 @@ where
                 None
             },
             prefix_meta: prefix.and_then(|r| {
-                r.super_agg_record.get_record(guard).map(|r| r.meta.clone())
+                r.super_agg_record.get_record(guard).map(|r| &r.meta)
             }),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
@@ -87,7 +87,7 @@ where
                 None
             },
             prefix_meta: prefix.and_then(|r| {
-                r.super_agg_record.get_record(guard).map(|r| r.meta.clone())
+                r.super_agg_record.get_record(guard).map(|r| &r.meta)
             }),
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| iter.collect()),
@@ -156,7 +156,7 @@ where
 
         QueryResult {
             prefix: stored_prefix.map(|p| p.prefix_into_pub()),
-            prefix_meta: stored_prefix.map(|pfx| pfx.meta.clone()),
+            prefix_meta: stored_prefix.map(|pfx| &pfx.meta),
             less_specifics: if include_less_specifics {
                 Some(
                     self.store
@@ -263,7 +263,7 @@ where
                         .unwrap()
                         .0
                         .get_record(guard)
-                        .map(|r| r.meta.clone());
+                        .map(|r| &r.meta);
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
@@ -762,7 +762,7 @@ where
                 pfx.0.prefix.into_pub()
             }),
             prefix_meta: prefix.and_then(|pfx| {
-                pfx.0.get_record(guard).map(|r| r.meta.clone())
+                pfx.0.get_record(guard).map(|r| &r.meta)
             }),
             match_type,
             less_specifics: if options.include_less_specifics {

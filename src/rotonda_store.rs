@@ -278,7 +278,7 @@ impl<'a, M: routecore::record::Meta> std::fmt::Display
 pub struct QueryResult<'a, M: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
-    pub prefix_meta: Option<M>,
+    pub prefix_meta: Option<&'a M>,
     pub less_specifics: Option<RecordSet<'a, M>>,
     pub more_specifics: Option<RecordSet<'a, M>>,
 }
