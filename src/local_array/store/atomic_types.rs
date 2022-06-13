@@ -61,7 +61,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
     pub serial: usize,
     // the prefix itself,
     pub prefix: PrefixId<AF>,
-    // the aggregated data for this prefix (all hash_ids)
+    // the aggregated data for this prefix
     pub(crate) super_agg_record: AtomicSuperAggRecord<AF, M>,
     // the next aggregated record for this prefix and hash_id
     // pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
@@ -119,9 +119,6 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
                 record.get_prefix_id(),
                 new_super_agg_record.meta,
             ),
-            // next_agg_record: Atomic::new(StoredAggRecord::<AF, M>::new(
-            //     record,
-            // )),
             next_bucket,
         }
     }
