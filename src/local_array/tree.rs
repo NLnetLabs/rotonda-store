@@ -489,7 +489,7 @@ impl<
                 AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
-            let guard = &epoch::pin();
+            let guard = &unsafe { epoch::unprotected() };
             // used for counting the number of reloads the
             // match_node_for_strides macro will tolerate.
             let mut i = 0;
@@ -565,6 +565,7 @@ impl<
         new_meta: M,
     ) -> Result<(), Box<dyn std::error::Error>> {
         trace!("Updating the default route...");
+        let guard = unsafe { epoch::unprotected() };
         self.store
             .upsert_prefix(InternalPrefixRecord::new_with_meta(
                 AF::zero(),
@@ -581,7 +582,7 @@ impl<
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        let guard = &epoch::pin();
+        let guard = unsafe { epoch::unprotected() };
 
         trace!("start assembling all more specific prefixes here");
         trace!(

@@ -93,17 +93,18 @@
 //
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::atomic::{AtomicUsize, Ordering}, time::Duration,
 };
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
+use crossbeam_utils::Backoff;
 use log::{trace, warn, debug, log_enabled};
 
-use epoch::{Guard, Owned};
+use epoch::{Guard, Owned, Shared};
 use std::marker::PhantomData;
 
-use crate::local_array::bit_span::BitSpan;
+use crate::local_array::{bit_span::BitSpan, store::errors::PrefixStoreError};
 use crate::local_array::tree::*;
 
 use crate::prefix_record::InternalPrefixRecord;
@@ -139,7 +140,7 @@ impl<
     > CustomAllocStorage<AF, Meta, NB, PB>
 {
     pub(crate) fn init(root_node: SizedStrideNode<AF>) -> Result<Self, Box<dyn std::error::Error>> {
-        trace!("initialize storage backend");
+        warn!("initialize storage backend");
 
         let store = CustomAllocStorage {
             buckets: NodeBuckets::<AF>::init(),
@@ -191,7 +192,7 @@ impl<
         let search_level_5 = store_node_closure![Stride5; id; back_off;];
 
         if log_enabled!(log::Level::Debug) {
-            debug!("{} insert node {}: {:?}", 
+            warn!("{} insert node {}: {:?}", 
                 std::thread::current().name().unwrap(), id, next_node);
         }
         match next_node {
@@ -375,39 +376,39 @@ impl<
         &self,
         record: InternalPrefixRecord<AF, Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let guard = &epoch::pin();
+        let guard = unsafe { epoch::unprotected() };
+
         let (atomic_stored_prefix, level) = self
             .retrieve_prefix_mut_with_guard(
                 PrefixId::new(record.net, record.len),
                 guard,
             );
+        let inner_stored_prefix = atomic_stored_prefix.0.load(Ordering::Acquire, guard);
 
-        match atomic_stored_prefix
-            .0
-            .load(Ordering::SeqCst, guard)
-            .is_null()
-        {
+        match inner_stored_prefix.is_null() {
             true => {
-                trace!("create new super-aggregated prefix record");
+                warn!("create new super-aggregated prefix record");
                 let new_stored_prefix =
                     StoredPrefix::new::<PB>(record, level);
 
                 match atomic_stored_prefix.0.compare_exchange(
-                    atomic_stored_prefix.0.load(Ordering::SeqCst, guard),
+                    inner_stored_prefix,
                     Owned::new(new_stored_prefix),
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
                     guard,
                 ) {
                     Ok(pfx) => {
-                        trace!("inserted new prefix record {:?}", &pfx);
+                        warn!("inserted new prefix record {:?}", &pfx);
+                        std::thread::sleep(Duration::from_millis(1));
                         return Ok(());
                     }
                     Err(stored_prefix) => {
-                        trace!(
+                        warn!(
                             "prefix can't be inserted as new {:?}",
                             stored_prefix.current
                         );
+                        return Err(Box::new(PrefixStoreError::PrefixAlreadyExist));
                     }
                 }
             }
@@ -417,22 +418,37 @@ impl<
                     record.net,
                     record.len
                 );
-                if let Some(inner_stored_prefix) =
-                    atomic_stored_prefix.get_stored_prefix_mut(guard)
-                {
-                    match inner_stored_prefix
-                        .super_agg_record.get_record(guard) {
-                        None => {
-                            trace!("no aggregation record. Create new aggregation record");
-                            inner_stored_prefix
-                                .atomic_update_aggregate(&record, guard);
+                let super_agg_record = &unsafe { inner_stored_prefix.as_ref() }.unwrap().super_agg_record.0;
+                let mut inner_agg_record = super_agg_record.load(Ordering::Acquire, guard);
+
+                loop {
+                    let prefix_record = unsafe { inner_agg_record.as_ref() }.unwrap();
+                    let new_record = Owned::new(InternalPrefixRecord::<AF, Meta>::new_with_meta(
+                        record.net,
+                        record.len,
+                        prefix_record
+                            .meta
+                            .clone_merge_update(&record.meta)
+                            .unwrap(),
+                    ));
+        
+                    match &super_agg_record.compare_exchange(
+                        inner_agg_record,
+                        new_record,
+                        Ordering::AcqRel,
+                        Ordering::Acquire,
+                        guard,
+                    ) {
+                        Ok(pfx) => {
+                            trace!("saved {:?}", pfx);
+                            std::thread::sleep(Duration::from_millis(1));
+                            return Ok(())
                         }
-                        Some(record) => {
-                            trace!("aggregation record exists. Update it");
-                            inner_stored_prefix
-                                .atomic_update_aggregate(record, guard);
+                        Err(next_agg) => {
+                            // Do it again
+                            inner_agg_record = next_agg.current;
                         }
-                    }
+                    };
                 }
             }
         };

@@ -148,7 +148,7 @@ macro_rules! store_node_closure {
 
                     // HASHING FUNCTION
                     let index = Self::hash_node_id($id, level);
-                    let guard = &epoch::pin();
+                    let guard = &unsafe { epoch::unprotected() };
                     let unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
                     
                     match unwrapped_nodes.is_null() {

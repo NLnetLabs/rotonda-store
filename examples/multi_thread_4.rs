@@ -34,9 +34,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // }
 
                 print!("\nstart {} ---", i);
-                let mut x = 0;
+                let mut x: u32 = 0;
                 loop {
                     x += 1;
+
+                let pfx = Prefix::new_relaxed(
+                    x.into_ipaddr(),
+                    32,
+                );
                     // print!("{}-", i);
                     match tree_bitmap
                         .insert(&pfx.unwrap(), PrefixAs(i as u32))
@@ -79,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());
-   
+
     println!("-----------");
 
     Ok(())

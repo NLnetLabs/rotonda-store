@@ -3,13 +3,13 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use crossbeam_utils::Backoff;
-use log::{debug, trace};
+use log::{debug, trace, warn};
 
 use epoch::{Guard, Owned};
 
 use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
-use crate::AddressFamily;
+use crate::{AddressFamily, PrefixAs};
 
 // ----------- Node related structs -----------------------------------------
 
@@ -82,7 +82,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
 
         trace!("this level {} next level {}", this_level, next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-            trace!(
+            warn!(
                 "INSERT with new bucket of size {} at prefix len {}",
                 1 << (next_level - this_level),
                 pfx_id.get_len()
@@ -124,22 +124,25 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
     }
 
     pub(crate) fn get_record<'a>(
-        &self,
+        &'a self,
         guard: &'a Guard,
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
         self.super_agg_record.get_record(guard)
     }
 
     pub(crate) fn atomic_update_aggregate(
-        &mut self,
-        record: &InternalPrefixRecord<AF, M>,
-        guard: &Guard,
+        &self,
+        record: InternalPrefixRecord<AF, M>,
+        // guard: &Guard,
     ) {
-        let back_off = Backoff::new();
+        // let back_off = Backoff::new();
+        let g = epoch::pin();
+
         let mut inner_super_agg_record =
-            self.super_agg_record.0.load(Ordering::SeqCst, guard);
+            self.super_agg_record.0.load(Ordering::Acquire, &g);
+        let mut new_record;
+
         loop {
-            let tag = inner_super_agg_record.tag();
             let super_agg_record = unsafe { inner_super_agg_record.deref() };
 
             let new_meta = super_agg_record
@@ -147,27 +150,34 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
                 .clone_merge_update(&record.meta)
                 .unwrap();
 
-            let new_record = Owned::new(InternalPrefixRecord::<AF, M> {
+            new_record = Owned::new(InternalPrefixRecord::<AF, M> {
                 net: record.net,
                 len: record.len,
                 meta: new_meta,
             });
 
-            let super_agg_record = self.super_agg_record.0.compare_exchange(
+            // drop(new_record);
+
+            // let super_agg_record = self.super_agg_record.0.compare_exchange(
+            //     inner_super_agg_record,
+            //     new_record,
+            //     Ordering::SeqCst,
+            //     Ordering::SeqCst,
+            //     guard,
+            // );
+            match &self.super_agg_record.0.compare_exchange(
                 inner_super_agg_record,
-                new_record.with_tag(tag + 1),
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-                guard,
-            );
-            match super_agg_record {
+                new_record,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                &g,
+            ) {
                 Ok(_) => {
                     return;
                 }
                 Err(next_agg) => {
                     // Do it again
-                    // TODO BACKOFF
-                    back_off.spin();
+                    // back_off.spin();
                     inner_super_agg_record = next_agg.current;
                 }
             };
@@ -183,7 +193,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
 pub(crate) struct AtomicSuperAggRecord<
     AF: AddressFamily,
     M: routecore::record::Meta,
->(Atomic<InternalPrefixRecord<AF, M>>);
+>(pub Atomic<InternalPrefixRecord<AF, M>>);
 
 impl<AF: AddressFamily, M: routecore::record::Meta>
     AtomicSuperAggRecord<AF, M>
@@ -251,22 +261,22 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     pub(crate) fn get_stored_prefix_mut<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> Option<&'a mut StoredPrefix<AF, Meta>> {
+    ) -> Option<&'a StoredPrefix<AF, Meta>> {
         let mut pfx = self.0.load(Ordering::SeqCst, guard);
         match pfx.is_null() {
             true => None,
-            false => Some(unsafe { pfx.deref_mut() }),
+            false => Some(unsafe { pfx.deref() }),
         }
     }
 
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
-        let guard = &epoch::pin();
+        let guard = unsafe { epoch::unprotected() };
         unsafe { self.0.load(Ordering::SeqCst, guard).into_owned() }.serial
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
-        let guard = &epoch::pin();
+        let guard = &unsafe { epoch::unprotected() };
         match self.get_stored_prefix(guard) {
             None => {
                 panic!("AtomicStoredPrefix::get_prefix_id: empty prefix");
@@ -315,36 +325,36 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta>
-    std::convert::From<crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>>
-    for &AtomicStoredPrefix<AF, Meta>
-{
-    fn from(p: crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>) -> Self {
-        unsafe { std::mem::transmute(p) }
-    }
-}
+// impl<AF: AddressFamily, Meta: routecore::record::Meta>
+//     std::convert::From<crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>>
+//     for &AtomicStoredPrefix<AF, Meta>
+// {
+//     fn from(p: crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>) -> Self {
+//         unsafe { std::mem::transmute(p) }
+//     }
+// }
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta>
-    std::convert::From<
-        crossbeam_epoch::Owned<(
-            usize,
-            Option<InternalPrefixRecord<AF, Meta>>,
-            PrefixSet<AF, Meta>,
-            Option<Box<InternalPrefixRecord<AF, Meta>>>,
-        )>,
-    > for &AtomicStoredPrefix<AF, Meta>
-{
-    fn from(
-        p: crossbeam_epoch::Owned<(
-            usize,
-            Option<InternalPrefixRecord<AF, Meta>>,
-            PrefixSet<AF, Meta>,
-            Option<Box<InternalPrefixRecord<AF, Meta>>>,
-        )>,
-    ) -> Self {
-        unsafe { std::mem::transmute(p) }
-    }
-}
+// impl<AF: AddressFamily, Meta: routecore::record::Meta>
+//     std::convert::From<
+//         crossbeam_epoch::Owned<(
+//             usize,
+//             Option<InternalPrefixRecord<AF, Meta>>,
+//             PrefixSet<AF, Meta>,
+//             Option<Box<InternalPrefixRecord<AF, Meta>>>,
+//         )>,
+//     > for &AtomicStoredPrefix<AF, Meta>
+// {
+//     fn from(
+//         p: crossbeam_epoch::Owned<(
+//             usize,
+//             Option<InternalPrefixRecord<AF, Meta>>,
+//             PrefixSet<AF, Meta>,
+//             Option<Box<InternalPrefixRecord<AF, Meta>>>,
+//         )>,
+//     ) -> Self {
+//         unsafe { std::mem::transmute(p) }
+//     }
+// }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
 //

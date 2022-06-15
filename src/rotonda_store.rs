@@ -116,7 +116,7 @@ impl MergeUpdate for PrefixAs {
     where
         Self: std::marker::Sized,
     {
-        Ok(PrefixAs(self.0.max(update_meta.0)))
+        Ok(PrefixAs(update_meta.0))
     }
 }
 
