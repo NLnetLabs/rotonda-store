@@ -377,9 +377,10 @@ impl<
         record: InternalPrefixRecord<AF, Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let guard = unsafe { epoch::unprotected() };
+        let backoff = Backoff::new();
 
         let (atomic_stored_prefix, level) = self
-            .retrieve_prefix_mut_with_guard(
+            .non_recursive_retrieve_prefix_mut_with_guard(
                 PrefixId::new(record.net, record.len),
                 guard,
             );
@@ -400,15 +401,14 @@ impl<
                 ) {
                     Ok(pfx) => {
                         warn!("inserted new prefix record {:?}", &pfx);
-                        std::thread::sleep(Duration::from_millis(1));
-                        return Ok(());
+                        Ok(())
                     }
                     Err(stored_prefix) => {
                         warn!(
                             "prefix can't be inserted as new {:?}",
                             stored_prefix.current
                         );
-                        return Err(Box::new(PrefixStoreError::PrefixAlreadyExist));
+                        Err(Box::new(PrefixStoreError::PrefixAlreadyExist))
                     }
                 }
             }
@@ -418,8 +418,8 @@ impl<
                     record.net,
                     record.len
                 );
-                let super_agg_record = &unsafe { inner_stored_prefix.as_ref() }.unwrap().super_agg_record.0;
-                let mut inner_agg_record = super_agg_record.load(Ordering::Acquire, guard);
+                let super_agg_record = &unsafe { inner_stored_prefix.deref() }.super_agg_record.0;
+                let mut inner_agg_record = super_agg_record.load(Ordering::Relaxed, guard);
 
                 loop {
                     let prefix_record = unsafe { inner_agg_record.as_ref() }.unwrap();
@@ -431,100 +431,103 @@ impl<
                             .clone_merge_update(&record.meta)
                             .unwrap(),
                     ));
-        
-                    match &super_agg_record.compare_exchange(
+
+                    match super_agg_record.compare_exchange(
                         inner_agg_record,
                         new_record,
                         Ordering::AcqRel,
                         Ordering::Acquire,
                         guard,
                     ) {
-                        Ok(pfx) => {
-                            trace!("saved {:?}", pfx);
-                            std::thread::sleep(Duration::from_millis(1));
-                            return Ok(())
+                        Ok(_pfx) => {
+                            // warn!("saved {:?}", pfx);
+                            // std::thread::sleep(Duration::from_micros(1500));
+                            // println!("stored prefix size {}", std::mem::size_of::<StoredPrefix<AF,Meta>>());
+                            break Ok(());
                         }
                         Err(next_agg) => {
                             // Do it again
+                            // warn!("contention {:?}", next_agg.current);
                             inner_agg_record = next_agg.current;
+                            backoff.spin();
+                            continue;
                         }
-                    };
+                    }
                 }
             }
-        };
-        Ok(())
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn retrieve_prefix_mut_with_guard(
-        &'a self,
-        id: PrefixId<AF>,
-        guard: &'a Guard,
-    ) -> (&'a AtomicStoredPrefix<AF, Meta>, u8) {
-        struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
-            f: &'s dyn for<'a> Fn(
-                &SearchLevel<AF, M>,
-                &PrefixSet<AF, M>,
-                u8,
-                &'a Guard,
-            )
-                -> (&'a AtomicStoredPrefix<AF, M>, u8),
         }
-
-        let search_level = SearchLevel {
-            f: &|search_level: &SearchLevel<AF, Meta>,
-                 prefix_set: &PrefixSet<AF, Meta>,
-                 mut level: u8,
-                 guard: &Guard| {
-                // HASHING FUNCTION
-                let index = Self::hash_prefix_id(id, level);
-
-                trace!("retrieve prefix with guard");
-
-                let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-                trace!(
-                    "prefixes at level {}? {:?}",
-                    level,
-                    !prefixes.is_null()
-                );
-                let prefix_ref = unsafe { &prefixes.deref()[index] };
-                let stored_prefix = unsafe { prefix_ref.assume_init_ref() };
-
-                if let Some(StoredPrefix {
-                    super_agg_record: pfx_rec,
-                    // prefix,
-                    next_bucket,
-                    ..
-                }) = stored_prefix.get_stored_prefix(guard)
-                {
-                    if let Some(pfx_rec) = pfx_rec.get_record(guard) {
-                        if id == pfx_rec.into() {
-                            trace!("found requested prefix {:?}", id);
-                            return (stored_prefix, level);
-                        } else {
-                            level += 1;
-                            return (search_level.f)(
-                                search_level,
-                                next_bucket,
-                                level,
-                                guard,
-                            );
-                        }
-                    };
-                }
-                // No record at the deepest level, still we're returning a reference to it,
-                // so the caller can insert a new record here.
-                (stored_prefix, level)
-            },
-        };
-
-        (search_level.f)(
-            &search_level,
-            self.prefixes.get_root_prefix_set(id.get_len()),
-            0,
-            guard,
-        )
     }
+
+    // #[allow(clippy::type_complexity)]
+    // fn retrieve_prefix_mut_with_guard(
+    //     &'a self,
+    //     id: PrefixId<AF>,
+    //     guard: &'a Guard,
+    // ) -> (&'a AtomicStoredPrefix<AF, Meta>, u8) {
+    //     struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
+    //         f: &'s dyn for<'a> Fn(
+    //             &SearchLevel<AF, M>,
+    //             &PrefixSet<AF, M>,
+    //             u8,
+    //             &'a Guard,
+    //         )
+    //             -> (&'a AtomicStoredPrefix<AF, M>, u8),
+    //     }
+
+    //     let search_level = SearchLevel {
+    //         f: &|search_level: &SearchLevel<AF, Meta>,
+    //              prefix_set: &PrefixSet<AF, Meta>,
+    //              mut level: u8,
+    //              guard: &Guard| {
+    //             // HASHING FUNCTION
+    //             let index = Self::hash_prefix_id(id, level);
+
+    //             trace!("retrieve prefix with guard");
+
+    //             let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+    //             trace!(
+    //                 "prefixes at level {}? {:?}",
+    //                 level,
+    //                 !prefixes.is_null()
+    //             );
+    //             let prefix_ref = unsafe { &prefixes.deref()[index] };
+    //             let stored_prefix = unsafe { prefix_ref.assume_init_ref() };
+
+    //             if let Some(StoredPrefix {
+    //                 super_agg_record: pfx_rec,
+    //                 // prefix,
+    //                 next_bucket,
+    //                 ..
+    //             }) = stored_prefix.get_stored_prefix(guard)
+    //             {
+    //                 if let Some(pfx_rec) = pfx_rec.get_record(guard) {
+    //                     if id == pfx_rec.into() {
+    //                         trace!("found requested prefix {:?}", id);
+    //                         return (stored_prefix, level);
+    //                     } else {
+    //                         level += 1;
+    //                         return (search_level.f)(
+    //                             search_level,
+    //                             next_bucket,
+    //                             level,
+    //                             guard,
+    //                         );
+    //                     }
+    //                 };
+    //             }
+    //             // No record at the deepest level, still we're returning a reference to it,
+    //             // so the caller can insert a new record here.
+    //             (stored_prefix, level)
+    //         },
+    //     };
+
+    //     (search_level.f)(
+    //         &search_level,
+    //         self.prefixes.get_root_prefix_set(id.get_len()),
+    //         0,
+    //         guard,
+    //     )
+    // }
 
     #[allow(clippy::type_complexity)]
     fn non_recursive_retrieve_prefix_mut_with_guard(
@@ -542,7 +545,7 @@ impl<
 
             trace!("retrieve prefix with guard");
 
-            let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+            let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
             trace!(
                 "prefixes at level {}? {:?}",
                 level,
@@ -553,7 +556,6 @@ impl<
 
             if let Some(StoredPrefix {
                 super_agg_record: pfx_rec,
-                // prefix,
                 next_bucket,
                 ..
             }) = stored_prefix.get_stored_prefix(guard)
@@ -594,6 +596,7 @@ impl<
         let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
         let mut parents = [None; 26];
         let mut level: u8 = 0;
+        let backoff = Backoff::new();
 
         loop {
             // The index of the prefix in this array (at this len and
@@ -625,6 +628,7 @@ impl<
                     // Advance to the next level.
                     prefix_set = &stored_prefix.next_bucket;
                     level += 1;
+                    backoff.spin();
                     continue;
                 }                
             }

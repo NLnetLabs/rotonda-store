@@ -2,14 +2,13 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use crossbeam_utils::Backoff;
 use log::{debug, trace, warn};
 
 use epoch::{Guard, Owned};
 
 use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
-use crate::{AddressFamily, PrefixAs};
+use crate::{AddressFamily};
 
 // ----------- Node related structs -----------------------------------------
 
@@ -89,7 +88,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
             );
             PrefixSet::init((1 << (next_level - this_level)) as usize)
         } else {
-            trace!(
+            warn!(
                 "INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 pfx_id.get_len()
             );
@@ -97,27 +96,27 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let mut new_super_agg_record =
-            InternalPrefixRecord::<AF, M>::new_with_meta(
-                record.net,
-                record.len,
-                record.meta.clone(),
-            );
+        // let mut new_super_agg_record =
+        //     InternalPrefixRecord::<AF, M>::new_with_meta(
+        //         record.net,
+        //         record.len,
+        //         record.meta.clone(),
+        //     );
 
         // even though we're about to create the first record in this
         // aggregation record, we still need to `clone_merge_update` to
         // create the start data for the aggregation.
-        new_super_agg_record.meta = new_super_agg_record
-            .meta
-            .clone_merge_update(&record.meta)
-            .unwrap();
+        // new_super_agg_record.meta = new_super_agg_record
+        //     .meta
+        //     .clone_merge_update(&record.meta)
+        //     .unwrap();
 
         StoredPrefix {
             serial: 1,
             prefix: record.get_prefix_id(),
             super_agg_record: AtomicSuperAggRecord::<AF, M>::new(
                 record.get_prefix_id(),
-                new_super_agg_record.meta,
+                record.meta,
             ),
             next_bucket,
         }
@@ -130,59 +129,59 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         self.super_agg_record.get_record(guard)
     }
 
-    pub(crate) fn atomic_update_aggregate(
-        &self,
-        record: InternalPrefixRecord<AF, M>,
-        // guard: &Guard,
-    ) {
-        // let back_off = Backoff::new();
-        let g = epoch::pin();
+    // pub(crate) fn atomic_update_aggregate(
+    //     &self,
+    //     record: InternalPrefixRecord<AF, M>,
+    //     // guard: &Guard,
+    // ) {
+    //     // let back_off = Backoff::new();
+    //     let g = epoch::pin();
 
-        let mut inner_super_agg_record =
-            self.super_agg_record.0.load(Ordering::Acquire, &g);
-        let mut new_record;
+    //     let mut inner_super_agg_record =
+    //         self.super_agg_record.0.load(Ordering::Acquire, &g);
+    //     let mut new_record;
 
-        loop {
-            let super_agg_record = unsafe { inner_super_agg_record.deref() };
+    //     loop {
+    //         let super_agg_record = unsafe { inner_super_agg_record.deref() };
 
-            let new_meta = super_agg_record
-                .meta
-                .clone_merge_update(&record.meta)
-                .unwrap();
+    //         let new_meta = super_agg_record
+    //             .meta
+    //             .clone_merge_update(&record.meta)
+    //             .unwrap();
 
-            new_record = Owned::new(InternalPrefixRecord::<AF, M> {
-                net: record.net,
-                len: record.len,
-                meta: new_meta,
-            });
+    //         new_record = Owned::new(InternalPrefixRecord::<AF, M> {
+    //             net: record.net,
+    //             len: record.len,
+    //             meta: new_meta,
+    //         });
 
-            // drop(new_record);
+    //         // drop(new_record);
 
-            // let super_agg_record = self.super_agg_record.0.compare_exchange(
-            //     inner_super_agg_record,
-            //     new_record,
-            //     Ordering::SeqCst,
-            //     Ordering::SeqCst,
-            //     guard,
-            // );
-            match &self.super_agg_record.0.compare_exchange(
-                inner_super_agg_record,
-                new_record,
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                &g,
-            ) {
-                Ok(_) => {
-                    return;
-                }
-                Err(next_agg) => {
-                    // Do it again
-                    // back_off.spin();
-                    inner_super_agg_record = next_agg.current;
-                }
-            };
-        }
-    }
+    //         // let super_agg_record = self.super_agg_record.0.compare_exchange(
+    //         //     inner_super_agg_record,
+    //         //     new_record,
+    //         //     Ordering::SeqCst,
+    //         //     Ordering::SeqCst,
+    //         //     guard,
+    //         // );
+    //         match &self.super_agg_record.0.compare_exchange(
+    //             inner_super_agg_record,
+    //             new_record,
+    //             Ordering::AcqRel,
+    //             Ordering::Acquire,
+    //             &g,
+    //         ) {
+    //             Ok(_) => {
+    //                 return;
+    //             }
+    //             Err(next_agg) => {
+    //                 // Do it again
+    //                 // back_off.spin();
+    //                 inner_super_agg_record = next_agg.current;
+    //             }
+    //         };
+    //     }
+    // }
 }
 
 // ----------- SuperAggRecord -----------------------------------------------
@@ -199,6 +198,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
     AtomicSuperAggRecord<AF, M>
 {
     pub fn new(prefix: PrefixId<AF>, record: M) -> Self {
+        warn!("crate new stored prefix record");
         AtomicSuperAggRecord(Atomic::new(InternalPrefixRecord {
             net: prefix.get_net(),
             len: prefix.get_len(),
@@ -211,7 +211,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
         guard: &'a Guard,
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
         trace!("get_record {:?}", self.0);
-        let rec = self.0.load(Ordering::SeqCst, guard);
+        let rec = self.0.load(Ordering::Acquire, guard);
 
         match rec.is_null() {
             true => None,
@@ -251,7 +251,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let pfx = self.0.load(Ordering::SeqCst, guard);
+        let pfx = self.0.load(Ordering::Relaxed, guard);
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref() }),
@@ -414,7 +414,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
             start_set: &PrefixSet<AF, M>,
         ) -> usize {
             let mut size: usize = 0;
-            let guard = &epoch::pin();
+            let guard = unsafe { epoch::unprotected() };
             let start_set = start_set.0.load(Ordering::SeqCst, guard);
             for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };

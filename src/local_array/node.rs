@@ -4,6 +4,7 @@ use std::{
     marker::PhantomData,
 };
 
+use crossbeam_utils::Backoff;
 use log::trace;
 
 // pub use super::atomic_stride::*;
@@ -232,6 +233,7 @@ where
                     S::into_ptrbitarr_size(
                     bit_pos | S::into_stride_size(ptrbitarr),
                 ));
+                let backoff = Backoff::new();
                 loop {
                     match a_ptrbitarr {
                         CasResult(Ok(_)) => {
@@ -246,6 +248,7 @@ where
                             ));
                         }
                     };
+                    backoff.spin();
                 }
 
                 return NewNodeOrIndex::NewNode(
@@ -269,6 +272,8 @@ where
                 self.pfxbitarr.compare_exchange(
                     pfxbitarr, bit_pos | pfxbitarr
                 );
+                let backoff = Backoff::new();
+
                 loop {
                     match a_pfxbitarr {
                         CasResult(Ok(_)) => {
@@ -282,6 +287,7 @@ where
                             );
                         }
                     };
+                    backoff.spin();
                 }
 
                 // self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
