@@ -527,6 +527,56 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
+    fn non_recursive_retrieve_prefix_mut_with_guard(
+        &'a self,
+        id: PrefixId<AF>,
+        guard: &'a Guard,
+    ) -> (&'a AtomicStoredPrefix<AF, Meta>, u8) {
+
+        let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
+        let mut level: u8 = 0;
+
+        loop {
+            // HASHING FUNCTION
+            let index = Self::hash_prefix_id(id, level);
+
+            trace!("retrieve prefix with guard");
+
+            let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+            trace!(
+                "prefixes at level {}? {:?}",
+                level,
+                !prefixes.is_null()
+            );
+            let prefix_ref = unsafe { &prefixes.deref()[index] };
+            let stored_prefix = unsafe { prefix_ref.assume_init_ref() };
+
+            if let Some(StoredPrefix {
+                super_agg_record: pfx_rec,
+                // prefix,
+                next_bucket,
+                ..
+            }) = stored_prefix.get_stored_prefix(guard)
+            {
+                if let Some(pfx_rec) = pfx_rec.get_record(guard) {
+                    if id == pfx_rec.into() {
+                        trace!("found requested prefix {:?}", id);
+                        return (stored_prefix, level);
+                    } else {
+                        level += 1;
+                        prefix_set = next_bucket;
+                        continue;
+                    }
+                };
+            }
+            // No record at the deepest level, still we're returning a reference to it,
+            // so the caller can insert a new record here.
+            return (stored_prefix, level)
+        }
+    }
+
+
+    #[allow(clippy::type_complexity)]
     pub(crate) fn non_recursive_retrieve_prefix_with_guard(
         &'a self,
         id: PrefixId<AF>,
