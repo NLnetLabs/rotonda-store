@@ -97,7 +97,6 @@ macro_rules! insert_match {
                                     break Ok(i)
                                 },
                                 NewNodeOrIndex::NewPrefix => {
-                                    warn!("new prefix");
                                     return $self.store.upsert_prefix($pfx)
                                     // Log
                                     // $self.stats[$stats_level].inc_prefix_count($level);

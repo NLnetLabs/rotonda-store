@@ -148,8 +148,8 @@ macro_rules! store_node_closure {
 
                     // HASHING FUNCTION
                     let index = Self::hash_node_id($id, level);
-                    let guard = &unsafe { epoch::unprotected() };
-                    let unwrapped_nodes = nodes.0.load(Ordering::SeqCst, guard);
+                    let guard = &epoch::pin();
+                    let unwrapped_nodes = nodes.0.load(Ordering::Acquire, guard);
                     
                     match unwrapped_nodes.is_null() {
                         false => {
@@ -178,11 +178,11 @@ macro_rules! store_node_closure {
                                                     new_node,
                                                     node_set,
                                                 ))),
-                                                Ordering::SeqCst,
-                                                Ordering::SeqCst,
+                                                Ordering::AcqRel,
+                                                Ordering::Acquire,
                                                 guard
                                             ) {
-                                                Ok(_) => {
+                                                Ok(pfx) => {
                                                     if log_enabled!(log::Level::Debug) {
                                                         debug!("{} created node {}", std::thread::current().name().unwrap(), $id);
                                                     }

@@ -489,7 +489,7 @@ impl<
                 AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
-            let guard = unsafe { epoch::unprotected() };
+            let guard = &epoch::pin();
             // used for counting the number of reloads the
             // match_node_for_strides macro will tolerate.
             let mut i = 0;
@@ -582,7 +582,7 @@ impl<
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        let guard = unsafe { epoch::unprotected() };
+        let guard = &epoch::pin();
 
         trace!("start assembling all more specific prefixes here");
         trace!(

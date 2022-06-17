@@ -8,7 +8,7 @@ use epoch::{Guard, Owned};
 
 use crate::local_array::tree::*;
 use crate::prefix_record::InternalPrefixRecord;
-use crate::{AddressFamily};
+use crate::AddressFamily;
 
 // ----------- Node related structs -----------------------------------------
 
@@ -81,14 +81,14 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
 
         trace!("this level {} next level {}", this_level, next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-            warn!(
+            debug!(
                 "INSERT with new bucket of size {} at prefix len {}",
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
             PrefixSet::init((1 << (next_level - this_level)) as usize)
         } else {
-            warn!(
+            debug!(
                 "INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 pfx_id.get_len()
             );
@@ -198,7 +198,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
     AtomicSuperAggRecord<AF, M>
 {
     pub fn new(prefix: PrefixId<AF>, record: M) -> Self {
-        warn!("crate new stored prefix record");
+        debug!("create new stored prefix record");
         AtomicSuperAggRecord(Atomic::new(InternalPrefixRecord {
             net: prefix.get_net(),
             len: prefix.get_len(),
@@ -211,11 +211,11 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
         guard: &'a Guard,
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
         trace!("get_record {:?}", self.0);
-        let rec = self.0.load(Ordering::Acquire, guard);
+        let rec = self.0.load(Ordering::SeqCst, guard);
 
         match rec.is_null() {
             true => None,
-            false => Some(unsafe { rec.deref() }),
+            false => Some(unsafe { rec.as_ref() }.unwrap()),
         }
     }
 }
@@ -251,7 +251,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let pfx = self.0.load(Ordering::Relaxed, guard);
+        let pfx = self.0.load(Ordering::Acquire, guard);
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref() }),
@@ -263,20 +263,21 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
         let mut pfx = self.0.load(Ordering::SeqCst, guard);
+        
         match pfx.is_null() {
             true => None,
-            false => Some(unsafe { pfx.deref() }),
+            false => Some(unsafe { pfx.deref_mut() }),
         }
     }
 
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
-        let guard = unsafe { epoch::unprotected() };
+        let guard = &epoch::pin();
         unsafe { self.0.load(Ordering::SeqCst, guard).into_owned() }.serial
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
-        let guard = &unsafe { epoch::unprotected() };
+        let guard = &epoch::pin();
         match self.get_stored_prefix(guard) {
             None => {
                 panic!("AtomicStoredPrefix::get_prefix_id: empty prefix");
@@ -414,7 +415,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
             start_set: &PrefixSet<AF, M>,
         ) -> usize {
             let mut size: usize = 0;
-            let guard = unsafe { epoch::unprotected() };
+            let guard = &epoch::pin();
             let start_set = start_set.0.load(Ordering::SeqCst, guard);
             for p in unsafe { start_set.deref() } {
                 let pfx = unsafe { p.assume_init_ref() };
