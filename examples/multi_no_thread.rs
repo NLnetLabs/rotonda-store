@@ -26,7 +26,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         x += 1;
         // print!("{}-", i);
-        match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(1 as u32)) {
+        match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(x % 1000)) {
             Ok(_) => {}
             Err(e) => {
                 println!("{}", e);
