@@ -4,7 +4,7 @@ use std::fmt;
 pub enum PrefixStoreError {
     NodeCreationMaxRetryError,
     NodeNotFound,
-    PrefixAlreadyExist
+    PrefixAlreadyExist,
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -20,7 +20,7 @@ impl fmt::Display for PrefixStoreError {
                 write!(f, "Error: Node not found.")
             },
             PrefixStoreError::PrefixAlreadyExist => {
-                write!(f, "Error: Prefix already exist.")
+                write!(f, "Error: Prefix already exists.")
             }
         }
     }
