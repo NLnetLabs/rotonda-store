@@ -101,7 +101,7 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use log::{trace, warn, debug, log_enabled};
 
-use epoch::{Guard, Owned, Shared};
+use epoch::{Guard, Owned, Shared, CompareExchangeError};
 use std::marker::PhantomData;
 
 use crate::local_array::{bit_span::BitSpan, store::errors::PrefixStoreError};
@@ -376,35 +376,38 @@ impl<
         &self,
         record: InternalPrefixRecord<AF, Meta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let guard = unsafe { epoch::unprotected() };
+        let guard = &epoch::pin();
+        guard.flush();
         let backoff = Backoff::new();
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
                 PrefixId::new(record.net, record.len),
                 guard,
-            );
-        let inner_stored_prefix = atomic_stored_prefix.0.load(Ordering::Acquire, guard);
+            )?;
+        let inner_stored_prefix = atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
+        let current_tag = inner_stored_prefix.tag();
 
         match inner_stored_prefix.is_null() {
             true => {
-                warn!("create new super-aggregated prefix record");
+                debug!("create new super-aggregated prefix record");
                 let new_stored_prefix =
                     StoredPrefix::new::<PB>(record, level);
 
                 match atomic_stored_prefix.0.compare_exchange(
-                    inner_stored_prefix,
-                    Owned::new(new_stored_prefix),
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
+                    Shared::null(),
+                    Owned::new(new_stored_prefix).with_tag(1),
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
                     guard,
                 ) {
-                    Ok(pfx) => {
-                        warn!("inserted new prefix record {:?}", &pfx);
+                    Ok(spfx) => {
+                        debug!("inserted new prefix record {:?}", &spfx);
+                        // unsafe { guard.defer_destroy(spfx); };
                         Ok(())
                     }
                     Err(stored_prefix) => {
-                        warn!(
+                        debug!(
                             "prefix can't be inserted as new {:?}",
                             stored_prefix.current
                         );
@@ -439,11 +442,40 @@ impl<
                         Ordering::Acquire,
                         guard,
                     ) {
-                        Ok(_pfx) => {
+                        Ok(pfx) => {
                             // warn!("saved {:?}", pfx);
                             // std::thread::sleep(Duration::from_micros(1500));
                             // println!("stored prefix size {}", std::mem::size_of::<StoredPrefix<AF,Meta>>());
-                            break Ok(());
+                            
+                            match atomic_stored_prefix.0.compare_exchange(
+                                inner_stored_prefix,
+                                inner_stored_prefix.with_tag(current_tag + 1),
+                                Ordering::AcqRel,
+                                Ordering::Acquire,
+                                guard,
+                            ) {
+                                Ok(spfx) => {
+                                    debug!("modified a prefix record {:?}", &spfx);
+                                    // destroy outer stored_prefix!
+                                    unsafe  {
+                                       guard.defer_destroy(pfx);
+                                       guard.flush();
+                                    }
+                                    break Ok(());
+                                }
+                                Err(CompareExchangeError { current, new
+                                }) => {
+                                    debug!(
+                                        "prefix can't be modified {:?}",
+                                        current
+                                    );
+                                    // unsafe {
+                                    //     guard.defer_destroy(new);
+                                    // }
+                                    // return Err(Box::new(PrefixStoreError::PrefixAlreadyExist));
+                                }
+                            }
+                            // break Ok(());
                         }
                         Err(next_agg) => {
                             // Do it again
@@ -454,7 +486,7 @@ impl<
                         }
                     }
                 }
-            }
+            }  
         }
     }
 
@@ -532,48 +564,56 @@ impl<
     #[allow(clippy::type_complexity)]
     fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
-        id: PrefixId<AF>,
+        search_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> (&'a AtomicStoredPrefix<AF, Meta>, u8) {
+    ) -> Result<(&'a AtomicStoredPrefix<AF, Meta>, u8), PrefixStoreError> {
 
-        let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
+        let mut prefix_set = self.prefixes.get_root_prefix_set(search_prefix_id.get_len());
         let mut level: u8 = 0;
+        let mut stored_prefix = None;
 
         loop {
             // HASHING FUNCTION
-            let index = Self::hash_prefix_id(id, level);
+            let index = Self::hash_prefix_id(search_prefix_id, level);
 
             trace!("retrieve prefix with guard");
 
-            let prefixes = prefix_set.0.load(Ordering::Relaxed, guard);
-            trace!(
+            let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+            debug!(
                 "prefixes at level {}? {:?}",
                 level,
                 !prefixes.is_null()
             );
-            let prefix_ref = unsafe { &prefixes.deref()[index] };
-            let stored_prefix = unsafe { prefix_ref.assume_init_ref() };
+            
+            let prefix_ref = if !prefixes.is_null() {
+                debug!("prefix found.");
+                unsafe { &prefixes.deref()[index] }
+            }
+            else {
+                debug!("no prefix set.");
+                return Ok((stored_prefix.unwrap(), level));
+            };
+
+            stored_prefix = Some(unsafe { prefix_ref.assume_init_ref() });
 
             if let Some(StoredPrefix {
-                super_agg_record: pfx_rec,
+                prefix,
                 next_bucket,
                 ..
-            }) = stored_prefix.get_stored_prefix(guard)
-            {
-                if let Some(pfx_rec) = pfx_rec.get_record(guard) {
-                    if id == pfx_rec.into() {
-                        trace!("found requested prefix {:?}", id);
-                        return (stored_prefix, level);
-                    } else {
-                        level += 1;
-                        prefix_set = next_bucket;
-                        continue;
-                    }
-                };
+            }) = stored_prefix.unwrap().get_stored_prefix_mut(guard) {
+                if search_prefix_id == *prefix {
+                    debug!("found requested prefix {:?}", search_prefix_id);
+                    return Ok((stored_prefix.unwrap(), level));
+                } else {
+                    level += 1;
+                    prefix_set = next_bucket;
+                    continue;
+                }
             }
+
             // No record at the deepest level, still we're returning a reference to it,
             // so the caller can insert a new record here.
-            return (stored_prefix, level)
+            return Ok((stored_prefix.unwrap(), level))
         }
     }
 
