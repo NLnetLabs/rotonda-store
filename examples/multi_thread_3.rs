@@ -46,6 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("{}", e);
                         }
                     };
+                    if x % 1_000_000 == 0 { println!("{}", x); }
                 }
                 println!("--thread {} done.", i);
                 Ok(())
@@ -64,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("------ end of inserts\n");
 
-    let guard = &epoch::pin();
+    let guard = &unsafe { epoch::pin() };
 
     let s_spfx = tree_bitmap.match_prefix(
         &pfx.unwrap(),
