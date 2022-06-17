@@ -1,6 +1,4 @@
 use log::trace;
-use std::time::Duration;
-use std::{sync::Arc, thread};
 
 use rotonda_store::{
     addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,

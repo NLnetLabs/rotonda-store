@@ -1,9 +1,9 @@
 use log::trace;
 use std::time::Duration;
-use std::{sync::Arc, thread};
+use std::thread;
 
 use rotonda_store::{
-    addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,
+    addr::Prefix, AddressFamily, MultiThreadedStore,
 };
 
 use rotonda_store::PrefixAs;
@@ -35,11 +35,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // }
 
             print!("\nstart {} ---", 1);
-            let mut x = 0;
+            // let mut x = 0;
             loop {
-                x += 1;
+                // x += 1;
                 // print!("{}-", i);
-                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(1 as u32)) {
+                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(1)) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

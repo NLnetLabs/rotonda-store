@@ -93,7 +93,7 @@
 //
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicUsize, Ordering}, time::Duration,
+    sync::atomic::{AtomicUsize, Ordering}
 };
 
 use crossbeam_epoch::{self as epoch, Atomic};
@@ -465,14 +465,13 @@ impl<
                                 }
                                 Err(CompareExchangeError { current, new
                                 }) => {
-                                    debug!(
+                                    warn!(
                                         "prefix can't be modified {:?}",
                                         current
                                     );
                                     // unsafe {
                                     //     guard.defer_destroy(new);
                                     // }
-                                    // return Err(Box::new(PrefixStoreError::PrefixAlreadyExist));
                                 }
                             }
                             // break Ok(());

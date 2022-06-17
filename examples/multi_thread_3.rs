@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("------ end of inserts\n");
 
-    let guard = &unsafe { epoch::pin() };
+    let guard = &epoch::pin();
 
     let s_spfx = tree_bitmap.match_prefix(
         &pfx.unwrap(),
