@@ -21,42 +21,45 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         32,
     );
 
-    let threads =
-        (0..16).enumerate().map(|(i, _)| {
-            let tree_bitmap = tree_bitmap.clone();
-            // let start_flag = Arc::clone(&f);
+    let threads = (0..16).enumerate().map(|(i, _)| {
+        let tree_bitmap = tree_bitmap.clone();
+        // let start_flag = Arc::clone(&f);
 
-            std::thread::Builder::new().name(i.to_string()).spawn(
-            move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
+        std::thread::Builder::new()
+            .name(i.to_string())
+            .spawn(
+                move || -> Result<(), Box<dyn std::error::Error + Send>> {
+                    // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
                     println!("park thread {}", i);
                     thread::park();
-                // }
+                    // }
 
-                print!("\nstart {} ---", i);
-                let mut x: u32 = 0;
-                loop {
-                    x += 1;
+                    print!("\nstart {} ---", i);
+                    let mut x: u32 = 0;
+                    loop {
+                        x += 1;
 
-                let pfx = Prefix::new_relaxed(
-                    x.into_ipaddr(),
-                    32,
-                );
-                    // print!("{}-", i);
-                    match tree_bitmap
-                        .insert(&pfx.unwrap(), PrefixAs(i as u32))
-                    {
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("{}", e);
+                        let pfx = Prefix::new_relaxed(x.into_ipaddr(), 32);
+                        // print!("{}-", i);
+                        match tree_bitmap
+                            .insert(&pfx.unwrap(), PrefixAs(i as u32))
+                        {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        };
+
+                        if x % 1_000_000 == 0 {
+                            println!("{:?} {}", std::thread::current().name(), x);
                         }
-                    };
-                }
-                println!("--thread {} done.", i);
-                Ok(())
-            },
-        ).unwrap()
-        });
+                    }
+                    println!("--thread {} done.", i);
+                    Ok(())
+                },
+            )
+            .unwrap()
+    });
 
     // thread::sleep(Duration::from_secs(60));
 
