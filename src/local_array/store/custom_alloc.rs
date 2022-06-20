@@ -139,7 +139,7 @@ impl<
         PB: PrefixBuckets<AF, Meta>,
     > CustomAllocStorage<AF, Meta, NB, PB>
 {
-    pub(crate) fn init(root_node: SizedStrideNode<AF>) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn init(root_node: SizedStrideNode<AF>, guard: &'a Guard) -> Result<Self, Box<dyn std::error::Error>> {
         warn!("initialize storage backend");
 
         let store = CustomAllocStorage {
@@ -154,6 +154,7 @@ impl<
         store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
+            guard
         )?;
         
         Ok(store)
@@ -174,6 +175,7 @@ impl<
         &self,
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<AF>,
+        guard: &Guard,
     ) -> Result<StrideNodeId<AF>, Box<dyn std::error::Error>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
@@ -186,7 +188,6 @@ impl<
         }
 
         let back_off = crossbeam_utils::Backoff::new();
-        let guard = &epoch::pin();
 
         let search_level_3 = store_node_closure![Stride3; id; guard; back_off;];
         let search_level_4 = store_node_closure![Stride4; id; guard; back_off;];
@@ -376,9 +377,10 @@ impl<
     pub(crate) fn upsert_prefix(
         &self,
         record: InternalPrefixRecord<AF, Meta>,
+        guard: &Guard,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let guard = &epoch::pin();
-        guard.flush();
+        // let guard = &epoch::pin();
+        // guard.flush();
         let backoff = Backoff::new();
 
         let (atomic_stored_prefix, level) = self
@@ -423,7 +425,7 @@ impl<
                     record.len
                 );
                 let super_agg_record = &unsafe { inner_stored_prefix.deref() }.super_agg_record.0;
-                let mut inner_agg_record = super_agg_record.load(Ordering::Relaxed, guard);
+                let mut inner_agg_record = super_agg_record.load(Ordering::Acquire, guard);
 
                 loop {
                     let prefix_record = unsafe { inner_agg_record.as_ref() }.unwrap();
@@ -448,7 +450,7 @@ impl<
                             // warn!("saved {:?}", pfx);
                             // std::thread::sleep(Duration::from_micros(1500));
                             // println!("stored prefix size {}", std::mem::size_of::<StoredPrefix<AF,Meta>>());
-                            unsafe { guard.defer_destroy(rec); guard.flush(); }
+                            unsafe { guard.defer_destroy(rec); }; //guard.flush(); }
                             // match atomic_stored_prefix.0.compare_exchange(
                             //     inner_stored_prefix,
                             //     inner_stored_prefix.with_tag(current_tag + 1),
@@ -476,7 +478,7 @@ impl<
                             //         // }
                             //     }
                             // }
-                            break Ok(());
+                            return Ok(());
                         }
                         Err(next_agg) => {
                             // Do it again

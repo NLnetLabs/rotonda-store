@@ -50,7 +50,7 @@ mod tests {
             32,
         );
 
-        let guard = &epoch::pin();
+        // let guard = &epoch::pin();
         let res = trie.match_prefix(
             &expect_pfx?,
             &MatchOptions {

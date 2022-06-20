@@ -22,6 +22,8 @@ mod tests {
         const GLOBAL_PREFIXES_VEC_SIZE: usize = 886117;
         const FOUND_PREFIXES: u32 = 1322993;
 
+        let guard = &epoch::pin();
+
         fn load_prefixes(
             pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
         ) -> Result<(), Box<dyn Error>> {
@@ -77,7 +79,6 @@ mod tests {
             let inet_max = 255;
             let len_max = 32;
 
-            let guard = &epoch::pin();
             let mut found_counter = 0_u32;
             let mut not_found_counter = 0_u32;
             (0..inet_max).into_iter().for_each(|i_net| {

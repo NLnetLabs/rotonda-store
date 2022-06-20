@@ -374,7 +374,8 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > TreeBitMap<AF, M, NB, PB>
 {
-    pub fn new() -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
+    pub fn new(
+    ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(
                 SizedStride::Stride3,
@@ -391,6 +392,7 @@ impl<
         ];
 
         let root_node: SizedStrideNode<AF>;
+        let guard = &epoch::pin();
 
         match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
             3 => {
@@ -428,7 +430,7 @@ impl<
         Ok(TreeBitMap {
             // strides,
             stats: stride_stats,
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node)?,
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node, guard)?,
         })
     }
 
@@ -467,8 +469,10 @@ impl<
         &self,
         pfx: InternalPrefixRecord<AF, M>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let guard = &epoch::pin();
+
         if pfx.len == 0 {
-            let _res = self.update_default_route_prefix_meta(pfx.meta);
+            let _res = self.update_default_route_prefix_meta(pfx.meta, guard);
             return Ok(());
         }
 
@@ -489,7 +493,6 @@ impl<
                 AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
-            let guard = &epoch::pin();
             // used for counting the number of reloads the
             // match_node_for_strides macro will tolerate.
             let mut i = 0;
@@ -531,7 +534,7 @@ impl<
                     );
                 }
             }
-        }
+        };
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
@@ -563,15 +566,14 @@ impl<
     fn update_default_route_prefix_meta(
         &self,
         new_meta: M,
+        guard: &epoch::Guard,
     ) -> Result<(), Box<dyn std::error::Error>> {
         trace!("Updating the default route...");
         // let guard = unsafe { epoch::unprotected() };
-        self.store
-            .upsert_prefix(InternalPrefixRecord::new_with_meta(
-                AF::zero(),
-                0,
-                new_meta,
-            ))
+        self.store.upsert_prefix(
+            InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),
+            guard,
+        )
     }
 
     // This function assembles all entries in the `pfx_vec` of all child nodes of the

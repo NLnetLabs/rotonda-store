@@ -67,7 +67,7 @@ macro_rules! insert_match {
                                     // if $self.strides[($level + 1) as usize] != $stride_len {
                                     // store_node may return None, which means that another thread
                                     // is busy creating the node.
-                                    match $self.store.store_node(new_id, n) {
+                                    match $self.store.store_node(new_id, n, $guard) {
                                         Ok(node) => {
                                             break Ok(node);
                                         },
@@ -97,12 +97,12 @@ macro_rules! insert_match {
                                     break Ok(i)
                                 },
                                 NewNodeOrIndex::NewPrefix => {
-                                    return $self.store.upsert_prefix($pfx)
+                                    return $self.store.upsert_prefix($pfx, $guard)
                                     // Log
                                     // $self.stats[$stats_level].inc_prefix_count($level);
                                 }
                                 NewNodeOrIndex::ExistingPrefix => {
-                                    return $self.store.upsert_prefix($pfx)
+                                    return $self.store.upsert_prefix($pfx, $guard)
                                 }
                             }   // end of eval_node_or_prefix_at
                         }
