@@ -3,8 +3,7 @@
 
 mod tests {
     use rotonda_store::{
-        MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
-        prelude::*
+        prelude::*, MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
     };
     use routecore::addr::Prefix;
     use routecore::bgp::PrefixRecord;
@@ -73,6 +72,8 @@ mod tests {
                 };
             }
 
+            println!("done inserting {} prefixes", inserts_num);
+
             let inet_max = 255;
             let len_max = 32;
 
@@ -96,7 +97,7 @@ mod tests {
                                 include_less_specifics: false,
                                 include_more_specifics: false,
                             },
-                            guard
+                            guard,
                         );
                         if let Some(_pfx) = res.prefix {
                             // println!("_pfx {:?}", _pfx);
@@ -106,7 +107,14 @@ mod tests {
                             assert!(_pfx.addr() <= pfx.unwrap().addr());
                             found_counter += 1;
                         } else {
-                            println!("not found {:?}", if let Ok(e) = pfx { e.to_string() } else { "ok".to_string() });
+                            println!(
+                                "not found {:?}",
+                                if let Ok(e) = pfx {
+                                    e.to_string()
+                                } else {
+                                    "ok".to_string()
+                                }
+                            );
                             not_found_counter += 1;
                         }
                     });
