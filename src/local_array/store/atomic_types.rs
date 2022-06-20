@@ -19,21 +19,22 @@ pub struct NodeSet<AF: AddressFamily, S: Stride>(
 );
 
 #[derive(Debug)]
-pub enum StoredNode<AF, S>
+pub struct StoredNode<AF, S>
 where
     Self: Sized,
     S: Stride,
     AF: AddressFamily,
 {
-    NodeWithRef((StrideNodeId<AF>, TreeBitMapNode<AF, S>, NodeSet<AF, S>)),
-    Empty,
+    pub(crate) node_id: StrideNodeId<AF>,
+    pub(crate) node: TreeBitMapNode<AF, S>,
+    pub(crate) node_set: NodeSet<AF, S>,
 }
 
-impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
-    fn default() -> Self {
-        StoredNode::Empty
-    }
-}
+// impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
+//     fn default() -> Self {
+//         StoredNode::Empty
+//     }
+// }
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
@@ -41,7 +42,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         let mut l =
             Owned::<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>::init(size);
         for i in 0..size {
-            l[i] = MaybeUninit::new(Atomic::new(StoredNode::Empty));
+            l[i] = MaybeUninit::new(Atomic::null());
         }
         NodeSet(l.into())
     }

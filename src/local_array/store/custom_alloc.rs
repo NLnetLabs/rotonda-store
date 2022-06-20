@@ -186,10 +186,11 @@ impl<
         }
 
         let back_off = crossbeam_utils::Backoff::new();
+        let guard = &epoch::pin();
 
-        let search_level_3 = store_node_closure![Stride3; id; back_off;];
-        let search_level_4 = store_node_closure![Stride4; id; back_off;];
-        let search_level_5 = store_node_closure![Stride5; id; back_off;];
+        let search_level_3 = store_node_closure![Stride3; id; guard; back_off;];
+        let search_level_4 = store_node_closure![Stride4; id; guard; back_off;];
+        let search_level_5 = store_node_closure![Stride5; id; guard; back_off;];
 
         if log_enabled!(log::Level::Debug) {
             warn!("{} insert node {}: {:?}", 
@@ -646,32 +647,29 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            let mut prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-            let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-            if let Some(stored_prefix) //StoredPrefix {
-                // serial,
-                // super_agg_record: pfx_rec,
-                // next_bucket: next_set,
-                // ..}_
-            = unsafe { prefix_ref.assume_init_ref() }
-                .get_stored_prefix(guard)
-            {
-                if let Some(pfx_rec) = stored_prefix.get_record(guard) {
-                    if id == pfx_rec.get_prefix_id() {
-                        trace!("found requested prefix {:?}", id);
-                        parents[level as usize] = Some((prefix_set, index));
-                        return (
-                            Some(stored_prefix),
-                            Some((id, level, prefix_set, parents, index)),
-                        );
-                    };
-                    // Advance to the next level.
-                    prefix_set = &stored_prefix.next_bucket;
-                    level += 1;
-                    backoff.spin();
-                    continue;
-                }                
-            }
+            let mut prefixes = prefix_set.0.load(Ordering::Acquire, guard);
+            
+            if !prefixes.is_null() {
+                let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
+                if let Some(stored_prefix) = unsafe { prefix_ref.assume_init_ref() }
+                    .get_stored_prefix(guard) {
+                    if let Some(pfx_rec) = stored_prefix.get_record(guard) {
+                        if id == pfx_rec.get_prefix_id() {
+                            trace!("found requested prefix {:?}", id);
+                            parents[level as usize] = Some((prefix_set, index));
+                            return (
+                                Some(stored_prefix),
+                                Some((id, level, prefix_set, parents, index)),
+                            );
+                        };
+                        // Advance to the next level.
+                        prefix_set = &stored_prefix.next_bucket;
+                        level += 1;
+                        backoff.spin();
+                        continue;
+                    }                
+                }   
+            }   
 
             trace!("no prefix found for {:?}", id);
             parents[level as usize] = Some((prefix_set, index));
