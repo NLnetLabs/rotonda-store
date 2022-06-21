@@ -465,7 +465,8 @@ impl<
                             .meta
                             .clone_merge_update(&record.meta)
                             .unwrap(),
-                    ));
+                    ))
+                    .into_shared(guard);
 
                     // CAS the nested Atomic InternalPrefixRecord.
                     match super_agg_record.compare_exchange(
@@ -475,38 +476,23 @@ impl<
                         Ordering::Acquire,
                         guard,
                     ) {
-                        Ok(rec) => {
+                        Ok(_rec) => {
                             // warn!("saved {:?}", pfx);
                             // std::thread::sleep(Duration::from_micros(1500));
                             // println!("stored prefix size {}", std::mem::size_of::<StoredPrefix<AF,Meta>>());
-                            unsafe { guard.defer_destroy(rec); }; //guard.flush(); }
-                            // match atomic_stored_prefix.0.compare_exchange(
-                            //     inner_stored_prefix,
-                            //     inner_stored_prefix.with_tag(current_tag + 1),
-                            //     Ordering::AcqRel,
-                            //     Ordering::Acquire,
-                            //     guard,
-                            // ) {
-                            //     Ok(spfx) => {
-                            //         debug!("modified a prefix record {:?}", &spfx);
-                            //         // destroy the nested Atomic first!
-                            //         unsafe  {
-                            //            guard.defer_destroy(rec);
-                            //            guard.flush();
-                            //         }
-                            //         break Ok(());
-                            //     }
-                            //     Err(CompareExchangeError { current, new
-                            //     }) => {
-                            //         warn!(
-                            //             "prefix can't be modified {:?}",
-                            //             current
-                            //         );
-                            //         // unsafe {
-                            //         //     guard.defer_destroy(new);
-                            //         // }
-                            //     }
-                            // }
+                            if !inner_agg_record.is_null() {
+                                unsafe {
+                                    guard.defer_unchecked(move || {
+                                        std::sync::atomic::fence(
+                                            Ordering::Acquire,
+                                        );
+
+                                        std::mem::drop(
+                                            inner_agg_record.into_owned(),
+                                        )
+                                    });
+                                }
+                            };
                             return Ok(());
                         }
                         Err(next_agg) => {
