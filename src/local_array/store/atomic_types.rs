@@ -396,6 +396,7 @@ where
 // base address to be able to calculate the complete prefix of a child prefix.
 
 #[derive(Debug)]
+#[repr(align(8))]
 pub struct PrefixSet<AF: AddressFamily, M: routecore::record::Meta>(
     pub Atomic<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>,
 );

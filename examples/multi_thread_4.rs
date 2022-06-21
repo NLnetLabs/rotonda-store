@@ -6,14 +6,14 @@ use rotonda_store::{
     addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,
 };
 
-use rotonda_store::PrefixAs;
+use rotonda_store::complex_record_types::ComplexPrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = Arc::new(MultiThreadedStore::<PrefixAs>::new()?);
+    let tree_bitmap = Arc::new(MultiThreadedStore::<ComplexPrefixAs>::new()?);
     let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let pfx = Prefix::new_relaxed(
@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let pfx = Prefix::new_relaxed(x.into_ipaddr(), 32);
                         // print!("{}-", i);
                         match tree_bitmap
-                            .insert(&pfx.unwrap(), PrefixAs(i as u32))
+                            .insert(&pfx.unwrap(), ComplexPrefixAs([i as u32].to_vec()))
                         {
                             Ok(_) => {}
                             Err(e) => {

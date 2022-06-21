@@ -18,6 +18,8 @@ mod prefix_record;
 mod stride;
 mod synth_int;
 
+pub mod complex_record_types;
+
 #[macro_use]
 mod macros;
 

@@ -3,8 +3,9 @@
 
 mod tests {
     use rotonda_store::{
-        prelude::*, MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+        prelude::*, MatchOptions, MatchType, MultiThreadedStore,
     };
+    use rotonda_store::complex_record_types::ComplexPrefixAs;
     use routecore::addr::Prefix;
     use routecore::bgp::PrefixRecord;
     use routecore::record::Record;
@@ -25,7 +26,7 @@ mod tests {
         let guard = &epoch::pin();
 
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+            pfxs: &mut Vec<PrefixRecord<ComplexPrefixAs>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -41,7 +42,7 @@ mod tests {
                 let asn: u32 = record[2].parse().unwrap();
                 let pfx = PrefixRecord::new_with_local_meta(
                     Prefix::new(net.into(), len)?,
-                    PrefixAs(asn),
+                    ComplexPrefixAs(vec![asn]),
                 );
                 pfxs.push(pfx);
             }
@@ -55,8 +56,8 @@ mod tests {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+            let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
+            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?;
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -65,7 +66,7 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, *pfx.meta) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned()) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
