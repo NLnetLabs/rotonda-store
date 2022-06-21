@@ -109,8 +109,8 @@ macro_rules! insert_match {
                     )*,
                 }
             } else {
-                if log_enabled!(log::Level::Warn) {
-                    warn!("{} Couldn't load id {} from store l{}. Trying again.",
+                if log_enabled!(log::Level::Trace) {
+                    trace!("{} Couldn't load id {} from store l{}. Trying again.",
                             std::thread::current().name().unwrap(),
                             $cur_i,
                             $self.store.get_stride_sizes()[$level as usize]);
@@ -119,7 +119,7 @@ macro_rules! insert_match {
                 // THIS IS A FAIRLY ARBITRARY NUMBER.
                 // We're giving up after a number of tries.
                 if $i >= 3 {
-                    warn!("STOP LOOPING {}", $cur_i);
+                    trace!("STOP LOOPING {}", $cur_i);
                     return Err(
                         Box::new(
                             crate::local_array::store::errors::PrefixStoreError::NodeCreationMaxRetryError

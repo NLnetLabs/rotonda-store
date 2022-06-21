@@ -260,13 +260,13 @@ macro_rules! store_node_closure {
                                         },
                                         Err(crossbeam_epoch::CompareExchangeError { current, new }) => {
                                             contention = true;
-                                            if log_enabled!(log::Level::Warn) {
-                                                warn!(
+                                            if log_enabled!(log::Level::Trace) {
+                                                trace!(
                                                     "{} failed to create node {}. Someone is busy creating it",
                                                         std::thread::current().name().unwrap(),
                                                         $id
                                                 );
-                                                debug!("{} current {:?}",
+                                                trace!("{} current {:?}",
                                                     std::thread::current().name().unwrap(),
                                                     unsafe { current.as_ref() }
                                                 );
