@@ -48,8 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     };
                     if x % 1_000_000 == 0 { println!("{}", x); }
                 }
-                println!("--thread {} done.", i);
-                Ok(())
+                // println!("--thread {} done.", i);
             },
         ).unwrap()
         });

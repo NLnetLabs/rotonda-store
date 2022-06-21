@@ -46,8 +46,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
             }
-            println!("--thread {} done.", 1);
-            Ok(())
+            // println!("--thread {} done.", 1);
         })
         .unwrap();
     // });

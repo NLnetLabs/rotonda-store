@@ -54,8 +54,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             println!("{:?} {}", std::thread::current().name(), x);
                         }
                     }
-                    println!("--thread {} done.", i);
-                    Ok(())
                 },
             )
             .unwrap()

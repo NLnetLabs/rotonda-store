@@ -101,7 +101,7 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use log::{trace, warn, debug, log_enabled};
 
-use epoch::{Guard, Owned, Shared, CompareExchangeError};
+use epoch::{Guard, Owned, Shared};
 use std::marker::PhantomData;
 
 use crate::local_array::{bit_span::BitSpan, store::errors::PrefixStoreError};
@@ -389,7 +389,6 @@ impl<
                 guard,
             )?;
         let inner_stored_prefix = atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
-        let current_tag = inner_stored_prefix.tag();
 
         match inner_stored_prefix.is_null() {
             true => {
