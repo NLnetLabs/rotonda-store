@@ -118,7 +118,7 @@ macro_rules! insert_match {
                 $i += 1;
                 // THIS IS A FAIRLY ARBITRARY NUMBER.
                 // We're giving up after a number of tries.
-                if $i >= 3 {
+                if $i >= 8 {
                     trace!("STOP LOOPING {}", $cur_i);
                     return Err(
                         Box::new(
