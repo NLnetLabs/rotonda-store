@@ -93,22 +93,27 @@
 //
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicUsize, Ordering}
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use crossbeam_utils::Backoff;
-use log::{trace, warn, debug, log_enabled};
+use log::{debug, log_enabled, trace, warn};
 
 use epoch::{Guard, Owned, Shared};
 use std::marker::PhantomData;
 
-use crate::local_array::{bit_span::BitSpan, store::errors::PrefixStoreError};
 use crate::local_array::tree::*;
+use crate::local_array::{
+    bit_span::BitSpan, store::errors::PrefixStoreError,
+};
 
 use crate::prefix_record::InternalPrefixRecord;
-use crate::{impl_search_level, retrieve_node_mut_with_guard_closure, store_node_closure};
+use crate::{
+    impl_search_level, retrieve_node_mut_with_guard_closure,
+    store_node_closure,
+};
 
 use super::atomic_types::*;
 use crate::AddressFamily;
@@ -139,7 +144,10 @@ impl<
         PB: PrefixBuckets<AF, Meta>,
     > CustomAllocStorage<AF, Meta, NB, PB>
 {
-    pub(crate) fn init(root_node: SizedStrideNode<AF>, guard: &'a Guard) -> Result<Self, Box<dyn std::error::Error>> {
+    pub(crate) fn init(
+        root_node: SizedStrideNode<AF>,
+        guard: &'a Guard,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         warn!("initialize storage backend");
 
         let store = CustomAllocStorage {
@@ -154,9 +162,9 @@ impl<
         store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
-            guard
+            guard,
         )?;
-        
+
         Ok(store)
     }
 
@@ -183,19 +191,29 @@ impl<
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
                 u8,
-                bool
-            ) -> Result<StrideNodeId<AF>, Box<dyn std::error::Error>>,
+                bool,
+            ) -> Result<
+                StrideNodeId<AF>,
+                Box<dyn std::error::Error>,
+            >,
         }
 
         let back_off = crossbeam_utils::Backoff::new();
 
-        let search_level_3 = store_node_closure![Stride3; id; guard; back_off;];
-        let search_level_4 = store_node_closure![Stride4; id; guard; back_off;];
-        let search_level_5 = store_node_closure![Stride5; id; guard; back_off;];
+        let search_level_3 =
+            store_node_closure![Stride3; id; guard; back_off;];
+        let search_level_4 =
+            store_node_closure![Stride4; id; guard; back_off;];
+        let search_level_5 =
+            store_node_closure![Stride5; id; guard; back_off;];
 
         if log_enabled!(log::Level::Debug) {
-            warn!("{} insert node {}: {:?}", 
-                std::thread::current().name().unwrap(), id, next_node);
+            warn!(
+                "{} insert node {}: {:?}",
+                std::thread::current().name().unwrap(),
+                id,
+                next_node
+            );
         }
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
@@ -203,21 +221,21 @@ impl<
                 self.buckets.get_store3(id),
                 new_node,
                 0,
-                false
+                false,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
                 0,
-                false
+                false,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
                 0,
-                false
+                false,
             ),
         }
     }
@@ -291,9 +309,12 @@ impl<
                 -> Option<SizedStrideRefMut<'a, AF>>,
         }
 
-        let search_level_3 = retrieve_node_mut_with_guard_closure![Stride3; id;];
-        let search_level_4 = retrieve_node_mut_with_guard_closure![Stride4; id;];
-        let search_level_5 = retrieve_node_mut_with_guard_closure![Stride5; id;];
+        let search_level_3 =
+            retrieve_node_mut_with_guard_closure![Stride3; id;];
+        let search_level_4 =
+            retrieve_node_mut_with_guard_closure![Stride4; id;];
+        let search_level_5 =
+            retrieve_node_mut_with_guard_closure![Stride5; id;];
 
         match self.buckets.get_stride_for_id(id) {
             3 => {
@@ -388,7 +409,8 @@ impl<
                 PrefixId::new(record.net, record.len),
                 guard,
             )?;
-        let inner_stored_prefix = atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
+        let inner_stored_prefix =
+            atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
 
         match inner_stored_prefix.is_null() {
             true => {
@@ -423,12 +445,20 @@ impl<
                     record.net,
                     record.len
                 );
-                let super_agg_record = &unsafe { inner_stored_prefix.deref() }.super_agg_record.0;
-                let mut inner_agg_record = super_agg_record.load(Ordering::Acquire, guard);
+                let super_agg_record =
+                    &unsafe { inner_stored_prefix.deref() }
+                        .super_agg_record
+                        .0;
+                let mut inner_agg_record =
+                    super_agg_record.load(Ordering::Acquire, guard);
 
                 loop {
-                    let prefix_record = unsafe { inner_agg_record.as_ref() }.unwrap();
-                    let new_record = Owned::new(InternalPrefixRecord::<AF, Meta>::new_with_meta(
+                    let prefix_record =
+                        unsafe { inner_agg_record.as_ref() }.unwrap();
+                    let new_record = Owned::new(InternalPrefixRecord::<
+                        AF,
+                        Meta,
+                    >::new_with_meta(
                         record.net,
                         record.len,
                         prefix_record
@@ -488,7 +518,7 @@ impl<
                         }
                     }
                 }
-            }  
+            }
         }
     }
 
@@ -568,9 +598,11 @@ impl<
         &'a self,
         search_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Result<(&'a AtomicStoredPrefix<AF, Meta>, u8), PrefixStoreError> {
-
-        let mut prefix_set = self.prefixes.get_root_prefix_set(search_prefix_id.get_len());
+    ) -> Result<(&'a AtomicStoredPrefix<AF, Meta>, u8), PrefixStoreError>
+    {
+        let mut prefix_set = self
+            .prefixes
+            .get_root_prefix_set(search_prefix_id.get_len());
         let mut level: u8 = 0;
         let mut stored_prefix = None;
 
@@ -581,17 +613,12 @@ impl<
             trace!("retrieve prefix with guard");
 
             let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-            debug!(
-                "prefixes at level {}? {:?}",
-                level,
-                !prefixes.is_null()
-            );
-            
+            debug!("prefixes at level {}? {:?}", level, !prefixes.is_null());
+
             let prefix_ref = if !prefixes.is_null() {
                 debug!("prefix found.");
                 unsafe { &prefixes.deref()[index] }
-            }
-            else {
+            } else {
                 debug!("no prefix set.");
                 return Ok((stored_prefix.unwrap(), level));
             };
@@ -602,7 +629,8 @@ impl<
                 prefix,
                 next_bucket,
                 ..
-            }) = stored_prefix.unwrap().get_stored_prefix_mut(guard) {
+            }) = stored_prefix.unwrap().get_stored_prefix_mut(guard)
+            {
                 if search_prefix_id == *prefix {
                     debug!("found requested prefix {:?}", search_prefix_id);
                     return Ok((stored_prefix.unwrap(), level));
@@ -615,10 +643,9 @@ impl<
 
             // No record at the deepest level, still we're returning a reference to it,
             // so the caller can insert a new record here.
-            return Ok((stored_prefix.unwrap(), level))
+            return Ok((stored_prefix.unwrap(), level));
         }
     }
-
 
     #[allow(clippy::type_complexity)]
     pub(crate) fn non_recursive_retrieve_prefix_with_guard(
@@ -649,15 +676,18 @@ impl<
             let index = Self::hash_prefix_id(id, level);
 
             let mut prefixes = prefix_set.0.load(Ordering::Acquire, guard);
-            
+
             if !prefixes.is_null() {
                 let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-                if let Some(stored_prefix) = unsafe { prefix_ref.assume_init_ref() }
-                    .get_stored_prefix(guard) {
+                if let Some(stored_prefix) =
+                    unsafe { prefix_ref.assume_init_ref() }
+                        .get_stored_prefix(guard)
+                {
                     if let Some(pfx_rec) = stored_prefix.get_record(guard) {
                         if id == pfx_rec.get_prefix_id() {
                             trace!("found requested prefix {:?}", id);
-                            parents[level as usize] = Some((prefix_set, index));
+                            parents[level as usize] =
+                                Some((prefix_set, index));
                             return (
                                 Some(stored_prefix),
                                 Some((id, level, prefix_set, parents, index)),
@@ -668,9 +698,9 @@ impl<
                         level += 1;
                         backoff.spin();
                         continue;
-                    }                
-                }   
-            }   
+                    }
+                }
+            }
 
             trace!("no prefix found for {:?}", id);
             parents[level as usize] = Some((prefix_set, index));
@@ -707,13 +737,21 @@ impl<
                 let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
                 // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
-                if let Some(stored_prefix) = unsafe { prefix_ref.assume_init_ref() }
-                    .get_stored_prefix(guard)
+                if let Some(stored_prefix) =
+                    unsafe { prefix_ref.assume_init_ref() }
+                        .get_stored_prefix(guard)
                 {
-                    if let Some(pfx_rec) = stored_prefix.super_agg_record.get_record(guard) {
-                        if prefix_id == PrefixId::new(pfx_rec.net, pfx_rec.len) {
+                    if let Some(pfx_rec) =
+                        stored_prefix.super_agg_record.get_record(guard)
+                    {
+                        if prefix_id
+                            == PrefixId::new(pfx_rec.net, pfx_rec.len)
+                        {
                             trace!("found requested prefix {:?}", prefix_id);
-                            return Some((stored_prefix, &stored_prefix.serial));
+                            return Some((
+                                stored_prefix,
+                                &stored_prefix.serial,
+                            ));
                         };
                         level += 1;
                         (search_level.f)(
