@@ -93,8 +93,12 @@ macro_rules! insert_match {
                                     }
                                     (NewNodeOrIndex::ExistingNode(node_id), retry_count) => {
                                         // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
-                                        if local_retry_count > 0 {
-                                            warn!("contention: {} existing node {}", std::thread::current().name().unwrap(), node_id);
+                                        if log_enabled!(log::Level::Trace) {
+                                            if local_retry_count > 0 {
+                                                trace!("contention: {} existing node {}", 
+                                                std::thread::current().name().unwrap(), node_id
+                                                );
+                                            }
                                         }
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },

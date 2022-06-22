@@ -253,8 +253,10 @@ macro_rules! store_node_closure {
                                             if log_enabled!(log::Level::Warn) {
                                                 debug!("{} created node {}", std::thread::current().name().unwrap(), $id);
                                             }
-                                            if log_enabled!(log::Level::Warn) && retry_count > 0 {
-                                                debug!("{} contention resolved on node {}", std::thread::current().name().unwrap(), $id);
+                                            if log_enabled!(log::Level::Debug) {
+                                                if retry_count > 0 { 
+                                                    debug!("{} contention resolved on node {}", std::thread::current().name().unwrap(), $id)
+                                                };
                                             }
                                             return Ok(($id, retry_count));
                                         },
