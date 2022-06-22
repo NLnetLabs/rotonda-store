@@ -400,8 +400,6 @@ impl<
         record: InternalPrefixRecord<AF, Meta>,
         guard: &Guard,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // let guard = &epoch::pin();
-        // guard.flush();
         let backoff = Backoff::new();
 
         let (atomic_stored_prefix, level) = self
