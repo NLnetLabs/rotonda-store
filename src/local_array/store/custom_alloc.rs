@@ -425,7 +425,6 @@ impl<
                 ) {
                     Ok(spfx) => {
                         debug!("inserted new prefix record {:?}", &spfx);
-                        // unsafe { guard.defer_destroy(spfx); };
                         Ok(())
                     }
                     Err(stored_prefix) => {
@@ -475,9 +474,6 @@ impl<
                         guard,
                     ) {
                         Ok(_rec) => {
-                            // warn!("saved {:?}", pfx);
-                            // std::thread::sleep(Duration::from_micros(1500));
-                            // println!("stored prefix size {}", std::mem::size_of::<StoredPrefix<AF,Meta>>());
                             if !inner_agg_record.is_null() {
                                 unsafe {
                                     guard.defer_unchecked(move || {
