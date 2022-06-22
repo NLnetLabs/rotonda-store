@@ -6,8 +6,38 @@ use rotonda_store::{
     addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,
 };
 
-use rotonda_store::complex_record_types::ComplexPrefixAs;
+use routecore::record::MergeUpdate;
 
+#[derive(Debug, Clone)]
+pub struct ComplexPrefixAs(pub Vec<u32>);
+
+impl MergeUpdate for ComplexPrefixAs {
+    fn merge_update(
+        &mut self,
+        update_record: ComplexPrefixAs,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        self.0 = update_record.0;
+        Ok(())
+    }
+
+    fn clone_merge_update(
+        &self,
+        update_meta: &Self,
+    ) -> Result<Self, Box<dyn std::error::Error>>
+    where
+        Self: std::marker::Sized,
+    {
+        let mut new_meta = update_meta.0.clone();
+        new_meta.push(self.0[0]);
+        Ok(ComplexPrefixAs(new_meta))
+    }
+}
+
+impl std::fmt::Display for ComplexPrefixAs {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "AS{:?}", self.0)
+    }
+}
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();
@@ -41,9 +71,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         let pfx = Prefix::new_relaxed(x.into_ipaddr(), 32);
                         // print!("{}-", i);
-                        match tree_bitmap
-                            .insert(&pfx.unwrap(), ComplexPrefixAs([i as u32].to_vec()))
-                        {
+                        match tree_bitmap.insert(
+                            &pfx.unwrap(),
+                            ComplexPrefixAs([i as u32].to_vec()),
+                        ) {
                             Ok(_) => {}
                             Err(e) => {
                                 println!("{}", e);
@@ -51,7 +82,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         };
 
                         if x % 1_000_000 == 0 {
-                            println!("{:?} {}", std::thread::current().name(), x);
+                            println!(
+                                "{:?} {}",
+                                std::thread::current().name(),
+                                x
+                            );
                         }
                     }
                 },
