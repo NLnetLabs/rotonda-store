@@ -468,12 +468,12 @@ impl<
     pub fn insert(
         &self,
         pfx: InternalPrefixRecord<AF, M>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<u32, Box<dyn std::error::Error>> {
         let guard = &epoch::pin();
 
         if pfx.len == 0 {
-            let _res = self.update_default_route_prefix_meta(pfx.meta, guard);
-            return Ok(());
+            let retries = self.update_default_route_prefix_meta(pfx.meta, guard)?;
+            return Ok(retries);
         }
 
         let mut stride_end: u8 = 0;
@@ -495,7 +495,7 @@ impl<
             let stride_start = stride_end - stride;
             // used for counting the number of reloads the
             // match_node_for_strides macro will tolerate.
-            let mut i = 0;
+            let mut retries = 0;
             let back_off = crossbeam_utils::Backoff::new();
 
             // insert_match! returns the node_id of the next node to be
@@ -513,7 +513,7 @@ impl<
                 cur_i;
                 level;
                 back_off;
-                i;
+                retries;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
                 Stride4; 1,
@@ -567,7 +567,7 @@ impl<
         &self,
         new_meta: M,
         guard: &epoch::Guard,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<u32, Box<dyn std::error::Error>> {
         trace!("Updating the default route...");
         // let guard = unsafe { epoch::unprotected() };
         self.store.upsert_prefix(

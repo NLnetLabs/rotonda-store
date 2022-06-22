@@ -16,7 +16,7 @@ macro_rules! insert_match {
         $cur_i: expr; // the id of the current node in this stride
         $level: expr;
         $back_off: expr;
-        $i: expr;
+        $retries: expr;
         // $enum: ident;
         // The strides to generate match arms for,
         // $variant is the name of the enum varian (Stride[3..8]) and
@@ -89,12 +89,12 @@ macro_rules! insert_match {
                                     };
                                     // break $self.store.store_node(new_id, n)
                                 }
-                                NewNodeOrIndex::ExistingNode(i) => {
+                                NewNodeOrIndex::ExistingNode(node_id) => {
                                     // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
-                                    if $i > 0 { 
-                                        warn!("{} existing node {}", std::thread::current().name().unwrap(), i);
+                                    if $retries > 0 { 
+                                        warn!("contention: {} existing node {}", std::thread::current().name().unwrap(), node_id);
                                     }
-                                    break Ok(i)
+                                    break Ok(node_id)
                                 },
                                 NewNodeOrIndex::NewPrefix => {
                                     return $self.store.upsert_prefix($pfx, $guard)
@@ -115,10 +115,10 @@ macro_rules! insert_match {
                             $cur_i,
                             $self.store.get_stride_sizes()[$level as usize]);
                 }
-                $i += 1;
+                $retries += 1;
                 // THIS IS A FAIRLY ARBITRARY NUMBER.
                 // We're giving up after a number of tries.
-                if $i >= 8 {
+                if $retries >= 8 {
                     trace!("STOP LOOPING {}", $cur_i);
                     return Err(
                         Box::new(
