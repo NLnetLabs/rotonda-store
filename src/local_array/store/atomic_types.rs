@@ -130,59 +130,6 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         self.super_agg_record.get_record(guard)
     }
 
-    // pub(crate) fn atomic_update_aggregate(
-    //     &self,
-    //     record: InternalPrefixRecord<AF, M>,
-    //     // guard: &Guard,
-    // ) {
-    //     // let back_off = Backoff::new();
-    //     let g = epoch::pin();
-
-    //     let mut inner_super_agg_record =
-    //         self.super_agg_record.0.load(Ordering::Acquire, &g);
-    //     let mut new_record;
-
-    //     loop {
-    //         let super_agg_record = unsafe { inner_super_agg_record.deref() };
-
-    //         let new_meta = super_agg_record
-    //             .meta
-    //             .clone_merge_update(&record.meta)
-    //             .unwrap();
-
-    //         new_record = Owned::new(InternalPrefixRecord::<AF, M> {
-    //             net: record.net,
-    //             len: record.len,
-    //             meta: new_meta,
-    //         });
-
-    //         // drop(new_record);
-
-    //         // let super_agg_record = self.super_agg_record.0.compare_exchange(
-    //         //     inner_super_agg_record,
-    //         //     new_record,
-    //         //     Ordering::SeqCst,
-    //         //     Ordering::SeqCst,
-    //         //     guard,
-    //         // );
-    //         match &self.super_agg_record.0.compare_exchange(
-    //             inner_super_agg_record,
-    //             new_record,
-    //             Ordering::AcqRel,
-    //             Ordering::Acquire,
-    //             &g,
-    //         ) {
-    //             Ok(_) => {
-    //                 return;
-    //             }
-    //             Err(next_agg) => {
-    //                 // Do it again
-    //                 // back_off.spin();
-    //                 inner_super_agg_record = next_agg.current;
-    //             }
-    //         };
-    //     }
-    // }
 }
 
 // ----------- SuperAggRecord -----------------------------------------------
