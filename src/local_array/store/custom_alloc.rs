@@ -101,7 +101,7 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace, warn};
 
-use epoch::{Guard, Owned, Shared};
+use epoch::{CompareExchangeError, Guard, Owned, Shared};
 use std::marker::PhantomData;
 
 use crate::local_array::tree::*;
@@ -270,7 +270,6 @@ impl<
                     guard,
                 )
             }
-
             4 => {
                 trace!("retrieve node {} from l{}", id, id.get_id().1);
                 (search_level_4.f)(
@@ -397,9 +396,10 @@ impl<
 
     pub(crate) fn upsert_prefix(
         &self,
-        record: InternalPrefixRecord<AF, Meta>,
+        mut record: InternalPrefixRecord<AF, Meta>,
         guard: &Guard,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<u32, Box<dyn std::error::Error>> {
+        let mut retries: u32 = 0;
         let backoff = Backoff::new();
 
         let (atomic_stored_prefix, level) = self
@@ -410,91 +410,103 @@ impl<
         let inner_stored_prefix =
             atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
 
-        match inner_stored_prefix.is_null() {
-            true => {
-                debug!("create new super-aggregated prefix record");
-                let new_stored_prefix =
-                    StoredPrefix::new::<PB>(record, level);
+        loop {
+            match inner_stored_prefix.is_null() {
+                true => {
+                    debug!("create new super-aggregated prefix record");
+                    let new_stored_prefix =
+                        StoredPrefix::new::<PB>(record, level);
 
-                match atomic_stored_prefix.0.compare_exchange(
-                    Shared::null(),
-                    Owned::new(new_stored_prefix).with_tag(1),
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                    guard,
-                ) {
-                    Ok(spfx) => {
-                        debug!("inserted new prefix record {:?}", &spfx);
-                        Ok(())
-                    }
-                    Err(stored_prefix) => {
-                        debug!(
-                            "prefix can't be inserted as new {:?}",
-                            stored_prefix.current
-                        );
-                        Err(Box::new(PrefixStoreError::PrefixAlreadyExist))
-                    }
-                }
-            }
-            false => {
-                trace!(
-                    "existing super-aggregated prefix record for {}/{}",
-                    record.net,
-                    record.len
-                );
-                let super_agg_record =
-                    &unsafe { inner_stored_prefix.deref() }
-                        .super_agg_record
-                        .0;
-                let mut inner_agg_record =
-                    super_agg_record.load(Ordering::Acquire, guard);
-
-                loop {
-                    let prefix_record =
-                        unsafe { inner_agg_record.as_ref() }.unwrap();
-                    let new_record = Owned::new(InternalPrefixRecord::<
-                        AF,
-                        Meta,
-                    >::new_with_meta(
-                        record.net,
-                        record.len,
-                        prefix_record
-                            .meta
-                            .clone_merge_update(&record.meta)
-                            .unwrap(),
-                    ))
-                    .into_shared(guard);
-
-                    // CAS the nested Atomic InternalPrefixRecord.
-                    match super_agg_record.compare_exchange(
-                        inner_agg_record,
-                        new_record,
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
+                    match atomic_stored_prefix.0.compare_exchange(
+                        Shared::null(),
+                        Owned::new(new_stored_prefix).with_tag(1),
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
                         guard,
                     ) {
-                        Ok(_rec) => {
-                            if !inner_agg_record.is_null() {
-                                unsafe {
-                                    guard.defer_unchecked(move || {
-                                        std::sync::atomic::fence(
-                                            Ordering::Acquire,
-                                        );
-
-                                        std::mem::drop(
-                                            inner_agg_record.into_owned(),
-                                        )
-                                    });
-                                }
-                            };
-                            return Ok(());
+                        Ok(spfx) => {
+                            debug!("inserted new prefix record {:?}", &spfx);
+                            return Ok(retries);
                         }
-                        Err(next_agg) => {
-                            // Do it again
-                            // warn!("contention {:?}", next_agg.current);
-                            inner_agg_record = next_agg.current;
-                            backoff.spin();
+                        Err(CompareExchangeError { current, new }) => {
+                            debug!(
+                                "prefix can't be inserted as new {:?}",
+                                current
+                            );
+                            retries += 1;
+                            record = *unsafe {
+                                (*new.into_box())
+                                    .super_agg_record
+                                    .0
+                                    .load(Ordering::Relaxed, guard)
+                                    .into_owned()
+                                    .into_box()
+                            };
                             continue;
+                        }
+                    }
+                }
+                false => {
+                    trace!(
+                        "existing super-aggregated prefix record for {}/{}",
+                        record.net,
+                        record.len
+                    );
+                    let super_agg_record =
+                        &unsafe { inner_stored_prefix.deref() }
+                            .super_agg_record
+                            .0;
+                    let mut inner_agg_record =
+                        super_agg_record.load(Ordering::Acquire, guard);
+
+                    loop {
+                        let prefix_record =
+                            unsafe { inner_agg_record.as_ref() }.unwrap();
+                        let new_record = Owned::new(InternalPrefixRecord::<
+                            AF,
+                            Meta,
+                        >::new_with_meta(
+                            record.net,
+                            record.len,
+                            prefix_record
+                                .meta
+                                .clone_merge_update(&record.meta)
+                                .unwrap(),
+                        ))
+                        .into_shared(guard);
+
+                        // CAS the nested Atomic InternalPrefixRecord.
+                        match super_agg_record.compare_exchange(
+                            inner_agg_record,
+                            new_record,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                            guard,
+                        ) {
+                            Ok(_rec) => {
+                                if !inner_agg_record.is_null() {
+                                    unsafe {
+                                        guard.defer_unchecked(move || {
+                                            std::sync::atomic::fence(
+                                                Ordering::Acquire,
+                                            );
+
+                                            std::mem::drop(
+                                                inner_agg_record.into_owned(),
+                                            )
+                                        });
+                                    }
+                                };
+                                return Ok(retries);
+                            }
+                            Err(next_agg) => {
+                                // Do it again
+                                // warn!("contention {:?}", next_agg.current);
+                                retries += 1;
+                                inner_agg_record = next_agg.current;
+                                backoff.spin();
+                                continue;
+                            }
                         }
                     }
                 }
