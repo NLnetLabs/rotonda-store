@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("[");
         for n in 1..6 {
             let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let tree_bitmap = MyStore::<PrefixAs>::new();
+            let tree_bitmap = MyStore::<PrefixAs>::new()?;
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -84,6 +84,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 &pfx,
                                 &MatchOptions {
                                     match_type: MatchType::LongestMatch,
+                                    include_all_records: false,
                                     include_less_specifics: false,
                                     include_more_specifics: false,
                                 },

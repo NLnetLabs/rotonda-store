@@ -9,7 +9,7 @@ use routecore::record::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
-    let tree_bitmap = MultiThreadedStore::<NoMeta>::new();
+    let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -345,6 +345,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
+                include_all_records: false,
                 include_less_specifics: false,
                 include_more_specifics: false,
             },

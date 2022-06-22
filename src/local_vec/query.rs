@@ -2,14 +2,71 @@ use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
-use crate::prefix_record::InternalPrefixRecord;
 use crate::{MatchOptions, MatchType};
-use crate::QueryResult;
 
 use crate::af::AddressFamily;
 use routecore::addr::Prefix;
 use routecore::bgp::RecordSet;
-use routecore::record::NoMeta;
+
+#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+pub struct PrefixId<AF: AddressFamily>((AF, u8));
+
+impl<AF: AddressFamily> PrefixId<AF> {
+    pub fn new(net: AF, len: u8) -> Self {
+        PrefixId((net, len))
+    }
+
+    pub fn get_net(&self) -> AF {
+        self.0.0
+    }
+
+    pub fn get_len(&self) -> u8 {
+        self.0.1
+    }
+}
+
+//------------- QueryResult -------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct QueryResult<'a, Meta: routecore::record::Meta> {
+    pub match_type: MatchType,
+    pub prefix: Option<Prefix>,
+    pub prefix_meta: Option<&'a Meta>,
+    pub less_specifics: Option<RecordSet<'a, Meta>>,
+    pub more_specifics: Option<RecordSet<'a, Meta>>,
+}
+
+impl<'a, Meta: routecore::record::Meta> std::fmt::Display
+    for QueryResult<'a, Meta>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let pfx_str = match self.prefix {
+            Some(pfx) => format!("{}", pfx),
+            None => "".to_string(),
+        };
+        let pfx_meta_str = match &self.prefix_meta {
+            Some(pfx_meta) => format!("{}", pfx_meta),
+            None => "".to_string(),
+        };
+        write!(
+            f,
+            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
+            self.match_type,
+            pfx_str,
+            pfx_meta_str,
+            if let Some(ls) = self.less_specifics.as_ref() {
+                format!("{}", ls)
+            } else {
+                "".to_string()
+            },
+            if let Some(ms) = self.more_specifics.as_ref() {
+                format!("{}", ms)
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
 
 //------------ Longest Matching Prefix  -------------------------------------
 
@@ -32,7 +89,7 @@ where
 
     pub(crate) fn match_prefix(
         &'a self,
-        search_pfx: &InternalPrefixRecord<Store::AF, NoMeta>,
+        search_pfx: PrefixId<Store::AF>,
         options: &MatchOptions,
     ) -> QueryResult<'a, Store::Meta> {
         let mut stride_end = 0;
@@ -83,10 +140,10 @@ where
 
         for stride in self.strides.iter() {
             stride_end += stride;
-            let last_stride = search_pfx.len < stride_end;
+            let last_stride = search_pfx.get_len() < stride_end;
 
             nibble_len = if last_stride {
-                stride + search_pfx.len - stride_end
+                stride + search_pfx.get_len() - stride_end
             } else {
                 *stride
             };
@@ -94,7 +151,7 @@ where
             // Shift left and right to set the bits to zero that are not in
             // the nibble we're handling here.
             nibble = AddressFamily::get_nibble(
-                search_pfx.net,
+                search_pfx.get_net(),
                 stride_end - stride,
                 nibble_len,
             );
@@ -661,7 +718,7 @@ where
         let mut prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
             prefix = self.retrieve_prefix(pfx_idx);
-            match_type = if prefix.unwrap().len == search_pfx.len {
+            match_type = if prefix.unwrap().len == search_pfx.get_len() {
                 MatchType::ExactMatch
             } else {
                 MatchType::LongestMatch
@@ -675,7 +732,7 @@ where
                 None
             },
             prefix_meta: if let Some(pfx) = prefix {
-                pfx.meta.as_ref() //.clone() // .as_ref()
+                Some(&pfx.meta)
             } else {
                 None
             },

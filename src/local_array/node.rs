@@ -4,7 +4,8 @@ use std::{
     marker::PhantomData,
 };
 
-use log::{trace, info};
+use crossbeam_utils::Backoff;
+use log::trace;
 
 // pub use super::atomic_stride::*;
 use super::bit_span::BitSpan;
@@ -232,6 +233,7 @@ where
                     S::into_ptrbitarr_size(
                     bit_pos | S::into_stride_size(ptrbitarr),
                 ));
+                let backoff = Backoff::new();
                 loop {
                     match a_ptrbitarr {
                         CasResult(Ok(_)) => {
@@ -246,6 +248,7 @@ where
                             ));
                         }
                     };
+                    backoff.spin();
                 }
 
                 return NewNodeOrIndex::NewNode(
@@ -269,6 +272,8 @@ where
                 self.pfxbitarr.compare_exchange(
                     pfxbitarr, bit_pos | pfxbitarr
                 );
+                let backoff = Backoff::new();
+
                 loop {
                     match a_pfxbitarr {
                         CasResult(Ok(_)) => {
@@ -282,6 +287,7 @@ where
                             );
                         }
                     };
+                    backoff.spin();
                 }
 
                 // self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
@@ -599,15 +605,7 @@ where
 
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
-                        base_prefix.add_nibble(ms_nibble, ms_nibble_len).into()
-                        // PrefixId::from(
-                        //     base_prefix.get_id().0
-                        //     .add_nibble(
-                        //         base_prefix.get_id().1, ms_nibble, ms_nibble_len
-                        //     ) 
-                            // base_prefix.get_id().1 + ms_nibble_len)
-                            // .set_serial(self.get_pfx_serial(base_prefix.into(), ms_nibble, ms_nibble_len, guard).load(Ordering::Acquire))
-                    )
+                        base_prefix.add_nibble(ms_nibble, ms_nibble_len).into()                    )
                 }
             }
         }
@@ -1012,7 +1010,7 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
                 trace!("pfxbitarr {:064b}", self.pfxbitarr);
 
                 if (S::get_bit_pos(self.cursor.bits, self.cursor.len) | self.pfxbitarr) == self.pfxbitarr {
-                    info!("found prefix with len {} at pos {} pfx len {}",
+                    trace!("found prefix with len {} at pos {} pfx len {}",
                         self.cursor.len, 
                         self.cursor.bits,
                         self.base_prefix.get_len() + self.cursor.len,

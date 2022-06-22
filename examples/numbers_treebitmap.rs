@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for _strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-        let tree_bitmap: MyStore<PrefixAs> = MyStore::<PrefixAs>::new();
+        let tree_bitmap: MyStore<PrefixAs> = MyStore::<PrefixAs>::new()?;
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

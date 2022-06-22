@@ -5,14 +5,14 @@ use std::{
 
 use crate::af::Zero;
 use crate::node_id::SortableNodeId;
-use crate::prefix_record::InternalPrefixRecord;
 pub use crate::stride::*;
 use crate::synth_int::{U256, U512};
 
 use crate::local_vec::tree::{NewNodeOrIndex, SizedStrideNode};
 
 use crate::af::AddressFamily;
-use routecore::record::NoMeta;
+
+use super::query::PrefixId;
 
 pub struct TreeBitMapNode<AF: AddressFamily, S, NodeId>
 where
@@ -208,7 +208,7 @@ where
     // found along the way.
     pub(crate) fn search_stride_for_longest_match_at(
         &self,
-        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
+        search_pfx: PrefixId<AF>,
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -220,7 +220,7 @@ where
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
             nibble =
-                AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
+                AddressFamily::get_nibble(search_pfx.get_net(), start_bit, n_l);
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix. This is not
@@ -234,7 +234,7 @@ where
                 // Receiving a less_specifics_vec means that the user wants to have
                 // all the last-specific prefixes returned, so add the found prefix.
                 if let Some(ls_vec) = less_specifics_vec {
-                    if !(search_pfx.len <= start_bit + nibble_len
+                    if !(search_pfx.get_len() <= start_bit + nibble_len
                         || (S::into_stride_size(self.ptrbitarr)
                             & S::get_bit_pos(nibble, nibble_len))
                             == S::zero())
@@ -249,7 +249,7 @@ where
 
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
-        if search_pfx.len <= start_bit + nibble_len
+        if search_pfx.get_len() <= start_bit + nibble_len
             || (S::into_stride_size(self.ptrbitarr) & bit_pos) == S::zero()
         // No children or at the end, return the definitive LMP we found.
         {
@@ -273,7 +273,7 @@ where
     // the search prefix.
     pub(crate) fn search_stride_for_exact_match_at(
         &self,
-        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
+        search_pfx: PrefixId<AF>,
         nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -286,7 +286,7 @@ where
 
         // Is this the last nibble?
         // Otherwise we're not looking for a prefix (exact matching only lives at last nibble)
-        match search_pfx.len <= start_bit + nibble_len {
+        match search_pfx.get_len() <= start_bit + nibble_len {
             // We're at the last nibble.
             true => {
                 // Check for an actual prefix at the right position, i.e. consider the complete nibble
@@ -325,7 +325,7 @@ where
     // This is of course slower, so it should only be used when the user explicitly requests less-specifics.
     pub(crate) fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
-        search_pfx: &InternalPrefixRecord<AF, NoMeta>,
+        search_pfx: PrefixId<AF>,
         mut nibble: u32,
         nibble_len: u8,
         start_bit: u8,
@@ -341,7 +341,7 @@ where
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
             nibble =
-                AddressFamily::get_nibble(search_pfx.net, start_bit, n_l);
+                AddressFamily::get_nibble(search_pfx.get_net(), start_bit, n_l);
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix. This is not
@@ -376,7 +376,7 @@ where
 
         // Check if this the last stride, or if they're no more children to go to,
         // if so return what we found up until now.
-        match search_pfx.len <= start_bit + nibble_len
+        match search_pfx.get_len() <= start_bit + nibble_len
             || (S::into_stride_size(self.ptrbitarr) & bit_pos)
                 == <S as std::ops::BitAnd>::Output::zero()
         {

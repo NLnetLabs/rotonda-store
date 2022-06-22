@@ -8,7 +8,7 @@ use routecore::addr::Prefix;
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
     let tree_bitmap =
-        MultiThreadedStore::<PrefixAs>::new();
+        MultiThreadedStore::<PrefixAs>::new()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -281,6 +281,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: true,
             },

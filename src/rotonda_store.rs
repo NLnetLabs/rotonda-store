@@ -1,7 +1,9 @@
+use std::collections::HashMap;
 use std::{fmt, slice};
 
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
+use routecore::bgp::MetaDataSet;
 use routecore::{
     addr::Prefix,
     bgp::{PrefixRecord, RecordSet},
@@ -11,6 +13,8 @@ use routecore::{
 pub use crate::af::{AddressFamily, IPv4, IPv6};
 
 pub use crate::local_array::store::custom_alloc;
+
+pub const RECORDS_MAX_NUM: usize = 3;
 
 //------------ The publicly available Rotonda Stores ------------------------
 
@@ -63,6 +67,7 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 
 pub struct MatchOptions {
     pub match_type: MatchType,
+    pub include_all_records: bool,
     pub include_less_specifics: bool,
     pub include_more_specifics: bool,
 }
@@ -111,7 +116,7 @@ impl MergeUpdate for PrefixAs {
     where
         Self: std::marker::Sized,
     {
-        Ok(PrefixAs(self.0.max(update_meta.0)))
+        Ok(PrefixAs(update_meta.0))
     }
 }
 
@@ -136,20 +141,22 @@ impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
             let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PrefixRecord::new(
-                        u_pfx,
-                        pfx.meta.as_ref().unwrap(),
-                    ));
+                    v4.push(PrefixRecord::new(u_pfx, &pfx.meta));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PrefixRecord::new(
-                        u_pfx,
-                        pfx.meta.as_ref().unwrap(),
-                    ));
+                    v6.push(PrefixRecord::new(u_pfx, &pfx.meta));
                 }
             }
         }
         Self { v4, v6 }
+    }
+}
+
+// Hash implementation that always returns the same hash, so that all
+// records get thrown on one big heap.
+impl std::hash::Hash for PrefixAs {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        0.hash(state);
     }
 }
 
@@ -174,7 +181,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator
             return self.v6.next().map(|res| {
                 PrefixRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    res.meta.as_ref().unwrap(),
+                    &res.meta,
                 )
             });
         }
@@ -182,7 +189,7 @@ impl<'a, Meta: routecore::record::Meta> Iterator
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
             return Some(PrefixRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                res.meta.as_ref().unwrap(),
+                &res.meta,
             ));
         }
         self.v4 = None;
@@ -190,20 +197,93 @@ impl<'a, Meta: routecore::record::Meta> Iterator
     }
 }
 
+//------------- PrefixRecordMap ---------------------------------------------
+
+// A HashMap that's keyed on prefix and contains multiple meta-data instances
+
+#[derive(Debug, Clone)]
+pub struct PrefixRecordMap<'a, M: routecore::record::Meta>(
+    HashMap<Prefix, MetaDataSet<'a, M>>,
+);
+
+impl<'a, M: routecore::record::Meta> PrefixRecordMap<'a, M> {
+    pub fn new(prefix: Prefix, meta_data_set: MetaDataSet<'a, M>) -> Self {
+        let mut map = HashMap::new();
+        map.insert(prefix, meta_data_set);
+        Self(map)
+    }
+
+    pub fn empty() -> Self {
+        Self(HashMap::new())
+    }
+
+    // pub fn into_prefix_record_map<AF: AddressFamily + 'a>(
+    //     iter: impl Iterator<Item = &'a StoredPrefix<AF, M>>,
+    //     guard: &'a Guard,
+    // ) -> Self {
+    //     let mut map = HashMap::new();
+    //     for rec in iter {
+    //         map.entry(rec.prefix.into_pub()).or_insert_with(|| {
+    //             rec.iter_latest_unique_meta_data(guard)
+    //                 .collect::<MetaDataSet<'a, M>>()
+    //         });
+    //     }
+    //     Self(map)
+    // }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+
+    pub fn iter(
+        &self,
+    ) -> impl Iterator<Item = (&Prefix, &MetaDataSet<'a, M>)> {
+        self.0.iter()
+    }
+}
+
+impl<'a, M: routecore::record::Meta>
+    std::iter::FromIterator<(Prefix, MetaDataSet<'a, M>)>
+    for PrefixRecordMap<'a, M>
+{
+    fn from_iter<I: IntoIterator<Item = (Prefix, MetaDataSet<'a, M>)>>(
+        iter: I,
+    ) -> Self {
+        let mut map = PrefixRecordMap::empty();
+        for (prefix, meta_data_set) in iter {
+            map.0.entry(prefix).or_insert(meta_data_set);
+        }
+        map
+    }
+}
+
+impl<'a, M: routecore::record::Meta> std::fmt::Display
+    for PrefixRecordMap<'a, M>
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for (pfx, meta) in self.0.iter() {
+            writeln!(f, "{} {}", pfx, meta)?;
+        }
+        Ok(())
+    }
+}
+
 //------------- QueryResult -------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<'a, Meta: routecore::record::Meta> {
+pub struct QueryResult<'a, M: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
-    pub prefix_meta: Option<&'a Meta>,
-    pub less_specifics: Option<RecordSet<'a, Meta>>,
-    pub more_specifics: Option<RecordSet<'a, Meta>>,
+    pub prefix_meta: Option<&'a M>,
+    pub less_specifics: Option<RecordSet<'a, M>>,
+    pub more_specifics: Option<RecordSet<'a, M>>,
 }
 
-impl<'a, Meta: routecore::record::Meta> fmt::Display
-    for QueryResult<'a, Meta>
-{
+impl<'a, M: routecore::record::Meta> fmt::Display for QueryResult<'a, M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),

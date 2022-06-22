@@ -9,7 +9,7 @@ mod tests {
 
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new();
+        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -27,6 +27,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -49,11 +50,12 @@ mod tests {
             32,
         );
 
-        let guard = &epoch::pin();
+        // let guard = &epoch::pin();
         let res = trie.match_prefix(
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -66,7 +68,7 @@ mod tests {
 
     #[test]
     fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -308,6 +310,7 @@ mod tests {
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
+                    include_all_records: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                 },
@@ -321,6 +324,7 @@ mod tests {
             &Prefix::new(std::net::Ipv4Addr::new(192, 0, 1, 0).into(), 24)?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -340,29 +344,26 @@ mod tests {
         let less_specifics = res.less_specifics.unwrap();
 
         assert!(less_specifics.iter().any(|r| {
-            r.prefix
-                == Prefix::new(
-                    std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                    16,
-                )
-                .unwrap()
+            r.prefix == Prefix::new(
+                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
+                16,
+            )
+            .unwrap()
         }));
-        assert!(
-            less_specifics.iter().any(|r| {
-                r.prefix
-                    == Prefix::new(
-                        std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                        4,
-                    ).unwrap()
-            })
-        );
+        assert!(less_specifics.iter().any(|r| {
+            r.prefix == Prefix::new(
+                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
+                4,
+            )
+            .unwrap()
+        }));
         Ok(())
     }
 
     #[test]
     fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::new();
+            let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -396,6 +397,7 @@ mod tests {
                         &pfx,
                         &MatchOptions {
                             match_type: MatchType::LongestMatch,
+                            include_all_records: false,
                             include_less_specifics: false,
                             include_more_specifics: false,
                         },

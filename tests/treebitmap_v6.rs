@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn test_arbitrary_insert_ipv6() -> Result<(), Box<dyn std::error::Error>>
     {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new();
+        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
         let guard = &epoch::pin();
         let a_pfx = Prefix::new_relaxed(
             ("2001:67c:1bfc::").parse::<std::net::Ipv6Addr>()?.into(),
@@ -27,6 +27,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -42,7 +43,7 @@ mod tests {
 
     #[test]
     fn test_insert_extremes_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new();
+        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(),
             1,
@@ -60,6 +61,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -89,6 +91,7 @@ mod tests {
             &expect_pfx?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -105,9 +108,8 @@ mod tests {
     // the end of a prefix-length array).
     #[test]
     fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
-            
             // 0-7
             Prefix::new_relaxed(
                 0b1111_1111_1111_1111_1111_1111_1000_0000_u128.into_ipaddr(),
@@ -207,8 +209,8 @@ mod tests {
                 0b1111_1111_1111_1111_1111_1111_1010_0111_u128.into_ipaddr(),
                 128,
             ),
-             // 32-21
-             Prefix::new_relaxed(
+            // 32-21
+            Prefix::new_relaxed(
                 0b1111_1111_1111_1111_1111_1111_1011_0000_u128.into_ipaddr(),
                 128,
             ),
@@ -253,6 +255,7 @@ mod tests {
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
+                    include_all_records: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                 },
@@ -267,7 +270,7 @@ mod tests {
 
     #[test]
     fn test_tree_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u128.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -455,8 +458,7 @@ mod tests {
                 64,
             ),
             Prefix::new_relaxed(
-                std::net::Ipv6Addr::new(2006, 193, 10, 10, 0, 0, 0, 0)
-                    .into(),
+                std::net::Ipv6Addr::new(2006, 193, 10, 10, 0, 0, 0, 0).into(),
                 32,
             ),
             Prefix::new_relaxed(
@@ -515,6 +517,7 @@ mod tests {
                 &pfx.prefix,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
+                    include_all_records: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                 },
@@ -531,6 +534,7 @@ mod tests {
             )?,
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
+                include_all_records: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
             },
@@ -550,22 +554,18 @@ mod tests {
         let less_specifics = res.less_specifics.unwrap();
 
         assert!(less_specifics.iter().any(|r| {
-            r.prefix
-                == Prefix::new(
-                    std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0)
-                        .into(),
-                    48,
-                )
-                .unwrap()
+            r.prefix == Prefix::new(
+                std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0).into(),
+                48,
+            )
+            .unwrap()
         }));
         assert!(less_specifics.iter().any(|r| {
-            r.prefix
-                == Prefix::new(
-                    std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0)
-                        .into(),
-                    32,
-                )
-                .unwrap()
+            r.prefix == Prefix::new(
+                std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0).into(),
+                32,
+            )
+            .unwrap()
         }));
         Ok(())
     }
@@ -573,7 +573,7 @@ mod tests {
     #[test]
     fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::new();
+            let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -610,6 +610,7 @@ mod tests {
                         &pfx,
                         &MatchOptions {
                             match_type: MatchType::LongestMatch,
+                            include_all_records: false,
                             include_less_specifics: false,
                             include_more_specifics: false,
                         },

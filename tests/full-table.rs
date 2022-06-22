@@ -3,8 +3,7 @@
 
 mod tests {
     use rotonda_store::{
-        MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
-        prelude::*
+        prelude::*, MatchOptions, MatchType, MultiThreadedStore,
     };
     use routecore::addr::Prefix;
     use routecore::bgp::PrefixRecord;
@@ -12,6 +11,38 @@ mod tests {
     use std::error::Error;
     use std::fs::File;
     use std::process;
+
+    use routecore::record::MergeUpdate;
+    #[derive(Debug, Clone)]
+    pub struct ComplexPrefixAs(pub Vec<u32>);
+
+    impl MergeUpdate for ComplexPrefixAs {
+        fn merge_update(
+            &mut self,
+            update_record: ComplexPrefixAs,
+        ) -> Result<(), Box<dyn std::error::Error>> {
+            self.0 = update_record.0;
+            Ok(())
+        }
+
+        fn clone_merge_update(
+            &self,
+            update_meta: &Self,
+        ) -> Result<Self, Box<dyn std::error::Error>>
+        where
+            Self: std::marker::Sized,
+        {
+            let mut new_meta = update_meta.0.clone();
+            new_meta.push(self.0[0]);
+            Ok(ComplexPrefixAs(new_meta))
+        }
+    }
+
+    impl std::fmt::Display for ComplexPrefixAs {
+        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+            write!(f, "AS{:?}", self.0)
+        }
+    }
 
     #[test]
     fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
@@ -23,8 +54,10 @@ mod tests {
         const GLOBAL_PREFIXES_VEC_SIZE: usize = 886117;
         const FOUND_PREFIXES: u32 = 1322993;
 
+        let guard = &epoch::pin();
+
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+            pfxs: &mut Vec<PrefixRecord<ComplexPrefixAs>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -40,7 +73,7 @@ mod tests {
                 let asn: u32 = record[2].parse().unwrap();
                 let pfx = PrefixRecord::new_with_local_meta(
                     Prefix::new(net.into(), len)?,
-                    PrefixAs(asn),
+                    ComplexPrefixAs(vec![asn]),
                 );
                 pfxs.push(pfx);
             }
@@ -54,8 +87,8 @@ mod tests {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<PrefixAs>::new();
+            let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
+            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?;
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -64,13 +97,20 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                tree_bitmap.insert(&pfx.prefix, *pfx.meta)?;
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned()) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        println!("{}", e);
+                        panic!("STOP TESTING I CAN'T INSERT!");
+                    }
+                };
             }
+
+            println!("done inserting {} prefixes", inserts_num);
 
             let inet_max = 255;
             let len_max = 32;
 
-            let guard = &epoch::pin();
             let mut found_counter = 0_u32;
             let mut not_found_counter = 0_u32;
             (0..inet_max).into_iter().for_each(|i_net| {
@@ -81,24 +121,33 @@ mod tests {
                                 .into(),
                             s_len,
                         );
-                        print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
+                        // print!(":{}.{}.0.0/{}:", i_net, ii_net, s_len);
                         let res = tree_bitmap.match_prefix(
                             &pfx.unwrap(),
                             &MatchOptions {
                                 match_type: MatchType::LongestMatch,
+                                include_all_records: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
                             },
-                            guard
+                            guard,
                         );
                         if let Some(_pfx) = res.prefix {
-                            println!("_pfx {:?}", _pfx);
-                            println!("pfx {:?}", pfx);
-                            println!("{:#?}", res);
+                            // println!("_pfx {:?}", _pfx);
+                            // println!("pfx {:?}", pfx);
+                            // println!("{:#?}", res);
                             assert!(_pfx.len() <= pfx.unwrap().len());
                             assert!(_pfx.addr() <= pfx.unwrap().addr());
                             found_counter += 1;
                         } else {
+                            println!(
+                                "not found {:?}",
+                                if let Ok(e) = pfx {
+                                    e.to_string()
+                                } else {
+                                    "ok".to_string()
+                                }
+                            );
                             not_found_counter += 1;
                         }
                     });

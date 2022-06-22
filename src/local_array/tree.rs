@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{info, trace};
+use log::{log_enabled, trace, warn};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
@@ -9,8 +9,9 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, NodeBuckets, PrefixBuckets};
-use crate::match_node_for_strides;
+use crate::custom_alloc::CustomAllocStorage;
+use crate::insert_match;
+use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::prefix_record::InternalPrefixRecord;
 
 pub(crate) use super::atomic_stride::*;
@@ -101,6 +102,16 @@ impl<AF: AddressFamily> PrefixId<AF> {
 
     pub fn get_len(&self) -> u8 {
         self.0.unwrap().1
+    }
+
+    // This should never fail, since there shouldn't be a invalid prefix in
+    // this prefix id in the first place.
+    pub fn into_pub(&self) -> routecore::addr::Prefix {
+        routecore::addr::Prefix::new(
+            self.get_net().into_ipaddr(),
+            self.get_len(),
+        )
+        .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
     }
 
     // Increment the length of the prefix without changing the bits part.
@@ -241,8 +252,8 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
     // 5. check the result of update_serial(). When succesful, we're done,
     //    otherwise, rollback the work result & repeat from step 1.
     pub fn get_serial(&self) -> usize {
-        let serial = self.serial.load(Ordering::Relaxed);
-        std::sync::atomic::fence(Ordering::Acquire);
+        let serial = self.serial.load(Ordering::SeqCst);
+        std::sync::atomic::fence(Ordering::SeqCst);
         serial
     }
 
@@ -254,8 +265,8 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         self.serial.compare_exchange(
             current_serial,
             current_serial + 1,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
         )
     }
 
@@ -267,21 +278,21 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         self.index.compare_exchange(
             0,
             index,
-            Ordering::Relaxed,
-            Ordering::Relaxed,
+            Ordering::SeqCst,
+            Ordering::SeqCst,
         )
     }
 
     pub fn is_empty(&self) -> bool {
-        self.serial.load(Ordering::Relaxed) == 0
+        self.serial.load(Ordering::SeqCst) == 0
     }
 
     pub fn into_inner(self) -> (StrideType, Option<u32>) {
-        match self.serial.load(Ordering::Relaxed) {
+        match self.serial.load(Ordering::SeqCst) {
             0 => (self.stride_type, None),
             _ => (
                 self.stride_type,
-                Some(self.index.load(Ordering::Relaxed) as u32),
+                Some(self.index.load(Ordering::SeqCst) as u32),
             ),
         }
     }
@@ -302,7 +313,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
 
 impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
     fn from(id: AtomicStrideNodeId<AF>) -> Self {
-        id.index.load(Ordering::Relaxed) as usize
+        id.index.load(Ordering::SeqCst) as usize
     }
 }
 
@@ -363,7 +374,8 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > TreeBitMap<AF, M, NB, PB>
 {
-    pub fn new() -> TreeBitMap<AF, M, NB, PB> {
+    pub fn new(
+    ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(
                 SizedStride::Stride3,
@@ -380,6 +392,7 @@ impl<
         ];
 
         let root_node: SizedStrideNode<AF>;
+        let guard = &epoch::pin();
 
         match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
             3 => {
@@ -414,11 +427,11 @@ impl<
             }
         };
 
-        TreeBitMap {
+        Ok(TreeBitMap {
             // strides,
             stats: stride_stats,
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node),
-        }
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node, guard)?,
+        })
     }
 
     // Partition for stride 4
@@ -456,9 +469,10 @@ impl<
         &self,
         pfx: InternalPrefixRecord<AF, M>,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let guard = &epoch::pin();
+
         if pfx.len == 0 {
-            let _res =
-                self.update_default_route_prefix_meta(pfx.meta.unwrap());
+            let _res = self.update_default_route_prefix_meta(pfx.meta, guard);
             return Ok(());
         }
 
@@ -479,9 +493,14 @@ impl<
                 AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
-            let guard = &epoch::pin();
+            // used for counting the number of reloads the
+            // match_node_for_strides macro will tolerate.
+            let mut i = 0;
+            let back_off = crossbeam_utils::Backoff::new();
 
-            let next_node_idx = match_node_for_strides![
+            // insert_match! returns the node_id of the next node to be
+            // traversed. It was created if it did not exist.
+            let next_node_idx = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
                 guard;
@@ -493,19 +512,29 @@ impl<
                 stride;
                 cur_i;
                 level;
+                back_off;
+                i;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
                 Stride4; 1,
                 Stride5; 2
             ];
 
-            if let Some(i) = next_node_idx {
-                cur_i = i;
-                level += 1;
-            } else {
-                return Ok(());
+            match next_node_idx {
+                Ok(next_id) => {
+                    cur_i = next_id;
+                    level += 1;
+                }
+                Err(err) => {
+                    warn!(
+                        "{} {} {}",
+                        std::thread::current().name().unwrap(),
+                        cur_i,
+                        err
+                    );
+                }
             }
-        }
+        };
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
@@ -537,14 +566,14 @@ impl<
     fn update_default_route_prefix_meta(
         &self,
         new_meta: M,
+        guard: &epoch::Guard,
     ) -> Result<(), Box<dyn std::error::Error>> {
         trace!("Updating the default route...");
-        self.store
-            .upsert_prefix(InternalPrefixRecord::new_with_meta(
-                AF::zero(),
-                0,
-                new_meta,
-            ))
+        // let guard = unsafe { epoch::unprotected() };
+        self.store.upsert_prefix(
+            InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),
+            guard,
+        )
     }
 
     // This function assembles all entries in the `pfx_vec` of all child nodes of the
@@ -557,8 +586,8 @@ impl<
     ) {
         let guard = &epoch::pin();
 
-        info!("start assembling all more specific prefixes here");
-        info!(
+        trace!("start assembling all more specific prefixes here");
+        trace!(
             "{:?}",
             self.store.retrieve_node_with_guard(start_node_id, guard)
         );
@@ -640,7 +669,7 @@ impl<
     > Default for TreeBitMap<AF, M, NB, PB>
 {
     fn default() -> Self {
-        Self::new()
+        Self::new().unwrap()
     }
 }
 

@@ -2,13 +2,14 @@ use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::node_id::InMemNodeId;
 use crate::prefix_record::InternalPrefixRecord;
-use crate::QueryResult;
+use super::query::QueryResult;
 use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
 use routecore::addr::Prefix;
-use routecore::record::{MergeUpdate, NoMeta};
+use routecore::record::MergeUpdate;
 
+use super::query::PrefixId;
 use super::tree::SizedStrideNode;
 /// A fast, memory-efficient Prefix Store, for use in single-threaded contexts.
 ///
@@ -40,17 +41,11 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     ) -> QueryResult<'a, Meta> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
-                &InternalPrefixRecord::<IPv4, NoMeta>::new(
-                    addr.into(),
-                    search_pfx.len(),
-                ),
+                PrefixId::<IPv4>::new(addr.into(), search_pfx.len()),
                 options,
             ),
             std::net::IpAddr::V6(addr) => self.v6.match_prefix(
-                &InternalPrefixRecord::<IPv6, NoMeta>::new(
-                    addr.into(),
-                    search_pfx.len(),
-                ),
+                PrefixId::<IPv6>::new(addr.into(), search_pfx.len()),
                 options,
             ),
         }

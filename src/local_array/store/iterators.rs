@@ -9,11 +9,10 @@
 
 use std::{marker::PhantomData, sync::atomic::Ordering};
 
+use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
+use super::custom_alloc::CustomAllocStorage;
 use crate::{
     af::AddressFamily,
-    custom_alloc::{
-        CustomAllocStorage, NodeBuckets, PrefixBuckets, PrefixSet,
-    },
     local_array::{
         bit_span::BitSpan,
         node::{
@@ -23,11 +22,12 @@ use crate::{
     },
     prefix_record::InternalPrefixRecord,
 };
+
 use crossbeam_epoch::Guard;
-use log::{info, trace};
+use log::{debug, trace};
 use routecore::{
     addr::Prefix,
-    record::{MergeUpdate, Meta, Record},
+    record::{Meta, Record},
 };
 
 // ----------- PrefixIter ---------------------------------------------------
@@ -60,10 +60,10 @@ pub(crate) struct PrefixIter<
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for PrefixIter<'a, AF, M, PB>
 {
-    type Item = &'a InternalPrefixRecord<AF, M>;
+    type Item = (routecore::addr::Prefix, &'a M);
 
     fn next(&mut self) -> Option<Self::Item> {
-        info!(
+        debug!(
             "starting next loop for level {} cursor {} (len {})",
             self.cur_level, self.cursor, self.cur_len
         );
@@ -198,11 +198,16 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
                     // If there's a child here there MUST be a prefix here,
                     // as well.
-                    if let Some(prefix) = s_pfx.get_prefix_record(self.guard)
+                    if let Some(prefix) = s_pfx
+                        .get_stored_prefix(self.guard)
+                        .and_then(|p| p.get_record(self.guard))
                     {
                         // There's a prefix here, that's the next one
-                        info!("D. found prefix {:?}", prefix);
-                        return Some(prefix);
+                        debug!("D. found prefix {:?}", prefix);
+                        return Some((
+                            s_pfx.get_prefix_id().into_pub(),
+                            &prefix.meta,
+                        ));
                     } else {
                         panic!("No prefix here, but there's a child here?");
                     }
@@ -211,12 +216,17 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // No reference to another PrefixSet, all that's
                     // left, is checking for a prefix at the current
                     // cursor position.
-                    if let Some(prefix) = s_pfx.get_prefix_record(self.guard)
+                    if let Some(prefix) = s_pfx
+                        .get_stored_prefix(self.guard)
+                        .and_then(|p| p.get_record(self.guard))
                     {
                         // There's a prefix here, that's the next one
-                        info!("E. found prefix {:?}", prefix);
+                        debug!("E. found prefix {:?}", prefix);
                         self.cursor += 1;
-                        return Some(prefix);
+                        return Some((
+                            s_pfx.get_prefix_id().into_pub(),
+                            &prefix.meta,
+                        ));
                     }
                 }
             };
@@ -286,7 +296,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    M: Meta + MergeUpdate,
+    M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
@@ -302,7 +312,7 @@ pub(crate) struct MoreSpecificPrefixIter<
 impl<
         'a,
         AF: AddressFamily + 'a,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
@@ -328,8 +338,7 @@ impl<
                         ),
                         self.guard,
                     )
-                    .0
-                    .map(|p| p.0);
+                    .0.and_then(|p| p.get_record(self.guard));
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -511,77 +520,88 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             let s_pfx =
                 self.cur_bucket.get_by_index(index as usize, self.guard);
             // trace!("s_pfx {:?}", s_pfx);
-            match unsafe {
-                s_pfx.0.load(Ordering::SeqCst, self.guard).deref()
-            } {
-                (_serial, Some(pfx_rec), next_set, _prev_record) => {
-                    // There is a prefix  here, but we need to checkt if it's
-                    // the right one.
-                    if self.cur_prefix_id
-                        == PrefixId::new(pfx_rec.net, pfx_rec.len)
-                    {
+
+            if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
+                trace!("get_record {:?}", stored_prefix.super_agg_record);
+                match stored_prefix.super_agg_record.get_record(self.guard) {
+                    Some(pfx_rec) => {
+                        // There is a prefix  here, but we need to checkt if it's
+                        // the right one.
+                        if self.cur_prefix_id
+                            == PrefixId::new(pfx_rec.net, pfx_rec.len)
+                        {
+                            trace!(
+                                "found requested prefix {:?}",
+                                self.cur_prefix_id
+                            );
+                            self.cur_len -= 1;
+                            self.cur_level = 0;
+                            self.cur_bucket = self
+                                .prefixes
+                                .get_root_prefix_set(self.cur_len);
+                            return Some(pfx_rec);
+                        };
+                        // Advance to the next level or the next len.
+                        match stored_prefix
+                            .next_bucket
+                            .0
+                            .load(Ordering::SeqCst, self.guard)
+                            .is_null()
+                        {
+                            // No child here, move one length down.
+                            true => {
+                                self.cur_len -= 1;
+                                self.cur_level = 0;
+                                self.cur_bucket = self
+                                    .prefixes
+                                    .get_root_prefix_set(self.cur_len);
+                            }
+                            // There's a child, move a level up and set the child
+                            // as current. Length remains the same.
+                            false => {
+                                self.cur_bucket = &stored_prefix.next_bucket;
+                                self.cur_level += 1;
+                            }
+                        }
+                    }
+                    None => {
+                        // No prefix here, let's see if there's a child here
                         trace!(
-                            "found requested prefix {:?}",
-                            self.cur_prefix_id
+                            "no prefix found for {:?} in len {}",
+                            self.cur_prefix_id,
+                            self.cur_len
                         );
-                        self.cur_len -= 1;
-                        self.cur_level = 0;
-                        self.cur_bucket =
-                            self.prefixes.get_root_prefix_set(self.cur_len);
-                        return Some(pfx_rec);
-                    };
-                    // Advance to the next level or the next len.
-                    match next_set
-                        .0
-                        .load(Ordering::SeqCst, self.guard)
-                        .is_null()
-                    {
-                        // No child here, move one length down.
-                        true => {
-                            self.cur_len -= 1;
-                            self.cur_level = 0;
-                            self.cur_bucket = self
-                                .prefixes
-                                .get_root_prefix_set(self.cur_len);
-                        }
-                        // There's a child, move a level up and set the child
-                        // as current. Length remains the same.
-                        false => {
-                            self.cur_bucket = next_set;
-                            self.cur_level += 1;
+                        // Advance to the next level or the next len.
+                        match stored_prefix
+                            .next_bucket
+                            .0
+                            .load(Ordering::SeqCst, self.guard)
+                            .is_null()
+                        {
+                            // No child here, move one length down.
+                            true => {
+                                self.cur_len -= 1;
+                                self.cur_level = 0;
+                                self.cur_bucket = self
+                                    .prefixes
+                                    .get_root_prefix_set(self.cur_len);
+                            }
+                            // There's a child, move a level up and set the child
+                            // as current. Length remains the same.
+                            false => {
+                                self.cur_bucket = &stored_prefix.next_bucket;
+                                self.cur_level += 1;
+                            }
                         }
                     }
-                }
-                (_serial, None, next_set, _prev_record) => {
-                    // No prefix here, let's see if there's a child here
-                    trace!(
-                        "no prefix found for {:?} in len {}",
-                        self.cur_prefix_id,
-                        self.cur_len
-                    );
-                    // Advance to the next level or the next len.
-                    match next_set
-                        .0
-                        .load(Ordering::SeqCst, self.guard)
-                        .is_null()
-                    {
-                        // No child here, move one length down.
-                        true => {
-                            self.cur_len -= 1;
-                            self.cur_level = 0;
-                            self.cur_bucket = self
-                                .prefixes
-                                .get_root_prefix_set(self.cur_len);
-                        }
-                        // There's a child, move a level up and set the child
-                        // as current. Length remains the same.
-                        false => {
-                            self.cur_bucket = next_set;
-                            self.cur_level += 1;
-                        }
-                    }
-                }
-            };
+                };
+            } else {
+                trace!("no prefix at this level. Move one down.");
+                self.cur_len -= 1;
+                self.cur_level = 0;
+                self.cur_bucket =
+                    self.prefixes.get_root_prefix_set(self.cur_len);
+            }
         }
     }
 }
@@ -594,7 +614,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 impl<
         'a,
         AF: AddressFamily,
-        M: routecore::record::Meta + MergeUpdate,
+        M: routecore::record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > CustomAllocStorage<AF, M, NB, PB>
@@ -743,7 +763,7 @@ impl<
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = &'a InternalPrefixRecord<AF, M>> {
+    ) -> impl Iterator<Item = (Prefix, &'a M)> {
         PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),
@@ -776,7 +796,7 @@ impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
                     v4.push(
                         routecore::bgp::PrefixRecord::new_with_local_meta(
                             Prefix::new(addr, pfx.len).unwrap(),
-                            pfx.meta.unwrap(),
+                            pfx.meta,
                         ),
                     );
                 }
@@ -784,7 +804,7 @@ impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
                     v6.push(
                         routecore::bgp::PrefixRecord::new_with_local_meta(
                             Prefix::new(addr, pfx.len).unwrap(),
-                            pfx.meta.unwrap(),
+                            pfx.meta,
                         ),
                     );
                 }
