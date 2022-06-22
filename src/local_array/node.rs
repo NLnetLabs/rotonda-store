@@ -143,11 +143,13 @@ where
     // child node (if not at the last stride) or a prefix (if it's the last
     // stride).
     //
-    // Returns one of:
+    // Returns a tuple of which the first element is one of:
     // - A newly created child node.
     // - The index of the existing child node in the global `nodes` vec
     // - A newly created Prefix
     // - The index of the existing prefix in the global `prefixes` vec
+    // and the second element is the number of accumulated retries for the
+    // compare_exchange of both ptrbitarr and pfxbitarr.
     pub(crate) fn eval_node_or_prefix_at(
         &mut self,
         nibble: u32,
@@ -158,7 +160,7 @@ where
         stride_len: u8,
         next_stride: Option<&u8>,
         is_last_stride: bool,
-    ) -> NewNodeOrIndex<AF> {
+    ) -> (NewNodeOrIndex<AF>, u32) {
 
         // THE CRIICAL SECTION
         //
@@ -171,6 +173,7 @@ where
         // The one thing that can go wrong here is that we are
         // using an old ptrbitarr and overwrite bits set in the
         // meantime elsewhere in the bitarray.
+        let mut retry_count = 0;
         let ptrbitarr = self.ptrbitarr.load();
         let pfxbitarr = self.pfxbitarr.load();
         let bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -242,6 +245,7 @@ where
                         CasResult(Err(newer_array)) => {
                             // Someone beat us to it, so we need to use the
                             // newer array.
+                            retry_count += 1;
                             a_ptrbitarr = self.ptrbitarr.compare_exchange(newer_array,
                                 S::into_ptrbitarr_size(
                                 bit_pos | S::into_stride_size(newer_array),
@@ -251,9 +255,9 @@ where
                     backoff.spin();
                 }
 
-                return NewNodeOrIndex::NewNode(
+                return (NewNodeOrIndex::NewNode(
                     new_node
-                );
+                ), retry_count);
             }
         } else {
             // only at the last stride do we create the bit in the prefix
@@ -282,6 +286,7 @@ where
                         CasResult(Err(newer_array)) => {
                             // Someone beat us to it, so we need to use the
                             // newer array.
+                            retry_count += 1;
                             a_pfxbitarr = self.pfxbitarr.compare_exchange(
                                 newer_array, bit_pos | newer_array
                             );
@@ -290,19 +295,17 @@ where
                     backoff.spin();
                 }
 
-                // self.pfxbitarr.compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
-                // CHECK THE RETURN VALUE HERE AND ACT ACCORDINGLY!!!!
-                return NewNodeOrIndex::NewPrefix;
+                return (NewNodeOrIndex::NewPrefix, retry_count);
             }
-            return NewNodeOrIndex::ExistingPrefix;
+            return (NewNodeOrIndex::ExistingPrefix, retry_count);
         }
 
         // Nodes always live at the last length of a stride (i.e. the last 
         // nibble), so we add the stride length to the length of the
         // base_prefix (which is always the start length of the stride).
-        NewNodeOrIndex::ExistingNode(
+        (NewNodeOrIndex::ExistingNode(
             base_prefix.add_to_len(stride_len).truncate_to_len()
-        )
+        ), retry_count)
     }
 
     //-------- Search nibble functions --------------------------------------

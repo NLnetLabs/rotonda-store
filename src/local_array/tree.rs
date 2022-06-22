@@ -472,13 +472,14 @@ impl<
         let guard = &epoch::pin();
 
         if pfx.len == 0 {
-            let retries = self.update_default_route_prefix_meta(pfx.meta, guard)?;
-            return Ok(retries);
+            let retry_count = self.update_default_route_prefix_meta(pfx.meta, guard)?;
+            return Ok(retry_count);
         }
 
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id();
         let mut level: u8 = 0;
+        let mut acc_retry_count = 0;
 
         loop {
             let stride = self.store.get_stride_sizes()[level as usize];
@@ -493,14 +494,11 @@ impl<
                 AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
-            // used for counting the number of reloads the
-            // match_node_for_strides macro will tolerate.
-            let mut retries = 0;
             let back_off = crossbeam_utils::Backoff::new();
 
             // insert_match! returns the node_id of the next node to be
             // traversed. It was created if it did not exist.
-            let next_node_idx = insert_match![
+            let node_result = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
                 guard;
@@ -513,17 +511,18 @@ impl<
                 cur_i;
                 level;
                 back_off;
-                retries;
+                acc_retry_count;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
                 Stride4; 1,
                 Stride5; 2
             ];
 
-            match next_node_idx {
-                Ok(next_id) => {
+            match node_result {
+                Ok((next_id, retry_count)) => {
                     cur_i = next_id;
                     level += 1;
+                    acc_retry_count += retry_count;
                 }
                 Err(err) => {
                     warn!(
@@ -572,7 +571,7 @@ impl<
         // let guard = unsafe { epoch::unprotected() };
         self.store.upsert_prefix(
             InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),
-            guard,
+            guard
         )
     }
 

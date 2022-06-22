@@ -75,7 +75,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &pfx.unwrap(),
                             ComplexPrefixAs([i as u32].to_vec()),
                         ) {
-                            Ok(_) => {}
+                            Ok(retry_count) => {
+                                if retry_count > 0 {
+                                    println!("{} {:?} retry count: {},", std::thread::current().name().unwrap(), pfx,retry_count);
+                                }
+                            }
                             Err(e) => {
                                 println!("{}", e);
                             }

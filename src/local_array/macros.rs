@@ -16,7 +16,7 @@ macro_rules! insert_match {
         $cur_i: expr; // the id of the current node in this stride
         $level: expr;
         $back_off: expr;
-        $retries: expr;
+        $acc_retry_count: expr;
         // $enum: ident;
         // The strides to generate match arms for,
         // $variant is the name of the enum varian (Stride[3..8]) and
@@ -36,102 +36,105 @@ macro_rules! insert_match {
         // parent and wants to read the node in the store, but that doesn't
         // exist yet. In that case, the reader thread needs to try again
         // until it is actually created
-        loop {
-            if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
-                match current_node {
-                    $(
-                        SizedStrideRefMut::$variant(current_node) => {
-                            // eval_node_or_prefix_at mutates the node to reflect changes
-                            // in the ptrbitarr & pfxbitarr.
-                            match current_node.eval_node_or_prefix_at(
-                                $nibble,
-                                $nibble_len,
-                                // All the bits of the search prefix, but with a length set to
-                                // the start of the current stride.
-                                StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
-                                // the length of THIS stride
-                                $stride_len,
-                                // the length of the next stride
-                                $self.store.get_stride_sizes().get(($level + 1) as usize),
-                                $is_last_stride,
-                            ) {
-                                NewNodeOrIndex::NewNode(n) => {
-                                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
-                                    // $self.stats[$stats_level].inc($level);
 
-                                    // get a new identifier for the node we're going to create.
-                                    let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
+        // This macro counts the number of retries and adds that to the
+        // $acc_retry_count variable, to be used by the incorporating
+        // function. 
+        {
+            // this counts the number of retry_count for this loop only,
+            // but ultimately we will return the accumulated count of all
+            // retry_count from this macro.
+            let mut local_retry_count = 0;
+            loop {
+                if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
+                    match current_node {
+                        $(
+                            SizedStrideRefMut::$variant(current_node) => {
+                                // eval_node_or_prefix_at mutates the node to reflect changes
+                                // in the ptrbitarr & pfxbitarr.
+                                match current_node.eval_node_or_prefix_at(
+                                    $nibble,
+                                    $nibble_len,
+                                    // All the bits of the search prefix, but with a length set to
+                                    // the start of the current stride.
+                                    StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
+                                    // the length of THIS stride
+                                    $stride_len,
+                                    // the length of the next stride
+                                    $self.store.get_stride_sizes().get(($level + 1) as usize),
+                                    $is_last_stride,
+                                ) {
+                                    (NewNodeOrIndex::NewNode(n), retry_count) => {
+                                        // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
+                                        // $self.stats[$stats_level].inc($level);
 
-                                    // store the new node in the global store
-                                    // let i: StrideNodeId<Store::AF>;
-                                    // if $self.strides[($level + 1) as usize] != $stride_len {
-                                    // store_node may return None, which means that another thread
-                                    // is busy creating the node.
-                                    match $self.store.store_node(new_id, n, $guard) {
-                                        Ok(node) => {
-                                            break Ok(node);
-                                        },
-                                        Err(err) => {
-                                            if log_enabled!(log::Level::Warn) {
-                                                warn!("{} backing off {} -> next id {}",
-                                                        std::thread::current().name().unwrap(),
-                                                        $cur_i,
-                                                        new_id
-                                                    )
+                                        // get a new identifier for the node we're going to create.
+                                        let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
+
+                                        // store the new node in the global
+                                        // store. It returns the created id
+                                        // and the number of retries before
+                                        // success.
+                                        match $self.store.store_node(new_id, n, $guard) {
+                                            Ok((node_id, s_retry_count)) => {
+                                                break Ok((node_id, $acc_retry_count + s_retry_count + retry_count));
+                                            },
+                                            Err(err) => {
+                                                if log_enabled!(log::Level::Warn) {
+                                                    warn!("{} backing off {} -> next id {}",
+                                                            std::thread::current().name().unwrap(),
+                                                            $cur_i,
+                                                            new_id
+                                                        )
+                                                }
+                                                break Err(err);
                                             }
-                                            warn!("{} c_n2 {} {:?}", 
-                                                std::thread::current().name().unwrap(), 
-                                                new_id, 
-                                                $self.store.retrieve_node_mut_with_guard(new_id, $guard)
-                                            );
-                                            break Err(err);
-                                        }
-                                    };
-                                    // break $self.store.store_node(new_id, n)
-                                }
-                                NewNodeOrIndex::ExistingNode(node_id) => {
-                                    // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
-                                    if $retries > 0 { 
-                                        warn!("contention: {} existing node {}", std::thread::current().name().unwrap(), node_id);
+                                        };
                                     }
-                                    break Ok(node_id)
-                                },
-                                NewNodeOrIndex::NewPrefix => {
-                                    return $self.store.upsert_prefix($pfx, $guard)
-                                    // Log
-                                    // $self.stats[$stats_level].inc_prefix_count($level);
-                                }
-                                NewNodeOrIndex::ExistingPrefix => {
-                                    return $self.store.upsert_prefix($pfx, $guard)
-                                }
-                            }   // end of eval_node_or_prefix_at
-                        }
-                    )*,
+                                    (NewNodeOrIndex::ExistingNode(node_id), retry_count) => {
+                                        // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
+                                        if local_retry_count > 0 {
+                                            warn!("contention: {} existing node {}", std::thread::current().name().unwrap(), node_id);
+                                        }
+                                        break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
+                                    },
+                                    (NewNodeOrIndex::NewPrefix, retry_count) => {
+                                        return $self.store.upsert_prefix($pfx, $guard)
+                                            .and_then(|r| Ok(r + $acc_retry_count + local_retry_count + retry_count))
+                                        // Log
+                                        // $self.stats[$stats_level].inc_prefix_count($level);
+                                    }
+                                    (NewNodeOrIndex::ExistingPrefix, retry_count) => {
+                                        return $self.store.upsert_prefix($pfx, $guard)
+                                            .and_then(|r| Ok(r + $acc_retry_count + local_retry_count + retry_count))
+                                    }
+                                }   // end of eval_node_or_prefix_at
+                            }
+                        )*,
+                    }
+                } else {
+                    if log_enabled!(log::Level::Trace) {
+                        trace!("{} Couldn't load id {} from store l{}. Trying again.",
+                                std::thread::current().name().unwrap(),
+                                $cur_i,
+                                $self.store.get_stride_sizes()[$level as usize]);
+                    }
+                    local_retry_count += 1;
+                    // THIS IS A FAIRLY ARBITRARY NUMBER.
+                    // We're giving up after a number of tries.
+                    if local_retry_count >= 8 {
+                        trace!("STOP LOOPING {}", $cur_i);
+                        return Err(
+                            Box::new(
+                                crate::local_array::store::errors::PrefixStoreError::NodeCreationMaxRetryError
+                            )
+                        );
+                    }
+                    $back_off.spin();
                 }
-            } else {
-                if log_enabled!(log::Level::Trace) {
-                    trace!("{} Couldn't load id {} from store l{}. Trying again.",
-                            std::thread::current().name().unwrap(),
-                            $cur_i,
-                            $self.store.get_stride_sizes()[$level as usize]);
-                }
-                $retries += 1;
-                // THIS IS A FAIRLY ARBITRARY NUMBER.
-                // We're giving up after a number of tries.
-                if $retries >= 8 {
-                    trace!("STOP LOOPING {}", $cur_i);
-                    return Err(
-                        Box::new(
-                            crate::local_array::store::errors::PrefixStoreError::NodeCreationMaxRetryError
-                        )
-                    );
-                } 
-                $back_off.spin();
             }
-            // std::thread::sleep(std::time::Duration::from_millis(1000));
-            // warn!("{} loop {} {:?}", std::thread::current().name().unwrap(), $cur_i, $self.store.retrieve_node_mut_with_guard($cur_i, $guard));
         }
-    };
+    }
 }
 
 #[macro_export]

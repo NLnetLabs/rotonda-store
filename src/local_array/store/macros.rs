@@ -211,7 +211,7 @@ macro_rules! store_node_closure {
                 nodes,
                 new_node: TreeBitMapNode<AF, $stride>,
                 mut level: u8,
-                mut contention: bool| {
+                mut retry_count: u32| {
                     let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                     trace!("{:032b}", $id.get_id().0);
                     trace!("id {:?}", $id.get_id());
@@ -253,13 +253,13 @@ macro_rules! store_node_closure {
                                             if log_enabled!(log::Level::Warn) {
                                                 debug!("{} created node {}", std::thread::current().name().unwrap(), $id);
                                             }
-                                            if log_enabled!(log::Level::Warn) && contention {
+                                            if log_enabled!(log::Level::Warn) && retry_count > 0 {
                                                 debug!("{} contention resolved on node {}", std::thread::current().name().unwrap(), $id);
                                             }
-                                            return Ok($id);
+                                            return Ok(($id, retry_count));
                                         },
                                         Err(crossbeam_epoch::CompareExchangeError { current, new }) => {
-                                            contention = true;
+                                            retry_count +=1 ;
                                             if log_enabled!(log::Level::Trace) {
                                                 trace!(
                                                     "{} failed to create node {}. Someone is busy creating it",
@@ -279,7 +279,7 @@ macro_rules! store_node_closure {
                                                     nodes,
                                                     cur_node,
                                                     level,
-                                                    contention
+                                                    retry_count
                                             );
                                         }
                                     };
@@ -310,7 +310,7 @@ macro_rules! store_node_closure {
                                                 std::thread::current().name().unwrap(), $id
                                             );
                                         }
-                                        return Ok($id);
+                                        return Ok(($id, retry_count));
                                     } else {
                                         // it's not "our" node, make a (recursive)
                                         // call to create it.
@@ -324,7 +324,7 @@ macro_rules! store_node_closure {
                                                     node_set,
                                                     new_node,
                                                     level,
-                                                    contention
+                                                    retry_count
                                                 )
                                             }
                                             // There's no next level!

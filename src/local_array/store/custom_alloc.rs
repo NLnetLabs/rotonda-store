@@ -159,7 +159,7 @@ impl<
             _m: PhantomData,
         };
 
-        store.store_node(
+        let _retry_count = store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
             guard,
@@ -178,22 +178,24 @@ impl<
     // Create a new node in the store with payload `next_node`.
     //
     // Next node will be ignored if a node with the same `id` already exists.
+    // Returns:
+    // a tuple with the node_id of the created node and the number of retry_count
     #[allow(clippy::type_complexity)]
     pub(crate) fn store_node(
         &self,
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<AF>,
         guard: &Guard,
-    ) -> Result<StrideNodeId<AF>, Box<dyn std::error::Error>> {
+    ) -> Result<(StrideNodeId<AF>, u32), Box<dyn std::error::Error>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
-                u8,
-                bool,
+                u8,  // the store level
+                u32, // retry_count
             ) -> Result<
-                StrideNodeId<AF>,
+                (StrideNodeId<AF>, u32),
                 Box<dyn std::error::Error>,
             >,
         }
@@ -221,21 +223,21 @@ impl<
                 self.buckets.get_store3(id),
                 new_node,
                 0,
-                false,
+                0,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
                 0,
-                false,
+                0,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
                 0,
-                false,
+                0,
             ),
         }
     }
@@ -399,8 +401,8 @@ impl<
         mut record: InternalPrefixRecord<AF, Meta>,
         guard: &Guard,
     ) -> Result<u32, Box<dyn std::error::Error>> {
-        let mut retries: u32 = 0;
         let backoff = Backoff::new();
+        let mut retry_count = 0;
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
@@ -426,14 +428,14 @@ impl<
                     ) {
                         Ok(spfx) => {
                             debug!("inserted new prefix record {:?}", &spfx);
-                            return Ok(retries);
+                            return Ok(retry_count);
                         }
                         Err(CompareExchangeError { current, new }) => {
                             debug!(
                                 "prefix can't be inserted as new {:?}",
                                 current
                             );
-                            retries += 1;
+                            retry_count += 1;
                             record = *unsafe {
                                 (*new.into_box())
                                     .super_agg_record
@@ -497,12 +499,12 @@ impl<
                                         });
                                     }
                                 };
-                                return Ok(retries);
+                                return Ok(retry_count);
                             }
                             Err(next_agg) => {
                                 // Do it again
                                 // warn!("contention {:?}", next_agg.current);
-                                retries += 1;
+                                retry_count += 1;
                                 inner_agg_record = next_agg.current;
                                 backoff.spin();
                                 continue;
