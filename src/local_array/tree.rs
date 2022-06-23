@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{log_enabled, trace, warn};
+use log::{log_enabled, trace, warn, error};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
@@ -525,12 +525,14 @@ impl<
                     acc_retry_count += retry_count;
                 }
                 Err(err) => {
-                    warn!(
-                        "{} {} {}",
-                        std::thread::current().name().unwrap(),
-                        cur_i,
-                        err
-                    );
+
+                    if log_enabled!(log::Level::Error) {
+                        error!("{} failing to store (intermediate) node {}. Giving up this node. This shouldn't happen!",
+                            std::thread::current().name().unwrap(),
+                            cur_i,
+                        );
+                        error!("{} {}", std::thread::current().name().unwrap(), err);
+                    }
                 }
             }
         };
@@ -568,7 +570,6 @@ impl<
         guard: &epoch::Guard,
     ) -> Result<u32, Box<dyn std::error::Error>> {
         trace!("Updating the default route...");
-        // let guard = unsafe { epoch::unprotected() };
         self.store.upsert_prefix(
             InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),
             guard

@@ -19,13 +19,11 @@ impl BitSpan {
     pub(crate) fn inc(&mut self) {
         self.bits += 1;
         self.len = <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
-        trace!("inc result {:?}", self);
     }
 
     #[allow(dead_code)]
     pub(crate) fn set_len_to_bits(&mut self) {
         self.len = <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
-        trace!("adjust len result {:?}", self);
     }
     
 }

@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::{debug, trace, warn};
+use log::{debug, trace};
 use routecore::bgp::RecordSet;
 
 use crate::af::AddressFamily;
@@ -35,7 +35,6 @@ where
         let result = self
             .store
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
-        // trace!("more specifics iter from {:?}", result);
         let prefix = result.0;
         let more_specifics_vec =
             self.store.more_specific_prefix_iter_from(prefix_id, guard);
@@ -69,7 +68,6 @@ where
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
 
         let prefix = result.0;
-        trace!("get less specific iter from {:?}", result);
         let less_specifics_vec = result.1.map(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
                 self.store.less_specific_prefix_iter(prefix_id, guard)
@@ -136,14 +134,12 @@ where
             // we didn't find an exact match, but the user requested it
             // so we need to find the longest matching prefix.
             (MatchType::LongestMatch | MatchType::EmptyMatch, None) => {
-                warn!("less specific iter");
                 stored_prefix = self
                     .store
                     .less_specific_prefix_iter(search_pfx, guard)
                     .max_by(|p0, p1| p0.len.cmp(&p1.len));
                 include_more_specifics = options.include_more_specifics;
                 include_less_specifics = options.include_less_specifics;
-                trace!("LMP prefix {:?}", stored_prefix);
                 if stored_prefix.is_some() {
                     MatchType::LongestMatch
                 } else {
@@ -658,8 +654,6 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            // trace!("nodes5 {:?}", nodes5);
-                            // trace!("nodes4 {:?}", nodes4);
                             node = self
                                 .store
                                 .retrieve_node_with_guard(n, guard)
@@ -739,11 +733,6 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            debug!(
-                "prefix {}/{}",
-                pfx_idx.get_net().into_ipaddr(),
-                pfx_idx.get_len(),
-            );
             match_type =
                 match self.store.retrieve_prefix_with_guard(pfx_idx, guard) {
                     Some(prefix) => {

@@ -39,7 +39,7 @@ macro_rules! insert_match {
 
         // This macro counts the number of retries and adds that to the
         // $acc_retry_count variable, to be used by the incorporating
-        // function. 
+        // function.
         {
             // this counts the number of retry_count for this loop only,
             // but ultimately we will return the accumulated count of all
@@ -80,13 +80,6 @@ macro_rules! insert_match {
                                                 break Ok((node_id, $acc_retry_count + s_retry_count + retry_count));
                                             },
                                             Err(err) => {
-                                                if log_enabled!(log::Level::Warn) {
-                                                    warn!("{} backing off {} -> next id {}",
-                                                            std::thread::current().name().unwrap(),
-                                                            $cur_i,
-                                                            new_id
-                                                        )
-                                                }
                                                 break Err(err);
                                             }
                                         };
@@ -95,9 +88,9 @@ macro_rules! insert_match {
                                         // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
                                         if log_enabled!(log::Level::Trace) {
                                             if local_retry_count > 0 {
-                                                trace!("contention: {} existing node {}", 
+                                                trace!("{} contention: Node already exists {}",
                                                 std::thread::current().name().unwrap(), node_id
-                                                );
+                                                )
                                             }
                                         }
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
@@ -118,16 +111,25 @@ macro_rules! insert_match {
                     }
                 } else {
                     if log_enabled!(log::Level::Trace) {
-                        trace!("{} Couldn't load id {} from store l{}. Trying again.",
+                        trace!("{} contention: Retrying id {} from store l{}. attempt {}",
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
-                                $self.store.get_stride_sizes()[$level as usize]);
+                                $self.store.get_stride_sizes()[$level as usize],
+                                local_retry_count
+                            );
                     }
                     local_retry_count += 1;
                     // THIS IS A FAIRLY ARBITRARY NUMBER.
                     // We're giving up after a number of tries.
                     if local_retry_count >= 8 {
-                        trace!("STOP LOOPING {}", $cur_i);
+                        if log_enabled!(log::Level::Trace) {
+                            trace!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
+                                std::thread::current().name().unwrap(),
+                                $cur_i,
+                                $self.store.get_stride_sizes()[$level as usize],
+                                local_retry_count
+                            );
+                        }
                         return Err(
                             Box::new(
                                 crate::local_array::store::errors::PrefixStoreError::NodeCreationMaxRetryError
