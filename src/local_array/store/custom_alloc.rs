@@ -185,7 +185,7 @@ impl<
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<AF>,
         guard: &Guard,
-    ) -> Result<(StrideNodeId<AF>, u32), Box<dyn std::error::Error>> {
+    ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
@@ -195,7 +195,7 @@ impl<
                 u32, // retry_count
             ) -> Result<
                 (StrideNodeId<AF>, u32),
-                Box<dyn std::error::Error>,
+                PrefixStoreError,
             >,
         }
 
@@ -399,7 +399,7 @@ impl<
         &self,
         mut record: InternalPrefixRecord<AF, Meta>,
         guard: &Guard,
-    ) -> Result<u32, Box<dyn std::error::Error>> {
+    ) -> Result<u32, PrefixStoreError> {
         let backoff = Backoff::new();
         let mut retry_count = 0;
 
@@ -413,7 +413,6 @@ impl<
 
         loop {
             match inner_stored_prefix.is_null() {
-
                 // There's no StoredPrefix at this location. Create a new
                 // PrefixRecord and store it in the empty slot.
                 true => {
@@ -422,7 +421,7 @@ impl<
                             "{} store: Create new super-aggregated prefix record",
                             std::thread::current().name().unwrap()
                         );
-                    }   
+                    }
                     let new_stored_prefix =
                         StoredPrefix::new::<PB>(record, level);
 
@@ -435,7 +434,6 @@ impl<
                         guard,
                     ) {
                         Ok(spfx) => {
-
                             if log_enabled!(log::Level::Info) {
                                 let StoredPrefix {
                                     prefix,
@@ -445,7 +443,7 @@ impl<
                                 info!(
                                     "{} store: Inserted new prefix record {}/{} with {:?}",
                                     std::thread::current().name().unwrap(),
-                                    prefix.get_net().into_ipaddr(), prefix.get_len(), 
+                                    prefix.get_net().into_ipaddr(), prefix.get_len(),
                                     super_agg_record.get_record(guard).unwrap().meta
                                 );
                             }
@@ -478,7 +476,7 @@ impl<
                         debug!(
                             "{} store: Found existing super-aggregated prefix record for {}/{}",
                             std::thread::current().name().unwrap(),
-                            record.net, 
+                            record.net,
                             record.len
                         );
                     }
@@ -557,12 +555,15 @@ impl<
         }
     }
 
-
     // This function is used by the upsert_prefix function above.
     //
-    // We're using a Chained Hash Table and this function returns either the
-    // StoredPrefix that already exists for this search_prefix_id or it
-    // returns the last StoredPrefix in the chain.
+    // We're using a Chained Hash Table and this function returns one of:
+    // - a StoredPrefix that already exists for this search_prefix_id
+    // - the Last StoredPrefix in the chain.
+    // - an error, if no StoredPrefix whatsoever can be found in the store.
+    //
+    // The error condition really shouldn't happen, because that basically
+    // means the root node for that particular prefix length doesn't exist.
     #[allow(clippy::type_complexity)]
     fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
@@ -592,7 +593,9 @@ impl<
                 // search_prefix_id anywhere. Return the end-of-the-chain
                 // StoredPrefix, so the caller can attach a new one.
                 trace!("no prefix set.");
-                return Ok((stored_prefix.unwrap(), level));
+                return stored_prefix
+                    .map(|sp| (sp, level))
+                    .ok_or(PrefixStoreError::StoreNotReadyError);
             };
 
             stored_prefix = Some(unsafe { prefix_probe.assume_init_ref() });
@@ -608,7 +611,9 @@ impl<
                     // Our search-prefix is stored here, so we're returning
                     // it, so its PrefixRecord can be updated by the caller.
                     trace!("found requested prefix {:?}", search_prefix_id);
-                    return Ok((stored_prefix.unwrap(), level));
+                    return stored_prefix
+                        .map(|sp| (sp, level))
+                        .ok_or(PrefixStoreError::StoreNotReadyError);
                 } else {
                     // A Collision. Follow the chain.
                     level += 1;
@@ -619,7 +624,9 @@ impl<
 
             // No record at the deepest level, still we're returning a reference to it,
             // so the caller can insert a new record here.
-            return Ok((stored_prefix.unwrap(), level));
+            return stored_prefix
+                .map(|sp| (sp, level))
+                .ok_or(PrefixStoreError::StoreNotReadyError);
         }
     }
 

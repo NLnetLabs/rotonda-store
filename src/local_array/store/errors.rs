@@ -4,6 +4,7 @@ use std::fmt;
 pub enum PrefixStoreError {
     NodeCreationMaxRetryError,
     NodeNotFound,
+    StoreNotReadyError,
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -17,7 +18,10 @@ impl fmt::Display for PrefixStoreError {
             ),
             PrefixStoreError::NodeNotFound => {
                 write!(f, "Error: Node not found.")
-            },
+            }
+            PrefixStoreError::StoreNotReadyError => {
+                write!(f, "Error: Store isn't ready yet.")
+            }
         }
     }
 }

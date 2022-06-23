@@ -130,11 +130,7 @@ macro_rules! insert_match {
                                 local_retry_count
                             );
                         }
-                        return Err(
-                            Box::new(
-                                crate::local_array::store::errors::PrefixStoreError::NodeCreationMaxRetryError
-                            )
-                        );
+                        return Err(PrefixStoreError::NodeCreationMaxRetryError);
                     }
                     $back_off.spin();
                 }

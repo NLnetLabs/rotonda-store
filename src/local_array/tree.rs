@@ -15,6 +15,7 @@ use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::prefix_record::InternalPrefixRecord;
 
 pub(crate) use super::atomic_stride::*;
+use super::store::errors::PrefixStoreError;
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -468,7 +469,7 @@ impl<
     pub fn insert(
         &self,
         pfx: InternalPrefixRecord<AF, M>,
-    ) -> Result<u32, Box<dyn std::error::Error>> {
+    ) -> Result<u32, PrefixStoreError> {
         let guard = &epoch::pin();
 
         if pfx.len == 0 {
@@ -568,7 +569,7 @@ impl<
         &self,
         new_meta: M,
         guard: &epoch::Guard,
-    ) -> Result<u32, Box<dyn std::error::Error>> {
+    ) -> Result<u32, PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
             InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),

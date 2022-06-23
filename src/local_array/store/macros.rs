@@ -260,7 +260,7 @@ macro_rules! store_node_closure {
                                 $id,
                                 retry_count
                             );
-                            return Err(Box::new(super::errors::PrefixStoreError::NodeNotFound));
+                            return Err(super::errors::PrefixStoreError::NodeNotFound);
                         }
                     };
                 }
