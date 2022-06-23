@@ -413,6 +413,9 @@ impl<
 
         loop {
             match inner_stored_prefix.is_null() {
+
+                // There's no StoredPrefix at this location. Create a new
+                // PrefixRecord and store it in the empty slot.
                 true => {
                     if log_enabled!(log::Level::Debug) {
                         debug!(
@@ -423,6 +426,7 @@ impl<
                     let new_stored_prefix =
                         StoredPrefix::new::<PB>(record, level);
 
+                    // We're expecting an empty slot.
                     match atomic_stored_prefix.0.compare_exchange(
                         Shared::null(),
                         Owned::new(new_stored_prefix).with_tag(1),
@@ -553,6 +557,12 @@ impl<
         }
     }
 
+
+    // This function is used by the upsert_prefix function above.
+    //
+    // We're using a Chained Hash Table and this function returns either the
+    // StoredPrefix that already exists for this search_prefix_id or it
+    // returns the last StoredPrefix in the chain.
     #[allow(clippy::type_complexity)]
     fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
@@ -573,15 +583,19 @@ impl<
             let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
             trace!("prefixes at level {}? {:?}", level, !prefixes.is_null());
 
-            let prefix_ref = if !prefixes.is_null() {
-                trace!("prefix found.");
+            // probe the slot with the index that's the result of the hashing.
+            let prefix_probe = if !prefixes.is_null() {
+                trace!("prefix set found.");
                 unsafe { &prefixes.deref()[index] }
             } else {
+                // We're at the end of the chain and haven't found our
+                // search_prefix_id anywhere. Return the end-of-the-chain
+                // StoredPrefix, so the caller can attach a new one.
                 trace!("no prefix set.");
                 return Ok((stored_prefix.unwrap(), level));
             };
 
-            stored_prefix = Some(unsafe { prefix_ref.assume_init_ref() });
+            stored_prefix = Some(unsafe { prefix_probe.assume_init_ref() });
 
             if let Some(StoredPrefix {
                 prefix,
@@ -590,9 +604,13 @@ impl<
             }) = stored_prefix.unwrap().get_stored_prefix_mut(guard)
             {
                 if search_prefix_id == *prefix {
+                    // GOTCHA!
+                    // Our search-prefix is stored here, so we're returning
+                    // it, so its PrefixRecord can be updated by the caller.
                     trace!("found requested prefix {:?}", search_prefix_id);
                     return Ok((stored_prefix.unwrap(), level));
                 } else {
+                    // A Collision. Follow the chain.
                     level += 1;
                     prefix_set = next_bucket;
                     continue;
@@ -800,8 +818,8 @@ impl<
     // ------- THE HASHING FUNCTION -----------------------------------------
 
     // Ok, so hashing is really hard, but we're keeping it simple, and
-    // because we're keeping we're having lots of collisions, but we don't
-    // care!
+    // because we're keeping it simple we're having lots of collisions, but
+    // we don't care!
     //
     // We're using a part of bitarray representation of the address part of
     // a prefixas the as the hash. Sounds complicated, but isn't.
@@ -835,7 +853,7 @@ impl<
     //
     // The hash is now converted to a usize integer, by shifting it all the
     // way to the right in a u32 and then converting to a usize. Why a usize
-    // you ask? Because the hash is used by teh CustomAllocStorage as the
+    // you ask? Because the hash is used by the CustomAllocStorage as the
     // index to the array for that specific prefix length and level.
     // So for our example this means that the hash on level 1 is now 0x821
     // (decimal 2081) and the hash on level 2 is 0x833 (decimal 2099).
@@ -849,7 +867,6 @@ impl<
 
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // Aaaaand, this is all of our hashing function.
-        // I'll explain later.
         let last_level = if level > 0 {
             <NB>::len_to_store_bits(id.get_id().1, level - 1)
         } else {
@@ -871,7 +888,6 @@ impl<
 
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
         // Aaaaand, this is all of our hashing function.
-        // I'll explain later.
         let last_level = if level > 0 {
             <PB>::get_bits_for_len(id.get_len(), level - 1)
         } else {
