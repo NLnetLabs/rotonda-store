@@ -1,6 +1,5 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::{debug, trace};
 use routecore::bgp::RecordSet;
 
 use crate::af::AddressFamily;

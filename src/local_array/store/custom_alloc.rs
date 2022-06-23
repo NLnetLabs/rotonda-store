@@ -99,7 +99,7 @@ use std::{
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use crossbeam_utils::Backoff;
-use log::{debug, info, log_enabled, trace, warn};
+use log::{debug, info, log_enabled, trace};
 
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
 use std::marker::PhantomData;

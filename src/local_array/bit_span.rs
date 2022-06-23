@@ -1,5 +1,3 @@
-use log::trace;
-
 #[derive(Copy, Clone, Debug)]
 pub(crate) struct BitSpan {
     pub bits: u32,

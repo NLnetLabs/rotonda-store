@@ -2,7 +2,7 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{debug, info, log_enabled, trace};
+use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
 

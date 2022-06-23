@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{log_enabled, trace, warn, error};
+use log::{log_enabled, trace, error};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
