@@ -2,7 +2,7 @@ use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use log::{debug, trace};
+use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
 
@@ -38,7 +38,14 @@ where
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
-        debug!("creating space for {} nodes!", &size);
+        if log_enabled!(log::Level::Debug) {
+            debug!(
+                "{} store: creating space for {} nodes",
+                std::thread::current().name().unwrap(),
+                &size
+            );
+        }
+
         let mut l =
             Owned::<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>::init(size);
         for i in 0..size {
@@ -83,14 +90,16 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         trace!("this level {} next level {}", this_level, next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
             debug!(
-                "INSERT with new bucket of size {} at prefix len {}",
+                "{} store: INSERT with new bucket of size {} at prefix len {}",
+                std::thread::current().name().unwrap(),
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
             PrefixSet::init((1 << (next_level - this_level)) as usize)
         } else {
             debug!(
-                "INSERT at LAST LEVEL with empty bucket at prefix len {}",
+                "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
+                std::thread::current().name().unwrap(),
                 pfx_id.get_len()
             );
             PrefixSet::empty()
@@ -129,7 +138,6 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
         self.super_agg_record.get_record(guard)
     }
-
 }
 
 // ----------- SuperAggRecord -----------------------------------------------
@@ -146,7 +154,13 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
     AtomicSuperAggRecord<AF, M>
 {
     pub fn new(prefix: PrefixId<AF>, record: M) -> Self {
-        debug!("create new stored prefix record");
+        debug!(
+            "{} store: create new stored prefix record {}/{} with {}",
+            std::thread::current().name().unwrap(),
+            prefix.get_net().into_ipaddr(),
+            prefix.get_len(),
+            record
+        );
         AtomicSuperAggRecord(Atomic::new(InternalPrefixRecord {
             net: prefix.get_net(),
             len: prefix.get_len(),
@@ -158,7 +172,6 @@ impl<AF: AddressFamily, M: routecore::record::Meta>
         &self,
         guard: &'a Guard,
     ) -> Option<&'a InternalPrefixRecord<AF, M>> {
-        trace!("get_record {:?}", self.0);
         let rec = self.0.load(Ordering::SeqCst, guard);
 
         match rec.is_null() {
@@ -211,7 +224,7 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
         let mut pfx = self.0.load(Ordering::SeqCst, guard);
-        
+
         match pfx.is_null() {
             true => None,
             false => Some(unsafe { pfx.deref_mut() }),
@@ -352,7 +365,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
         let mut l =
             Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
-        debug!("creating space for {} prefixes in prefix_set", &size);
+        trace!("creating space for {} prefixes in prefix_set", &size);
         for i in 0..size {
             l[i] = MaybeUninit::new(AtomicStoredPrefix::empty());
         }
@@ -370,7 +383,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
                 let pfx = unsafe { p.assume_init_ref() };
                 if !pfx.is_empty(guard) {
                     size += 1;
-                    debug!(
+                    trace!(
                         "recurse found pfx {:?} cur size {}",
                         pfx.get_prefix_id(),
                         size

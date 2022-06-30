@@ -1,5 +1,5 @@
 use crossbeam_epoch::{self as epoch};
-use log::{log_enabled, trace, warn};
+use log::{log_enabled, trace, error};
 use routecore::record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
@@ -15,6 +15,7 @@ use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::prefix_record::InternalPrefixRecord;
 
 pub(crate) use super::atomic_stride::*;
+use super::store::errors::PrefixStoreError;
 use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -468,17 +469,18 @@ impl<
     pub fn insert(
         &self,
         pfx: InternalPrefixRecord<AF, M>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<u32, PrefixStoreError> {
         let guard = &epoch::pin();
 
         if pfx.len == 0 {
-            let _res = self.update_default_route_prefix_meta(pfx.meta, guard);
-            return Ok(());
+            let retry_count = self.update_default_route_prefix_meta(pfx.meta, guard)?;
+            return Ok(retry_count);
         }
 
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id();
         let mut level: u8 = 0;
+        let mut acc_retry_count = 0;
 
         loop {
             let stride = self.store.get_stride_sizes()[level as usize];
@@ -493,14 +495,11 @@ impl<
                 AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
             let is_last_stride = pfx.len <= stride_end;
             let stride_start = stride_end - stride;
-            // used for counting the number of reloads the
-            // match_node_for_strides macro will tolerate.
-            let mut i = 0;
             let back_off = crossbeam_utils::Backoff::new();
 
             // insert_match! returns the node_id of the next node to be
             // traversed. It was created if it did not exist.
-            let next_node_idx = insert_match![
+            let node_result = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
                 guard;
@@ -513,25 +512,28 @@ impl<
                 cur_i;
                 level;
                 back_off;
-                i;
+                acc_retry_count;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
                 Stride4; 1,
                 Stride5; 2
             ];
 
-            match next_node_idx {
-                Ok(next_id) => {
+            match node_result {
+                Ok((next_id, retry_count)) => {
                     cur_i = next_id;
                     level += 1;
+                    acc_retry_count += retry_count;
                 }
                 Err(err) => {
-                    warn!(
-                        "{} {} {}",
-                        std::thread::current().name().unwrap(),
-                        cur_i,
-                        err
-                    );
+
+                    if log_enabled!(log::Level::Error) {
+                        error!("{} failing to store (intermediate) node {}. Giving up this node. This shouldn't happen!",
+                            std::thread::current().name().unwrap(),
+                            cur_i,
+                        );
+                        error!("{} {}", std::thread::current().name().unwrap(), err);
+                    }
                 }
             }
         };
@@ -567,12 +569,11 @@ impl<
         &self,
         new_meta: M,
         guard: &epoch::Guard,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<u32, PrefixStoreError> {
         trace!("Updating the default route...");
-        // let guard = unsafe { epoch::unprotected() };
         self.store.upsert_prefix(
             InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),
-            guard,
+            guard
         )
     }
 

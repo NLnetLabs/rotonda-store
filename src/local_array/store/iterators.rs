@@ -63,7 +63,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     type Item = (routecore::addr::Prefix, &'a M);
 
     fn next(&mut self) -> Option<Self::Item> {
-        debug!(
+        trace!(
             "starting next loop for level {} cursor {} (len {})",
             self.cur_level, self.cursor, self.cur_len
         );
@@ -133,7 +133,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // Go back up one level and continue
                     match self.parents[self.cur_level as usize] {
                         Some(parent) => {
-                            // trace!("back up one level");
 
                             // There is a parent, go back up. Since we're doing depth-first
                             // we have to check if there's a prefix directly at the parent
@@ -155,7 +154,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                                 self.cur_level,
                                 self.cur_len
                             );
-                            // trace!("parent {:?}", self.parent);
                             panic!(
                                 "Where do we belong? Where do we come from?"
                             );
@@ -167,18 +165,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             // we're somewhere in the PrefixSet iteration, read the next StoredPrefix.
             // We are doing depth-first iteration, so we check for a child first and
             // descend into that if it exists.
-            // trace!(
-            //     "c{} l{} len {}",
-            //     self.cursor,
-            //     self.cur_level,
-            //     self.cur_len
-            // );
+
 
             let s_pfx = self
                 .cur_bucket
                 .get_by_index(self.cursor as usize, self.guard);
-            // trace!("s_pfx {:?}", s_pfx);
-            // DEPTH FIRST ITERATION
+
+                // DEPTH FIRST ITERATION
             match s_pfx.get_next_bucket(self.guard) {
                 Some(bucket) => {
                     // DESCEND ONe LEVEL
@@ -203,7 +196,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         .and_then(|p| p.get_record(self.guard))
                     {
                         // There's a prefix here, that's the next one
-                        debug!("D. found prefix {:?}", prefix);
+                        trace!("D. found prefix {:?}", prefix);
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
                             &prefix.meta,
@@ -519,7 +512,6 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             // LEVEL DEPTH ITERATION
             let s_pfx =
                 self.cur_bucket.get_by_index(index as usize, self.guard);
-            // trace!("s_pfx {:?}", s_pfx);
 
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
                 trace!("get_record {:?}", stored_prefix.super_agg_record);

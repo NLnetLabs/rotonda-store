@@ -41,7 +41,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     match tree_bitmap
                         .insert(&pfx.unwrap(), PrefixAs(i as u32))
                     {
-                        Ok(_) => {}
+                        Ok(retry_count) => {
+                            if retry_count > 0  {
+                                println!("{} {:?} retry count {},", std::thread::current().name().unwrap(), pfx, retry_count);
+                            }
+                        }
                         Err(e) => {
                             println!("{}", e);
                         }

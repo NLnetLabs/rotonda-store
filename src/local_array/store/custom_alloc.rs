@@ -99,9 +99,9 @@ use std::{
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use crossbeam_utils::Backoff;
-use log::{debug, log_enabled, trace, warn};
+use log::{debug, info, log_enabled, trace};
 
-use epoch::{Guard, Owned, Shared};
+use epoch::{CompareExchangeError, Guard, Owned, Shared};
 use std::marker::PhantomData;
 
 use crate::local_array::tree::*;
@@ -148,18 +148,17 @@ impl<
         root_node: SizedStrideNode<AF>,
         guard: &'a Guard,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        warn!("initialize storage backend");
+        info!("store: initialize store");
 
         let store = CustomAllocStorage {
             buckets: NodeBuckets::<AF>::init(),
             prefixes: PrefixBuckets::<AF, Meta>::init(),
-            // len_to_stride_size,
             default_route_prefix_serial: AtomicUsize::new(0),
             _af: PhantomData,
             _m: PhantomData,
         };
 
-        store.store_node(
+        let _retry_count = store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             root_node,
             guard,
@@ -178,23 +177,25 @@ impl<
     // Create a new node in the store with payload `next_node`.
     //
     // Next node will be ignored if a node with the same `id` already exists.
+    // Returns:
+    // a tuple with the node_id of the created node and the number of retry_count
     #[allow(clippy::type_complexity)]
     pub(crate) fn store_node(
         &self,
         id: StrideNodeId<AF>,
         next_node: SizedStrideNode<AF>,
         guard: &Guard,
-    ) -> Result<StrideNodeId<AF>, Box<dyn std::error::Error>> {
+    ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
-                u8,
-                bool,
+                u8,  // the store level
+                u32, // retry_count
             ) -> Result<
-                StrideNodeId<AF>,
-                Box<dyn std::error::Error>,
+                (StrideNodeId<AF>, u32),
+                PrefixStoreError,
             >,
         }
 
@@ -207,9 +208,9 @@ impl<
         let search_level_5 =
             store_node_closure![Stride5; id; guard; back_off;];
 
-        if log_enabled!(log::Level::Debug) {
-            warn!(
-                "{} insert node {}: {:?}",
+        if log_enabled!(log::Level::Trace) {
+            debug!(
+                "{} store: Store node {}: {:?}",
                 std::thread::current().name().unwrap(),
                 id,
                 next_node
@@ -221,21 +222,21 @@ impl<
                 self.buckets.get_store3(id),
                 new_node,
                 0,
-                false,
+                0,
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
                 0,
-                false,
+                0,
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
                 0,
-                false,
+                0,
             ),
         }
     }
@@ -260,35 +261,34 @@ impl<
         let search_level_4 = impl_search_level![Stride4; id;];
         let search_level_5 = impl_search_level![Stride5; id;];
 
-        match self.get_stride_for_id(id) {
-            3 => {
-                trace!("retrieve node {} from l{}", id, id.get_id().1);
-                (search_level_3.f)(
-                    &search_level_3,
-                    self.buckets.get_store3(id),
-                    0,
-                    guard,
-                )
-            }
+        if log_enabled!(log::Level::Trace) {
+            trace!(
+                "{} store: Retrieve node {} from l{}",
+                std::thread::current().name().unwrap(),
+                id,
+                id.get_id().1
+            );
+        }
 
-            4 => {
-                trace!("retrieve node {} from l{}", id, id.get_id().1);
-                (search_level_4.f)(
-                    &search_level_4,
-                    self.buckets.get_store4(id),
-                    0,
-                    guard,
-                )
-            }
-            _ => {
-                trace!("retrieve node {} from l{}", id, id.get_id().1);
-                (search_level_5.f)(
-                    &search_level_5,
-                    self.buckets.get_store5(id),
-                    0,
-                    guard,
-                )
-            }
+        match self.get_stride_for_id(id) {
+            3 => (search_level_3.f)(
+                &search_level_3,
+                self.buckets.get_store3(id),
+                0,
+                guard,
+            ),
+            4 => (search_level_4.f)(
+                &search_level_4,
+                self.buckets.get_store4(id),
+                0,
+                guard,
+            ),
+            _ => (search_level_5.f)(
+                &search_level_5,
+                self.buckets.get_store5(id),
+                0,
+                guard,
+            ),
         }
     }
 
@@ -316,35 +316,35 @@ impl<
         let search_level_5 =
             retrieve_node_mut_with_guard_closure![Stride5; id;];
 
-        match self.buckets.get_stride_for_id(id) {
-            3 => {
-                trace!("retrieve node {} from l{}", id, id.get_id().1);
-                (search_level_3.f)(
-                    &search_level_3,
-                    self.buckets.get_store3(id),
-                    0,
-                    guard,
-                )
-            }
+        if log_enabled!(log::Level::Trace) {
+            trace!(
+                "{} store: Retrieve node {} from l{}",
+                std::thread::current().name().unwrap(),
+                id,
+                id.get_id().1
+            );
+        }
 
-            4 => {
-                trace!("retrieve node {} from l{}", id, id.get_id().1);
-                (search_level_4.f)(
-                    &search_level_4,
-                    self.buckets.get_store4(id),
-                    0,
-                    guard,
-                )
-            }
-            _ => {
-                trace!("retrieve node {} from l{}", id, id.get_id().1);
-                (search_level_5.f)(
-                    &search_level_5,
-                    self.buckets.get_store5(id),
-                    0,
-                    guard,
-                )
-            }
+        match self.buckets.get_stride_for_id(id) {
+            3 => (search_level_3.f)(
+                &search_level_3,
+                self.buckets.get_store3(id),
+                0,
+                guard,
+            ),
+
+            4 => (search_level_4.f)(
+                &search_level_4,
+                self.buckets.get_store4(id),
+                0,
+                guard,
+            ),
+            _ => (search_level_5.f)(
+                &search_level_5,
+                self.buckets.get_store5(id),
+                0,
+                guard,
+            ),
         }
     }
 
@@ -397,10 +397,11 @@ impl<
 
     pub(crate) fn upsert_prefix(
         &self,
-        record: InternalPrefixRecord<AF, Meta>,
+        mut record: InternalPrefixRecord<AF, Meta>,
         guard: &Guard,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<u32, PrefixStoreError> {
         let backoff = Backoff::new();
+        let mut retry_count = 0;
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
@@ -410,91 +411,143 @@ impl<
         let inner_stored_prefix =
             atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
 
-        match inner_stored_prefix.is_null() {
-            true => {
-                debug!("create new super-aggregated prefix record");
-                let new_stored_prefix =
-                    StoredPrefix::new::<PB>(record, level);
-
-                match atomic_stored_prefix.0.compare_exchange(
-                    Shared::null(),
-                    Owned::new(new_stored_prefix).with_tag(1),
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
-                    guard,
-                ) {
-                    Ok(spfx) => {
-                        debug!("inserted new prefix record {:?}", &spfx);
-                        Ok(())
-                    }
-                    Err(stored_prefix) => {
+        loop {
+            match inner_stored_prefix.is_null() {
+                // There's no StoredPrefix at this location. Create a new
+                // PrefixRecord and store it in the empty slot.
+                true => {
+                    if log_enabled!(log::Level::Debug) {
                         debug!(
-                            "prefix can't be inserted as new {:?}",
-                            stored_prefix.current
+                            "{} store: Create new super-aggregated prefix record",
+                            std::thread::current().name().unwrap()
                         );
-                        Err(Box::new(PrefixStoreError::PrefixAlreadyExist))
                     }
-                }
-            }
-            false => {
-                trace!(
-                    "existing super-aggregated prefix record for {}/{}",
-                    record.net,
-                    record.len
-                );
-                let super_agg_record =
-                    &unsafe { inner_stored_prefix.deref() }
-                        .super_agg_record
-                        .0;
-                let mut inner_agg_record =
-                    super_agg_record.load(Ordering::Acquire, guard);
+                    let new_stored_prefix =
+                        StoredPrefix::new::<PB>(record, level);
 
-                loop {
-                    let prefix_record =
-                        unsafe { inner_agg_record.as_ref() }.unwrap();
-                    let new_record = Owned::new(InternalPrefixRecord::<
-                        AF,
-                        Meta,
-                    >::new_with_meta(
-                        record.net,
-                        record.len,
-                        prefix_record
-                            .meta
-                            .clone_merge_update(&record.meta)
-                            .unwrap(),
-                    ))
-                    .into_shared(guard);
-
-                    // CAS the nested Atomic InternalPrefixRecord.
-                    match super_agg_record.compare_exchange(
-                        inner_agg_record,
-                        new_record,
-                        Ordering::AcqRel,
-                        Ordering::Acquire,
+                    // We're expecting an empty slot.
+                    match atomic_stored_prefix.0.compare_exchange(
+                        Shared::null(),
+                        Owned::new(new_stored_prefix).with_tag(1),
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
                         guard,
                     ) {
-                        Ok(_rec) => {
-                            if !inner_agg_record.is_null() {
-                                unsafe {
-                                    guard.defer_unchecked(move || {
-                                        std::sync::atomic::fence(
-                                            Ordering::Acquire,
-                                        );
+                        Ok(spfx) => {
+                            if log_enabled!(log::Level::Info) {
+                                let StoredPrefix {
+                                    prefix,
+                                    super_agg_record,
+                                    ..
+                                } = unsafe { spfx.deref() };
+                                info!(
+                                    "{} store: Inserted new prefix record {}/{} with {:?}",
+                                    std::thread::current().name().unwrap(),
+                                    prefix.get_net().into_ipaddr(), prefix.get_len(),
+                                    super_agg_record.get_record(guard).unwrap().meta
+                                );
+                            }
 
-                                        std::mem::drop(
-                                            inner_agg_record.into_owned(),
-                                        )
-                                    });
-                                }
-                            };
-                            return Ok(());
+                            return Ok(retry_count);
                         }
-                        Err(next_agg) => {
-                            // Do it again
-                            // warn!("contention {:?}", next_agg.current);
-                            inner_agg_record = next_agg.current;
-                            backoff.spin();
+                        Err(CompareExchangeError { current, new }) => {
+                            if log_enabled!(log::Level::Debug) {
+                                debug!(
+                                    "{} store: Prefix can't be inserted as new {:?}",
+                                    std::thread::current().name().unwrap(),
+                                    current
+                                );
+                            }
+                            retry_count += 1;
+                            record = *unsafe {
+                                (*new.into_box())
+                                    .super_agg_record
+                                    .0
+                                    .load(Ordering::Relaxed, guard)
+                                    .into_owned()
+                                    .into_box()
+                            };
                             continue;
+                        }
+                    }
+                }
+                false => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
+                            "{} store: Found existing super-aggregated prefix record for {}/{}",
+                            std::thread::current().name().unwrap(),
+                            record.net,
+                            record.len
+                        );
+                    }
+                    let super_agg_record =
+                        &unsafe { inner_stored_prefix.deref() }
+                            .super_agg_record
+                            .0;
+                    let mut inner_agg_record =
+                        super_agg_record.load(Ordering::Acquire, guard);
+
+                    loop {
+                        let prefix_record =
+                            unsafe { inner_agg_record.as_ref() }.unwrap();
+                        let new_record = Owned::new(InternalPrefixRecord::<
+                            AF,
+                            Meta,
+                        >::new_with_meta(
+                            record.net,
+                            record.len,
+                            prefix_record
+                                .meta
+                                .clone_merge_update(&record.meta)
+                                .unwrap(),
+                        ))
+                        .into_shared(guard);
+
+                        // CAS the nested Atomic InternalPrefixRecord.
+                        match super_agg_record.compare_exchange(
+                            inner_agg_record,
+                            new_record,
+                            Ordering::AcqRel,
+                            Ordering::Acquire,
+                            guard,
+                        ) {
+                            Ok(_rec) => {
+                                if log_enabled!(log::Level::Info) {
+                                    let record = unsafe { _rec.deref() };
+                                    info!(
+                                        "{} store: Updated existing prefix record {}/{} with {:?}",
+                                        std::thread::current().name().unwrap(),
+                                        record.net.into_ipaddr(), record.len,
+                                        unsafe { super_agg_record.load(Ordering::Relaxed, guard).deref() }.meta
+                                    );
+                                }
+
+                                if !inner_agg_record.is_null() {
+                                    unsafe {
+                                        guard.defer_unchecked(move || {
+                                            std::sync::atomic::fence(
+                                                Ordering::Acquire,
+                                            );
+
+                                            std::mem::drop(
+                                                inner_agg_record.into_owned(),
+                                            )
+                                        });
+                                    }
+                                };
+                                return Ok(retry_count);
+                            }
+                            Err(next_agg) => {
+                                // Do it again
+                                if log_enabled!(log::Level::Warn) {
+                                    debug!("{} store: Contention. Retrying prefix {:?}. Attempt {}", 
+                                        std::thread::current().name().unwrap(), next_agg.current, retry_count);
+                                }
+                                retry_count += 1;
+                                inner_agg_record = next_agg.current;
+                                backoff.spin();
+                                continue;
+                            }
                         }
                     }
                 }
@@ -502,6 +555,15 @@ impl<
         }
     }
 
+    // This function is used by the upsert_prefix function above.
+    //
+    // We're using a Chained Hash Table and this function returns one of:
+    // - a StoredPrefix that already exists for this search_prefix_id
+    // - the Last StoredPrefix in the chain.
+    // - an error, if no StoredPrefix whatsoever can be found in the store.
+    //
+    // The error condition really shouldn't happen, because that basically
+    // means the root node for that particular prefix length doesn't exist.
     #[allow(clippy::type_complexity)]
     fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
@@ -519,20 +581,24 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(search_prefix_id, level);
 
-            trace!("retrieve prefix with guard");
-
             let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-            debug!("prefixes at level {}? {:?}", level, !prefixes.is_null());
+            trace!("prefixes at level {}? {:?}", level, !prefixes.is_null());
 
-            let prefix_ref = if !prefixes.is_null() {
-                debug!("prefix found.");
+            // probe the slot with the index that's the result of the hashing.
+            let prefix_probe = if !prefixes.is_null() {
+                trace!("prefix set found.");
                 unsafe { &prefixes.deref()[index] }
             } else {
-                debug!("no prefix set.");
-                return Ok((stored_prefix.unwrap(), level));
+                // We're at the end of the chain and haven't found our
+                // search_prefix_id anywhere. Return the end-of-the-chain
+                // StoredPrefix, so the caller can attach a new one.
+                trace!("no prefix set.");
+                return stored_prefix
+                    .map(|sp| (sp, level))
+                    .ok_or(PrefixStoreError::StoreNotReadyError);
             };
 
-            stored_prefix = Some(unsafe { prefix_ref.assume_init_ref() });
+            stored_prefix = Some(unsafe { prefix_probe.assume_init_ref() });
 
             if let Some(StoredPrefix {
                 prefix,
@@ -541,9 +607,15 @@ impl<
             }) = stored_prefix.unwrap().get_stored_prefix_mut(guard)
             {
                 if search_prefix_id == *prefix {
-                    debug!("found requested prefix {:?}", search_prefix_id);
-                    return Ok((stored_prefix.unwrap(), level));
+                    // GOTCHA!
+                    // Our search-prefix is stored here, so we're returning
+                    // it, so its PrefixRecord can be updated by the caller.
+                    trace!("found requested prefix {:?}", search_prefix_id);
+                    return stored_prefix
+                        .map(|sp| (sp, level))
+                        .ok_or(PrefixStoreError::StoreNotReadyError);
                 } else {
+                    // A Collision. Follow the chain.
                     level += 1;
                     prefix_set = next_bucket;
                     continue;
@@ -552,7 +624,9 @@ impl<
 
             // No record at the deepest level, still we're returning a reference to it,
             // so the caller can insert a new record here.
-            return Ok((stored_prefix.unwrap(), level));
+            return stored_prefix
+                .map(|sp| (sp, level))
+                .ok_or(PrefixStoreError::StoreNotReadyError);
         }
     }
 
@@ -644,8 +718,8 @@ impl<
                 let index = Self::hash_prefix_id(prefix_id, level);
 
                 let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-                // trace!("nodes {:?}", unsafe { unwrapped_nodes.deref_mut().len() });
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
+
                 if let Some(stored_prefix) =
                     unsafe { prefix_ref.assume_init_ref() }
                         .get_stored_prefix(guard)
@@ -751,8 +825,8 @@ impl<
     // ------- THE HASHING FUNCTION -----------------------------------------
 
     // Ok, so hashing is really hard, but we're keeping it simple, and
-    // because we're keeping we're having lots of collisions, but we don't
-    // care!
+    // because we're keeping it simple we're having lots of collisions, but
+    // we don't care!
     //
     // We're using a part of bitarray representation of the address part of
     // a prefixas the as the hash. Sounds complicated, but isn't.
@@ -786,7 +860,7 @@ impl<
     //
     // The hash is now converted to a usize integer, by shifting it all the
     // way to the right in a u32 and then converting to a usize. Why a usize
-    // you ask? Because the hash is used by teh CustomAllocStorage as the
+    // you ask? Because the hash is used by the CustomAllocStorage as the
     // index to the array for that specific prefix length and level.
     // So for our example this means that the hash on level 1 is now 0x821
     // (decimal 2081) and the hash on level 2 is 0x833 (decimal 2099).
@@ -800,7 +874,6 @@ impl<
 
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // Aaaaand, this is all of our hashing function.
-        // I'll explain later.
         let last_level = if level > 0 {
             <NB>::len_to_store_bits(id.get_id().1, level - 1)
         } else {
@@ -822,7 +895,6 @@ impl<
 
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
         // Aaaaand, this is all of our hashing function.
-        // I'll explain later.
         let last_level = if level > 0 {
             <PB>::get_bits_for_len(id.get_len(), level - 1)
         } else {
