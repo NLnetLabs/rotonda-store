@@ -65,10 +65,23 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 
 //------------ MatchOptions / MatchType -------------------------------------
 
+/// Options for the `match_prefix` method
+/// 
+/// The `MatchOptions` struct is used to specify the options for the 
+/// `match_prefix` method on the store.
+/// 
+/// Note that the `match_type` field may be different from the actual
+/// `MatchType` returned from the result. 
+/// 
+/// See [MultiThreadedStore::match_prefix] for more details.
 pub struct MatchOptions {
+    /// The requested [MatchType]
     pub match_type: MatchType,
+    /// unused
     pub include_all_records: bool,
+    /// whether to include all less-specific records in the query result
     pub include_less_specifics: bool,
+    // whether to include all more-specific records in the query result
     pub include_more_specifics: bool,
 }
 
@@ -274,12 +287,26 @@ impl<'a, M: routecore::record::Meta> std::fmt::Display
 
 //------------- QueryResult -------------------------------------------------
 
+/// The type that is returned by a query.
+/// 
+/// This is the result type of a query. It contains the prefix record that was
+/// found in the store, as well as less- or more-specifics as requested.
+/// 
+/// See [MultiThreadedStore::match_prefix] for more details.
+
+
+
 #[derive(Clone, Debug)]
 pub struct QueryResult<'a, M: routecore::record::Meta> {
+    /// The match type of the resulting prefix
     pub match_type: MatchType,
+    /// The resulting prefix record
     pub prefix: Option<Prefix>,
+    /// The meta data associated with the resulting prefix record
     pub prefix_meta: Option<&'a M>,
+    /// The less-specifics of the resulting prefix together with their meta data
     pub less_specifics: Option<RecordSet<'a, M>>,
+    /// The more-specifics of the resulting prefix together with their meta data
     pub more_specifics: Option<RecordSet<'a, M>>,
 }
 
