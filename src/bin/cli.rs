@@ -226,10 +226,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let query_result = tree_bitmap.match_prefix(
                                     &p,
                                     &MatchOptions {
-                                        match_type: MatchType::LongestMatch,
+                                        match_type: MatchType::ExactMatch,
                                         include_all_records: true,
-                                        include_less_specifics: false,
-                                        include_more_specifics: false,
+                                        include_less_specifics: true,
+                                        include_more_specifics: true,
                                     },
                                     guard,
                                 );
@@ -287,10 +287,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         &Prefix::new_relaxed(ip, len)?,
                                         &MatchOptions {
                                             match_type:
-                                                MatchType::LongestMatch,
+                                                MatchType::ExactMatch,
                                             include_all_records: true,
-                                            include_less_specifics: false,
-                                            include_more_specifics: false
+                                            include_less_specifics: true,
+                                            include_more_specifics: true
                                         },
                                         guard
                                     )
