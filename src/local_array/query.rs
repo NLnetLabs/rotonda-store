@@ -1,6 +1,5 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use routecore::bgp::RecordSet;
 
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};

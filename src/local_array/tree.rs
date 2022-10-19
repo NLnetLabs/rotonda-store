@@ -677,7 +677,6 @@ impl<
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
 impl<
-        'a,
         AF: AddressFamily,
         M: Meta + MergeUpdate,
         NB: NodeBuckets<AF>,
@@ -758,38 +757,38 @@ impl<
             let n = (nodes_num / SCALE) as usize;
             let max_pfx = u128::overflowing_pow(2, stride_bits[1] as u32);
 
-            print!("{}-{}\t", stride_bits[0], stride_bits[1]);
+            write!(_f, "{}-{}\t", stride_bits[0], stride_bits[1])?;
 
             for _ in 0..n {
-                print!("{}", Colour::Blue.paint("█"));
+                write!(_f, "{}", Colour::Blue.paint("█"))?;
             }
 
-            print!(
+            write!(_f, 
                 "{}",
                 Colour::Blue.paint(
                     bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
                 ) //  = scale / 7
-            );
+            )?;
 
-            print!(
+            write!(_f, 
                 " {}/{} {:.2}%",
                 nodes_num,
                 max_pfx.0,
                 (nodes_num as f64 / max_pfx.0 as f64) * 100.0
-            );
-            print!("\n\t");
+            )?;
+            write!(_f, "\n\t")?;
 
             let n = (prefixes_num / SCALE) as usize;
             for _ in 0..n {
-                print!("{}", Colour::Green.paint("█"));
+                write!(_f, "{}", Colour::Green.paint("█"))?;
             }
 
-            print!(
+            write!(_f, 
                 "{}",
                 Colour::Green.paint(
                     bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
                 ) //  = scale / 7
-            );
+            )?;
 
             trace!(" {}", prefixes_num);
         }

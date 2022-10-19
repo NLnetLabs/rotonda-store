@@ -665,7 +665,7 @@ pub(crate) struct NodeChildIter<AF: AddressFamily, S: Stride> {
    _af: PhantomData<AF>,
 }
 
-impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
     NodeChildIter<AF, S>
 {
     type Item = StrideNodeId<AF>;
@@ -746,7 +746,7 @@ pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
    _af: PhantomData<AF>,
 }
 
-impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
     NodeMoreSpecificChildIter<AF, S>
 {
     type Item = StrideNodeId<AF>;
@@ -810,19 +810,19 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
     }
 }
 
-impl<'a, AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride3> {
+impl<AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride3> {
     pub fn wrap(self) -> SizedNodeMoreSpecificIter<AF> {
         SizedNodeMoreSpecificIter::<AF>::Stride3(self)
     }
 }
 
-impl<'a, AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride4> {
+impl<AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride4> {
     pub fn wrap(self) -> SizedNodeMoreSpecificIter<AF> {
         SizedNodeMoreSpecificIter::<AF>::Stride4(self)
     }
 }
 
-impl<'a, AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride5> {
+impl<AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride5> {
     pub fn wrap(self) -> SizedNodeMoreSpecificIter<AF> {
         SizedNodeMoreSpecificIter::<AF>::Stride5(self)
     }
@@ -865,7 +865,7 @@ pub(crate) struct NodePrefixIter<AF: AddressFamily, S: Stride> {
     _s: PhantomData<S>,
 }
 
-impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator for 
     NodePrefixIter<AF, S> {
         type Item = PrefixId<AF>;
 
@@ -952,7 +952,7 @@ pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     _s: PhantomData<S>,
 }
 
-impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for 
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator for 
     NodeMoreSpecificsPrefixIter<AF, S> {
         type Item = PrefixId<AF>;
 
@@ -1062,19 +1062,19 @@ impl<'a, AF: AddressFamily, S: Stride> std::iter::Iterator for
         }    
 }
 
-impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride3> {
+impl<AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride3> {
     pub fn wrap(self) -> SizedPrefixIter<AF> {
         SizedPrefixIter::<AF>::Stride3(self)
     }
 }
 
-impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride4> {
+impl<AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride4> {
     pub fn wrap(self) -> SizedPrefixIter<AF> {
         SizedPrefixIter::<AF>::Stride4(self)
     }
 }
 
-impl<'a, AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride5> {
+impl<AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride5> {
     pub fn wrap(self) -> SizedPrefixIter<AF> {
         SizedPrefixIter::Stride5(self)
     }
