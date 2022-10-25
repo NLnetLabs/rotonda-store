@@ -191,8 +191,8 @@ macro_rules! impl_primitive_atomic_stride {
                 fn into_node_id<AF: AddressFamily>(
                     addr_bits: AF,
                     len: u8
-                ) -> crate::local_array::node::StrideNodeId<AF> {
-                    let id = crate::local_array::node::StrideNodeId::new_with_cleaned_id(addr_bits, len);
+                ) -> $crate::local_array::node::StrideNodeId<AF> {
+                    let id = $crate::local_array::node::StrideNodeId::new_with_cleaned_id(addr_bits, len);
                     id
                 }
 
