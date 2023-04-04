@@ -2,6 +2,8 @@ use log::trace;
 use std::time::Duration;
 use std::thread;
 
+use rand::Rng;
+
 use rotonda_store::{
     addr::Prefix, AddressFamily, MultiThreadedStore,
 };
@@ -30,6 +32,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name(1_u8.to_string())
         .spawn(move || -> Result<(), Box<dyn std::error::Error + Send>> {
             // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
+            let mut rng= rand::thread_rng();
+
             println!("park thread {}", 1);
             thread::park();
             // }
@@ -39,7 +43,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 // x += 1;
                 // print!("{}-", i);
-                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(1)) {
+                let asn: u32 = rng.gen();
+                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(asn)) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
@@ -58,7 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     thread.thread().unpark();
     // });
 
-    thread::sleep(Duration::from_secs(60));
+    thread::sleep(Duration::from_secs(120));
 
     println!("------ end of inserts\n");
 
