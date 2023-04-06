@@ -3,8 +3,6 @@ use rotonda_store::prelude::*;
 
 use rotonda_store::{MatchOptions, MatchType, PrefixAs};
 // use routecore::addr::Prefix;
-use routecore::bgp::PrefixRecord;
-use routecore::record::Record;
 use std::error::Error;
 use std::fs::File;
 use std::process;
@@ -32,7 +30,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
             let len: u8 = record[1].parse().unwrap();
             let asn: u32 = record[2].parse().unwrap();
-            let pfx = PrefixRecord::<PrefixAs>::new_with_local_meta(
+            let pfx = PrefixRecord::<PrefixAs>::new(
                 Prefix::new(net.into(), len)?,
                 PrefixAs(asn),
             );
@@ -59,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned())?;
+                tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
             }
             let ready = std::time::Instant::now();
             let dur_insert_nanos =

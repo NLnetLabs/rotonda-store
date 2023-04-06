@@ -2,11 +2,11 @@ use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
+use crate::prefix_record::RecordSet;
 use crate::{MatchOptions, MatchType};
 
 use crate::af::AddressFamily;
 use routecore::addr::Prefix;
-use routecore::bgp::RecordSet;
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub struct PrefixId<AF: AddressFamily>((AF, u8));
@@ -28,16 +28,16 @@ impl<AF: AddressFamily> PrefixId<AF> {
 //------------- QueryResult -------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<'a, Meta: routecore::record::Meta> {
+pub struct QueryResult<Meta: routecore::record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
-    pub prefix_meta: Option<&'a Meta>,
-    pub less_specifics: Option<RecordSet<'a, Meta>>,
-    pub more_specifics: Option<RecordSet<'a, Meta>>,
+    pub prefix_meta: Option<Meta>,
+    pub less_specifics: Option<RecordSet<Meta>>,
+    pub more_specifics: Option<RecordSet<Meta>>,
 }
 
-impl<'a, Meta: routecore::record::Meta> std::fmt::Display
-    for QueryResult<'a, Meta>
+impl<Meta: routecore::record::Meta> std::fmt::Display
+    for QueryResult<Meta>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let pfx_str = match self.prefix {
@@ -91,7 +91,7 @@ where
         &'a self,
         search_pfx: PrefixId<Store::AF>,
         options: &MatchOptions,
-    ) -> QueryResult<'a, Store::Meta> {
+    ) -> QueryResult<Store::Meta> {
         let mut stride_end = 0;
 
         let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
@@ -731,17 +731,13 @@ where
             } else {
                 None
             },
-            prefix_meta: if let Some(pfx) = prefix {
-                Some(&pfx.meta)
-            } else {
-                None
-            },
+            prefix_meta: prefix.map(|pfx| pfx.meta.clone()),
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                        .collect::<RecordSet<'a, Store::Meta>>()
+                        .collect::<RecordSet<Store::Meta>>()
                 })
             } else {
                 None

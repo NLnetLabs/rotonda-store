@@ -1,5 +1,8 @@
+use std::sync::Arc;
 use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
 
+use arc_swap::access::Access;
+use arc_swap::ArcSwap;
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use log::{debug, log_enabled, trace};
@@ -7,7 +10,6 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 
 use crate::local_array::tree::*;
-use crate::prefix_record::InternalPrefixRecord;
 use crate::AddressFamily;
 
 // ----------- Node related structs -----------------------------------------
@@ -29,12 +31,6 @@ where
     pub(crate) node: TreeBitMapNode<AF, S>,
     pub(crate) node_set: NodeSet<AF, S>,
 }
-
-// impl<AF: AddressFamily, S: Stride> Default for StoredNode<AF, S> {
-//     fn default() -> Self {
-//         StoredNode::Empty
-//     }
-// }
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
@@ -69,7 +65,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
-    pub(crate) super_agg_record: AtomicSuperAggRecord<AF, M>,
+    pub(crate) record: AtomicRecord<M>,
     // the next aggregated record for this prefix and hash_id
     // pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
     // the reference to the next set of records for this prefix, if any.
@@ -78,12 +74,13 @@ pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
 
 impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
     pub fn new<PB: PrefixBuckets<AF, M>>(
-        record: InternalPrefixRecord<AF, M>,
+        pfx_id: PrefixId<AF>,
+        record: Arc<M>,
         level: u8,
     ) -> Self {
         // start calculation size of next set, it's dependent on the level
         // we're in.
-        let pfx_id = PrefixId::new(record.net, record.len);
+        // let pfx_id = PrefixId::new(record.net, record.len);
         let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
         let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
 
@@ -106,37 +103,26 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        // let mut new_super_agg_record =
-        //     InternalPrefixRecord::<AF, M>::new_with_meta(
-        //         record.net,
-        //         record.len,
-        //         record.meta.clone(),
-        //     );
-
-        // even though we're about to create the first record in this
-        // aggregation record, we still need to `clone_merge_update` to
-        // create the start data for the aggregation.
-        // new_super_agg_record.meta = new_super_agg_record
-        //     .meta
-        //     .clone_merge_update(&record.meta)
-        //     .unwrap();
-
         StoredPrefix {
             serial: 1,
-            prefix: record.get_prefix_id(),
-            super_agg_record: AtomicSuperAggRecord::<AF, M>::new(
-                record.get_prefix_id(),
-                record.meta,
-            ),
+            prefix: pfx_id,
+            record: AtomicRecord::<M>::new(record),
             next_bucket,
         }
     }
 
-    pub(crate) fn get_record<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&'a InternalPrefixRecord<AF, M>> {
-        self.super_agg_record.get_record(guard)
+    pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
+        self.prefix
+    }
+
+    pub(crate) fn get_record_as_arc(
+        &self,
+    ) -> Arc<M> {
+        self.record.as_arc()
+    }
+
+    pub(crate) fn get_meta_cloned(&self) -> M {
+        (*(*self.record.as_arc_swap().load())).clone()
     }
 }
 
@@ -145,39 +131,30 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
 // prefix.
 
 #[derive(Debug)]
-pub(crate) struct AtomicSuperAggRecord<
-    AF: AddressFamily,
-    M: routecore::record::Meta,
->(pub Atomic<InternalPrefixRecord<AF, M>>);
+pub(crate) struct AtomicRecord<M: routecore::record::Meta>(
+    ArcSwap<M>,
+);
 
-impl<AF: AddressFamily, M: routecore::record::Meta>
-    AtomicSuperAggRecord<AF, M>
-{
-    pub fn new(prefix: PrefixId<AF>, record: M) -> Self {
-        debug!(
-            "{} store: create new stored prefix record {}/{} with {}",
-            std::thread::current().name().unwrap(),
-            prefix.get_net().into_ipaddr(),
-            prefix.get_len(),
-            record
-        );
-        AtomicSuperAggRecord(Atomic::new(InternalPrefixRecord {
-            net: prefix.get_net(),
-            len: prefix.get_len(),
-            meta: record,
-        }))
+impl<M: routecore::record::Meta> AtomicRecord<M> {
+    pub fn new(record: Arc<M>) -> Self {
+        AtomicRecord(ArcSwap::new(record))
     }
 
-    pub fn get_record<'a>(
+    pub fn as_arc_swap(
         &self,
-        guard: &'a Guard,
-    ) -> Option<&'a InternalPrefixRecord<AF, M>> {
-        let rec = self.0.load(Ordering::SeqCst, guard);
+    ) -> &arc_swap::ArcSwapAny<Arc<M>> {
+        &self.0
+    }
 
-        match rec.is_null() {
-            true => None,
-            false => Some(unsafe { rec.as_ref() }.unwrap()),
-        }
+    pub fn as_arc(&self) -> Arc<M> {
+        self.0.load().clone()
+    }
+
+    pub fn get_meta_cloned(&self) -> M {
+        self.0
+            .map(|r: &M| r)
+            .load()
+            .clone()
     }
 }
 
@@ -201,11 +178,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
         let pfx = self.0.load(Ordering::SeqCst, guard);
         pfx.is_null()
-            || unsafe { pfx.deref() }
-                .super_agg_record
-                .0
-                .load(Ordering::SeqCst, guard)
-                .is_null()
     }
 
     pub(crate) fn get_stored_prefix<'a>(
@@ -247,19 +219,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         }
     }
 
-    pub fn get_agg_record<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&InternalPrefixRecord<AF, Meta>> {
-        self.get_stored_prefix(guard).map(|stored_prefix| unsafe {
-            stored_prefix
-                .super_agg_record
-                .0
-                .load(Ordering::SeqCst, guard)
-                .deref()
-        })
-    }
-
     // PrefixSet is an Atomic that might be a null pointer, which is
     // UB! Therefore we keep the prefix record in an Option: If
     // that Option is None, then the PrefixSet is a null pointer and
@@ -287,36 +246,6 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
     }
 }
 
-// impl<AF: AddressFamily, Meta: routecore::record::Meta>
-//     std::convert::From<crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>>
-//     for &AtomicStoredPrefix<AF, Meta>
-// {
-//     fn from(p: crossbeam_epoch::Shared<'_, StoredPrefix<AF, Meta>>) -> Self {
-//         unsafe { std::mem::transmute(p) }
-//     }
-// }
-
-// impl<AF: AddressFamily, Meta: routecore::record::Meta>
-//     std::convert::From<
-//         crossbeam_epoch::Owned<(
-//             usize,
-//             Option<InternalPrefixRecord<AF, Meta>>,
-//             PrefixSet<AF, Meta>,
-//             Option<Box<InternalPrefixRecord<AF, Meta>>>,
-//         )>,
-//     > for &AtomicStoredPrefix<AF, Meta>
-// {
-//     fn from(
-//         p: crossbeam_epoch::Owned<(
-//             usize,
-//             Option<InternalPrefixRecord<AF, Meta>>,
-//             PrefixSet<AF, Meta>,
-//             Option<Box<InternalPrefixRecord<AF, Meta>>>,
-//         )>,
-//     ) -> Self {
-//         unsafe { std::mem::transmute(p) }
-//     }
-// }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
 //
@@ -408,7 +337,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     ) -> &'a AtomicStoredPrefix<AF, M> {
         assert!(!self.0.load(Ordering::SeqCst, guard).is_null());
         unsafe {
-            self.0.load(Ordering::SeqCst, guard).deref()[index as usize]
+            self.0.load(Ordering::SeqCst, guard).deref()[index]
                 .assume_init_ref()
         }
     }

@@ -11,6 +11,7 @@ macro_rules! insert_match {
         $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
         $is_last_stride: expr;
         $pfx: ident; // the whole search prefix
+        $record: ident; // the record holding the metadata
         $truncate_len: ident; // the start of the length of this stride
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
@@ -57,7 +58,7 @@ macro_rules! insert_match {
                                     $nibble_len,
                                     // All the bits of the search prefix, but with a length set to
                                     // the start of the current stride.
-                                    StrideNodeId::dangerously_new_with_id_as_is($pfx.net, $truncate_len),
+                                    StrideNodeId::dangerously_new_with_id_as_is($pfx.get_net(), $truncate_len),
                                     // the length of THIS stride
                                     $stride_len,
                                     // the length of the next stride
@@ -69,7 +70,7 @@ macro_rules! insert_match {
                                         // $self.stats[$stats_level].inc($level);
 
                                         // get a new identifier for the node we're going to create.
-                                        let new_id = $self.store.acquire_new_node_id(($pfx.net, $truncate_len + $nibble_len));
+                                        let new_id = $self.store.acquire_new_node_id(($pfx.get_net(), $truncate_len + $nibble_len));
 
                                         // store the new node in the global
                                         // store. It returns the created id
@@ -96,14 +97,14 @@ macro_rules! insert_match {
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },
                                     (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $guard)
-                                            .and_then(|r| Ok(r + $acc_retry_count + local_retry_count + retry_count))
+                                        return $self.store.upsert_prefix($pfx, $record, $guard)
+                                            .and_then(|r| Ok((r.0, r.1 + $acc_retry_count + local_retry_count + retry_count)))
                                         // Log
                                         // $self.stats[$stats_level].inc_prefix_count($level);
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $guard)
-                                            .and_then(|r| Ok(r + $acc_retry_count + local_retry_count + retry_count))
+                                        return $self.store.upsert_prefix($pfx, $record, $guard)
+                                            .and_then(|r| Ok((r.0, r.1 + $acc_retry_count + local_retry_count + retry_count)))
                                     }
                                 }   // end of eval_node_or_prefix_at
                             }

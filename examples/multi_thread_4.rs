@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         32,
     );
 
-    let threads = (0..16).enumerate().map(|(i, _)| {
+    let threads = (0..256).enumerate().map(|(i, _)| {
         let tree_bitmap = tree_bitmap.clone();
         // let start_flag = Arc::clone(&f);
 
@@ -59,10 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .name(i.to_string())
             .spawn(
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                    // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
                     println!("park thread {}", i);
                     thread::park();
-                    // }
 
                     print!("\nstart {} ---", i);
                     let mut x: u32 = 0;
@@ -75,9 +73,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             &pfx.unwrap(),
                             ComplexPrefixAs([i as u32].to_vec()),
                         ) {
-                            Ok(retry_count) => {
-                                if retry_count > 0 {
-                                    println!("{} {:?} retry count: {},", std::thread::current().name().unwrap(), pfx,retry_count);
+                            Ok(metrics) => {
+                                if metrics.1 > 0 {
+                                    eprintln!("{} {} {:?} retry count: {},", std::thread::current().name().unwrap(), metrics.0, pfx, metrics.1);
                                 }
                             }
                             Err(e) => {
@@ -97,8 +95,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             )
             .unwrap()
     });
-
-    // thread::sleep(Duration::from_secs(60));
 
     f.store(true, std::sync::atomic::Ordering::Release);
     threads.for_each(|t| {

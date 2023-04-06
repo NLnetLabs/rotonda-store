@@ -1,13 +1,14 @@
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::{fmt, slice};
 
+use crate::prefix_record::{PublicPrefixRecord, RecordSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::bgp::MetaDataSet;
 use routecore::{
     addr::Prefix,
-    bgp::{PrefixRecord, RecordSet},
-    record::{MergeUpdate, Record},
+    record::MergeUpdate,
 };
 
 pub use crate::af::{AddressFamily, IPv4, IPv6};
@@ -81,7 +82,7 @@ pub struct MatchOptions {
     pub include_all_records: bool,
     /// Whether to include all less-specific records in the query result
     pub include_less_specifics: bool,
-    /// Whether to include all more-specific records in the query result
+    // Whether to include all more-specific records in the query result
     pub include_more_specifics: bool,
 }
 
@@ -110,7 +111,7 @@ impl std::fmt::Display for MatchType {
 
 //------------ Metadata Types -----------------------------------------------
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
@@ -139,70 +140,71 @@ impl fmt::Display for PrefixAs {
     }
 }
 
-impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
-    std::iter::FromIterator<&'a InternalPrefixRecord<AF, Meta>>
-    for RecordSet<'a, Meta>
-{
-    fn from_iter<
-        I: IntoIterator<Item = &'a InternalPrefixRecord<AF, Meta>>,
-    >(
-        iter: I,
-    ) -> Self {
-        let mut v4 = vec![];
-        let mut v6 = vec![];
-        for pfx in iter {
-            let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
-            match u_pfx.addr() {
-                std::net::IpAddr::V4(_) => {
-                    v4.push(PrefixRecord::new(u_pfx, &pfx.meta));
-                }
-                std::net::IpAddr::V6(_) => {
-                    v6.push(PrefixRecord::new(u_pfx, &pfx.meta));
-                }
-            }
-        }
-        Self { v4, v6 }
-    }
-}
+// impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
+//     std::iter::FromIterator<&'a InternalPrefixRecord<AF, Meta>>
+//     for RecordSet<Meta>
+// {
+//     fn from_iter<
+//         I: IntoIterator<Item = &'a InternalPrefixRecord<AF, Meta>>,
+//     >(
+//         iter: I,
+//     ) -> Self {
+//         let mut v4 = vec![];
+//         let mut v6 = vec![];
+//         for pfx in iter {
+//             let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
+//             match u_pfx.addr() {
+//                 std::net::IpAddr::V4(_) => {
+//                     v4.push(PublicPrefixRecord::new(u_pfx, &pfx.meta));
+//                 }
+//                 std::net::IpAddr::V6(_) => {
+//                     v6.push(PublicPrefixRecord::new(u_pfx, &pfx.meta));
+//                 }
+//             }
+//         }
+//         Self { v4, v6 }
+//     }
+// }
 
 // Hash implementation that always returns the same hash, so that all
 // records get thrown on one big heap.
-impl std::hash::Hash for PrefixAs {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        0.hash(state);
-    }
-}
+// impl std::hash::Hash for PrefixAs {
+//     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+//         0.hash(state);
+//     }
+// }
 
 //------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
 // while iterating.
 #[derive(Clone, Debug)]
-pub struct PrefixRecordIter<'a, Meta: routecore::record::Meta> {
+pub struct PrefixRecordIter<'a, AF: AddressFamily, Meta: routecore::record::Meta> {
     pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, Meta>>>,
     pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
+    _af: PhantomData<AF>
 }
 
-impl<'a, Meta: routecore::record::Meta> Iterator
-    for PrefixRecordIter<'a, Meta>
+impl<'a, AF: AddressFamily, M: routecore::record::Meta> Iterator
+    for PrefixRecordIter<'a, AF, M>
 {
-    type Item = PrefixRecord<'a, Meta>;
+    type Item = PublicPrefixRecord<M>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {
             return self.v6.next().map(|res| {
-                PrefixRecord::new(
+                PublicPrefixRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    &res.meta,
+                    res.meta.clone(),
                 )
             });
         }
 
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
-            return Some(PrefixRecord::new(
+            return Some(PublicPrefixRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                &res.meta,
+                res.meta.clone(),
             ));
         }
         self.v4 = None;
@@ -290,26 +292,26 @@ impl<'a, M: routecore::record::Meta> std::fmt::Display
 /// The type that is returned by a query.
 /// 
 /// This is the result type of a query. It contains the prefix record that was
-/// found in the store, as well as less- or more-specifics as requested. See
-/// [MultiThreadedStore::match_prefix] for more details.
-
+/// found in the store, as well as less- or more-specifics as requested.
+/// 
+/// See [MultiThreadedStore::match_prefix] for more details.
 
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<'a, M: routecore::record::Meta> {
+pub struct QueryResult<M: routecore::record::Meta> {
     /// The match type of the resulting prefix
     pub match_type: MatchType,
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
-    pub prefix_meta: Option<&'a M>,
+    pub prefix_meta: Option<M>,
     /// The less-specifics of the resulting prefix together with their meta data
-    pub less_specifics: Option<RecordSet<'a, M>>,
+    pub less_specifics: Option<RecordSet<M>>,
     /// The more-specifics of the resulting prefix together with their meta data
-    pub more_specifics: Option<RecordSet<'a, M>>,
+    pub more_specifics: Option<RecordSet<M>>,
 }
 
-impl<'a, M: routecore::record::Meta> fmt::Display for QueryResult<'a, M> {
+impl<M: routecore::record::Meta> fmt::Display for QueryResult<M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),

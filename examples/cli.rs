@@ -1,4 +1,4 @@
-#![cfg(feature = "cli")]
+// #![cfg(feature = "cli")]
 
 use ansi_term::Colour;
 use rotonda_store::prelude::*;
@@ -6,8 +6,8 @@ use rotonda_store::PrefixAs;
 use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
 
 use routecore::addr::Prefix;
-use routecore::bgp::PrefixRecord;
-use routecore::record::Record;
+use rustyline::Editor;
+use rustyline::error::ReadlineError;
 
 use std::env;
 use std::error::Error;
@@ -15,10 +15,10 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::process;
 
-#[cfg(feature = "cli")]
-use rustyline::error::ReadlineError;
-#[cfg(feature = "cli")]
-use rustyline::Editor;
+// #[cfg(feature = "cli")]
+// use rustyline::error::ReadlineError;
+// #[cfg(feature = "cli")]
+// use rustyline::Editor;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -43,7 +43,7 @@ fn load_prefixes(
 
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
-        let pfx = PrefixRecord::new_with_local_meta(
+        let pfx = PrefixRecord::new(
             Prefix::new(ip, len)?,
             PrefixAs(asn),
         );
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
 
     for pfx in pfxs.into_iter() {
-        tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned())?;
+        tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
     }
     let ready = std::time::Instant::now();
     // println!("{:#?}", tree_bitmap.store.prefixes);
@@ -88,7 +88,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ready.checked_duration_since(start).unwrap().as_millis()
     );
 
-    tree_bitmap.print_funky_stats();
+    // tree_bitmap.print_funky_stats();
     // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
     let guard = &epoch::pin();
 

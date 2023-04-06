@@ -111,7 +111,7 @@ impl AddressFamily for IPv4 {
     /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (u32, u8) {
         let res =
-            self | ((nibble << (32 - len - nibble_len) as usize) as u32);
+            self | (nibble << (32 - len - nibble_len) as usize);
         (res, len + nibble_len)
     }
 
@@ -133,7 +133,7 @@ impl AddressFamily for IPv4 {
 
     fn dangerously_truncate_to_u32(self) -> u32 {
         // not dangerous at all.
-        self as u32
+        self
     }
 
     fn dangerously_truncate_to_usize(self) -> usize {
@@ -191,8 +191,7 @@ impl AddressFamily for IPv6 {
     /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8) {
         let res = self
-            | (((nibble as u128) << (128 - len - nibble_len) as usize)
-                as u128);
+            | ((nibble as u128) << (128 - len - nibble_len) as usize);
         (res, len + nibble_len)
     }
 

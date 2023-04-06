@@ -172,7 +172,7 @@ impl AtomicBitmap for AtomicStride4 {
     }
 
     fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::SeqCst) as u32
+        self.0.load(Ordering::SeqCst)
     }
 
     fn to_u64(&self) -> u64 {
@@ -223,7 +223,7 @@ impl AtomicBitmap for AtomicStride5 {
     }
 
     fn to_u64(&self) -> u64 {
-        self.0.load(Ordering::SeqCst) as u64
+        self.0.load(Ordering::SeqCst)
     }
 }
 

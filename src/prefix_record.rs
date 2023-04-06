@@ -1,9 +1,10 @@
-use std::cmp::Ordering;
 use std::fmt;
 use std::fmt::Debug;
+use std::{cmp::Ordering, sync::Arc};
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
-use routecore::record::{MergeUpdate, Meta, Record};
+use routecore::addr::Prefix;
+use routecore::record::{MergeUpdate, Meta};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -23,13 +24,6 @@ where
     M: Meta + MergeUpdate,
     AF: AddressFamily,
 {
-    // pub fn new(net: AF, len: u8) -> InternalPrefixRecord<AF, M> {
-    //     Self {
-    //         net,
-    //         len,
-    //         meta: None,
-    //     }
-    // }
     pub fn new_with_meta(
         net: AF,
         len: u8,
@@ -47,6 +41,10 @@ where
 
     pub fn get_prefix_id(&self) -> PrefixId<AF> {
         PrefixId::new(self.net, self.len)
+    }
+
+    pub fn get_meta(&self) -> &M {
+        &self.meta
     }
 }
 
@@ -154,35 +152,243 @@ where
     }
 }
 
-impl<'a, AF, M> From<&'a InternalPrefixRecord<AF, M>>
-    for routecore::bgp::PrefixRecord<'a, M>
-where
-    AF: AddressFamily,
-    M: Meta,
+impl<M: Meta> From<PublicPrefixRecord<M>>
+    for InternalPrefixRecord<crate::IPv4, M>
 {
-    fn from(record: &'a InternalPrefixRecord<AF, M>) -> Self {
-        routecore::bgp::PrefixRecord::new(
-            routecore::addr::Prefix::new(
-                record.net.into_ipaddr(),
-                record.len,
-            )
-            .unwrap(),
-            &record.meta,
-        )
+    fn from(record: PublicPrefixRecord<M>) -> Self {
+        Self {
+            net: crate::IPv4::from_ipaddr(record.prefix.addr()),
+            len: record.prefix.len(),
+            meta: record.meta,
+        }
     }
 }
 
-impl<'a, AF, M> From<routecore::bgp::PrefixRecord<'a, M>>
-    for InternalPrefixRecord<AF, M>
+impl<M: Meta> From<PublicPrefixRecord<M>>
+    for InternalPrefixRecord<crate::IPv6, M>
+{
+    fn from(record: PublicPrefixRecord<M>) -> Self {
+        Self {
+            net: crate::IPv6::from_ipaddr(record.prefix.addr()),
+            len: record.prefix.len(),
+            meta: record.meta,
+        }
+    }
+}
+
+//------------ PublicPrefixRecord -------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct PublicPrefixRecord<M: Meta> {
+    pub prefix: routecore::addr::Prefix,
+    pub meta: M,
+}
+
+impl<M: Meta> PublicPrefixRecord<M> {
+    pub fn new(prefix: Prefix, meta: M) -> Self {
+        Self { prefix, meta }
+    }
+
+    pub fn new_from_record<AF: AddressFamily>(
+        record: InternalPrefixRecord<AF, M>,
+    ) -> Self {
+        Self {
+            prefix: record.prefix_into_pub(),
+            meta: record.meta,
+        }
+    }
+}
+
+impl<AF, M> From<(PrefixId<AF>, Arc<M>)> for PublicPrefixRecord<M>
 where
     AF: AddressFamily,
     M: Meta,
 {
-    fn from(record: routecore::bgp::PrefixRecord<'a, M>) -> Self {
+    fn from(record: (PrefixId<AF>, Arc<M>)) -> Self {
         Self {
-            net: AF::from_ipaddr(record.key().addr()),
-            len: record.key().len(),
-            meta: record.meta().into_owned(),
+            prefix: record.0.into_pub(),
+            meta: (*record.1).clone(),
         }
+    }
+}
+
+impl<M: Meta> std::fmt::Display for PublicPrefixRecord<M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} :{:?}", self.prefix, self.meta)
+    }
+}
+
+impl<M: Meta> From<(Prefix, M)> for PublicPrefixRecord<M> {
+    fn from((prefix, meta): (Prefix, M)) -> Self {
+        Self { prefix, meta }
+    }
+}
+
+//------------ RecordSet ----------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct RecordSet<M: Meta> {
+    pub v4: Vec<PublicPrefixRecord<M>>,
+    pub v6: Vec<PublicPrefixRecord<M>>,
+}
+
+impl<M: Meta> RecordSet<M> {
+    pub fn is_empty(&self) -> bool {
+        self.v4.is_empty() && self.v6.is_empty()
+    }
+
+    pub fn iter(&self) -> RecordSetIter<M> {
+        RecordSetIter {
+            v4: if self.v4.is_empty() {
+                None
+            } else {
+                Some(self.v4.iter())
+            },
+            v6: self.v6.iter(),
+        }
+    }
+
+    #[must_use]
+    pub fn reverse(mut self) -> RecordSet<M> {
+        self.v4.reverse();
+        self.v6.reverse();
+        self
+    }
+
+    pub fn len(&self) -> usize {
+        self.v4.len() + self.v6.len()
+    }
+}
+
+impl<M: Meta> fmt::Display for RecordSet<M> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let arr_str_v4 =
+            self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
+                format!("{} {}", pfx_arr, *pfx)
+            });
+        let arr_str_v6 =
+            self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
+                format!("{} {}", pfx_arr, *pfx)
+            });
+
+        write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
+    }
+}
+
+impl<M: Meta>
+    From<(Vec<PublicPrefixRecord<M>>, Vec<PublicPrefixRecord<M>>)>
+    for RecordSet<M>
+{
+    fn from(
+        (v4, v6): (Vec<PublicPrefixRecord<M>>, Vec<PublicPrefixRecord<M>>),
+    ) -> Self {
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixRecord<M>>>
+    for RecordSet<M>
+{
+    fn from_iter<I: IntoIterator<Item = Arc<PublicPrefixRecord<M>>>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let u_pfx = pfx.prefix;
+            match u_pfx.addr() {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                }
+            }
+        }
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, AF: AddressFamily, M: Meta + 'a>
+    std::iter::FromIterator<(PrefixId<AF>, Arc<M>)>
+    for RecordSet<M>
+{
+    fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Arc<M>)>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let u_pfx = pfx.0.into_pub();
+            match u_pfx.addr() {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(PublicPrefixRecord::new(u_pfx, (*pfx.1).clone()));
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(PublicPrefixRecord::new(u_pfx, (*pfx.1).clone()));
+                }
+            }
+        }
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, AF: AddressFamily, M: Meta + 'a>
+    std::iter::FromIterator<&'a InternalPrefixRecord<AF, M>>
+    for RecordSet<M>
+{
+    fn from_iter<I: IntoIterator<Item = &'a InternalPrefixRecord<AF, M>>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let u_pfx = (*pfx).prefix_into_pub();
+            match u_pfx.addr() {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                }
+            }
+        }
+        Self { v4, v6 }
+    }
+}
+
+impl<M: Meta> std::ops::Index<usize> for RecordSet<M> {
+    type Output = PublicPrefixRecord<M>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if index < self.v4.len() {
+            &self.v4[index]
+        } else {
+            &self.v6[index - self.v4.len()]
+        }
+    }
+}
+
+//------------ RecordSetIter ------------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct RecordSetIter<'a, M: Meta> {
+    v4: Option<std::slice::Iter<'a, PublicPrefixRecord<M>>>,
+    v6: std::slice::Iter<'a, PublicPrefixRecord<M>>,
+}
+
+impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
+    type Item = PublicPrefixRecord<M>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.v4.is_none() {
+            return self.v6.next().map(|res| res.to_owned());
+        }
+
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
+            return Some(res.to_owned());
+        }
+        self.v4 = None;
+        self.next()
     }
 }

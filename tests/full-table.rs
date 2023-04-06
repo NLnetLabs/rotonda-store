@@ -6,8 +6,7 @@ mod tests {
         prelude::*, MatchOptions, MatchType, MultiThreadedStore,
     };
     use routecore::addr::Prefix;
-    use routecore::bgp::PrefixRecord;
-    use routecore::record::Record;
+
     use std::error::Error;
     use std::fs::File;
     use std::process;
@@ -71,7 +70,7 @@ mod tests {
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
                 let len: u8 = record[1].parse().unwrap();
                 let asn: u32 = record[2].parse().unwrap();
-                let pfx = PrefixRecord::new_with_local_meta(
+                let pfx = PrefixRecord::new(
                     Prefix::new(net.into(), len)?,
                     ComplexPrefixAs(vec![asn]),
                 );
@@ -97,24 +96,44 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta.into_owned()) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
                         panic!("STOP TESTING I CAN'T INSERT!");
                     }
                 };
+
+                let query = tree_bitmap.match_prefix(&pfx.prefix,
+                        &MatchOptions {
+                        match_type: MatchType::LongestMatch,
+                        include_all_records: false,
+                        include_less_specifics: false,
+                        include_more_specifics: false,
+                    },
+                    guard
+                );
+
+                if query.prefix.is_none() { panic!("STOPSTOPSTOPST"); }
+                else { 
+                    assert_eq!(query.prefix.unwrap(), pfx.prefix);
+                }
             }
 
             println!("done inserting {} prefixes", inserts_num);
+
 
             let inet_max = 255;
             let len_max = 32;
 
             let mut found_counter = 0_u32;
             let mut not_found_counter = 0_u32;
+            let mut inet_count = 0;
+            let mut len_count = 0;
             (0..inet_max).into_iter().for_each(|i_net| {
+                len_count = 0;
                 (0..len_max).into_iter().for_each(|s_len| {
+
                     (0..inet_max).into_iter().for_each(|ii_net| {
                         let pfx = Prefix::new_relaxed(
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
@@ -140,21 +159,25 @@ mod tests {
                             assert!(_pfx.addr() <= pfx.unwrap().addr());
                             found_counter += 1;
                         } else {
-                            println!(
-                                "not found {:?}",
-                                if let Ok(e) = pfx {
-                                    e.to_string()
-                                } else {
-                                    "ok".to_string()
-                                }
-                            );
+                            // println!(
+                            //     "not found {:?}",
+                            //     if let Ok(e) = pfx {
+                            //         e.to_string()
+                            //     } else {
+                            //         "ok".to_string()
+                            //     }
+                            // );
                             not_found_counter += 1;
                         }
                     });
+                    len_count += 1;
                 });
+                inet_count += 1;
             });
             println!("found pfx: {}", found_counter);
             println!("not found pfx: {}", not_found_counter);
+            println!("inet counter {}", inet_count);
+            println!("len counter {}", len_count);
 
             let searches_num =
                 inet_max as u128 * inet_max as u128 * len_max as u128;

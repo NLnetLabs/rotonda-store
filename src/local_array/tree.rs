@@ -9,10 +9,9 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::CustomAllocStorage;
+use crate::custom_alloc::{CustomAllocStorage, Upsert};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
-use crate::prefix_record::InternalPrefixRecord;
 
 pub(crate) use super::atomic_stride::*;
 use super::store::errors::PrefixStoreError;
@@ -127,6 +126,12 @@ impl<AF: AddressFamily> PrefixId<AF> {
 impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
     fn default() -> Self {
         PrefixId(None)
+    }
+}
+
+impl<AF: AddressFamily> From<routecore::addr::Prefix> for PrefixId<AF> {
+    fn from(value: routecore::addr::Prefix) -> Self {
+        Self(Some((AF::from_ipaddr(value.addr()), value.len())))
     }
 }
 
@@ -293,7 +298,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
             0 => (self.stride_type, None),
             _ => (
                 self.stride_type,
-                Some(self.index.load(Ordering::SeqCst) as u32),
+                Some(self.index.load(Ordering::SeqCst)),
             ),
         }
     }
@@ -306,7 +311,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         Self {
             stride_type,
             index: AtomicU32::new(index.dangerously_truncate_to_u32()),
-            serial: AtomicUsize::new(if index == AF::zero() { 0 } else { 1 }),
+            serial: AtomicUsize::new(usize::from(index != AF::zero())),
             _af: PhantomData,
         }
     }
@@ -380,15 +385,15 @@ impl<
         let mut stride_stats: Vec<StrideStats> = vec![
             StrideStats::new(
                 SizedStride::Stride3,
-                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len(),
             ), // 0
             StrideStats::new(
                 SizedStride::Stride4,
-                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len(),
             ), // 1
             StrideStats::new(
                 SizedStride::Stride5,
-                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len() as u8,
+                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len(),
             ), // 2
         ];
 
@@ -468,13 +473,14 @@ impl<
 
     pub fn insert(
         &self,
-        pfx: InternalPrefixRecord<AF, M>,
-    ) -> Result<u32, PrefixStoreError> {
+        pfx: PrefixId<AF>,
+        record: M
+    ) -> Result<(Upsert, u32), PrefixStoreError> {
         let guard = &epoch::pin();
 
-        if pfx.len == 0 {
-            let retry_count = self.update_default_route_prefix_meta(pfx.meta, guard)?;
-            return Ok(retry_count);
+        if pfx.get_len() == 0 {
+            let res = self.update_default_route_prefix_meta(record, guard)?;
+            return Ok(res);
         }
 
         let mut stride_end: u8 = 0;
@@ -485,15 +491,15 @@ impl<
         loop {
             let stride = self.store.get_stride_sizes()[level as usize];
             stride_end += stride;
-            let nibble_len = if pfx.len < stride_end {
-                stride + pfx.len - stride_end
+            let nibble_len = if pfx.get_len() < stride_end {
+                stride + pfx.get_len() - stride_end
             } else {
                 stride
             };
 
             let nibble =
-                AF::get_nibble(pfx.net, stride_end - stride, nibble_len);
-            let is_last_stride = pfx.len <= stride_end;
+                AF::get_nibble(pfx.get_net(), stride_end - stride, nibble_len);
+            let is_last_stride = pfx.get_len() <= stride_end;
             let stride_start = stride_end - stride;
             let back_off = crossbeam_utils::Backoff::new();
 
@@ -507,6 +513,7 @@ impl<
                 nibble;
                 is_last_stride;
                 pfx;
+                record;
                 stride_start; // the length at the start of the stride a.k.a. start_bit
                 stride;
                 cur_i;
@@ -569,10 +576,10 @@ impl<
         &self,
         new_meta: M,
         guard: &epoch::Guard,
-    ) -> Result<u32, PrefixStoreError> {
+    ) -> Result<(Upsert, u32), PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
-            InternalPrefixRecord::new_with_meta(AF::zero(), 0, new_meta),
+            PrefixId::new(AF::zero(), 0), new_meta,
             guard
         )
     }
@@ -763,14 +770,14 @@ impl<
                 write!(_f, "{}", Colour::Blue.paint("█"))?;
             }
 
-            write!(_f, 
+            write!(_f,
                 "{}",
                 Colour::Blue.paint(
                     bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
                 ) //  = scale / 7
             )?;
 
-            write!(_f, 
+            write!(_f,
                 " {}/{} {:.2}%",
                 nodes_num,
                 max_pfx.0,
@@ -783,7 +790,7 @@ impl<
                 write!(_f, "{}", Colour::Green.paint("█"))?;
             }
 
-            write!(_f, 
+            write!(_f,
                 "{}",
                 Colour::Green.paint(
                     bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
