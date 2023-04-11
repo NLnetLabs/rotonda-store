@@ -179,14 +179,13 @@ impl fmt::Display for PrefixAs {
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
 // while iterating.
 #[derive(Clone, Debug)]
-pub struct PrefixRecordIter<'a, AF: AddressFamily, Meta: routecore::record::Meta> {
+pub struct PrefixRecordIter<'a, Meta: routecore::record::Meta> {
     pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, Meta>>>,
     pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
-    _af: PhantomData<AF>
 }
 
-impl<'a, AF: AddressFamily, M: routecore::record::Meta> Iterator
-    for PrefixRecordIter<'a, AF, M>
+impl<'a, M: routecore::record::Meta> Iterator
+    for PrefixRecordIter<'a, M>
 {
     type Item = PublicPrefixRecord<M>;
 

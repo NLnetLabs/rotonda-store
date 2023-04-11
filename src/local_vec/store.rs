@@ -74,16 +74,16 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    // pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
-    //     let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> =
-    //         self.v4.store.prefixes[..].iter();
-    //     let rs6 = self.v6.store.prefixes[..].iter();
+    pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
+        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> =
+            self.v4.store.prefixes[..].iter();
+        let rs6 = self.v6.store.prefixes[..].iter();
 
-    //     crate::PrefixRecordIter::<'a, Meta> {
-    //         v4: Some(rs4),
-    //         v6: rs6,
-    //     }
-    // }
+        crate::PrefixRecordIter::<'a, Meta> {
+            v4: Some(rs4),
+            v6: rs6,
+        }
+    }
 
     pub fn nodes_v4_iter(
         &'a self,
