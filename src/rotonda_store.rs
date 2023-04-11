@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::marker::PhantomData;
 use std::{fmt, slice};
 
 use crate::prefix_record::{PublicPrefixRecord, RecordSet};
@@ -139,32 +138,6 @@ impl fmt::Display for PrefixAs {
         write!(f, "AS{}", self.0)
     }
 }
-
-// impl<'a, AF: 'a + AddressFamily, Meta: routecore::record::Meta>
-//     std::iter::FromIterator<&'a InternalPrefixRecord<AF, Meta>>
-//     for RecordSet<Meta>
-// {
-//     fn from_iter<
-//         I: IntoIterator<Item = &'a InternalPrefixRecord<AF, Meta>>,
-//     >(
-//         iter: I,
-//     ) -> Self {
-//         let mut v4 = vec![];
-//         let mut v6 = vec![];
-//         for pfx in iter {
-//             let u_pfx = Prefix::new(pfx.net.into_ipaddr(), pfx.len).unwrap();
-//             match u_pfx.addr() {
-//                 std::net::IpAddr::V4(_) => {
-//                     v4.push(PublicPrefixRecord::new(u_pfx, &pfx.meta));
-//                 }
-//                 std::net::IpAddr::V6(_) => {
-//                     v6.push(PublicPrefixRecord::new(u_pfx, &pfx.meta));
-//                 }
-//             }
-//         }
-//         Self { v4, v6 }
-//     }
-// }
 
 // Hash implementation that always returns the same hash, so that all
 // records get thrown on one big heap.
