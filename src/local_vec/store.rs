@@ -125,7 +125,9 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
 
     #[cfg(feature = "cli")]
     pub fn print_funky_stats(&self) {
+        println!("Stats for IPv4 multi-threaded store\n");
         println!("{}", self.v4);
+        println!("Stats for IPv6 multi-threaded store\n");
         println!("{}", self.v6);
     }
 

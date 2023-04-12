@@ -12,6 +12,7 @@ use crate::af::AddressFamily;
 use crate::custom_alloc::{CustomAllocStorage, Upsert};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
+use crate::stats::CreatedNodes;
 
 pub(crate) use super::atomic_stride::*;
 use super::store::errors::PrefixStoreError;
@@ -668,40 +669,27 @@ impl<
     > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let total_nodes = self.store.get_nodes_count();
+        
+        writeln!(_f, "{} prefixes created", self.store.get_prefixes_count())?;
+        writeln!(_f, "{} nodes created", self.store.get_nodes_count())?;
+        writeln!(_f)?;
 
-        trace!("prefix vec size {}", self.store.get_prefixes_count());
-        trace!("finished building tree...");
-        trace!("{:?} nodes created", total_nodes);
-        trace!(
-            "size of node: {} bytes",
-            std::mem::size_of::<SizedStrideNode<u32>>()
-        );
-        trace!(
-            "memory used by nodes: {}kb",
-            self.store.get_nodes_count()
-                * std::mem::size_of::<SizedStrideNode<u32>>()
-                / 1024
-        );
-
-        trace!(
+        writeln!(
+            _f,
             "stride division {:?}",
             self.store
                 .get_stride_sizes()
                 .iter()
                 .map_while(|s| if s > &0 { Some(*s) } else { None })
                 .collect::<Vec<_>>()
-        );
-        trace!("{:?}", self.store.counters);
+        )?;
         
-
-        trace!(
-            "level\t[{}|{}] nodes occupied/max nodes percentage_max_nodes_occupied prefixes",
-            Colour::Blue.paint("nodes"),
+        writeln!(_f,
+            "level\t[{}] prefixes-occupied/max-prefixes percentage_occupied",
             Colour::Green.paint("prefixes")
-        );
+        )?;
+        
         let bars = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
-        let mut stride_bits = [0, 0];
         const SCALE: u32 = 5500;
 
         trace!(
@@ -713,46 +701,13 @@ impl<
                 .enumerate()
                 .collect::<Vec<(usize, u8)>>()
         );
-        for stride in self
-            .store
-            .get_stride_sizes()
-            .iter()
-            .map_while(|s| if s > &0 { Some(*s) } else { None })
-            .enumerate()
-        {
-            // let level = stride.0;
-            stride_bits = [stride_bits[1] + 1, stride_bits[1] + stride.1];
-            let nodes_num = self
-                .store.get_nodes_count() as u32;
-            
-            let prefixes_num = self
-                .store.get_prefixes_count_for_len(stride.1) as u32;
 
-            let n = (nodes_num / SCALE) as usize;
-            let max_pfx = u128::overflowing_pow(2, stride_bits[1] as u32);
+        for CreatedNodes { depth_level: len, count: prefix_count } in self.store.counters.get_prefix_stats() {
+            let max_pfx = u128::overflowing_pow(2, len as u32);
+            let n = (prefix_count as u32 / SCALE) as usize;
 
-            write!(_f, "{}-{}\t", stride_bits[0], stride_bits[1])?;
+            write!(_f, "/{}\t", len)?;
 
-            for _ in 0..n {
-                write!(_f, "{}", Colour::Blue.paint("█"))?;
-            }
-
-            write!(_f,
-                "{}",
-                Colour::Blue.paint(
-                    bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
-                ) //  = scale / 7
-            )?;
-
-            write!(_f,
-                " {}/{} {:.2}%",
-                nodes_num,
-                max_pfx.0,
-                (nodes_num as f64 / max_pfx.0 as f64) * 100.0
-            )?;
-            write!(_f, "\n\t")?;
-
-            let n = (prefixes_num / SCALE) as usize;
             for _ in 0..n {
                 write!(_f, "{}", Colour::Green.paint("█"))?;
             }
@@ -760,12 +715,21 @@ impl<
             write!(_f,
                 "{}",
                 Colour::Green.paint(
-                    bars[((nodes_num % SCALE) / (SCALE / 7)) as usize]
+                    bars[((prefix_count as u32 % SCALE) / (SCALE / 7)) as usize]
                 ) //  = scale / 7
             )?;
 
-            trace!(" {}", prefixes_num);
+            write!(_f,
+                " {}/{} {:.2}%",
+                prefix_count,
+                max_pfx.0,
+                (prefix_count as f64 / max_pfx.0 as f64) * 100.0
+            )?;
+
+
+            writeln!(_f)?;
         }
+
         Ok(())
     }
 }
