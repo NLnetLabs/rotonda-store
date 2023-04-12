@@ -184,7 +184,7 @@ mod tests {
 
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
-            assert_eq!(tree_bitmap.prefixes_len(), GLOBAL_PREFIXES_VEC_SIZE);
+            assert_eq!(tree_bitmap.prefixes_count(), GLOBAL_PREFIXES_VEC_SIZE);
             assert_eq!(found_counter, FOUND_PREFIXES);
             assert_eq!(not_found_counter, SEARCHES_NUM - FOUND_PREFIXES);
         }

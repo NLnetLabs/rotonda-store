@@ -17,6 +17,7 @@ use crate::synth_int::{U256, U512};
 
 #[cfg(feature = "cli")]
 use crate::node_id::InMemNodeId;
+
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
 

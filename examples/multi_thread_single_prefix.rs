@@ -68,10 +68,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         }
 
                         println!("thread to sleep  {}", i);
+
                         guard.flush();
                         thread::sleep(Duration::from_secs(3));
                         println!("wake thread {}", i);
+                        println!("prefix count {:?}", tree_bitmap.prefixes_count());
                         x = 0;
+
                     }
                 },
             )

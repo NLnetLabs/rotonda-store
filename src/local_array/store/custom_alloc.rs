@@ -107,10 +107,10 @@ use log::{debug, info, log_enabled, trace};
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
 use std::marker::PhantomData;
 
-use crate::local_array::tree::*;
 use crate::local_array::{
     bit_span::BitSpan, store::errors::PrefixStoreError,
 };
+use crate::{local_array::tree::*, stats::CreatedNodes};
 
 // use crate::prefix_record::InternalPrefixRecord;
 use crate::{
@@ -120,6 +120,75 @@ use crate::{
 
 use super::atomic_types::*;
 use crate::AddressFamily;
+
+//------------ Counters -----------------------------------------------------
+
+#[derive(Debug)]
+pub struct Counters {
+    nodes: AtomicUsize,
+    prefixes: [AtomicUsize; 129],
+}
+
+impl Counters {
+    pub fn get_nodes_count(&self) -> usize {
+        self.nodes.load(Ordering::Relaxed)
+    }
+
+    pub fn inc_nodes_count(&self) {
+        self.nodes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn get_prefixes_count(&self) -> Vec<usize> {
+        self.prefixes
+            .iter()
+            .map(|pc| pc.load(Ordering::Relaxed))
+            .collect::<Vec<_>>()
+    }
+
+    pub fn inc_prefixes_count(&self, len: u8) {
+        self.prefixes[len as usize].fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn get_prefix_stats(&self) -> Vec<CreatedNodes> {
+        self.prefixes
+            .iter()
+            .enumerate()
+            .filter_map(|(len, count)| {
+                let count = count.load(Ordering::Relaxed);
+                if count != 0 {
+                    Some(CreatedNodes {
+                        depth_level: len as u8,
+                        count,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+}
+
+impl Default for Counters {
+    fn default() -> Self {
+        let mut prefixes: Vec<AtomicUsize> = Vec::with_capacity(129);
+        for _ in 0..=128 {
+            prefixes.push(AtomicUsize::new(0));
+        }
+
+        Self {
+            nodes: AtomicUsize::new(0),
+            prefixes: prefixes.try_into().unwrap(),
+        }
+    }
+}
+
+//------------ StoreStats ----------------------------------------------
+
+#[derive(Debug)]
+pub struct StoreStats {
+    pub v4: Vec<CreatedNodes>,
+    pub v6: Vec<CreatedNodes>,
+}
 
 // ----------- CustomAllocStorage -------------------------------------------
 //
@@ -135,6 +204,7 @@ pub struct CustomAllocStorage<
     pub(crate) buckets: NB,
     pub prefixes: PB,
     pub default_route_prefix_serial: AtomicUsize,
+    pub counters: Counters,
     _m: PhantomData<Meta>,
     _af: PhantomData<AF>,
 }
@@ -157,6 +227,7 @@ impl<
             buckets: NodeBuckets::<AF>::init(),
             prefixes: PrefixBuckets::<AF, Meta>::init(),
             default_route_prefix_serial: AtomicUsize::new(0),
+            counters: Counters::default(),
             _af: PhantomData,
             _m: PhantomData,
         };
@@ -219,6 +290,8 @@ impl<
                 next_node
             );
         }
+        self.counters.inc_nodes_count();
+
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
@@ -355,8 +428,8 @@ impl<
         StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0)
     }
 
-    pub fn get_nodes_len(&self) -> usize {
-        0
+    pub fn get_nodes_count(&self) -> usize {
+        self.counters.get_nodes_count()
     }
 
     // Prefixes related methods
@@ -458,6 +531,8 @@ impl<
                                 }
                             }
 
+                            self.counters
+                                .inc_prefixes_count(prefix.get_len());
                             return Ok((Upsert::Insert, retry_count));
                         }
                         Err(CompareExchangeError { current, new }) => {
@@ -696,14 +771,12 @@ impl<
         }
     }
 
-    pub fn get_prefixes_len(&self) -> usize {
-        (0..=AF::BITS)
-            .map(|pfx_len| -> usize {
-                self.prefixes
-                    .get_root_prefix_set(pfx_len)
-                    .get_len_recursive()
-            })
-            .sum()
+    pub fn get_prefixes_count(&self) -> usize {
+        self.counters.get_prefixes_count().iter().sum()
+    }
+
+    pub fn get_prefixes_count_for_len(&self, len: u8) -> usize {
+        self.counters.get_prefixes_count()[len as usize]
     }
 
     // Stride related methods
@@ -716,9 +789,9 @@ impl<
         self.buckets.get_stride_sizes()
     }
 
-    pub(crate) fn get_strides_len() -> u8 {
-        NB::get_strides_len()
-    }
+    // pub(crate) fn get_strides_len() -> u8 {
+    //     NB::get_strides_len()
+    // }
 
     pub(crate) fn get_first_stride_size() -> u8 {
         NB::get_first_stride_size()
@@ -849,15 +922,14 @@ impl<
 //------------ Upsert -------------------------------------------------------
 pub enum Upsert {
     Insert,
-    Update
+    Update,
 }
 
 impl std::fmt::Display for Upsert {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Upsert::Insert => write!(f, "Insert"),
-            Upsert::Update => write!(f, "Update")
+            Upsert::Update => write!(f, "Update"),
         }
     }
 }
-

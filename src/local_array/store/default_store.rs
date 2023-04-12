@@ -1,5 +1,6 @@
 use std::fmt;
 use crate::prelude::*;
+use crate::custom_alloc::StoreStats;
 
 // The default stride sizes for IPv4, IPv6, resp.
 #[create_store((

@@ -1,4 +1,5 @@
 use rotonda_store::prelude::*;
+use rotonda_store::custom_alloc::StoreStats;
 
 use rotonda_store::PrefixAs;
 use rotonda_macros::create_store;
@@ -68,8 +69,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         for pfx in pfxs.into_iter() {
             tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
         }
-
-        println!("{}", tree_bitmap.stats());
+        
+        #[cfg(feature = "cli")]
+        println!("{:?}", tree_bitmap.print_funky_stats());
     }
     Ok(())
 }

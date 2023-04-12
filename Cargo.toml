@@ -16,7 +16,7 @@ arc-swap = "^1.5"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 log = "^0.4"
-rotonda-macros = "0.2.0-pre.3"
+rotonda-macros = "0.2.0-pre.4"
 routecore = { version = "0.3.0-dev", features = ["bgp", "bmp", "serde"], git = "https://github.com/NLnetLabs/routecore.git", branch = "aspath-with-hops" }
 ansi_term = {version = "^0.12", optional = true }
 

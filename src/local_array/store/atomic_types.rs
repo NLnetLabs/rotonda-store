@@ -175,10 +175,10 @@ impl<AF: AddressFamily, Meta: routecore::record::Meta>
         AtomicStoredPrefix(Atomic::null())
     }
 
-    pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
-        let pfx = self.0.load(Ordering::SeqCst, guard);
-        pfx.is_null()
-    }
+    // pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
+    //     let pfx = self.0.load(Ordering::SeqCst, guard);
+    //     pfx.is_null()
+    // }
 
     pub(crate) fn get_stored_prefix<'a>(
         &'a self,
@@ -301,34 +301,34 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
         PrefixSet(l.into())
     }
 
-    pub fn get_len_recursive(&self) -> usize {
-        fn recurse_len<AF: AddressFamily, M: routecore::record::Meta>(
-            start_set: &PrefixSet<AF, M>,
-        ) -> usize {
-            let mut size: usize = 0;
-            let guard = &epoch::pin();
-            let start_set = start_set.0.load(Ordering::SeqCst, guard);
-            for p in unsafe { start_set.deref() } {
-                let pfx = unsafe { p.assume_init_ref() };
-                if !pfx.is_empty(guard) {
-                    size += 1;
-                    trace!(
-                        "recurse found pfx {:?} cur size {}",
-                        pfx.get_prefix_id(),
-                        size
-                    );
-                    if let Some(next_bucket) = pfx.get_next_bucket(guard) {
-                        trace!("found next bucket");
-                        size += recurse_len(next_bucket);
-                    }
-                }
-            }
+    // pub fn get_len_recursive(&self) -> usize {
+    //     fn recurse_len<AF: AddressFamily, M: routecore::record::Meta>(
+    //         start_set: &PrefixSet<AF, M>,
+    //     ) -> usize {
+    //         let mut size: usize = 0;
+    //         let guard = &epoch::pin();
+    //         let start_set = start_set.0.load(Ordering::SeqCst, guard);
+    //         for p in unsafe { start_set.deref() } {
+    //             let pfx = unsafe { p.assume_init_ref() };
+    //             if !pfx.is_empty(guard) {
+    //                 size += 1;
+    //                 trace!(
+    //                     "recurse found pfx {:?} cur size {}",
+    //                     pfx.get_prefix_id(),
+    //                     size
+    //                 );
+    //                 if let Some(next_bucket) = pfx.get_next_bucket(guard) {
+    //                     trace!("found next bucket");
+    //                     size += recurse_len(next_bucket);
+    //                 }
+    //             }
+    //         }
 
-            size
-        }
+    //         size
+    //     }
 
-        recurse_len(self)
-    }
+    //     recurse_len(self)
+    // }
 
     pub(crate) fn get_by_index<'a>(
         &'a self,

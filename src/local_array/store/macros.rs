@@ -181,7 +181,6 @@ macro_rules! store_node_closure {
                                             if log_enabled!(log::Level::Trace) {
                                                 trace!("Created node {}", $id);
                                             }
-
                                             return Ok(($id, retry_count));
                                         },
                                         Err(crossbeam_epoch::CompareExchangeError { new, .. }) => {
@@ -236,7 +235,8 @@ macro_rules! store_node_closure {
                                         level += 1;
                                         trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
                                             node_id, $id, $id.get_id().1, level, index
-                                        );
+                                        );                                        
+
                                         return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                             // on to the next level!
                                             next_bit_shift if next_bit_shift > 0 => {

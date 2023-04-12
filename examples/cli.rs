@@ -117,7 +117,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         });
                                     println!(
                                         "ipv4 prefixes :\t{}",
-                                        tree_bitmap.prefixes_v4_len()
+                                        tree_bitmap.prefixes_v4_count()
                                     );
                                 }
                                 "p6" => {
@@ -131,17 +131,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         });
                                     println!(
                                         "ipv6 prefixes :\t{}",
-                                        tree_bitmap.prefixes_v6_len()
+                                        tree_bitmap.prefixes_v6_count()
                                     );
                                 }
                                 _ => {
                                     println!(
                                         "ipv4 prefixes :\t{}",
-                                        tree_bitmap.prefixes_v4_len()
+                                        tree_bitmap.prefixes_v4_count()
                                     );
                                     println!(
                                         "ipv6 prefixes :\t{}",
-                                        tree_bitmap.prefixes_v6_len()
+                                        tree_bitmap.prefixes_v6_count()
                                     );
                                     tree_bitmap
                                         .prefixes_iter(guard)
@@ -153,7 +153,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         });
                                     println!(
                                         "total prefixes :\t{}",
-                                        tree_bitmap.prefixes_len()
+                                        tree_bitmap.prefixes_count()
                                     );
                                 }
                             },
@@ -170,15 +170,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                                 println!(
                                     "total nodes :\t{}",
-                                    tree_bitmap.nodes_len()
+                                    tree_bitmap.nodes_count()
                                 );
                                 println!(
                                     "ipv4 nodes :\t{}",
-                                    tree_bitmap.nodes_v4_len()
+                                    tree_bitmap.nodes_v4_count()
                                 );
                                 println!(
                                     "ipv6 nodes :\t{}",
-                                    tree_bitmap.nodes_v6_len()
+                                    tree_bitmap.nodes_v6_count()
                                 );
                                 // println!(
                                 //     "{:#?}",

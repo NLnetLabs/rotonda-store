@@ -149,6 +149,6 @@ impl CreatedNodes {
 
 impl Debug for CreatedNodes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_fmt(format_args!("{}", &self.count))
+        f.write_fmt(format_args!("/{}: {}", &self.depth_level, &self.count))
     }
 }

@@ -1,5 +1,6 @@
 // extern crate self as roto;
 use rotonda_store::prelude::*;
+use rotonda_store::custom_alloc::StoreStats;
 
 use rotonda_store::{MatchOptions, MatchType, PrefixAs};
 // use routecore::addr::Prefix;
@@ -125,11 +126,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
             println!(
                 "\"global_prefix_vec_size\": {},",
-                tree_bitmap.prefixes_len()
+                tree_bitmap.prefixes_count()
             );
             println!(
                 "\"global_node_vec_size\": {},",
-                tree_bitmap.nodes_len()
+                tree_bitmap.nodes_count()
             );
             println!(
                 "\"insert_time_nanos\": {},",

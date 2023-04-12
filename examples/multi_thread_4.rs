@@ -51,7 +51,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         32,
     );
 
-    let threads = (0..256).enumerate().map(|(i, _)| {
+    let threads = (0..1).enumerate().map(|(i, _)| {
         let tree_bitmap = tree_bitmap.clone();
         // let start_flag = Arc::clone(&f);
 
@@ -85,11 +85,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if x % 1_000_000 == 0 {
                             println!(
-                                "{:?} {}",
+                                "{:?} {} (prefixes count: {}, nodes count: {}",
                                 std::thread::current().name(),
-                                x
+                                x,
+                                tree_bitmap.prefixes_count(),
+                                tree_bitmap.nodes_count()
                             );
                         }
+
+                    
                     }
                 },
             )

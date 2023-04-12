@@ -15,7 +15,6 @@ use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
 pub(crate) use super::atomic_stride::*;
 use super::store::errors::PrefixStoreError;
-use crate::stats::{SizedStride, StrideStats};
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
 
@@ -368,7 +367,6 @@ pub struct TreeBitMap<
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
-    pub stats: Vec<StrideStats>,
     pub store: CustomAllocStorage<AF, M, NB, PB>,
 }
 
@@ -382,48 +380,29 @@ impl<
 {
     pub fn new(
     ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
-        let mut stride_stats: Vec<StrideStats> = vec![
-            StrideStats::new(
-                SizedStride::Stride3,
-                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len(),
-            ), // 0
-            StrideStats::new(
-                SizedStride::Stride4,
-                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len(),
-            ), // 1
-            StrideStats::new(
-                SizedStride::Stride5,
-                CustomAllocStorage::<AF, M, NB, PB>::get_strides_len(),
-            ), // 2
-        ];
-
-        let root_node: SizedStrideNode<AF>;
         let guard = &epoch::pin();
 
-        match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
+        let root_node = match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
             3 => {
-                root_node = SizedStrideNode::Stride3(TreeBitMapNode {
+                SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
                     _af: PhantomData,
-                });
-                stride_stats[0].inc(0);
+                })
             }
             4 => {
-                root_node = SizedStrideNode::Stride4(TreeBitMapNode {
+                SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                     _af: PhantomData,
-                });
-                stride_stats[1].inc(0);
+                })
             }
             5 => {
-                root_node = SizedStrideNode::Stride5(TreeBitMapNode {
+                SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
                     _af: PhantomData,
-                });
-                stride_stats[2].inc(0);
+                })
             }
             unknown_stride_size => {
                 panic!(
@@ -434,8 +413,6 @@ impl<
         };
 
         Ok(TreeBitMap {
-            // strides,
-            stats: stride_stats,
             store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node, guard)?,
         })
     }
@@ -691,9 +668,9 @@ impl<
     > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let total_nodes = self.store.get_nodes_len();
+        let total_nodes = self.store.get_nodes_count();
 
-        trace!("prefix vec size {}", self.store.get_prefixes_len());
+        trace!("prefix vec size {}", self.store.get_prefixes_count());
         trace!("finished building tree...");
         trace!("{:?} nodes created", total_nodes);
         trace!(
@@ -702,7 +679,7 @@ impl<
         );
         trace!(
             "memory used by nodes: {}kb",
-            self.store.get_nodes_len()
+            self.store.get_nodes_count()
                 * std::mem::size_of::<SizedStrideNode<u32>>()
                 / 1024
         );
@@ -715,9 +692,8 @@ impl<
                 .map_while(|s| if s > &0 { Some(*s) } else { None })
                 .collect::<Vec<_>>()
         );
-        for s in &self.stats {
-            trace!("{:?}", s);
-        }
+        trace!("{:?}", self.store.counters);
+        
 
         trace!(
             "level\t[{}|{}] nodes occupied/max nodes percentage_max_nodes_occupied prefixes",
@@ -747,19 +723,10 @@ impl<
             // let level = stride.0;
             stride_bits = [stride_bits[1] + 1, stride_bits[1] + stride.1];
             let nodes_num = self
-                .stats
-                .iter()
-                .find(|s| s.stride_len == stride.1)
-                .unwrap()
-                .created_nodes[stride.0]
-                .count as u32;
+                .store.get_nodes_count() as u32;
+            
             let prefixes_num = self
-                .stats
-                .iter()
-                .find(|s| s.stride_len == stride.1)
-                .unwrap()
-                .prefixes_num[stride.0]
-                .count as u32;
+                .store.get_prefixes_count_for_len(stride.1) as u32;
 
             let n = (nodes_num / SCALE) as usize;
             let max_pfx = u128::overflowing_pow(2, stride_bits[1] as u32);
