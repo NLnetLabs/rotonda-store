@@ -1,11 +1,10 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod tests {
-    use rotonda_store::{
-        MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
-        prelude::*
+    use rotonda_store::{ 
+        meta_examples::PrefixAs,
+        prelude::*,
+        prelude::multi::*
     };
-
-    use routecore::addr::Prefix;
 
     use std::error::Error;
 

@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use rotonda_store::AddressFamily;
     use rotonda_store::{
-        prelude::*, MultiThreadedStore, PrefixAs,
+        prelude::*, prelude::multi::*, 
+        meta_examples::PrefixAs,
+        meta_examples::NoMeta
     };
 
     #[test]

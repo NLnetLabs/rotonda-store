@@ -28,6 +28,11 @@ mod rotonda_store;
 pub mod prelude;
 /// Statistics for the two trees (IPv4 and IPv6).
 pub mod stats;
+
+/// Some simple metadata implementations
+pub mod meta_examples;
+
+/// The publicly available devices
 pub use crate::rotonda_store::*;
 
 // re-exports

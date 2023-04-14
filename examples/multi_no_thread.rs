@@ -1,10 +1,8 @@
 use log::trace;
 
-use rotonda_store::{
-    addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,
-};
-
-use rotonda_store::PrefixAs;
+use rotonda_store::prelude::*;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::meta_examples::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]

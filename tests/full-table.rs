@@ -1,16 +1,14 @@
 #![cfg(feature = "csv")]
 #[cfg(test)]
-
 mod tests {
     use rotonda_store::{
-        prelude::*, MultiThreadedStore,
+        prelude::*, multi::*,
     };
 
     use std::error::Error;
     use std::fs::File;
     use std::process;
 
-    use crate::prefix_record::MergeUpdate;
     #[derive(Debug, Clone)]
     pub struct ComplexPrefixAs(pub Vec<u32>);
 

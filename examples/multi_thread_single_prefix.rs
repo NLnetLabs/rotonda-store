@@ -1,14 +1,15 @@
 use log::trace;
-use rotonda_store::prelude::Upsert;
+
+use rotonda_store::prelude::multi::*;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
 use rand::Rng;
 
-use rotonda_store::{addr::Prefix, AddressFamily, MultiThreadedStore};
-
-use rotonda_store::{MatchOptions, PrefixAs};
+use rotonda_store::prelude::*;
+use rotonda_store::MultiThreadedStore;
+use rotonda_store::meta_examples::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]

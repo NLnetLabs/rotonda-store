@@ -1,9 +1,8 @@
 // extern crate self as roto;
 use rotonda_store::prelude::*;
-use rotonda_store::custom_alloc::StoreStats;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::meta_examples::PrefixAs;
 
-use rotonda_store::{MatchOptions, MatchType, PrefixAs};
-// use routecore::addr::Prefix;
 use std::error::Error;
 use std::fs::File;
 use std::process;

@@ -1,7 +1,8 @@
 use std::{sync::Arc, thread};
 
 use rotonda_store::prelude::*;
-use rotonda_store::MultiThreadedStore;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::meta_examples::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new()?);

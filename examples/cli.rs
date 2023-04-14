@@ -1,11 +1,9 @@
 // #![cfg(feature = "cli")]
 
 use ansi_term::Colour;
-use rotonda_store::prelude::*;
-use rotonda_store::PrefixAs;
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+use rotonda_store::prelude::{*, multi::*};
+use rotonda_store::meta_examples::PrefixAs;
 
-use routecore::addr::Prefix;
 use rustyline::Editor;
 use rustyline::error::ReadlineError;
 

@@ -1,6 +1,6 @@
-use rotonda_store::PrefixAs;
+use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::*;
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore};
+use rotonda_store::prelude::multi::*;
 
 use rotonda_store::AddressFamily;
 use routecore::addr::Prefix;

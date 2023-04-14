@@ -4,7 +4,7 @@ use std::{sync::Arc, thread};
 
 
 use rotonda_store::prelude::*;
-use rotonda_store::MultiThreadedStore;
+use rotonda_store::prelude::multi::*;
 
 #[derive(Debug, Clone)]
 pub struct ComplexPrefixAs(pub Vec<u32>);

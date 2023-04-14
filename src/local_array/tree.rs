@@ -1,6 +1,6 @@
-use crossbeam_epoch::{self as epoch};
-use log::{log_enabled, trace, error};
 use crate::prefix_record::{MergeUpdate, Meta};
+use crossbeam_epoch::{self as epoch};
+use log::{error, log_enabled, trace};
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -12,7 +12,6 @@ use crate::af::AddressFamily;
 use crate::custom_alloc::{CustomAllocStorage, Upsert};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
-use crate::stats::CreatedNodes;
 
 pub(crate) use super::atomic_stride::*;
 use super::store::errors::PrefixStoreError;
@@ -296,10 +295,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
     pub fn into_inner(self) -> (StrideType, Option<u32>) {
         match self.serial.load(Ordering::SeqCst) {
             0 => (self.stride_type, None),
-            _ => (
-                self.stride_type,
-                Some(self.index.load(Ordering::SeqCst)),
-            ),
+            _ => (self.stride_type, Some(self.index.load(Ordering::SeqCst))),
         }
     }
 
@@ -383,38 +379,36 @@ impl<
     ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
         let guard = &epoch::pin();
 
-        let root_node = match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size() {
-            3 => {
-                SizedStrideNode::Stride3(TreeBitMapNode {
+        let root_node =
+            match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size()
+            {
+                3 => SizedStrideNode::Stride3(TreeBitMapNode {
                     ptrbitarr: AtomicStride2(AtomicU8::new(0)),
                     pfxbitarr: AtomicStride3(AtomicU16::new(0)),
                     _af: PhantomData,
-                })
-            }
-            4 => {
-                SizedStrideNode::Stride4(TreeBitMapNode {
+                }),
+                4 => SizedStrideNode::Stride4(TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                     _af: PhantomData,
-                })
-            }
-            5 => {
-                SizedStrideNode::Stride5(TreeBitMapNode {
+                }),
+                5 => SizedStrideNode::Stride5(TreeBitMapNode {
                     ptrbitarr: AtomicStride4(AtomicU32::new(0)),
                     pfxbitarr: AtomicStride5(AtomicU64::new(0)),
                     _af: PhantomData,
-                })
-            }
-            unknown_stride_size => {
-                panic!(
-                    "unknown stride size {} encountered in STRIDES array",
-                    unknown_stride_size
-                );
-            }
-        };
+                }),
+                unknown_stride_size => {
+                    panic!(
+                        "unknown stride size {} encountered in STRIDES array",
+                        unknown_stride_size
+                    );
+                }
+            };
 
         Ok(TreeBitMap {
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node, guard)?,
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(
+                root_node, guard,
+            )?,
         })
     }
 
@@ -452,7 +446,7 @@ impl<
     pub fn insert(
         &self,
         pfx: PrefixId<AF>,
-        record: M
+        record: M,
     ) -> Result<(Upsert, u32), PrefixStoreError> {
         let guard = &epoch::pin();
 
@@ -475,8 +469,11 @@ impl<
                 stride
             };
 
-            let nibble =
-                AF::get_nibble(pfx.get_net(), stride_end - stride, nibble_len);
+            let nibble = AF::get_nibble(
+                pfx.get_net(),
+                stride_end - stride,
+                nibble_len,
+            );
             let is_last_stride = pfx.get_len() <= stride_end;
             let stride_start = stride_end - stride;
             let back_off = crossbeam_utils::Backoff::new();
@@ -511,17 +508,20 @@ impl<
                     acc_retry_count += retry_count;
                 }
                 Err(err) => {
-
                     if log_enabled!(log::Level::Error) {
                         error!("{} failing to store (intermediate) node {}. Giving up this node. This shouldn't happen!",
                             std::thread::current().name().unwrap(),
                             cur_i,
                         );
-                        error!("{} {}", std::thread::current().name().unwrap(), err);
+                        error!(
+                            "{} {}",
+                            std::thread::current().name().unwrap(),
+                            err
+                        );
                     }
                 }
             }
-        };
+        }
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
@@ -557,8 +557,9 @@ impl<
     ) -> Result<(Upsert, u32), PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
-            PrefixId::new(AF::zero(), 0), new_meta,
-            guard
+            PrefixId::new(AF::zero(), 0),
+            new_meta,
+            guard,
         )
     }
 
@@ -669,7 +670,6 @@ impl<
     > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        
         writeln!(_f, "{} prefixes created", self.store.get_prefixes_count())?;
         writeln!(_f, "{} nodes created", self.store.get_nodes_count())?;
         writeln!(_f)?;
@@ -683,12 +683,13 @@ impl<
                 .map_while(|s| if s > &0 { Some(*s) } else { None })
                 .collect::<Vec<_>>()
         )?;
-        
-        writeln!(_f,
+
+        writeln!(
+            _f,
             "level\t[{}] prefixes-occupied/max-prefixes percentage_occupied",
             Colour::Green.paint("prefixes")
         )?;
-        
+
         let bars = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
         const SCALE: u32 = 5500;
 
@@ -702,7 +703,11 @@ impl<
                 .collect::<Vec<(usize, u8)>>()
         );
 
-        for CreatedNodes { depth_level: len, count: prefix_count } in self.store.counters.get_prefix_stats() {
+        for crate::stats::CreatedNodes {
+            depth_level: len,
+            count: prefix_count,
+        } in self.store.counters.get_prefix_stats()
+        {
             let max_pfx = u128::overflowing_pow(2, len as u32);
             let n = (prefix_count as u32 / SCALE) as usize;
 
@@ -712,20 +717,22 @@ impl<
                 write!(_f, "{}", Colour::Green.paint("█"))?;
             }
 
-            write!(_f,
+            write!(
+                _f,
                 "{}",
                 Colour::Green.paint(
-                    bars[((prefix_count as u32 % SCALE) / (SCALE / 7)) as usize]
+                    bars[((prefix_count as u32 % SCALE) / (SCALE / 7))
+                        as usize]
                 ) //  = scale / 7
             )?;
 
-            write!(_f,
+            write!(
+                _f,
                 " {}/{} {:.2}%",
                 prefix_count,
                 max_pfx.0,
                 (prefix_count as f64 / max_pfx.0 as f64) * 100.0
             )?;
-
 
             writeln!(_f)?;
         }

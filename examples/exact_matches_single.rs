@@ -1,10 +1,12 @@
 use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
+use rotonda_store::SingleThreadedStore;
 use rotonda_store::meta_examples::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let guard = &epoch::pin();
-    let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+    let v4 = vec![8];
+    let v6 = vec![8];
+    let mut tree_bitmap = SingleThreadedStore::<NoMeta>::new(v4, v6);
+
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -344,7 +346,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_less_specifics: false,
                 include_more_specifics: false,
             },
-            guard
         );
         println!("exact match: {:?}", s_spfx);
         println!("-----------");

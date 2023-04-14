@@ -1,6 +1,7 @@
-use rotonda_store::{MatchOptions, MatchType, MultiThreadedStore, AddressFamily};
 use routecore::addr::Prefix;
 use rotonda_store::prelude::*;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::meta_examples::NoMeta;
 
 type Prefix4<'a> = Prefix;
 

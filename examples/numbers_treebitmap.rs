@@ -1,9 +1,7 @@
+use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::*;
-use rotonda_store::custom_alloc::StoreStats;
+use rotonda_store::prelude::multi::*;
 
-use rotonda_store::PrefixAs;
-use rotonda_macros::create_store;
-// use routecore::addr::Prefix;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
