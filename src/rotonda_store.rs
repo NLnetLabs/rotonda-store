@@ -1,14 +1,9 @@
-use std::collections::HashMap;
 use std::{fmt, slice};
 
-use crate::prefix_record::{PublicPrefixRecord, RecordSet};
+use crate::prefix_record::{PublicPrefixRecord, MergeUpdate, Meta, RecordSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
-use routecore::bgp::MetaDataSet;
-use routecore::{
-    addr::Prefix,
-    record::MergeUpdate,
-};
+use routecore::addr::Prefix;
 
 pub use crate::af::{AddressFamily, IPv4, IPv6};
 
@@ -152,12 +147,12 @@ impl fmt::Display for PrefixAs {
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
 // while iterating.
 #[derive(Clone, Debug)]
-pub struct PrefixRecordIter<'a, Meta: routecore::record::Meta> {
-    pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, Meta>>>,
-    pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, Meta>>,
+pub struct PrefixRecordIter<'a, M: Meta> {
+    pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, M>>>,
+    pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, M>>,
 }
 
-impl<'a, M: routecore::record::Meta> Iterator
+impl<'a, M: Meta> Iterator
     for PrefixRecordIter<'a, M>
 {
     type Item = PublicPrefixRecord<M>;
@@ -184,80 +179,6 @@ impl<'a, M: routecore::record::Meta> Iterator
     }
 }
 
-//------------- PrefixRecordMap ---------------------------------------------
-
-// A HashMap that's keyed on prefix and contains multiple meta-data instances
-
-#[derive(Debug, Clone)]
-pub struct PrefixRecordMap<'a, M: routecore::record::Meta>(
-    HashMap<Prefix, MetaDataSet<'a, M>>,
-);
-
-impl<'a, M: routecore::record::Meta> PrefixRecordMap<'a, M> {
-    pub fn new(prefix: Prefix, meta_data_set: MetaDataSet<'a, M>) -> Self {
-        let mut map = HashMap::new();
-        map.insert(prefix, meta_data_set);
-        Self(map)
-    }
-
-    pub fn empty() -> Self {
-        Self(HashMap::new())
-    }
-
-    // pub fn into_prefix_record_map<AF: AddressFamily + 'a>(
-    //     iter: impl Iterator<Item = &'a StoredPrefix<AF, M>>,
-    //     guard: &'a Guard,
-    // ) -> Self {
-    //     let mut map = HashMap::new();
-    //     for rec in iter {
-    //         map.entry(rec.prefix.into_pub()).or_insert_with(|| {
-    //             rec.iter_latest_unique_meta_data(guard)
-    //                 .collect::<MetaDataSet<'a, M>>()
-    //         });
-    //     }
-    //     Self(map)
-    // }
-
-    pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn iter(
-        &self,
-    ) -> impl Iterator<Item = (&Prefix, &MetaDataSet<'a, M>)> {
-        self.0.iter()
-    }
-}
-
-impl<'a, M: routecore::record::Meta>
-    std::iter::FromIterator<(Prefix, MetaDataSet<'a, M>)>
-    for PrefixRecordMap<'a, M>
-{
-    fn from_iter<I: IntoIterator<Item = (Prefix, MetaDataSet<'a, M>)>>(
-        iter: I,
-    ) -> Self {
-        let mut map = PrefixRecordMap::empty();
-        for (prefix, meta_data_set) in iter {
-            map.0.entry(prefix).or_insert(meta_data_set);
-        }
-        map
-    }
-}
-
-impl<'a, M: routecore::record::Meta> std::fmt::Display
-    for PrefixRecordMap<'a, M>
-{
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        for (pfx, meta) in self.0.iter() {
-            writeln!(f, "{} {}", pfx, meta)?;
-        }
-        Ok(())
-    }
-}
 
 //------------- QueryResult -------------------------------------------------
 
@@ -270,7 +191,7 @@ impl<'a, M: routecore::record::Meta> std::fmt::Display
 
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<M: routecore::record::Meta> {
+pub struct QueryResult<M: crate::prefix_record::Meta> {
     /// The match type of the resulting prefix
     pub match_type: MatchType,
     /// The resulting prefix record
@@ -283,7 +204,7 @@ pub struct QueryResult<M: routecore::record::Meta> {
     pub more_specifics: Option<RecordSet<M>>,
 }
 
-impl<M: routecore::record::Meta> fmt::Display for QueryResult<M> {
+impl<M: Meta> fmt::Display for QueryResult<M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),
