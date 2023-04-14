@@ -10,3 +10,5 @@ pub use store::Store;
 
 #[macro_use]
 mod macros;
+
+mod tests;
