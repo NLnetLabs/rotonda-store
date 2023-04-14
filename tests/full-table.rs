@@ -3,15 +3,14 @@
 
 mod tests {
     use rotonda_store::{
-        prelude::*, MatchOptions, MatchType, MultiThreadedStore,
+        prelude::*, MultiThreadedStore,
     };
-    use routecore::addr::Prefix;
 
     use std::error::Error;
     use std::fs::File;
     use std::process;
 
-    use routecore::record::MergeUpdate;
+    use crate::prefix_record::MergeUpdate;
     #[derive(Debug, Clone)]
     pub struct ComplexPrefixAs(pub Vec<u32>);
 

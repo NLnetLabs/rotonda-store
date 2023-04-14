@@ -11,31 +11,31 @@ use crate::custom_alloc::StoreStats;
 struct DefaultStore;
 
 impl<
-        Meta: routecore::record::Meta + MergeUpdate,
+        M: Meta + MergeUpdate,
         NB: NodeBuckets<IPv4>,
-        PB: PrefixBuckets<IPv4, Meta>
-    > fmt::Display for CustomAllocStorage<IPv4, Meta, NB, PB>
+        PB: PrefixBuckets<IPv4, M>
+    > fmt::Display for CustomAllocStorage<IPv4, M, NB, PB>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "CustomAllocStorage<IPv4, {}>",
-            std::any::type_name::<Meta>()
+            std::any::type_name::<M>()
         )
     }
 }
 
 impl<
-        Meta: routecore::record::Meta + MergeUpdate,
+        M: Meta + MergeUpdate,
         NB: NodeBuckets<IPv6>,
-        PB: PrefixBuckets<IPv6, Meta>
-    > fmt::Display for CustomAllocStorage<IPv6, Meta, NB, PB>
+        PB: PrefixBuckets<IPv6, M>
+    > fmt::Display for CustomAllocStorage<IPv6, M, NB, PB>
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
             "CustomAllocStorage<IPv6, {}>",
-            std::any::type_name::<Meta>()
+            std::any::type_name::<M>()
         )
     }
 }

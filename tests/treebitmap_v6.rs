@@ -2,10 +2,8 @@
 mod tests {
     use rotonda_store::AddressFamily;
     use rotonda_store::{
-        prelude::*, MatchOptions, MatchType, MultiThreadedStore, PrefixAs,
+        prelude::*, MultiThreadedStore, PrefixAs,
     };
-    use routecore::addr::Prefix;
-    use routecore::record::NoMeta;
 
     #[test]
     fn test_arbitrary_insert_ipv6() -> Result<(), Box<dyn std::error::Error>>

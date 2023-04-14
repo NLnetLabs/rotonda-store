@@ -14,6 +14,7 @@ use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
 use crate::{
     af::AddressFamily,
+    prefix_record::Meta,
     local_array::{
         bit_span::BitSpan,
         node::{
@@ -26,8 +27,7 @@ use crate::{
 use crossbeam_epoch::Guard;
 use log::{debug, log_enabled, trace};
 use routecore::{
-    addr::Prefix,
-    record::Meta,
+    addr::Prefix
 };
 
 // ----------- PrefixIter ---------------------------------------------------
@@ -579,7 +579,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 impl<
         'a,
         AF: AddressFamily,
-        M: routecore::record::Meta,
+        M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > CustomAllocStorage<AF, M, NB, PB>
@@ -745,7 +745,7 @@ impl<
 
 // ----------- InternalPrefixRecord -> RecordSet (public) -------------------
 
-// impl<'a, AF: AddressFamily, Meta: routecore::record::Meta>
+// impl<'a, AF: AddressFamily, Meta: crate::prefix_record::Meta>
 //     std::iter::FromIterator<InternalPrefixRecord<AF, Meta>>
 //     for routecore::bgp::RecordSet<'a, Meta>
 // {

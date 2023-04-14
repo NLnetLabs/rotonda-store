@@ -7,7 +7,7 @@ use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
 use routecore::addr::Prefix;
-use routecore::record::MergeUpdate;
+use crate::prefix_record::MergeUpdate;
 
 use super::query::PrefixId;
 use super::tree::SizedStrideNode;
@@ -16,15 +16,15 @@ use super::tree::SizedStrideNode;
 /// Can be used in multi-threaded contexts by wrapping it in a `Arc<Mutex<_>>`.
 /// Be aware that this is undesirable in cases with high contention.
 /// Use cases with high contention are best served by the [`crate::MultiThreadedStore`].
-pub struct Store<Meta: routecore::record::Meta>
+pub struct Store<M: crate::prefix_record::Meta>
 where
-    Meta: MergeUpdate,
+    M: MergeUpdate,
 {
-    v4: TreeBitMap<InMemStorage<IPv4, Meta>>,
-    v6: TreeBitMap<InMemStorage<IPv6, Meta>>,
+    v4: TreeBitMap<InMemStorage<IPv4, M>>,
+    v6: TreeBitMap<InMemStorage<IPv6, M>>,
 }
 
-impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+impl<M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
     pub fn new(v4_strides: Vec<u8>, v6_strides: Vec<u8>) -> Self {
         Store {
             v4: TreeBitMap::new(v4_strides),
@@ -33,12 +33,12 @@ impl<Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     }
 }
 
-impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
+impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix,
         options: &MatchOptions,
-    ) -> QueryResult<Meta> {
+    ) -> QueryResult<M> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
                 PrefixId::<IPv4>::new(addr.into(), search_pfx.len()),
@@ -54,7 +54,7 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
     pub fn insert(
         &mut self,
         prefix: &Prefix,
-        meta: Meta,
+        meta: M,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
             std::net::IpAddr::V4(addr) => {
@@ -74,12 +74,12 @@ impl<'a, Meta: routecore::record::Meta + MergeUpdate> Store<Meta> {
         }
     }
 
-    pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, Meta> {
-        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, Meta>> =
+    pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, M> {
+        let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, M>> =
             self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
-        crate::PrefixRecordIter::<'a, Meta> {
+        crate::PrefixRecordIter::<'a, M> {
             v4: Some(rs4),
             v6: rs6,
         }

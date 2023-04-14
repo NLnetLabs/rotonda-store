@@ -1,11 +1,5 @@
 use rotonda_store::prelude::*;
-
-use rotonda_store::{
-    AddressFamily, MatchOptions, MatchType, MultiThreadedStore,
-};
-
-use routecore::addr::Prefix;
-use routecore::record::NoMeta;
+use rotonda_store::MultiThreadedStore;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();

@@ -197,25 +197,25 @@ pub struct StoreStats {
 #[derive(Debug)]
 pub struct CustomAllocStorage<
     AF: AddressFamily,
-    Meta: routecore::record::Meta + routecore::record::MergeUpdate,
+    M: crate::prefix_record::Meta + crate::prefix_record::MergeUpdate,
     NB: NodeBuckets<AF>,
-    PB: PrefixBuckets<AF, Meta>,
+    PB: PrefixBuckets<AF, M>,
 > {
     pub(crate) buckets: NB,
     pub prefixes: PB,
     pub default_route_prefix_serial: AtomicUsize,
     pub counters: Counters,
-    _m: PhantomData<Meta>,
+    _m: PhantomData<M>,
     _af: PhantomData<AF>,
 }
 
 impl<
         'a,
         AF: AddressFamily,
-        Meta: routecore::record::Meta,
+        M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, Meta>,
-    > CustomAllocStorage<AF, Meta, NB, PB>
+        PB: PrefixBuckets<AF, M>,
+    > CustomAllocStorage<AF, M, NB, PB>
 {
     pub(crate) fn init(
         root_node: SizedStrideNode<AF>,
@@ -225,7 +225,7 @@ impl<
 
         let store = CustomAllocStorage {
             buckets: NodeBuckets::<AF>::init(),
-            prefixes: PrefixBuckets::<AF, Meta>::init(),
+            prefixes: PrefixBuckets::<AF, M>::init(),
             default_route_prefix_serial: AtomicUsize::new(0),
             counters: Counters::default(),
             _af: PhantomData,
@@ -474,7 +474,7 @@ impl<
     pub(crate) fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: Meta,
+        record: M,
         guard: &Guard,
     ) -> Result<(Upsert, u32), PrefixStoreError> {
         // let backoff = Backoff::new();
@@ -587,7 +587,7 @@ impl<
         &'a self,
         search_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Result<(&'a AtomicStoredPrefix<AF, Meta>, u8), PrefixStoreError>
+    ) -> Result<(&'a AtomicStoredPrefix<AF, M>, u8), PrefixStoreError>
     {
         let mut prefix_set = self
             .prefixes
@@ -654,12 +654,12 @@ impl<
         id: PrefixId<AF>,
         guard: &'a Guard,
     ) -> (
-        Option<&StoredPrefix<AF, Meta>>,
+        Option<&StoredPrefix<AF, M>>,
         Option<(
             PrefixId<AF>,
             u8,
-            &'a PrefixSet<AF, Meta>,
-            [Option<(&'a PrefixSet<AF, Meta>, usize)>; 26],
+            &'a PrefixSet<AF, M>,
+            [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
             usize,
         )>,
     ) {
@@ -711,8 +711,8 @@ impl<
         &'a self,
         prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<(&StoredPrefix<AF, Meta>, &'a usize)> {
-        struct SearchLevel<'s, AF: AddressFamily, M: routecore::record::Meta> {
+    ) -> Option<(&StoredPrefix<AF, M>, &'a usize)> {
+        struct SearchLevel<'s, AF: AddressFamily, M: crate::prefix_record::Meta> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
                 &PrefixSet<AF, M>,
@@ -725,8 +725,8 @@ impl<
         }
 
         let search_level = SearchLevel {
-            f: &|search_level: &SearchLevel<AF, Meta>,
-                 prefix_set: &PrefixSet<AF, Meta>,
+            f: &|search_level: &SearchLevel<AF, M>,
+                 prefix_set: &PrefixSet<AF, M>,
                  mut level: u8,
                  guard: &Guard| {
                 // HASHING FUNCTION
@@ -764,7 +764,7 @@ impl<
     }
 
     #[allow(dead_code)]
-    fn remove_prefix(&mut self, index: PrefixId<AF>) -> Option<Meta> {
+    fn remove_prefix(&mut self, index: PrefixId<AF>) -> Option<M> {
         match index.is_empty() {
             false => self.prefixes.remove(index),
             true => None,

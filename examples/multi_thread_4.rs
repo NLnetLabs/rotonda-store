@@ -2,11 +2,9 @@ use log::trace;
 use std::time::Duration;
 use std::{sync::Arc, thread};
 
-use rotonda_store::{
-    addr::Prefix, epoch, AddressFamily, MatchOptions, MultiThreadedStore,
-};
 
-use routecore::record::MergeUpdate;
+use rotonda_store::prelude::*;
+use rotonda_store::MultiThreadedStore;
 
 #[derive(Debug, Clone)]
 pub struct ComplexPrefixAs(pub Vec<u32>);

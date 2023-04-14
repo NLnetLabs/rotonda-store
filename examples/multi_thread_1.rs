@@ -1,10 +1,7 @@
 use std::{sync::Arc, thread};
 
-use rotonda_store::{
-    addr::Prefix, AddressFamily, MatchOptions, MultiThreadedStore, epoch
-};
-
-use routecore::record::NoMeta;
+use rotonda_store::prelude::*;
+use rotonda_store::MultiThreadedStore;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new()?);

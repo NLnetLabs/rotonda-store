@@ -5,7 +5,7 @@ pub use crate::stride::*;
 use crate::local_vec::tree::*;
 
 use crate::af::AddressFamily;
-use routecore::record::MergeUpdate;
+use crate::prefix_record::MergeUpdate;
 
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
@@ -21,7 +21,7 @@ where
 {
     type NodeType;
     type AF: AddressFamily;
-    type Meta: routecore::record::Meta + MergeUpdate;
+    type Meta: crate::prefix_record::Meta + MergeUpdate;
 
     fn init(
         start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>,
@@ -93,13 +93,13 @@ where
 #[derive(Debug)]
 pub(crate) struct InMemStorage<
     AF: AddressFamily,
-    Meta: routecore::record::Meta,
+    Meta: crate::prefix_record::Meta,
 > {
     pub nodes: Vec<SizedStrideNode<AF, InMemNodeId>>,
     pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta + MergeUpdate>
+impl<AF: AddressFamily, Meta: crate::prefix_record::Meta + MergeUpdate>
     StorageBackend for InMemStorage<AF, Meta>
 {
     type NodeType = InMemNodeId;

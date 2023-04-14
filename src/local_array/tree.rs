@@ -1,6 +1,6 @@
 use crossbeam_epoch::{self as epoch};
 use log::{log_enabled, trace, error};
-use routecore::record::{MergeUpdate, Meta};
+use crate::prefix_record::{MergeUpdate, Meta};
 
 use std::hash::Hash;
 use std::sync::atomic::{

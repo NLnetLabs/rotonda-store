@@ -11,6 +11,7 @@ use epoch::{Guard, Owned};
 
 use crate::local_array::tree::*;
 use crate::AddressFamily;
+use crate::prelude::Meta;
 
 // ----------- Node related structs -----------------------------------------
 
@@ -59,7 +60,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 // records that are stored inside it, so that iterators over its linked lists
 // don't have to go into them if there's nothing there and could stop early.
 #[derive(Debug)]
-pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
+pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     // the serial number
     pub serial: usize,
     // the prefix itself,
@@ -72,7 +73,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: routecore::record::Meta> {
     pub next_bucket: PrefixSet<AF, M>,
 }
 
-impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
+impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     pub fn new<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
         record: Arc<M>,
@@ -131,11 +132,11 @@ impl<AF: AddressFamily, M: routecore::record::Meta> StoredPrefix<AF, M> {
 // prefix.
 
 #[derive(Debug)]
-pub(crate) struct AtomicRecord<M: routecore::record::Meta>(
+pub(crate) struct AtomicRecord<M: crate::prefix_record::Meta>(
     ArcSwap<M>,
 );
 
-impl<M: routecore::record::Meta> AtomicRecord<M> {
+impl<M: crate::prefix_record::Meta> AtomicRecord<M> {
     pub fn new(record: Arc<M>) -> Self {
         AtomicRecord(ArcSwap::new(record))
     }
@@ -164,11 +165,11 @@ impl<M: routecore::record::Meta> AtomicRecord<M> {
 // avoid going outside our atomic procedure.
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
-pub struct AtomicStoredPrefix<AF: AddressFamily, M: routecore::record::Meta>(
+pub struct AtomicStoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta>(
     pub Atomic<StoredPrefix<AF, M>>,
 );
 
-impl<AF: AddressFamily, Meta: routecore::record::Meta>
+impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     AtomicStoredPrefix<AF, Meta>
 {
     pub(crate) fn empty() -> Self {
@@ -264,7 +265,7 @@ pub trait NodeBuckets<AF: AddressFamily> {
     fn get_first_stride_size() -> u8;
 }
 
-pub trait PrefixBuckets<AF: AddressFamily, M: routecore::record::Meta>
+pub trait PrefixBuckets<AF: AddressFamily, M: Meta>
 where
     Self: Sized,
 {
@@ -286,11 +287,11 @@ where
 
 #[derive(Debug)]
 #[repr(align(8))]
-pub struct PrefixSet<AF: AddressFamily, M: routecore::record::Meta>(
+pub struct PrefixSet<AF: AddressFamily, M: Meta>(
     pub Atomic<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>,
 );
 
-impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
+impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
         let mut l =
             Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
@@ -302,7 +303,7 @@ impl<AF: AddressFamily, M: routecore::record::Meta> PrefixSet<AF, M> {
     }
 
     // pub fn get_len_recursive(&self) -> usize {
-    //     fn recurse_len<AF: AddressFamily, M: routecore::record::Meta>(
+    //     fn recurse_len<AF: AddressFamily, M: crate::prefix_record::Meta>(
     //         start_set: &PrefixSet<AF, M>,
     //     ) -> usize {
     //         let mut size: usize = 0;

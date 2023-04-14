@@ -3,7 +3,7 @@ use std::{
     marker::PhantomData,
 };
 
-use routecore::record::MergeUpdate;
+use crate::prefix_record::MergeUpdate;
 
 use crate::af::{AddressFamily, Zero};
 use crate::local_vec::node::TreeBitMapNode;
@@ -71,12 +71,12 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy>
 pub(crate) struct PrefixCacheGuard<
     'a,
     AF: 'static + AddressFamily,
-    Meta: routecore::record::Meta,
+    Meta: crate::prefix_record::Meta,
 > {
     pub guard: std::cell::Ref<'a, InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, Meta: routecore::record::Meta>
+impl<'a, AF: 'static + AddressFamily, Meta: crate::prefix_record::Meta>
     std::ops::Deref for PrefixCacheGuard<'a, AF, Meta>
 {
     type Target = InternalPrefixRecord<AF, Meta>;

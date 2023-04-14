@@ -28,16 +28,16 @@ impl<AF: AddressFamily> PrefixId<AF> {
 //------------- QueryResult -------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<Meta: routecore::record::Meta> {
+pub struct QueryResult<M: crate::prefix_record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
-    pub prefix_meta: Option<Meta>,
-    pub less_specifics: Option<RecordSet<Meta>>,
-    pub more_specifics: Option<RecordSet<Meta>>,
+    pub prefix_meta: Option<M>,
+    pub less_specifics: Option<RecordSet<M>>,
+    pub more_specifics: Option<RecordSet<M>>,
 }
 
-impl<Meta: routecore::record::Meta> std::fmt::Display
-    for QueryResult<Meta>
+impl<M: crate::prefix_record::Meta> std::fmt::Display
+    for QueryResult<M>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let pfx_str = match self.prefix {
