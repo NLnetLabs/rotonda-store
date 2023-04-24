@@ -477,7 +477,6 @@ impl<
         record: M,
         guard: &Guard,
     ) -> Result<(Upsert, u32), PrefixStoreError> {
-        // let backoff = Backoff::new();
         let mut retry_count = 0;
         let mut new_record = Arc::new(record);
 
@@ -486,17 +485,20 @@ impl<
                 PrefixId::new(prefix.get_net(), prefix.get_len()),
                 guard,
             )?;
-        let inner_stored_prefix =
+
+        let mut inner_stored_prefix =
             atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
 
         loop {
+            
             match inner_stored_prefix.is_null() {
-                // There's no StoredPrefix at this location. Create a new
-                // PrefixRecord and store it in the empty slot.
+                // There's no StoredPrefix at this location yet. Create a new
+                // PrefixRecord with our record and try to store it in the 
+                // empty slot.
                 true => {
                     if log_enabled!(log::Level::Debug) {
                         debug!(
-                            "{} store: Create new super-aggregated prefix record",
+                            "{} store: Create new prefix record",
                             std::thread::current().name().unwrap()
                         );
                     }
@@ -509,11 +511,13 @@ impl<
                     // We're expecting an empty slot.
                     match atomic_stored_prefix.0.compare_exchange(
                         Shared::null(),
-                        Owned::new(new_stored_prefix).with_tag(1),
+                        Owned::new(new_stored_prefix),
                         Ordering::SeqCst,
                         Ordering::SeqCst,
                         guard,
                     ) {
+                        // ...and we got an empty slot, the newly created
+                        // StorePrefix is stored into it.
                         Ok(spfx) => {
                             if log_enabled!(log::Level::Info) {
                                 let StoredPrefix {
@@ -533,33 +537,49 @@ impl<
 
                             self.counters
                                 .inc_prefixes_count(prefix.get_len());
+
                             return Ok((Upsert::Insert, retry_count));
                         }
+                        // ...somebody beat us to it, the slot's not empty
+                        // anymore, we'll have to do it again.
                         Err(CompareExchangeError { current, new }) => {
-                            if log_enabled!(log::Level::Debug) {
-                                debug!(
+                            if log_enabled!(log::Level::Info) {
+                                info!(
                                     "{} store: Prefix can't be inserted as new {:?}",
                                     std::thread::current().name().unwrap(),
                                     current
                                 );
                             }
                             retry_count += 1;
+
                             new_record =
                                 new.into_box().get_record_as_arc().clone();
+
+                            // reuse the returned existing prefix_record,
+                            // for the next iteration.
+                            inner_stored_prefix = current;
+                            
                             continue;
                         }
                     }
                 }
+                // There already is a StoredPrefix with a record at this 
+                // location. Perform a Read-Copy-Update (RCU) on the record
+                // to update its value.
                 false => {
                     if log_enabled!(log::Level::Debug) {
                         debug!(
-                            "{} store: Found existing super-aggregated prefix record for {}/{}",
+                            "{} store: Found existing prefix record for {}/{}",
                             std::thread::current().name().unwrap(),
                             prefix.get_net(),
                             prefix.get_len()
                         );
                     }
-
+                
+                    // We don't have to reload the prefix record at this
+                    // location: Once it is created the prefix-record itself
+                    // will not be changed anymore, only its record can be
+                    // RCU'd.
                     unsafe { inner_stored_prefix.deref() }
                         .record
                         .as_arc_swap()
