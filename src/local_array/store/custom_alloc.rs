@@ -123,13 +123,19 @@
 // heading off and following the reference to the next bucket. This would
 // limit the amount of (sparse) arrays being created for a typical prefix
 // treebitmap, at the cost of longer average search times. Two 
-// implementations of this approach are Robin Hood hashing, and Skip Lists.
-// Skip lists are a probablistic data-structyure, famously used by Redis,
+// implementations of this approach are Cuckoo hashing[^1], and Skip Lists.
+// Skip lists[^2] are a probablistic data-structyure, famously used by Redis,
 // (and by TiKv). I haven't tries either of these. Crossbeam has a SkipList
-// implentation, that wasn't ready at the time I wrote this. Robin Hood
+// implentation, that wasn't ready at the time I wrote this. Cuckoo
 // hashing has the advantage of being easier to understand/implement. Maybe
-// Robin Hood hashing can also be combined with Fibonacci hashing.
-// [https://probablydance.com/2018/06/16/fibonacci-hashing-
+// Cuckoo hashing can also be combined with Fibonacci hashing[^3]. Note that
+// Robin Hood hashing maybe faster than Cuckoo hashing for reads, but it
+// requires shuifting around existing entries, which is rather costly to do
+// atomically (and complex).
+
+// [^1]: [https://en.wikipedia.org/wiki/Cuckoo_hashing]
+// [^3]: [https://docs.rs/crossbeam-skiplist/0.1.1/crossbeam_skiplist/]
+// [^3]: [https://probablydance.com/2018/06/16/fibonacci-hashing-
 //  the-optimization-that-the-world-forgot-or-a-better-alternative-
 //  to-integer-modulo/]
 
