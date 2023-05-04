@@ -1,11 +1,10 @@
-// #![cfg(feature = "cli")]
-
+#![cfg(feature = "cli")]
 use ansi_term::Colour;
+use rustyline::error::ReadlineError;
+use rustyline::Editor;
+
 use rotonda_store::prelude::{*, multi::*};
 use rotonda_store::meta_examples::PrefixAs;
-
-use rustyline::Editor;
-use rustyline::error::ReadlineError;
 
 use std::env;
 use std::error::Error;
@@ -13,10 +12,6 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::process;
 
-// #[cfg(feature = "cli")]
-// use rustyline::error::ReadlineError;
-// #[cfg(feature = "cli")]
-// use rustyline::Editor;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -30,6 +25,7 @@ fn load_prefixes(
 ) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
+    println!("file path {:?}", file_path);
     let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
     for result in rdr.records() {
@@ -63,9 +59,6 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    #[cfg(feature = "cli")]
-    env_logger::init();
-
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
     let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
 

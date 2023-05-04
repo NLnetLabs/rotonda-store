@@ -2,7 +2,8 @@
 #[cfg(test)]
 mod tests {
     use rotonda_store::{
-        prelude::*, multi::*,
+        prelude::*, 
+        prelude::multi::*,
     };
 
     use std::error::Error;
