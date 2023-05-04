@@ -34,14 +34,18 @@
 // node first and then go up the tree to the requested node. The lower nodes
 // of the tree (close to the root) would be a formidable bottle-neck then.
 //
-// The meta-data for a prefix is (also) stored as a linked-list of
-// references, where each meta-data object has a reference to its
-// predecessor. New meta-data instances are stored atomically without further
-// ado, but updates to a piece of meta-data are done by merging the previous
-// meta-data with the new meta-data, through use of the `MergeUpdate` trait.
+// Currently, the meta-data is an atomically stored value, that is required to
+// implement the `Meta` trait and is clonable. New meta-data
+// instances are stored atomically without further ado, but updates to a 
+// piece of meta-data are done by merging the previous meta-data with the new
+// meta-data, through use of the `MergeUpdate` trait.
 //
-// The `retrieve_prefix_*` methods retrieve only the most recent insert
+// The `upsert_prefix` methods retrieve only the most recent insert
 // for a prefix (for now).
+//
+// Future work could have a user-configurable retention strategy that allows
+// the meta-data to be stored as a linked-list of references, where each 
+// meta-data object has a reference to its predecessor. 
 //
 // Prefix example
 //
