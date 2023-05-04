@@ -18,7 +18,7 @@ New
 
 Other Changes
 
-* Various small optimisations.
+* Various small optimizations.
 * Added tests for more-specifics.
 * Broken out several `features`, `cli`, `dynamodb`, `csv` in order to minimize minimal required
   dependencies.
@@ -31,7 +31,7 @@ Release 2021-08-13
 
 Bug Fixes
 
-* Fix rotonda-store not compiling on on rustc > 1.51
+* Fix `rotonda-store` not compiling on on `rustc` > 1.51
 
 ## 0.1.0
 

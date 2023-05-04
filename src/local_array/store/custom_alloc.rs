@@ -94,7 +94,92 @@
 //                                              ┌──────────▼──────────────┐
 //                                              │ metadata (current)      │
 //                                              └─────────────────────────┘
+
+// Note about the memory useage of the data-structures of the Buckets
 //
+// As said, the prefixes and nodes are stored in buckets. A bucket right now
+// is of type `[MaybeUnit<Atomic<StoredPrefix>>]`, this has the advantage
+// that the length can be variable, based on the stride size for that level.
+// It saves us to have to implement a generic something. 
+// Another advantage is the fixed place in which an atomic StoredPrefix
+// lives: this makes compare-and-swapping it relatively straight forward.
+// Each accessing thread would try to read/write the exact same entry in the
+// array, so shouldn't be any 'rug pulling' on the whole array.
+//
+// A disadvantage is that this is a fixed size, sparse array the moment it
+// is created. Theoretically, an `Atomic<Vec<StoredPrefix>`
+// would not have this disadvantage. Manipulating the whole vec atomically
+// though is very tricky (we would have to aotmically compare-and-swap the
+// whole vec each time the prefix meta-data is changed) and inefficient,
+// since we would have to either keep the vec sorted on `PrefixId` at all 
+// times, or, we would have to inspect each value in the vec on *every* read
+// or write. the StoredPrefix (this is a challenge in itself, since the 
+// StoredPrefix needs to be read atomically to retrieve the PrefixId).
+// Compare-and-swapping a whole vec most probably would need a hash over the
+// vec to determine whether it was changed. I gave up on this approach,
+//
+// Another approach to try to limit the memory use is to try to use other
+// indexes in the same array on collision (the array mentioned above), before
+// heading off and following the reference to the next bucket. This would
+// limit the amount of (sparse) arrays being created for a typical prefix
+// treebitmap, at the cost of longer average search times. Two 
+// implementations of this approach are Robin Hood hashing, and Skip Lists.
+// Skip lists are a probablistic data-structyure, famously used by Redis,
+// (and by TiKv). I haven't tries either of these. Crossbeam has a SkipList
+// implentation, that wasn't ready at the time I wrote this. Robin Hood
+// hashing has the advantage of being easier to understand/implement. Maybe
+// Robin Hood hashing can also be combined with Fibonacci hashing.
+// [https://probablydance.com/2018/06/16/fibonacci-hashing-
+//  the-optimization-that-the-world-forgot-or-a-better-alternative-
+//  to-integer-modulo/]
+
+// Notes on memory leaks in Rotonda-store
+//
+// Both valgrind and miri report memory leaks on the multi-threaded predix
+// store. Valgrind only reports it when it a binary stops using the tree,
+// while still keeping it around. An interrupted use of the mt-prefix-store
+// does not report any memory leaks. Miri is persistant in reporting
+// memory leaks in the mt-prefix-store. They both report the memory leaks
+// in the same location: the init method of the node- and prefix-buckets.
+//
+// I have reasons to believe these reported memory leaks aren't real, or
+// that crossbeam-epoch leaks a bit of memory when creating a new `Atomic`
+// instance. Since neither prefix nor node buckets can or should be dropped
+// this is not a big issue anyway, it just means that an `Atomic` occupies
+// more memory than it could in an optimal situation. Since we're not storing
+// the actual meta-data in an `Atomic` (it is stored in an `ArcSwap`), this
+// means memory usage won't grow on updating the meta-data on a prefix,
+// (unless the meta-data itself grows of course, but that's up to the user).
+//
+// To get a better understanding on the nature of the reported memory leaks
+// I have created a branch (`vec_set`) that replaces the dynamically sized
+// array with a (equally sparse) Vec, that is not filled with 
+// `Atomic:::null()`, but with `Option<StoredPrefix` instead, in order to
+// see if this would eliminate the memory leaks reporting. It did not.
+// Valgrind still reports the memory leaks at the same location, although
+// they're now reported as `indirectly leaked`, instead of `directly`. Miri
+// is unchanged. The attentive reader may now suspect that the `Atomic`
+// inside the `AtomicStoredPrefix` may be the culprit, but:
+// a. Both miri and valgrind report the leaks still in the same place:
+//    the creation of the buckets, not the creation of the stored prefixes.
+// b. Tests that look at the memory usage of the prefix stores under heavy
+//    modification of existing prefixes do not exhibit memory leaking
+//    behavior.
+// c. Tests that look at memory usage under additiion of new prefixes
+//    exhibit linear incrementation of memory usage (which is expected).
+// d. Tests that look at memory usage under contention do not exhibit
+//    increased memory usage either.
+//
+// My strong suspicion is that both Miri and Valgrind report the sparse
+// slots in the buckets as leaks, no matter whether they're `Atomic::null()`,
+// or `None` values, probably as a result of the way `crossbeam-epoch`
+// indexes into these, with pointer arithmetic (unsafe as hell).
+// 
+// I would be super grateful if somebody would prove me wrong and can point
+// to an actual memory leak in the mt-prefix-store (and even more if they
+// can produce a fix for it).
+
+
 use std::{
     fmt::Debug,
     sync::{
