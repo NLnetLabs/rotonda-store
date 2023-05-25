@@ -14,11 +14,11 @@ jobs:
       matrix:
         os: [ubuntu-latest]
 
-        # Test against Rust 1.51.0 because in build.rs we say that is the oldest
-        # supported version. Test against beta and nightly Rust to get early
-        # warning of any problems that might occur with the upcoming Rust
+        # Test against Rust 1.65.0 because that is the oldest supported version
+        # according to Cargo.toml. Test against beta and nightly Rust to get
+        # early warning of any problems that might occur with the upcoming Rust
         # release. Ordered oldest Rust to newest Rust.
-        rust: [1.57.0, stable, beta, nightly]
+        rust: [1.65.0, stable, beta, nightly]
 
         # Test with no features, default features ("") and all features.
         # Ordered fewest features to most features.
