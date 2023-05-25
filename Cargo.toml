@@ -18,7 +18,7 @@ crossbeam-utils = "^0.8"
 log = "^0.4"
 rotonda-macros = "0.2.0-pre.6"
 
-routecore = { version = "0.3.0-dev", features = ["bgp", "bmp", "serde"], git = "https://github.com/NLnetLabs/routecore.git", branch = "aspath-with-hops" }
+routecore = { version = "0.4.0-dev", features = ["bgp", "bmp", "serde"], git = "https://github.com/NLnetLabs/routecore.git" }
 ansi_term = { version = "^0.12", optional = true }
 rustyline = { version = "^8", optional = true }
 csv = { version = "^1", optional = true }
