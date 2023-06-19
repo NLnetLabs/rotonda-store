@@ -69,6 +69,7 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 /// `MatchType` returned from the result. 
 /// 
 /// See [MultiThreadedStore::match_prefix] for more details.
+#[derive(Debug, Clone)]
 pub struct MatchOptions {
     /// The requested [MatchType]
     pub match_type: MatchType,
