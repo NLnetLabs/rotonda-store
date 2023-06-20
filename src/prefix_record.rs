@@ -232,6 +232,20 @@ pub struct RecordSet<M: Meta> {
 }
 
 impl<M: Meta> RecordSet<M> {
+    pub fn new() -> Self {
+        Self {
+            v4: Default::default(),
+            v6: Default::default(),
+        }
+    }
+
+    pub fn push(&mut self, prefix: Prefix, meta: M) {
+        match prefix.addr() {
+            std::net::IpAddr::V4(_) => &mut self.v4,
+            std::net::IpAddr::V6(_) => &mut self.v6,
+        }.push(PublicPrefixRecord::new(prefix, meta));
+    }
+
     pub fn is_empty(&self) -> bool {
         self.v4.is_empty() && self.v6.is_empty()
     }
@@ -256,6 +270,12 @@ impl<M: Meta> RecordSet<M> {
 
     pub fn len(&self) -> usize {
         self.v4.len() + self.v6.len()
+    }
+}
+
+impl<M: Meta> Default for RecordSet<M> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
