@@ -1,6 +1,6 @@
 use std::{fmt, slice};
 
-use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
+pub use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::addr::Prefix;
