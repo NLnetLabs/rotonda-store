@@ -273,6 +273,12 @@ impl<M: Meta> RecordSet<M> {
     }
 }
 
+impl<M: Meta> Default for RecordSet<M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<M: Meta> fmt::Display for RecordSet<M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let arr_str_v4 =
