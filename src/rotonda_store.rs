@@ -81,7 +81,7 @@ pub struct MatchOptions {
     pub include_more_specifics: bool,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub enum MatchType {
     ExactMatch,
     LongestMatch,
