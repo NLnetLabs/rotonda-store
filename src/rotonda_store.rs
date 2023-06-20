@@ -1,6 +1,6 @@
 use std::{fmt, slice};
 
-use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
+pub use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use routecore::addr::Prefix;
@@ -196,6 +196,3 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
         )
     }
 }
-
-// Republish this along-side QueryResult which uses it so that users have full access to the QueryResult types.
-pub use crate::prefix_record::RecordSet;
