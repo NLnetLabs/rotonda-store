@@ -196,3 +196,6 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
         )
     }
 }
+
+// Republish this along-side QueryResult which uses it so that users have full access to the QueryResult types.
+pub use crate::prefix_record::RecordSet;
