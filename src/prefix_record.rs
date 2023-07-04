@@ -422,10 +422,17 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// existing record should be merged with newly arriving records for the same
 /// key.
 pub trait MergeUpdate {
+    /// User-defined data returned by the users implementation of the merge
+    /// operations. Set to () if not needed.
+    /// TODO: Define () as the default when the 'associated_type_defaults'
+    /// Rust feature is stabilized. See:
+    ///   https://github.com/rust-lang/rust/issues/29661
+    type UserData;
+
     fn merge_update(
         &mut self,
         update_meta: Self,
-    ) -> Result<(), Box<dyn std::error::Error>>;
+    ) -> Result<Self::UserData, Box<dyn std::error::Error>>;
 
     // This is part of the Read-Copy-Update pattern for updating a record
     // concurrently. The Read part should be done by the caller and then
@@ -439,7 +446,7 @@ pub trait MergeUpdate {
     fn clone_merge_update(
         &self,
         update_meta: &Self,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+    ) -> Result<(Self, Self::UserData), Box<dyn std::error::Error>>
     where
         Self: std::marker::Sized;
 }

@@ -14,6 +14,8 @@ mod full_table {
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
     impl MergeUpdate for ComplexPrefixAs {
+        type UserData = ();
+
         fn merge_update(
             &mut self,
             update_record: ComplexPrefixAs,
@@ -25,13 +27,13 @@ mod full_table {
         fn clone_merge_update(
             &self,
             update_meta: &Self,
-        ) -> Result<Self, Box<dyn std::error::Error>>
+        ) -> Result<(Self, Self::UserData), Box<dyn std::error::Error>>
         where
             Self: std::marker::Sized,
         {
             let mut new_meta = update_meta.0.clone();
             new_meta.push(self.0[0]);
-            Ok(ComplexPrefixAs(new_meta))
+            Ok((ComplexPrefixAs(new_meta), ()))
         }
     }
 

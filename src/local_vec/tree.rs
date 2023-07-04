@@ -335,7 +335,7 @@ where
         &mut self,
         update_node_idx: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         meta: Store::Meta,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<<Store::Meta as MergeUpdate>::UserData, Box<dyn std::error::Error>> {
         match self.store.retrieve_prefix_mut(update_node_idx) {
             Some(update_pfx) => {
                 <Store::Meta>::merge_update(&mut update_pfx.meta, meta)
