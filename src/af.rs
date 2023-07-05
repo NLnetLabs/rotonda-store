@@ -46,6 +46,12 @@ pub trait AddressFamily:
 
     // temporary function, this will botch IPv6 completely.
     fn dangerously_truncate_to_usize(self) -> usize;
+
+    // For the sake of searching for 0/0, check the the right shift, since
+    // since shifting with MAXLEN (32 in Ipv4, or 128 in IPv6) will panic
+    // in debug mode. A failed check will simply retutrn zero. Used in
+    // finding node_ids (always zero for 0/0).
+    fn checked_shr_or_zero(self, rhs: u32) -> Self;
 }
 
 //-------------- Ipv4 Type --------------------------------------------------
@@ -139,6 +145,10 @@ impl AddressFamily for IPv4 {
     fn dangerously_truncate_to_usize(self) -> usize {
         // not dangerous at all.
         self as usize
+    }
+
+    fn checked_shr_or_zero(self, rhs: u32) -> Self {
+        self.checked_shr(rhs).unwrap_or(0)
     }
 }
 
@@ -249,6 +259,10 @@ impl AddressFamily for IPv6 {
     fn dangerously_truncate_to_usize(self) -> usize {
         // this will chop off the high bits.
         self as usize
+    }
+
+    fn checked_shr_or_zero(self, rhs: u32) -> Self {
+        self.checked_shr(rhs).unwrap_or(0)
     }
 }
 

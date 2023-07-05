@@ -36,7 +36,7 @@
 //
 // Currently, the meta-data is an atomically stored value, that is required to
 // implement the `Meta` trait and is clonable. New meta-data
-// instances are stored atomically without further ado, but updates to a 
+// instances are stored atomically without further ado, but updates to a
 // piece of meta-data are done by merging the previous meta-data with the new
 // meta-data, through use of the `MergeUpdate` trait.
 //
@@ -44,8 +44,8 @@
 // for a prefix (for now).
 //
 // Future work could have a user-configurable retention strategy that allows
-// the meta-data to be stored as a linked-list of references, where each 
-// meta-data object has a reference to its predecessor. 
+// the meta-data to be stored as a linked-list of references, where each
+// meta-data object has a reference to its predecessor.
 //
 // Prefix example
 //
@@ -100,7 +100,7 @@
 // As said, the prefixes and nodes are stored in buckets. A bucket right now
 // is of type `[MaybeUnit<Atomic<StoredPrefix>>]`, this has the advantage
 // that the length can be variable, based on the stride size for that level.
-// It saves us to have to implement a generic something. 
+// It saves us to have to implement a generic something.
 // Another advantage is the fixed place in which an atomic StoredPrefix
 // lives: this makes compare-and-swapping it relatively straight forward.
 // Each accessing thread would try to read/write the exact same entry in the
@@ -111,9 +111,9 @@
 // would not have this disadvantage. Manipulating the whole vec atomically
 // though is very tricky (we would have to aotmically compare-and-swap the
 // whole vec each time the prefix meta-data is changed) and inefficient,
-// since we would have to either keep the vec sorted on `PrefixId` at all 
+// since we would have to either keep the vec sorted on `PrefixId` at all
 // times, or, we would have to inspect each value in the vec on *every* read
-// or write. the StoredPrefix (this is a challenge in itself, since the 
+// or write. the StoredPrefix (this is a challenge in itself, since the
 // StoredPrefix needs to be read atomically to retrieve the PrefixId).
 // Compare-and-swapping a whole vec most probably would need a hash over the
 // vec to determine whether it was changed. I gave up on this approach,
@@ -122,7 +122,7 @@
 // indexes in the same array on collision (the array mentioned above), before
 // heading off and following the reference to the next bucket. This would
 // limit the amount of (sparse) arrays being created for a typical prefix
-// treebitmap, at the cost of longer average search times. Two 
+// treebitmap, at the cost of longer average search times. Two
 // implementations of this approach are Cuckoo hashing[^1], and Skip Lists.
 // Skip lists[^2] are a probablistic data-structyure, famously used by Redis,
 // (and by TiKv). I haven't tries either of these. Crossbeam has a SkipList
@@ -159,7 +159,7 @@
 //
 // To get a better understanding on the nature of the reported memory leaks
 // I have created a branch (`vec_set`) that replaces the dynamically sized
-// array with a (equally sparse) Vec, that is not filled with 
+// array with a (equally sparse) Vec, that is not filled with
 // `Atomic:::null()`, but with `Option<StoredPrefix` instead, in order to
 // see if this would eliminate the memory leaks reporting. It did not.
 // Valgrind still reports the memory leaks at the same location, although
@@ -180,11 +180,10 @@
 // slots in the buckets as leaks, no matter whether they're `Atomic::null()`,
 // or `None` values, probably as a result of the way `crossbeam-epoch`
 // indexes into these, with pointer arithmetic (unsafe as hell).
-// 
+//
 // I would be super grateful if somebody would prove me wrong and can point
 // to an actual memory leak in the mt-prefix-store (and even more if they
 // can produce a fix for it).
-
 
 use std::{
     fmt::Debug,
@@ -585,10 +584,9 @@ impl<
             atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
 
         loop {
-            
             match inner_stored_prefix.is_null() {
                 // There's no StoredPrefix at this location yet. Create a new
-                // PrefixRecord with our record and try to store it in the 
+                // PrefixRecord with our record and try to store it in the
                 // empty slot.
                 true => {
                     if log_enabled!(log::Level::Debug) {
@@ -653,12 +651,12 @@ impl<
                             // reuse the returned existing prefix_record,
                             // for the next iteration.
                             inner_stored_prefix = current;
-                            
+
                             continue;
                         }
                     }
                 }
-                // There already is a StoredPrefix with a record at this 
+                // There already is a StoredPrefix with a record at this
                 // location. Perform a Read-Copy-Update (RCU) on the record
                 // to update its value.
                 false => {
@@ -670,7 +668,7 @@ impl<
                             prefix.get_len()
                         );
                     }
-                
+
                     // We don't have to reload the prefix record at this
                     // location: Once it is created the prefix-record itself
                     // will not be changed anymore, only its record can be
@@ -702,8 +700,7 @@ impl<
         &'a self,
         search_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Result<(&'a AtomicStoredPrefix<AF, M>, u8), PrefixStoreError>
-    {
+    ) -> Result<(&'a AtomicStoredPrefix<AF, M>, u8), PrefixStoreError> {
         let mut prefix_set = self
             .prefixes
             .get_root_prefix_set(search_prefix_id.get_len());
@@ -827,7 +824,11 @@ impl<
         prefix_id: PrefixId<AF>,
         guard: &'a Guard,
     ) -> Option<(&StoredPrefix<AF, M>, &'a usize)> {
-        struct SearchLevel<'s, AF: AddressFamily, M: crate::prefix_record::Meta> {
+        struct SearchLevel<
+            's,
+            AF: AddressFamily,
+            M: crate::prefix_record::Meta,
+        > {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
                 &PrefixSet<AF, M>,
@@ -929,10 +930,15 @@ impl<
                         node_len,
                     ),
                     // NOT THE HASHING FUNCTION!
+                    // Do the right shift in a checked manner, for the sake
+                    // of 0/0. A search for 0/0 will perform a 0 << MAXLEN,
+                    // which will panic in debug mode (undefined behaviour
+                    // in prod).
                     BitSpan::new(
-                        ((prefix.get_net() << node_len)
-                            >> (AF::BITS - (prefix.get_len() - node_len)))
-                            .dangerously_truncate_to_u32(),
+                        ((prefix.get_net() << node_len).checked_shr_or_zero(
+                            (AF::BITS - (prefix.get_len() - node_len)).into(),
+                        ))
+                        .dangerously_truncate_to_u32(),
                         prefix.get_len() - node_len,
                     ),
                 );
