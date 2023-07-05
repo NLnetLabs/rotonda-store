@@ -14,7 +14,7 @@ mod tests {
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
     impl MergeUpdate for ComplexPrefixAs {
-        type UserData = ();
+        type UserDataOut = ();
 
         fn merge_update(
             &mut self,
@@ -27,7 +27,7 @@ mod tests {
         fn clone_merge_update(
             &self,
             update_meta: &Self,
-        ) -> Result<(Self, Self::UserData), Box<dyn std::error::Error>>
+        ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
         where
             Self: std::marker::Sized,
         {

@@ -447,7 +447,7 @@ impl<
         &self,
         pfx: PrefixId<AF>,
         record: M,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserData>, u32), PrefixStoreError> {
+    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let guard = &epoch::pin();
 
         if pfx.get_len() == 0 {
@@ -554,7 +554,7 @@ impl<
         &self,
         new_meta: M,
         guard: &epoch::Guard,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserData>, u32), PrefixStoreError> {
+    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),

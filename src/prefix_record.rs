@@ -427,12 +427,12 @@ pub trait MergeUpdate {
     /// TODO: Define () as the default when the 'associated_type_defaults'
     /// Rust feature is stabilized. See:
     ///   https://github.com/rust-lang/rust/issues/29661
-    type UserData;
+    type UserDataOut;
 
     fn merge_update(
         &mut self,
         update_meta: Self,
-    ) -> Result<Self::UserData, Box<dyn std::error::Error>>;
+    ) -> Result<Self::UserDataOut, Box<dyn std::error::Error>>;
 
     // This is part of the Read-Copy-Update pattern for updating a record
     // concurrently. The Read part should be done by the caller and then
@@ -446,7 +446,7 @@ pub trait MergeUpdate {
     fn clone_merge_update(
         &self,
         update_meta: &Self,
-    ) -> Result<(Self, Self::UserData), Box<dyn std::error::Error>>
+    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
     where
         Self: std::marker::Sized;
 }

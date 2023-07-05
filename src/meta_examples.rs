@@ -6,7 +6,7 @@ use crate::prefix_record::MergeUpdate;
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
-    type UserData = ();
+    type UserDataOut = ();
 
     fn merge_update(
         &mut self,
@@ -19,7 +19,7 @@ impl MergeUpdate for PrefixAs {
     fn clone_merge_update(
         &self,
         update_meta: &Self,
-    ) -> Result<(Self, Self::UserData), Box<dyn std::error::Error>>
+    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
     where
         Self: std::marker::Sized,
     {
@@ -64,7 +64,7 @@ impl std::fmt::Display for NoMeta {
 }
 
 impl MergeUpdate for NoMeta {
-    type UserData = ();
+    type UserDataOut = ();
 
     fn merge_update(
         &mut self,
@@ -76,7 +76,7 @@ impl MergeUpdate for NoMeta {
     fn clone_merge_update(
         &self,
         _: &NoMeta,
-    ) -> Result<(Self, Self::UserData), Box<dyn std::error::Error>> {
+    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>> {
         Ok((NoMeta::Empty, ()))
     }
 }

@@ -571,7 +571,7 @@ impl<
         prefix: PrefixId<AF>,
         record: M,
         guard: &Guard,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserData>, u32), PrefixStoreError> {
+    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let mut retry_count = 0;
         let mut new_record = Arc::new(record);
 
@@ -680,7 +680,7 @@ impl<
                     // The cycle will retry the closure until it is able to
                     // store the result produced by the last invocation. On
                     // each invocation the implementer of the MergeUpdate
-                    // trait can choose to output some user defined UserData
+                    // trait can choose to output some user defined UserDataOut
                     // which we store and return to them.
                     let mut user_data = None;
 
