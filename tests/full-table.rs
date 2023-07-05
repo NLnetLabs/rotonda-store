@@ -14,11 +14,13 @@ mod tests {
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
     impl MergeUpdate for ComplexPrefixAs {
+        type UserDataIn = ();
         type UserDataOut = ();
 
         fn merge_update(
             &mut self,
             update_record: ComplexPrefixAs,
+            _: Self::UserDataIn,
         ) -> Result<(), Box<dyn std::error::Error>> {
             self.0 = update_record.0;
             Ok(())
@@ -27,6 +29,7 @@ mod tests {
         fn clone_merge_update(
             &self,
             update_meta: &Self,
+            _: &Self::UserDataIn,
         ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
         where
             Self: std::marker::Sized,
@@ -96,7 +99,7 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta, ()) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

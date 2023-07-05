@@ -570,6 +570,7 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         record: M,
+        user_data_in: <M as MergeUpdate>::UserDataIn,
         guard: &Guard,
     ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let mut retry_count = 0;
@@ -682,7 +683,7 @@ impl<
                     // each invocation the implementer of the MergeUpdate
                     // trait can choose to output some user defined UserDataOut
                     // which we store and return to them.
-                    let mut user_data = None;
+                    let mut user_data_out_final = None;
 
                     unsafe { inner_stored_prefix.deref() }
                         .record
@@ -699,8 +700,13 @@ impl<
 
                             // TODO: if retry_count > 1 then backoff?
 
-                            let (res, ud) = meta.clone_merge_update(&new_record).unwrap();
-                            user_data = Some(ud);
+                            let (res, user_data_out) = meta
+                                .clone_merge_update(
+                                    &new_record,
+                                    &user_data_in,
+                                )
+                                .unwrap();
+                            user_data_out_final = Some(user_data_out);
                             res
                         });
 
@@ -708,7 +714,7 @@ impl<
                     retry_count -= 1;
 
                     // The user data must have been set by now so this unwrap is safe.
-                    let user_data = user_data.unwrap();
+                    let user_data = user_data_out_final.unwrap();
 
                     return Ok((Upsert::Update(user_data), retry_count));
                 }

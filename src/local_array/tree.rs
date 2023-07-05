@@ -447,11 +447,12 @@ impl<
         &self,
         pfx: PrefixId<AF>,
         record: M,
+        user_data: <M as MergeUpdate>::UserDataIn,
     ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let guard = &epoch::pin();
 
         if pfx.get_len() == 0 {
-            let res = self.update_default_route_prefix_meta(record, guard)?;
+            let res = self.update_default_route_prefix_meta(record, user_data, guard)?;
             return Ok(res);
         }
 
@@ -483,6 +484,7 @@ impl<
             let node_result = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
+                user_data;
                 guard;
                 nibble_len;
                 nibble;
@@ -553,12 +555,14 @@ impl<
     fn update_default_route_prefix_meta(
         &self,
         new_meta: M,
+        user_data: <M as MergeUpdate>::UserDataIn,
         guard: &epoch::Guard,
     ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
             new_meta,
+            user_data,
             guard,
         )
     }

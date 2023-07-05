@@ -93,7 +93,7 @@ mod tests {
             ), // 27
         ];
         for pfx in pfxs.iter().flatten() {
-            tree_bitmap.insert(pfx, PrefixAs(666))?;
+            tree_bitmap.insert(pfx, PrefixAs(666), ())?;
         }
         println!("------ end of inserts\n");
 

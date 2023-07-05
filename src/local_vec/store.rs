@@ -55,6 +55,7 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
         &mut self,
         prefix: &Prefix,
         meta: M,
+        user_data: <M as MergeUpdate>::UserDataIn,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
             std::net::IpAddr::V4(addr) => {
@@ -62,14 +63,16 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
                     addr.into(),
                     prefix.len(),
                     meta,
-                ))
+                ),
+                user_data)
             }
             std::net::IpAddr::V6(addr) => {
                 self.v6.insert(InternalPrefixRecord::new_with_meta(
                     addr.into(),
                     prefix.len(),
                     meta,
-                ))
+                ),
+                user_data)
             }
         }
     }

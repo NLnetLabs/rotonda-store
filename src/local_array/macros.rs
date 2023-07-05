@@ -6,6 +6,7 @@
 macro_rules! insert_match {
     (
         $self: ident;
+        $user_data: ident;
         $guard: ident;
         $nibble_len: expr;
         $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
@@ -97,13 +98,13 @@ macro_rules! insert_match {
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },
                                     (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard)
+                                        return $self.store.upsert_prefix($pfx, $record, $user_data, $guard)
                                             .and_then(|r| Ok((r.0, r.1 + $acc_retry_count + local_retry_count + retry_count)))
                                         // Log
                                         // $self.stats[$stats_level].inc_prefix_count($level);
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard)
+                                        return $self.store.upsert_prefix($pfx, $record, $user_data, $guard)
                                             .and_then(|r| Ok((r.0, r.1 + $acc_retry_count + local_retry_count + retry_count)))
                                     }
                                 }   // end of eval_node_or_prefix_at
