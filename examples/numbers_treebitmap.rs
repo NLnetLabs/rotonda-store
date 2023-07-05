@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
+            tree_bitmap.insert(&pfx.prefix, pfx.meta, ())?;
         }
         
         #[cfg(feature = "cli")]

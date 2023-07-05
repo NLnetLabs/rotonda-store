@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
+                tree_bitmap.insert(&pfx.prefix, pfx.meta, ())?;
             }
             let ready = std::time::Instant::now();
             let dur_insert_nanos =

@@ -10,11 +10,13 @@ use rotonda_store::prelude::multi::*;
 pub struct ComplexPrefixAs(pub Vec<u32>);
 
 impl MergeUpdate for ComplexPrefixAs {
+    type UserDataIn = ();
     type UserDataOut = ();
 
     fn merge_update(
         &mut self,
         update_record: ComplexPrefixAs,
+        _: Self::UserDataIn,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.0 = update_record.0;
         Ok(())
@@ -23,6 +25,7 @@ impl MergeUpdate for ComplexPrefixAs {
     fn clone_merge_update(
         &self,
         update_meta: &Self,
+        _: &Self::UserDataIn,
     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
     where
         Self: std::marker::Sized,
@@ -72,6 +75,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match tree_bitmap.insert(
                             &pfx.unwrap(),
                             ComplexPrefixAs([i as u32].to_vec()),
+                            ()
                         ) {
                             Ok(metrics) => {
                                 if metrics.1 > 0 {

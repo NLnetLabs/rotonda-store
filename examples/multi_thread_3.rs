@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     x += 1;
                     // print!("{}-", i);
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), PrefixAs(i as u32))
+                        .insert(&pfx.unwrap(), PrefixAs(i as u32), ())
                     {
                         Ok(metrics) => {
                             if metrics.1 > 0  {
