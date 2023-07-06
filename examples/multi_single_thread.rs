@@ -43,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // x += 1;
                 // print!("{}-", i);
                 let asn: u32 = rng.gen();
-                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(asn), ()) {
+                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(asn)) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

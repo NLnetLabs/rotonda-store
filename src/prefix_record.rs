@@ -423,7 +423,7 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// key.
 pub trait MergeUpdate {
     /// User-defined data to be passed in to the merge implementation.
-    type UserDataIn;
+    type UserDataIn: Debug + Sync + Send;
 
     /// User-defined data returned by the users implementation of the merge
     /// operations. Set to () if not needed.
@@ -435,7 +435,7 @@ pub trait MergeUpdate {
     fn merge_update(
         &mut self,
         update_meta: Self,
-        user_data: Self::UserDataIn,
+        user_data: Option<&Self::UserDataIn>,
     ) -> Result<Self::UserDataOut, Box<dyn std::error::Error>>;
 
     // This is part of the Read-Copy-Update pattern for updating a record
@@ -450,7 +450,7 @@ pub trait MergeUpdate {
     fn clone_merge_update(
         &self,
         update_meta: &Self,
-        user_data: &Self::UserDataIn,
+        user_data: Option<&Self::UserDataIn>,
     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
     where
         Self: std::marker::Sized;

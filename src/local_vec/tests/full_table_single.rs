@@ -20,7 +20,7 @@ mod full_table {
         fn merge_update(
             &mut self,
             update_record: ComplexPrefixAs,
-            _: Self::UserDataIn,
+            _: Option<&Self::UserDataIn>,
         ) -> Result<(), Box<dyn std::error::Error>> {
             self.0 = update_record.0;
             Ok(())
@@ -29,7 +29,7 @@ mod full_table {
         fn clone_merge_update(
             &self,
             update_meta: &Self,
-            _: &Self::UserDataIn,
+            _: Option<&Self::UserDataIn>,
         ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
         where
             Self: std::marker::Sized,
@@ -99,7 +99,7 @@ mod full_table {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta, ()) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta, None) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

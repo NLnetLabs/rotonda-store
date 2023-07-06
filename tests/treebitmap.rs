@@ -14,7 +14,7 @@ mod tests {
         )
         .unwrap();
 
-        trie.insert(&min_pfx, NoMeta::Empty, ())?;
+        trie.insert(&min_pfx, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -42,7 +42,7 @@ mod tests {
         );
 
         // drop(locks);
-        trie.insert(&max_pfx?, NoMeta::Empty, ())?;
+        trie.insert(&max_pfx?, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(255, 255, 255, 255).into(),
             32,
@@ -292,7 +292,7 @@ mod tests {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx?, PrefixAs(666), ())?;
+            tree_bitmap.insert(&pfx?, PrefixAs(666))?;
         }
 
         // let (store_v4, store_v6) = tree_bitmap.acquire_prefixes_rwlock_read();
@@ -378,7 +378,7 @@ mod tests {
             let mut i_len_s = 0;
             for pfx in pfx_vec {
                 i_len_s += 1;
-                tree_bitmap.insert(&pfx, NoMeta::Empty, ())?;
+                tree_bitmap.insert(&pfx, NoMeta::Empty)?;
 
                 let res_pfx = Prefix::new_relaxed(
                     std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),

@@ -32,7 +32,7 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(pfx, PrefixAs(666), ())?;
+            tree_bitmap.insert(pfx, PrefixAs(666), None)?;
         }
         println!("------ end of inserts\n");
 
@@ -102,7 +102,7 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666), ())?;
+            tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666), None)?;
         }
         println!("------ end of inserts\n");
         

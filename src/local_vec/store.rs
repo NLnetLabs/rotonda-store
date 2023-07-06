@@ -55,7 +55,7 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
         &mut self,
         prefix: &Prefix,
         meta: M,
-        user_data: <M as MergeUpdate>::UserDataIn,
+        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
             std::net::IpAddr::V4(addr) => {

@@ -570,8 +570,8 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         record: M,
-        user_data_in: <M as MergeUpdate>::UserDataIn,
         guard: &Guard,
+        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let mut retry_count = 0;
         let mut new_record = Arc::new(record);
@@ -703,7 +703,7 @@ impl<
                             let (res, user_data_out) = meta
                                 .clone_merge_update(
                                     &new_record,
-                                    &user_data_in,
+                                    user_data,
                                 )
                                 .unwrap();
                             user_data_out_final = Some(user_data_out);

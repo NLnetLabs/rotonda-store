@@ -42,7 +42,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let guard = &crossbeam_epoch::pin();
                         while x < 10_000 {
                             let asn = PrefixAs(rng.gen());
-                            match tree_bitmap.insert(&pfx.unwrap(), asn, ()) {
+                            match tree_bitmap.insert(&pfx.unwrap(), asn) {
                                 Ok(metrics) => {
                                     if let Upsert::Insert = metrics.0 {
                                         println!(

@@ -184,7 +184,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
-        tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty, ())?;
+        tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty)?;
     }
     println!("------ end of inserts\n");
     // println!("{:#?}", tree_bitmap.store.prefixes);

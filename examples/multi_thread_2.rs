@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     thread::park();
                 }
 
-                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(i as u32), ()) {
+                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(i as u32)) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
