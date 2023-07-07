@@ -14,9 +14,13 @@ mod full_table {
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
     impl MergeUpdate for ComplexPrefixAs {
+        type UserDataIn = ();
+        type UserDataOut = ();
+
         fn merge_update(
             &mut self,
             update_record: ComplexPrefixAs,
+            _: Option<&Self::UserDataIn>,
         ) -> Result<(), Box<dyn std::error::Error>> {
             self.0 = update_record.0;
             Ok(())
@@ -25,13 +29,14 @@ mod full_table {
         fn clone_merge_update(
             &self,
             update_meta: &Self,
-        ) -> Result<Self, Box<dyn std::error::Error>>
+            _: Option<&Self::UserDataIn>,
+        ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
         where
             Self: std::marker::Sized,
         {
             let mut new_meta = update_meta.0.clone();
             new_meta.push(self.0[0]);
-            Ok(ComplexPrefixAs(new_meta))
+            Ok((ComplexPrefixAs(new_meta), ()))
         }
     }
 
@@ -94,7 +99,7 @@ mod full_table {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta, None) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

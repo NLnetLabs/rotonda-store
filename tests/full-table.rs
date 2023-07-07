@@ -14,9 +14,13 @@ mod tests {
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
     impl MergeUpdate for ComplexPrefixAs {
+        type UserDataIn = String;
+        type UserDataOut = ();
+
         fn merge_update(
             &mut self,
             update_record: ComplexPrefixAs,
+            _: Option<&Self::UserDataIn>,
         ) -> Result<(), Box<dyn std::error::Error>> {
             self.0 = update_record.0;
             Ok(())
@@ -25,13 +29,14 @@ mod tests {
         fn clone_merge_update(
             &self,
             update_meta: &Self,
-        ) -> Result<Self, Box<dyn std::error::Error>>
+            _: Option<&Self::UserDataIn>,
+        ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
         where
             Self: std::marker::Sized,
         {
             let mut new_meta = update_meta.0.clone();
             new_meta.push(self.0[0]);
-            Ok(ComplexPrefixAs(new_meta))
+            Ok((ComplexPrefixAs(new_meta), ()))
         }
     }
 
@@ -85,7 +90,8 @@ mod tests {
         ];
         for _strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?;
+            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?
+                .with_user_data("Testing".to_string());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);

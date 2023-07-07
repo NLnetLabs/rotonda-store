@@ -6,9 +6,13 @@ use crate::prefix_record::MergeUpdate;
 pub struct PrefixAs(pub u32);
 
 impl MergeUpdate for PrefixAs {
+    type UserDataIn = ();
+    type UserDataOut = ();
+
     fn merge_update(
         &mut self,
         update_record: PrefixAs,
+        _: Option<&Self::UserDataIn>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         self.0 = update_record.0;
         Ok(())
@@ -17,11 +21,12 @@ impl MergeUpdate for PrefixAs {
     fn clone_merge_update(
         &self,
         update_meta: &Self,
-    ) -> Result<Self, Box<dyn std::error::Error>>
+        _: Option<&Self::UserDataIn>,
+    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
     where
         Self: std::marker::Sized,
     {
-        Ok(PrefixAs(update_meta.0))
+        Ok((PrefixAs(update_meta.0), ()))
     }
 }
 
@@ -62,9 +67,13 @@ impl std::fmt::Display for NoMeta {
 }
 
 impl MergeUpdate for NoMeta {
+    type UserDataIn = ();
+    type UserDataOut = ();
+
     fn merge_update(
         &mut self,
         _: NoMeta,
+        _: Option<&Self::UserDataIn>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         Ok(())
     }
@@ -72,7 +81,8 @@ impl MergeUpdate for NoMeta {
     fn clone_merge_update(
         &self,
         _: &NoMeta,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        Ok(NoMeta::Empty)
+        _: Option<&Self::UserDataIn>,
+    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>> {
+        Ok((NoMeta::Empty, ()))
     }
 }

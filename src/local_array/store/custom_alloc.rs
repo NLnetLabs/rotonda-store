@@ -201,9 +201,9 @@ use log::{debug, info, log_enabled, trace};
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
 use std::marker::PhantomData;
 
-use crate::local_array::{
+use crate::{local_array::{
     bit_span::BitSpan, store::errors::PrefixStoreError,
-};
+}, prefix_record::MergeUpdate};
 use crate::{local_array::tree::*, stats::CreatedNodes};
 
 // use crate::prefix_record::InternalPrefixRecord;
@@ -291,7 +291,7 @@ pub struct StoreStats {
 #[derive(Debug)]
 pub struct CustomAllocStorage<
     AF: AddressFamily,
-    M: crate::prefix_record::Meta + crate::prefix_record::MergeUpdate,
+    M: crate::prefix_record::Meta + MergeUpdate,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
@@ -570,7 +570,8 @@ impl<
         prefix: PrefixId<AF>,
         record: M,
         guard: &Guard,
-    ) -> Result<(Upsert, u32), PrefixStoreError> {
+        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let mut retry_count = 0;
         let mut new_record = Arc::new(record);
 
@@ -673,14 +674,47 @@ impl<
                     // location: Once it is created the prefix-record itself
                     // will not be changed anymore, only its record can be
                     // RCU'd.
+
+                    // Prepare to invoke the ArcSwap read-copy-update cycle.
+                    // The cycle will retry the closure until it is able to
+                    // store the result produced by the last invocation. On
+                    // each invocation the implementer of the MergeUpdate
+                    // trait can choose to output some user defined UserDataOut
+                    // which we store and return to them.
+                    let mut user_data_out_final = None;
+
                     unsafe { inner_stored_prefix.deref() }
                         .record
                         .as_arc_swap()
                         .rcu(|meta| {
-                            meta.clone_merge_update(&new_record).unwrap()
+                            // Track how many times the RCU operation invoked
+                            // us. We don't actually know if this is a retry
+                            // or the first invocation, so our counter becomes
+                            // one too high. We can't set it to -1 to start
+                            // with as it is unsigned, so outside the closure
+                            // below we correct the counter by subtracting
+                            // one from it.
+                            retry_count += 1;
+
+                            // TODO: if retry_count > 1 then backoff?
+
+                            let (res, user_data_out) = meta
+                                .clone_merge_update(
+                                    &new_record,
+                                    user_data,
+                                )
+                                .unwrap();
+                            user_data_out_final = Some(user_data_out);
+                            res
                         });
 
-                    return Ok((Upsert::Update, retry_count));
+                    // Correct the retry counter as it is off by one.
+                    retry_count -= 1;
+
+                    // The user data must have been set by now so this unwrap is safe.
+                    let user_data = user_data_out_final.unwrap();
+
+                    return Ok((Upsert::Update(user_data), retry_count));
                 }
             }
         }
@@ -1041,16 +1075,16 @@ impl<
 }
 
 //------------ Upsert -------------------------------------------------------
-pub enum Upsert {
+pub enum Upsert<T> {
     Insert,
-    Update,
+    Update(T),
 }
 
-impl std::fmt::Display for Upsert {
+impl<T> std::fmt::Display for Upsert<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Upsert::Insert => write!(f, "Insert"),
-            Upsert::Update => write!(f, "Update"),
+            Upsert::Update(_) => write!(f, "Update"),
         }
     }
 }
