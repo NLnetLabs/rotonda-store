@@ -17,7 +17,7 @@ arc-swap = "^1.5"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 log = "^0.4"
-rotonda-macros = { version = "0.2.0-pre.6", git = "https://github.com/NLnetLabs/rotonda-macros.git", branch = "mergeupdate-userdata" }
+rotonda-macros = { version = "0.3.0-pre.3", git = "https://github.com/NLnetLabs/rotonda-macros.git" }
 
 routecore = { version = "0.4.0-dev", features = ["bgp", "bmp", "serde"], git = "https://github.com/NLnetLabs/routecore.git" }
 ansi_term = { version = "^0.12", optional = true }
