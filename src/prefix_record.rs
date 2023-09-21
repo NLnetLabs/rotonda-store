@@ -58,7 +58,7 @@ where
             "{}/{} {}",
             AddressFamily::fmt_net(self.net),
             self.len,
-            self.meta.summary()
+            self.meta
         )
     }
 }
@@ -421,7 +421,7 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// wants to be able to be stored. It should describe how the metadata for an
 /// existing record should be merged with newly arriving records for the same
 /// key.
-pub trait MergeUpdate {
+pub trait MergeUpdate: Send + Sync {
     /// User-defined data to be passed in to the merge implementation.
     type UserDataIn: Debug + Sync + Send;
 
@@ -459,16 +459,8 @@ pub trait MergeUpdate {
 /// Trait for types that can be used as metadata of a record
 pub trait Meta
 where
-    Self: fmt::Debug + Sized + fmt::Display + Clone + MergeUpdate,
-{
-    fn summary(&self) -> String;
-}
+    Self: fmt::Debug + fmt::Display + Clone + Sized + MergeUpdate {}
 
 impl<T> Meta for T
 where
-    T: fmt::Debug + fmt::Display + Clone + MergeUpdate,
-{
-    fn summary(&self) -> String {
-        format!("{}", self)
-    }
-}
+    T: fmt::Debug + fmt::Display + Clone + Sized + MergeUpdate {}
