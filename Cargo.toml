@@ -1,5 +1,5 @@
 [package]
-authors = ["The NLnet Labs RPKI team <rpki-team@nlnetlabs.nl>"]
+authors = ["NLnet Labs <routing-team@nlnetlabs.nl>"]
 categories = ["network-programming"]
 description = "A library for storing and retrieving IP Prefixes"
 documentation = "https://docs.rs/rotonda/"
