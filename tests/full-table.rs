@@ -134,11 +134,11 @@ mod tests {
             let mut not_found_counter = 0_u32;
             let mut inet_count = 0;
             let mut len_count = 0;
-            (0..inet_max).into_iter().for_each(|i_net| {
+            (0..inet_max).for_each(|i_net| {
                 len_count = 0;
-                (0..len_max).into_iter().for_each(|s_len| {
+                (0..len_max).for_each(|s_len| {
 
-                    (0..inet_max).into_iter().for_each(|ii_net| {
+                    (0..inet_max).for_each(|ii_net| {
                         let pfx = Prefix::new_relaxed(
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
                                 .into(),
