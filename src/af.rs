@@ -103,7 +103,7 @@ impl AddressFamily for IPv4 {
     /// //                       prefix   nibble
     /// ```
     ///
-    /// # Panics
+    /// # Panics in debug mode!
     ///
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 32`.
@@ -187,8 +187,10 @@ impl AddressFamily for IPv6 {
     /// //                       prefix    nibble
     /// ```
     ///
-    /// # Panics
+    /// # Panics only in debug mode!
     ///
+    /// In release mode this will be UB (Undefined Behaviour)!
+    /// 
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 128`.
     ///
