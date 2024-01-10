@@ -1,8 +1,31 @@
 # Change Log
 
+## 0.3.0-rc0
+
+Released 2024-01-10.
+
+Breaking changes
+
+* Upsert() returns user-defined data, as well as contention count.
+* Minimal Rust Version bumped to 1.71
+* Depend on routecore 0.4.0-rc0
+
+New
+
+* RecordSet::new method; allows users to create RecordSets.
+
+Bug fixes
+
+* Fixed: Debug build couldn't handle searches for 0/0. Release versions relied on UB.
+
+Other changes
+
+* Made some structs pub
+* Added Copy derives to public types
+
 ## 0.2.0
 
-Released 2021-09-07
+Released 2021-09-07.
 
 Breaking Changes
 
@@ -27,7 +50,7 @@ Other Changes
 
 ## 0.1.1
 
-Release 2021-08-13
+Release 2021-08-13.
 
 Bug Fixes
 
