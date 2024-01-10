@@ -209,7 +209,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 match ip {
                     Ok(ip) => {
-                        rl.add_history_entry(line.as_str());
+                        rl.add_history_entry(line.as_str())?;
                         println!("Searching for prefix: {}/{}", ip, len);
 
                         pfx = Prefix::new(ip, len);
