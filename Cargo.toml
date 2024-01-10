@@ -13,7 +13,7 @@ version = "0.3.0-pre.3"
 rust-version = "1.71"
 
 [dependencies]
-arc-swap        = "^1.5"
+arc-swap        = "^1.6"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 log             = "^0.4"
