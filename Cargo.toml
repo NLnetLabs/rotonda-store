@@ -17,16 +17,16 @@ arc-swap = "^1.5"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 log = "^0.4"
-rotonda-macros = { version = "0.3.0-pre.3", git = "https://github.com/NLnetLabs/rotonda-macros.git" }
+rotonda-macros = { version = "^0.3" }
 
-routecore = { version = "0.4.0-dev", features = ["bgp", "bmp", "serde"], git = "https://github.com/NLnetLabs/routecore.git" }
+routecore = { version = "0.4.0-rc0", features = ["bgp", "bmp", "serde"] }
 ansi_term = { version = "^0.12", optional = true }
-rustyline = { version = "^8", optional = true }
+rustyline = { version = "^13", optional = true }
 csv = { version = "^1", optional = true }
 
 [dev-dependencies]
 rand = "^0.8"
-env_logger = { version = "^0.9" }
+env_logger = { version = "^0.10" }
 csv = { version = "^1" }
 
 [features]
@@ -36,4 +36,3 @@ default = []
 [[bin]]
 name = "cli"
 required-features = ["cli"]
-
