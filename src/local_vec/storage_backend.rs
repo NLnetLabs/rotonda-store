@@ -1,6 +1,5 @@
 use crate::node_id::{InMemNodeId, SortableNodeId};
 use crate::prefix_record::InternalPrefixRecord;
-pub use crate::stride::*;
 
 use crate::local_vec::tree::*;
 

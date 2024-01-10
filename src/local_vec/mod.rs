@@ -6,8 +6,6 @@ pub mod store;
 
 pub(crate) use tree::TreeBitMap;
 
-pub use store::Store;
-
 #[macro_use]
 mod macros;
 

@@ -69,10 +69,7 @@ impl Binary for U256 {
 
 impl PartialOrd for U256 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        match (self.0, &other.0) {
-            (a, b) if &a > b => Some(self.0.cmp(&other.0)),
-            _ => Some(self.1.cmp(&other.1)),
-        }
+        Some(self.cmp(other))
     }
 }
 
