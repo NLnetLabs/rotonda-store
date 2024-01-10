@@ -11,7 +11,7 @@ use log::trace;
 use super::bit_span::BitSpan;
 use super::store::iterators::SizedNodeMoreSpecificIter;
 use crate::local_array::store::iterators::SizedPrefixIter;
-pub use crate::local_array::query::*;
+
 pub use crate::local_array::tree::*;
 use crate::af::Zero;
 use crate::af::AddressFamily;
