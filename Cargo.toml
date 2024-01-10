@@ -10,24 +10,24 @@ license = "BSD-3-Clause"
 name = "rotonda-store"
 repository = "https://github.com/NLnetLabs/rotonda-store/"
 version = "0.3.0-pre.3"
-rust-version = "1.65"
+rust-version = "1.71"
 
 [dependencies]
-arc-swap = "^1.5"
+arc-swap        = "^1.5"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
-log = "^0.4"
-rotonda-macros = { version = "^0.3" }
+log             = "^0.4"
+rotonda-macros  = { version = "^0.3" }
 
-routecore = { version = "0.4.0-rc0", features = ["bgp", "bmp", "serde"] }
-ansi_term = { version = "^0.12", optional = true }
-rustyline = { version = "^13", optional = true }
-csv = { version = "^1", optional = true }
+routecore   = { version = "0.4.0-rc0", features = ["bgp", "bmp", "serde"] }
+ansi_term   = { version = "^0.12", optional = true }
+rustyline   = { version = "^13", optional = true }
+csv         = { version = "^1", optional = true }
 
 [dev-dependencies]
-rand = "^0.8"
-env_logger = { version = "^0.10" }
-csv = { version = "^1" }
+rand        = "^0.8"
+env_logger  = { version = "^0.10" }
+csv         = { version = "^1" }
 
 [features]
 cli = ["ansi_term", "rustyline", "csv"]
