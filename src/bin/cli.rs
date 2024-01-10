@@ -5,6 +5,7 @@ use rustyline::Editor;
 
 use rotonda_store::prelude::{*, multi::*};
 use rotonda_store::meta_examples::PrefixAs;
+use rustyline::history::DefaultHistory;
 
 use std::env;
 use std::error::Error;
@@ -83,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
     let guard = &epoch::pin();
 
-    let mut rl = Editor::<()>::new();
+    let mut rl = Editor::<(), DefaultHistory>::new()?;
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
         println!("No previous history.");
     }
