@@ -9,7 +9,7 @@ keywords = ["routing", "bgp"]
 license = "BSD-3-Clause"
 name = "rotonda-store"
 repository = "https://github.com/NLnetLabs/rotonda-store/"
-version = "0.3.0-rc0"
+version = "0.3.0"
 rust-version = "1.71"
 
 [dependencies]
@@ -19,7 +19,7 @@ crossbeam-utils = "^0.8"
 log             = "^0.4"
 rotonda-macros  = { version = "^0.3" }
 
-routecore   = { version = "0.4.0-rc0", features = ["bgp", "bmp", "serde"] }
+routecore   = { version = "0.4.0", features = ["bgp", "bmp", "serde"] }
 ansi_term   = { version = "^0.12", optional = true }
 rustyline   = { version = "^13", optional = true }
 csv         = { version = "^1", optional = true }
