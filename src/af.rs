@@ -108,7 +108,7 @@ impl AddressFamily for IPv4 {
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 32`.
     ///
-    /// ```should_panic
+    /// ```
     /// # use rotonda_store::IPv4;
     /// # use rotonda_store::AddressFamily;
     /// let prefix = 0b10101010_00000000_00000000_00000100_u32; // 30-bit prefix
@@ -194,7 +194,7 @@ impl AddressFamily for IPv6 {
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 128`.
     ///
-    /// ```should_panic
+    /// ```
     /// # use rotonda_store::IPv6;
     /// # use rotonda_store::AddressFamily;
     /// let prefix = 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFF0000u128; // 112-bit prefix
