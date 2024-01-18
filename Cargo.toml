@@ -9,7 +9,7 @@ keywords = ["routing", "bgp"]
 license = "BSD-3-Clause"
 name = "rotonda-store"
 repository = "https://github.com/NLnetLabs/rotonda-store/"
-version = "0.3.0"
+version = "0.4.1-dev"
 rust-version = "1.71"
 
 [dependencies]

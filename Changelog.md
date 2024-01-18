@@ -1,5 +1,16 @@
 # Change Log
 
+## Unreleased new version
+
+Breaking changes
+
+New
+
+Bug fixes
+
+Other changes
+
+
 ## 0.3.0
 
 Released 2024-01-18.
