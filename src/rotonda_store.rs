@@ -3,7 +3,7 @@ use std::{fmt, slice};
 pub use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
-use routecore::addr::Prefix;
+use inetnum::addr::Prefix;
 
 pub use crate::af::{AddressFamily, IPv4, IPv6};
 

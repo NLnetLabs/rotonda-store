@@ -3,7 +3,7 @@ use std::fmt::Debug;
 use std::{cmp::Ordering, sync::Arc};
 
 use crate::{af::AddressFamily, local_array::node::PrefixId};
-use routecore::addr::Prefix;
+use inetnum::addr::Prefix;
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -33,8 +33,8 @@ where
 
     // This should never fail, since there shouldn't be a invalid prefix in
     // this record in the first place.
-    pub fn prefix_into_pub(&self) -> routecore::addr::Prefix {
-        routecore::addr::Prefix::new(self.net.into_ipaddr(), self.len)
+    pub fn prefix_into_pub(&self) -> Prefix {
+        Prefix::new(self.net.into_ipaddr(), self.len)
             .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
     }
 
@@ -179,7 +179,7 @@ impl<M: Meta> From<PublicPrefixRecord<M>>
 
 #[derive(Clone, Debug)]
 pub struct PublicPrefixRecord<M: Meta> {
-    pub prefix: routecore::addr::Prefix,
+    pub prefix: Prefix,
     pub meta: M,
 }
 

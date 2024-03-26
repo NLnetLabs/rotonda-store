@@ -270,7 +270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 );
                             }
                             Err(
-                                routecore::addr::PrefixError::NonZeroHost,
+                                inetnum::addr::PrefixError::NonZeroHost,
                             ) => {
                                 println!("{}", Colour::Yellow.paint("Warning: Prefix has bits set to the right of the prefix length. Zeroing those out."));
                                 println!(

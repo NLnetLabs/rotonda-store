@@ -3,7 +3,7 @@ use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
 
 use rotonda_store::AddressFamily;
-use routecore::addr::Prefix;
+use inetnum::addr::Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;

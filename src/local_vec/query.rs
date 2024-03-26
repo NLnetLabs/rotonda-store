@@ -6,7 +6,7 @@ use crate::prefix_record::RecordSet;
 use crate::{MatchOptions, MatchType};
 
 use crate::af::AddressFamily;
-use routecore::addr::Prefix;
+use inetnum::addr::Prefix;
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
 pub struct PrefixId<AF: AddressFamily>((AF, u8));

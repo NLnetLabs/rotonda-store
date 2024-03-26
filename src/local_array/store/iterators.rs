@@ -26,9 +26,7 @@ use crate::{
 
 use crossbeam_epoch::Guard;
 use log::{debug, log_enabled, trace};
-use routecore::{
-    addr::Prefix
-};
+use inetnum::addr::Prefix;
 
 // ----------- PrefixIter ---------------------------------------------------
 
@@ -60,7 +58,7 @@ pub(crate) struct PrefixIter<
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for PrefixIter<'a, AF, M, PB>
 {
-    type Item = (routecore::addr::Prefix, M);
+    type Item = (inetnum::addr::Prefix, M);
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!(

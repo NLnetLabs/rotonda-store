@@ -1,4 +1,4 @@
-use routecore::addr::Prefix;
+use inetnum::addr::Prefix;
 use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
 use rotonda_store::meta_examples::NoMeta;

@@ -6,7 +6,7 @@ use super::query::QueryResult;
 use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
-use routecore::addr::Prefix;
+use inetnum::addr::Prefix;
 use crate::prefix_record::MergeUpdate;
 
 use super::query::PrefixId;

@@ -10,6 +10,8 @@ Bug fixes
 
 Other changes
 
+* Use inetnum::addr::Prefix, instead of routecore::addr::Prefix
+* Remove routecore dependency
 
 ## 0.3.0
 

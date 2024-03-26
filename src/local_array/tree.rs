@@ -105,8 +105,8 @@ impl<AF: AddressFamily> PrefixId<AF> {
 
     // This should never fail, since there shouldn't be a invalid prefix in
     // this prefix id in the first place.
-    pub fn into_pub(&self) -> routecore::addr::Prefix {
-        routecore::addr::Prefix::new(
+    pub fn into_pub(&self) -> inetnum::addr::Prefix {
+        inetnum::addr::Prefix::new(
             self.get_net().into_ipaddr(),
             self.get_len(),
         )
@@ -128,8 +128,8 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
     }
 }
 
-impl<AF: AddressFamily> From<routecore::addr::Prefix> for PrefixId<AF> {
-    fn from(value: routecore::addr::Prefix) -> Self {
+impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
+    fn from(value: inetnum::addr::Prefix) -> Self {
         Self(Some((AF::from_ipaddr(value.addr()), value.len())))
     }
 }

@@ -1,5 +1,5 @@
 
-pub use routecore::addr::Prefix;
+pub use inetnum::addr::Prefix;
 
 pub use crate::{AddressFamily, IPv4, IPv6};
 
