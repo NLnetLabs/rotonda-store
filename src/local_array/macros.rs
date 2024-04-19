@@ -31,7 +31,7 @@ macro_rules! insert_match {
         // context, one thread creating the node may be outpaced by a thread
         // reading the same node. Because the creation of a node actually
         // consists of two independent atomic operations (first setting the
-        // right bit in the parent bitarry, second storing the node in the
+        // right bit in the parent bitarray, second storing the node in the
         // store with the meta-data), a thread creating a new node may have
         // altered the parent bitarray, but not it didn't create the node
         // in the store yet. The reading thread, however, saw the bit in the

@@ -18,19 +18,19 @@ use crate::af::AddressFamily;
 
 //------------ TreeBitMap Node ----------------------------------------------
 
-// The treebitmap turned into a triebitmap, really. A Node in the treebitmap
-// now only holds a ptrbitarr bitmap and a pfxbitarr bitmap, that indicate
-// whether a node or a prefix exists in that spot. The corresponding node Ids
-// and prefix ids are calcaluted from their position in the array. Nodes do
-// *NOT* have a clue where they are in the tree, so they don't know the node
-// id they represent. Instead, the node id is calculated from the position in
-// the tree. That's why several methods take a `base_prefix` as a an argument:
-// it represents the ID of the node itself.
+// The treebitmap turned into a "trie-bitmap", really. A Node in the
+// treebitmap now only holds a ptrbitarr bitmap and a pfxbitarr bitmap, that
+// indicate whether a node or a prefix exists in that spot. The corresponding
+// node Ids and prefix ids are calculated from their position in the array.
+// Nodes do *NOT* have a clue where they are in the tree, so they don't know
+// the node id they represent. Instead, the node id is calculated from the
+// position in the tree. That's why several methods take a `base_prefix` as a
+// an argument: it represents the ID of the node itself.
 //
-// The elision of both the collection of children nodes and the prefix nodes in
-// a treebitmap node is enabled by the storage backend for the multi-threaded
-// store, since holds its entries keyed on the [node|prefix] id. (in contrast
-// with arrays or vecs, that have 
+// The elision of both the collection of children nodes and the prefix nodes
+// in a treebitmap node is enabled by the storage backend for the
+// multi-threaded store, since holds its entries keyed on the [node|prefix]
+// id. (in contrast with arrays or `vec`s, that have 
 pub struct TreeBitMapNode<
     AF,
     S,
@@ -162,7 +162,7 @@ where
         is_last_stride: bool,
     ) -> (NewNodeOrIndex<AF>, u32) {
 
-        // THE CRIICAL SECTION
+        // THE CRITICAL SECTION
         //
         // UPDATING ptrbitarr & pfxbitarr
         //
@@ -226,7 +226,7 @@ where
 
 
 
-                // THE CRIICAL SECTION
+                // THE CRITICAL SECTION
                 //
                 // UPDATING pfxbitarr
                 //
@@ -266,7 +266,7 @@ where
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
             {
 
-                // THE CRIICAL SECTION
+                // THE CRITICAL SECTION
                 //
                 // UPDATING pfxbitarr
                 //
@@ -312,7 +312,7 @@ where
 
     // This function looks for the longest marching prefix in the provided
     // nibble, by iterating over all the bits in it and comparing that with
-    // the appriopriate bytes from the requested prefix. It mutates the 
+    // the appropriate bytes from the requested prefix. It mutates the 
     // `less_specifics_vec` that was passed in to hold all the prefixes found
     // along the way.
     pub(crate) fn search_stride_for_longest_match_at(
@@ -706,7 +706,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // This iterator take a `base_prefix` since the nodes themselves have no
 // knowledge of their own prefixes, those are inferred by their position in
 // the tree (therefore, it's actually a Trie). Note that `base_prefix` +
-// `bit_span` define the actual starting prefix for this iteratator.
+// `bit_span` define the actual starting prefix for this iterator.
 //
 // `ptrbitarr` 
 // is the bitmap that holds the slots that have child nodes. 
@@ -849,7 +849,7 @@ impl<AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride5> {
 // `pfxbitarr` is the bitmap that contains the prefixes. Every 1 in the
 // bitmap means that the prefix is hosted by this node. Moreover, the
 // position in the bitmap describes the address part of the prefix, given
-// a `base prefix`. The descibed prefix is the bits of the `base_prefix`
+// a `base prefix`. The described prefix is the bits of the `base_prefix`
 // bitmap appended by the `bit span` bits.
 //
 // The length of the prefix is
@@ -896,7 +896,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // This iterator take a `base_prefix` since the nodes themselves have no
 // knowledge of their own prefixes, those are inferred by their position in
 // the tree (therefore, it's actually a Trie). Note that `base_prefix` +
-// `bit_span` define the actual starting prefix for this iteratator.
+// `bit_span` define the actual starting prefix for this iterator.
 //
 // `pfxbitarr` 
 // is the bitmap that holds the slots that have prefixes.
@@ -932,7 +932,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // (5) and the the number of bits in the start_bit_span (4). The number of 
 // iterations in the above example is therefore 1 << (5 - 3) = 4.
 // Unlike the MoreSpecificPrefixIter, we will have to consider more lengths
-// than just the bit_span len. We will have to jump a few pfxbitarr birs and
+// than just the bit_span len. We will have to jump a few pfxbitarr bits and
 // move to the next stride size in the bitmap, starting at bit_array 0010, or
 // the bit_span { bits: 2, len: 3 }, a.k.a. 0010 << 1. But now we will have
 // to go over a different amount of 1 << (5 - 4) = 2 iterations to reap the
@@ -941,7 +941,8 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // immutables
     base_prefix: StrideNodeId<AF>,
-    pfxbitarr: <<S as crate::local_array::atomic_stride::Stride>::AtomicPfxSize as crate::local_array::atomic_stride::AtomicBitmap>::InnerType,
+    pfxbitarr: <<S as crate::local_array::atomic_stride::Stride>::AtomicPfxSize 
+        as crate::local_array::atomic_stride::AtomicBitmap>::InnerType,
     // we need to keep around only the `bits` part of the `bit_span`
     // technically, (it needs resetting the current state to it after each
     // prefix-length), but we'll keep the start-length as well for clarity

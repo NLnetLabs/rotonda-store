@@ -184,7 +184,7 @@ where
     // In a LMP search we have to go over all the nibble lengths in the
     // stride up until the value of the actual nibble length were looking for
     // (until we reach stride length for all strides that aren't the last)
-    // and see if the prefix bit in that posision is set. Note that this does
+    // and see if the prefix bit in that position is set. Note that this does
     // not search for prefixes with length 0 (which would always match).
     // So for matching a nibble 1010, we have to search for 1, 10, 101 and
     // 1010 on resp. position 1, 5, 12 and 25:
@@ -300,7 +300,7 @@ where
         //---- Stride Processing --------------------------------------------
 
         // We're going to iterate over all the strides in the treebitmap (so
-        // up to the last bit in the max prefix lentgth for that tree). When
+        // up to the last bit in the max prefix length for that tree). When
         // a final prefix is found or we get to the end of the strides,
         // depending on the options.match_type (the type requested by the
         // user). we ALWAYS break out of the loop. WE ALWAYS BREAK OUT OF THE

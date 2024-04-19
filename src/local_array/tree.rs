@@ -245,7 +245,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
         }
     }
 
-    // get_serial() and update_serial() are intimiately linked in the
+    // get_serial() and update_serial() are intimately linked in the
     // critical section of updating a node.
     //
     // The layout of the critical section is as follows:
@@ -254,7 +254,7 @@ impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
     // 3. store work result in the node
     // 4. update_serial() to update the serial number of the node if
     //    and only if the serial is the same as the one retrieved in step 1.
-    // 5. check the result of update_serial(). When succesful, we're done,
+    // 5. check the result of update_serial(). When successful, we're done,
     //    otherwise, rollback the work result & repeat from step 1.
     pub fn get_serial(&self) -> usize {
         let serial = self.serial.load(Ordering::SeqCst);
@@ -530,16 +530,16 @@ impl<
         self.store.get_root_node_id()
     }
 
-    // Yes, we're hating this. But, the root node has no room for a serial
-    // of the prefix 0/0 (the default route), which doesn't even matter,
-    // unless, UNLESS, somebody wants to store a default route. So we have
-    // to store a serial for this prefix. The normal place for a serial of
-    // any prefix is on the pfxvec of its paren. But, hey, guess what, the
-    // default-route-prefix lives *on* the root node, and, you know, the
-    // root node doesn't have a parent. We can:
+    // Yes, we're hating this. But, the root node has no room for a serial of
+    // the prefix 0/0 (the default route), which doesn't even matter, unless,
+    // UNLESS, somebody wants to store a default route. So we have to store a
+    // serial for this prefix. The normal place for a serial of any prefix is
+    // on the pfxvec of its paren. But, hey, guess what, the
+    // default-route-prefix lives *on* the root node, and, you know, the root
+    // node doesn't have a parent. We can:
     // - Create a type RootTreeBitmapNode with a ptrbitarr with a size one
-    //   bigger than a "normal" TreeBitMapNod for the first stride size.
-    //   no we have to iterate over the rootnode type in all matches on
+    //   bigger than a "normal" TreeBitMapNod for the first stride size. no we
+    //   have to iterate over the root-node type in all matches on
     //   stride_size, just because we have exactly one instance of the
     //   RootTreeBitmapNode. So no.
     // - Make the `get_pfx_index` method on the implementations of the
@@ -547,11 +547,11 @@ impl<
     //   return the serial of the root node. Now each and every call to this
     //   method will have to check a condition for exactly one instance of
     //   RootTreeBitmapNode. So again, no.
-    // - The root node only gets used at the beginning of a seach query or
-    //   an insert. So if we provide two speciliased methods that will now
-    //   how to search for the default-route prefix and now how to set serial
-    //  for that prefix and make sure we start searching/inserting with one
-    //   of those specialized methods we're good to go.
+    // - The root node only gets used at the beginning of a search query or an
+    //   insert. So if we provide two specialised methods that will now how to
+    //   search for the default-route prefix and now how to set serial for
+    //  that prefix and make sure we start searching/inserting with one of
+    //   those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
         &self,
         new_meta: M,
@@ -567,9 +567,9 @@ impl<
         )
     }
 
-    // This function assembles all entries in the `pfx_vec` of all child nodes of the
-    // `start_node` into one vec, starting from iself and then recursively assembling
-    // adding all `pfx_vec`s of its children.
+    // This function assembles all entries in the `pfx_vec` of all child nodes
+    // of the `start_node` into one vec, starting from itself and then
+    // recursively assembling adding all `pfx_vec`s of its children.
     fn get_all_more_specifics_for_node(
         &self,
         start_node_id: StrideNodeId<AF>,

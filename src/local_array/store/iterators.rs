@@ -236,7 +236,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
 // These are enums to abstract over the Stride Size of the iterators. Each
 // iterator in here need to go over iterators that have different underlying
-// stride sizes. To facilate this these wrapper enums exist.
+// stride sizes. To facilitate this these wrapper enums exist.
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum SizedNodeMoreSpecificIter<AF: AddressFamily> {
@@ -520,7 +520,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
                 trace!("get_record {:?}", stored_prefix.record);
                 let pfx_rec = stored_prefix.get_record_as_arc();
-                // There is a prefix  here, but we need to checkt if it's
+                // There is a prefix  here, but we need to check if it's
                 // the right one.
                 if self.cur_prefix_id
                     == stored_prefix.prefix

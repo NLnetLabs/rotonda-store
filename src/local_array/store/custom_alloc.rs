@@ -19,7 +19,7 @@
 // in that case the stored (prefix|node) will have a reference to another
 // bucket (also of a fixed size), that holds a (prefix|node) that collided
 // with the one that was already stored. A (node|prefix) lookup will have to
-// go over all (nore|prefix) buckets until it matches the requested (node|
+// go over all (node|prefix) buckets until it matches the requested (node|
 // prefix) or it reaches the end of the chain.
 //
 // The chained (node|prefixes) are occupied at a first-come, first-serve
@@ -35,7 +35,7 @@
 // of the tree (close to the root) would be a formidable bottle-neck then.
 //
 // Currently, the meta-data is an atomically stored value, that is required to
-// implement the `Meta` trait and is clonable. New meta-data
+// implement the `Meta` and the `Clone` trait. New meta-data
 // instances are stored atomically without further ado, but updates to a
 // piece of meta-data are done by merging the previous meta-data with the new
 // meta-data, through use of the `MergeUpdate` trait.
@@ -95,7 +95,7 @@
 //                                              │ metadata (current)      │
 //                                              └─────────────────────────┘
 
-// Note about the memory useage of the data-structures of the Buckets
+// Note about the memory usage of the data-structures of the Buckets
 //
 // As said, the prefixes and nodes are stored in buckets. A bucket right now
 // is of type `[MaybeUnit<Atomic<StoredPrefix>>]`, this has the advantage
@@ -109,7 +109,7 @@
 // A disadvantage is that this is a fixed size, sparse array the moment it
 // is created. Theoretically, an `Atomic<Vec<StoredPrefix>`
 // would not have this disadvantage. Manipulating the whole vec atomically
-// though is very tricky (we would have to aotmically compare-and-swap the
+// though is very tricky (we would have to atomically compare-and-swap the
 // whole vec each time the prefix meta-data is changed) and inefficient,
 // since we would have to either keep the vec sorted on `PrefixId` at all
 // times, or, we would have to inspect each value in the vec on *every* read
@@ -124,13 +124,13 @@
 // limit the amount of (sparse) arrays being created for a typical prefix
 // treebitmap, at the cost of longer average search times. Two
 // implementations of this approach are Cuckoo hashing[^1], and Skip Lists.
-// Skip lists[^2] are a probablistic data-structyure, famously used by Redis,
+// Skip lists[^2] are a probabilistic data-structure, famously used by Redis,
 // (and by TiKv). I haven't tries either of these. Crossbeam has a SkipList
-// implentation, that wasn't ready at the time I wrote this. Cuckoo
+// implementation, that wasn't ready at the time I wrote this. Cuckoo
 // hashing has the advantage of being easier to understand/implement. Maybe
 // Cuckoo hashing can also be combined with Fibonacci hashing[^3]. Note that
 // Robin Hood hashing maybe faster than Cuckoo hashing for reads, but it
-// requires shuifting around existing entries, which is rather costly to do
+// requires shifting around existing entries, which is rather costly to do
 // atomically (and complex).
 
 // [^1]: [https://en.wikipedia.org/wiki/Cuckoo_hashing]
@@ -141,10 +141,10 @@
 
 // Notes on memory leaks in Rotonda-store
 //
-// Both valgrind and miri report memory leaks on the multi-threaded predix
+// Both valgrind and miri report memory leaks on the multi-threaded prefix
 // store. Valgrind only reports it when it a binary stops using the tree,
 // while still keeping it around. An interrupted use of the mt-prefix-store
-// does not report any memory leaks. Miri is persistant in reporting
+// does not report any memory leaks. Miri is persistent in reporting
 // memory leaks in the mt-prefix-store. They both report the memory leaks
 // in the same location: the init method of the node- and prefix-buckets.
 //
@@ -171,7 +171,7 @@
 // b. Tests that look at the memory usage of the prefix stores under heavy
 //    modification of existing prefixes do not exhibit memory leaking
 //    behavior.
-// c. Tests that look at memory usage under additiion of new prefixes
+// c. Tests that look at memory usage under addition of new prefixes
 //    exhibit linear incrementation of memory usage (which is expected).
 // d. Tests that look at memory usage under contention do not exhibit
 //    increased memory usage either.
@@ -287,7 +287,7 @@ pub struct StoreStats {
 // ----------- CustomAllocStorage -------------------------------------------
 //
 // CustomAllocStorage is a storage backend that uses a custom allocator, that
-// consitss of arrays that point to other arrays on collision.
+// consists of arrays that point to other arrays on collision.
 #[derive(Debug)]
 pub struct CustomAllocStorage<
     AF: AddressFamily,
@@ -965,7 +965,7 @@ impl<
                     ),
                     // NOT THE HASHING FUNCTION!
                     // Do the right shift in a checked manner, for the sake
-                    // of 0/0. A search for 0/0 will perform a 0 << MAXLEN,
+                    // of 0/0. A search for 0/0 will perform a 0 << MAX_LEN,
                     // which will panic in debug mode (undefined behaviour
                     // in prod).
                     BitSpan::new(
@@ -988,7 +988,7 @@ impl<
     // we don't care!
     //
     // We're using a part of bitarray representation of the address part of
-    // a prefixas the as the hash. Sounds complicated, but isn't.
+    // a prefix the as the hash. Sounds complicated, but isn't.
     // Suppose we have an IPv4 prefix, say 130.24.55.0/24.
     // The address part is 130.24.55.0 or as a bitarray that would be:
     //
@@ -1032,7 +1032,7 @@ impl<
     // uses the hash function with the level incremented.
 
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
-        // Aaaaand, this is all of our hashing function.
+        // And, this is all of our hashing function.
         let last_level = if level > 0 {
             <NB>::len_to_store_bits(id.get_id().1, level - 1)
         } else {
@@ -1053,7 +1053,7 @@ impl<
     }
 
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
-        // Aaaaand, this is all of our hashing function.
+        // And, this is all of our hashing function.
         let last_level = if level > 0 {
             <PB>::get_bits_for_len(id.get_len(), level - 1)
         } else {

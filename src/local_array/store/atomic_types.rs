@@ -281,7 +281,7 @@ where
 // Since we are storing these prefixes in the global store in a HashMap that
 // is keyed on the tuple (addr_bits, len, serial number) we can get away with
 // storing ONLY THE SERIAL NUMBER in the pfx_vec: The addr_bits and len are
-// implied in the position in the array a serial numher has. A PrefixSet
+// implied in the position in the array a serial number has. A PrefixSet
 // doesn't know anything about the node it is contained in, so it needs a
 // base address to be able to calculate the complete prefix of a child prefix.
 

@@ -443,7 +443,7 @@ where
     ) -> u8;
 
     // Clear the bitmap to the right of the pointer and count the number of
-    // ones. This numbder represents the index to the corresponding prefix in
+    // ones. This number represents the index to the corresponding prefix in
     // the pfx_vec.
 
     // Clearing is performed by shifting to the right until we have the
@@ -503,10 +503,10 @@ where
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
     // Convert a pfxbitarr sized bitmap into a ptrbitarr sized
-    // Note that bitwise operators align bits of unsigend types with
+    // Note that bitwise operators align bits of unsigned types with
     // different sizes to the right, so we don't have to do anything to pad
     // the smaller sized type. We do have to shift one bit to the left, to
-    // accomodate the unused pfxbitarr's last bit.
+    // accommodate the unused pfxbitarr's last bit.
     #[allow(clippy::wrong_self_convention)]
     fn into_ptrbitarr_size(
         bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,

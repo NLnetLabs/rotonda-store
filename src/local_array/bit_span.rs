@@ -12,7 +12,7 @@ impl BitSpan {
         }
     }
 
-    // Increment the bit span by one and calcalate the new length.
+    // Increment the bit span by one and calculate the new length.
     #[allow(dead_code)]
     pub(crate) fn inc(&mut self) {
         self.bits += 1;
