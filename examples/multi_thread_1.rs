@@ -18,7 +18,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("insert {}", pfx.unwrap());
 
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), NoMeta::Empty)
+                        .insert(&pfx.unwrap(), 0, NoMeta::Empty)
                     {
                         Ok(_) => {}
                         Err(e) => {

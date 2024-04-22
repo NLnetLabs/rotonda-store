@@ -193,12 +193,14 @@ use std::{
     },
 };
 
-use crossbeam_epoch::{self as epoch, Atomic};
-
-use crossbeam_utils::Backoff;
 use log::{debug, info, log_enabled, trace};
 
+use crossbeam_epoch::{self as epoch, Atomic};
+use crossbeam_utils::Backoff;
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
+
+use roaring::RoaringBitmap;
+
 use std::marker::PhantomData;
 
 use crate::{local_array::{
@@ -313,6 +315,14 @@ impl<
 {
     pub(crate) fn init(
         root_node: SizedStrideNode<AF>,
+        // A node always gets created as an intermediary to create an actual
+        // meta-data record. A meta-data record has an id that is unique in
+        // the collection of Records, that is stored as a value in the tree.
+        // This unique id is used to be able to decide to replace or add a
+        // record to the meta-data collection in a multi-map. It is also added
+        // to a bitmap index on each node that has children where the unique
+        // id appears on a Record.
+        // multi_uniq_id: u32,
         guard: &'a Guard,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         info!("store: initialize store");
@@ -328,6 +338,7 @@ impl<
 
         let _retry_count = store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
+            0_u32,
             root_node,
             guard,
         )?;
@@ -351,6 +362,7 @@ impl<
     pub(crate) fn store_node(
         &self,
         id: StrideNodeId<AF>,
+        multi_uniq_id: u32,
         next_node: SizedStrideNode<AF>,
         guard: &Guard,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
@@ -370,11 +382,11 @@ impl<
         let back_off = crossbeam_utils::Backoff::new();
 
         let search_level_3 =
-            store_node_closure![Stride3; id; guard; back_off;];
+            store_node_closure![Stride3; id; multi_uniq_id; guard; back_off;];
         let search_level_4 =
-            store_node_closure![Stride4; id; guard; back_off;];
+            store_node_closure![Stride4; id; multi_uniq_id; guard; back_off;];
         let search_level_5 =
-            store_node_closure![Stride5; id; guard; back_off;];
+            store_node_closure![Stride5; id; multi_uniq_id; guard; back_off;];
 
         if log_enabled!(log::Level::Trace) {
             debug!(
@@ -466,6 +478,7 @@ impl<
     pub(crate) fn retrieve_node_mut_with_guard(
         &'a self,
         id: StrideNodeId<AF>,
+        multi_uniq_id: u32,
         guard: &'a Guard,
     ) -> Option<SizedStrideRefMut<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
@@ -480,11 +493,11 @@ impl<
         }
 
         let search_level_3 =
-            retrieve_node_mut_with_guard_closure![Stride3; id;];
+            retrieve_node_mut_with_guard_closure![Stride3; id; multi_uniq_id;];
         let search_level_4 =
-            retrieve_node_mut_with_guard_closure![Stride4; id;];
+            retrieve_node_mut_with_guard_closure![Stride4; id; multi_uniq_id;];
         let search_level_5 =
-            retrieve_node_mut_with_guard_closure![Stride5; id;];
+            retrieve_node_mut_with_guard_closure![Stride5; id; multi_uniq_id;];
 
         if log_enabled!(log::Level::Trace) {
             trace!(

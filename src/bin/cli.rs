@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
 
     for pfx in pfxs.into_iter() {
-        tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
+        tree_bitmap.insert(&pfx.prefix, 0, pfx.meta)?;
     }
     let ready = std::time::Instant::now();
     // println!("{:#?}", tree_bitmap.store.prefixes);

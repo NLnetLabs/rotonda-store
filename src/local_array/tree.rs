@@ -447,6 +447,7 @@ impl<
         &self,
         pfx: PrefixId<AF>,
         record: M,
+        multi_uniq_id: u32,
         user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
         let guard = &epoch::pin();
@@ -485,6 +486,7 @@ impl<
                 // applicable to the whole outer match in the macro
                 self;
                 user_data;
+                multi_uniq_id;
                 guard;
                 nibble_len;
                 nibble;

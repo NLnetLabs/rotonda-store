@@ -1,3 +1,15 @@
+
+mod common {
+    use std::io::Write;
+
+    pub fn init() {
+        let _ = env_logger::builder()
+            .format(|buf, record| writeln!(buf, "{}", record.args()))
+            .is_test(true)
+            .try_init();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rotonda_store::{
@@ -14,7 +26,7 @@ mod tests {
         )
         .unwrap();
 
-        trie.insert(&min_pfx, NoMeta::Empty)?;
+        trie.insert(&min_pfx, 0, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -42,7 +54,7 @@ mod tests {
         );
 
         // drop(locks);
-        trie.insert(&max_pfx?, NoMeta::Empty)?;
+        trie.insert(&max_pfx?, 0, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(255, 255, 255, 255).into(),
             32,
@@ -292,7 +304,7 @@ mod tests {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx?, PrefixAs(666))?;
+            tree_bitmap.insert(&pfx?, 0, PrefixAs(666))?;
         }
 
         // let (store_v4, store_v6) = tree_bitmap.acquire_prefixes_rwlock_read();
@@ -378,7 +390,7 @@ mod tests {
             let mut i_len_s = 0;
             for pfx in pfx_vec {
                 i_len_s += 1;
-                tree_bitmap.insert(&pfx, NoMeta::Empty)?;
+                tree_bitmap.insert(&pfx, 0, NoMeta::Empty)?;
 
                 let res_pfx = Prefix::new_relaxed(
                     std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
@@ -407,6 +419,71 @@ mod tests {
                 }
             }
         }
+        Ok(())
+    }
+
+    #[test]
+    fn test_multi_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+
+        let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+        for multi_uniq_id in [1_u32,2,3,4,5] {
+            println!("Multi Uniq ID {multi_uniq_id}");
+
+            for i_net in 0..2 {
+
+                let pfx_vec: Vec<Prefix> = (16..18)
+                    .collect::<Vec<u8>>()
+                    .into_iter()
+                    .map(|i_len| {
+                        Prefix::new_relaxed(
+                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                            i_len,
+                        )
+                        .unwrap()
+                    })
+                    .collect();
+
+                let mut i_len_s = 0;
+
+                for pfx in &pfx_vec {
+                    i_len_s += 1;
+                    tree_bitmap.insert(pfx, multi_uniq_id, NoMeta::Empty)?;
+
+                    let res_pfx = Prefix::new_relaxed(
+                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                        i_len_s,
+                    );
+
+                    let guard = &epoch::pin();
+
+                    for s_len in i_len_s..4 {
+                        let pfx = Prefix::new_relaxed(
+                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                            s_len,
+                        )?;
+                        let res = tree_bitmap.match_prefix(
+                            &pfx,
+                            &MatchOptions {
+                                match_type: MatchType::LongestMatch,
+                                include_all_records: false,
+                                include_less_specifics: false,
+                                include_more_specifics: false,
+                            },
+                            guard,
+                        );
+                        // println!("{:?}", pfx);
+
+                        // assert_eq!(res.prefix.unwrap(), res_pfx?);
+                    }
+                }
+            }
+        }
+
+        let guard = &epoch::pin();
+        for pfx in tree_bitmap.more_specifics_iter_from(&rotonda_store::prelude::Prefix::new("0.0.0.0".parse::<std::net::Ipv4Addr>().unwrap().into(),0).unwrap(), guard) {
+            print!(".pfx {:?}.", pfx);
+        };
         Ok(())
     }
 }

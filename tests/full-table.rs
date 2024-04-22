@@ -100,7 +100,7 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta) {
+                match tree_bitmap.insert(&pfx.prefix, 0, pfx.meta) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

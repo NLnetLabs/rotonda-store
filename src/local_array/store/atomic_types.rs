@@ -8,6 +8,7 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
+use roaring::RoaringBitmap;
 
 use crate::local_array::tree::*;
 use crate::AddressFamily;
@@ -16,7 +17,7 @@ use crate::prelude::Meta;
 // ----------- Node related structs -----------------------------------------
 
 #[allow(clippy::type_complexity)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
 );
@@ -29,8 +30,13 @@ where
     AF: AddressFamily,
 {
     pub(crate) node_id: StrideNodeId<AF>,
+    // The ptrbitarr and pfxbitarr for this node
     pub(crate) node: TreeBitMapNode<AF, S>,
+    // Child nodes linked from this node
     pub(crate) node_set: NodeSet<AF, S>,
+    // A Bitmap index that keeps track of the `uniq_id`s that are present in
+    // value collections in the meta-data tree in the child nodes
+    pub(crate) rbm_index: RoaringBitmap,
 }
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {

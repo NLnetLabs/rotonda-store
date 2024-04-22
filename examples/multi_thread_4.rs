@@ -74,6 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // print!("{}-", i);
                         match tree_bitmap.insert(
                             &pfx.unwrap(),
+                            0,
                             ComplexPrefixAs([i as u32].to_vec()),
                         ) {
                             Ok(metrics) => {

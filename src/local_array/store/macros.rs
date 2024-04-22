@@ -26,7 +26,7 @@ macro_rules! impl_search_level {
                         match this_node.is_null() {
                             true => None,
                             false => {
-                                let StoredNode { node_id, node, node_set } = unsafe { this_node.deref() };
+                                let StoredNode { node_id, node, node_set, .. } = unsafe { this_node.deref() };
                                 if $id == *node_id {
                                     // YES, It's the one we're looking for!
                                     return Some(SizedStrideRef::$stride(&node));
@@ -62,6 +62,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
         $(
             $stride: ident;
             $id: ident;
+            $multi_uniq_id: ident;
         ),
     * ) => {
         $(
@@ -84,9 +85,12 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                          match this_node.is_null() {
                              true => None,
                              false => {
-                                let StoredNode { node_id, node, node_set } = unsafe { this_node.deref_mut() };
+                                let StoredNode { node_id, node, node_set, rbm_index } = unsafe { this_node.deref_mut() };
                                 if $id == *node_id {
                                     // YES, It's the one we're looking for!
+                                    rbm_index.insert($multi_uniq_id);
+                                    println!("add multi uniq id to bitmap index {}", $multi_uniq_id);
+                                    println!("index len {}", rbm_index.len());
                                     return Some(SizedStrideRefMut::$stride(node));
                                 };
                                 // Meh, it's not, but we can a go to the next level
@@ -121,6 +125,7 @@ macro_rules! store_node_closure {
         $(
             $stride: ident;
             $id: ident;
+            $multi_uniq_id: ident;
             $guard: ident;
             $back_off: ident;
         ),
@@ -164,13 +169,23 @@ macro_rules! store_node_closure {
                                         );
                                     }
 
-                                    let node_set = if next_level > 0 { NodeSet::init((1 << (next_level - this_level)) as usize ) } else { NodeSet(Atomic::null()) };
+                                    let node_set = if next_level > 0 { 
+                                        NodeSet::init((1 << (next_level - this_level)) as usize )
+                                    } else { NodeSet(Atomic::null()) };
+
+                                    let mut rbm_index = RoaringBitmap::new();
+                                    rbm_index.insert($multi_uniq_id);
+                                    trace!("multi uniq id {}", $multi_uniq_id);
+                                    trace!("Add id to bitmap index {:?}", rbm_index);
+                                    trace!("bitmap index len {}", rbm_index.len());
+
                                     match node_ref.compare_exchange(
                                         Shared::null(),
                                         Owned::new(StoredNode {
                                             node_id: $id,
                                             node: new_node,
                                             node_set,
+                                            rbm_index
                                         }),
                                         Ordering::AcqRel,
                                         Ordering::Acquire,
@@ -203,38 +218,81 @@ macro_rules! store_node_closure {
                                     };
                                 }
                                 false => {
-                                    // A node exists, might be ours, might be another one
-                                    let StoredNode { node_id, node_set, .. } = unsafe { stored_node.deref() };
+                                    // A node exists, might be ours, might be
+                                    // another one. SAFETY: We tested for null
+                                    // above and, since we do not remove
+                                    // nodes, this node can't be null anymore.
+                                    let stored_node = unsafe { stored_node.deref() };
 
                                     if log_enabled!(log::Level::Trace) {
                                         trace!("
                                             {} store: Node here exists {:?}",
                                                 std::thread::current().name().unwrap(),
-                                                node_id
+                                                stored_node.node_id
                                         );
-                                        trace!("node_id {:?}", node_id.get_id());
-                                        trace!("node_id {:032b}", node_id.get_id().0);
+                                        trace!("node_id {:?}", stored_node.node_id.get_id());
+                                        trace!("node_id {:032b}", stored_node.node_id.get_id().0);
                                         trace!("id {}", $id);
                                         trace!("     id {:032b}", $id.get_id().0);
                                     }
 
-                                    // See if somebody beat us to creating our node
-                                    // already, if so, we're done. Nodes do not
-                                    // carry meta-data (they just "exist"), so we
-                                    // don't have to update anything, just return it.
-                                    if $id == *node_id {
+                                    // See if somebody beat us to creating our
+                                    // node already, if so, we still need to
+                                    // do work: we have to update the bitmap
+                                    // index with the multi_uniq_id we've got
+                                    // from the caller.
+                                    if $id == stored_node.node_id {
                                         // yes, it exists
                                         trace!("found node {} in {} attempts",
                                             $id,
                                             retry_count
                                         );
-                                        return Ok(($id, retry_count));
+                                        let mut rbm_index = stored_node.rbm_index.clone();
+                                        rbm_index.insert($multi_uniq_id);
+
+                                        match node_ref.compare_exchange(
+                                            Shared::null(),
+                                            Owned::new(StoredNode {
+                                                node_id: $id,
+                                                node: new_node,
+                                                node_set: stored_node.node_set.clone(),
+                                                rbm_index
+                                            }),
+                                            Ordering::AcqRel,
+                                            Ordering::Acquire,
+                                            $guard
+                                        ) {
+                                            Ok(_pfx) => {
+    
+                                                if log_enabled!(log::Level::Trace) {
+                                                    trace!("Created node {}", $id);
+                                                }
+                                                return Ok(($id, retry_count));
+                                            },
+                                            Err(crossbeam_epoch::CompareExchangeError { new, .. }) => {
+                                                retry_count +=1 ;
+    
+                                                if log_enabled!(log::Level::Trace) {
+                                                    trace!("Failed to create node {}. Someone is busy creating it",$id);
+                                                }
+    
+                                                let StoredNode { node: cur_node,.. } = *new.into_box();
+                                                $back_off.spin();
+                                                return (search_level.f)(
+                                                    search_level,
+                                                    nodes,
+                                                    cur_node,
+                                                    level,
+                                                    retry_count
+                                                );
+                                            }
+                                        };
                                     } else {
-                                        // it's not "our" node, make a (recursive)
-                                        // call to create it.
+                                        // it's not "our" node, make a
+                                        // (recursive) call to create it.
                                         level += 1;
                                         trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
-                                            node_id, $id, $id.get_id().1, level, index
+                                            stored_node.node_id, $id, $id.get_id().1, level, index
                                         );                                        
 
                                         return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
@@ -242,7 +300,7 @@ macro_rules! store_node_closure {
                                             next_bit_shift if next_bit_shift > 0 => {
                                                 (search_level.f)(
                                                     search_level,
-                                                    node_set,
+                                                    &stored_node.node_set,
                                                     new_node,
                                                     level,
                                                     retry_count

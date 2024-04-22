@@ -7,6 +7,7 @@ macro_rules! insert_match {
     (
         $self: ident;
         $user_data: ident;
+        $multi_uniq_id: ident;
         $guard: ident;
         $nibble_len: expr;
         $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
@@ -48,7 +49,8 @@ macro_rules! insert_match {
             // retry_count from this macro.
             let mut local_retry_count = 0;
             loop {
-                if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
+                // retrieve_node_mut_with_guard updates the bitmap index if necessary.
+                if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $multi_uniq_id, $guard) {
                     match current_node {
                         $(
                             SizedStrideRefMut::$variant(current_node) => {
@@ -77,7 +79,7 @@ macro_rules! insert_match {
                                         // store. It returns the created id
                                         // and the number of retries before
                                         // success.
-                                        match $self.store.store_node(new_id, n, $guard) {
+                                        match $self.store.store_node(new_id, $multi_uniq_id, n, $guard) {
                                             Ok((node_id, s_retry_count)) => {
                                                 break Ok((node_id, $acc_retry_count + s_retry_count + retry_count));
                                             },

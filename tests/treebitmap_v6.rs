@@ -17,7 +17,7 @@ mod tests {
         )
         .unwrap();
 
-        trie.insert(&a_pfx, NoMeta::Empty)?;
+        trie.insert(&a_pfx, 0, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             ("2001:67c:1bfc::").parse::<std::net::Ipv6Addr>()?.into(),
             48,
@@ -49,7 +49,7 @@ mod tests {
         )
         .unwrap();
 
-        trie.insert(&min_pfx, NoMeta::Empty)?;
+        trie.insert(&min_pfx, 0, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             ("0::").parse::<std::net::Ipv6Addr>()?.into(),
             1,
@@ -78,7 +78,7 @@ mod tests {
         );
 
         // drop(locks);
-        trie.insert(&max_pfx?, NoMeta::Empty)?;
+        trie.insert(&max_pfx?, 0, NoMeta::Empty)?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(255, 255, 255, 255, 255, 255, 255, 255)
                 .into(),
@@ -244,7 +244,7 @@ mod tests {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx?, PrefixAs(666))?;
+            tree_bitmap.insert(&pfx?, 0, PrefixAs(666))?;
         }
 
         let guard = &epoch::pin();
@@ -500,7 +500,7 @@ mod tests {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx?, PrefixAs(666))?;
+            tree_bitmap.insert(&pfx?, 0, PrefixAs(666))?;
         }
 
         // let (store_v4, store_v6) = tree_bitmap.acquire_prefixes_rwlock_read();
@@ -590,7 +590,7 @@ mod tests {
             let mut i_len_s = 0;
             for pfx in pfx_vec {
                 i_len_s += 1;
-                tree_bitmap.insert(&pfx, NoMeta::Empty)?;
+                tree_bitmap.insert(&pfx, 0, NoMeta::Empty)?;
 
                 let res_pfx = Prefix::new_relaxed(
                     std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
