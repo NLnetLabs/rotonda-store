@@ -14,13 +14,8 @@ use crate::local_array::tree::*;
 use crate::AddressFamily;
 use crate::prelude::Meta;
 
-// ----------- Node related structs -----------------------------------------
 
-#[allow(clippy::type_complexity)]
-#[derive(Debug, Clone)]
-pub struct NodeSet<AF: AddressFamily, S: Stride>(
-    pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
-);
+// ----------- Node related structs -----------------------------------------
 
 #[derive(Debug)]
 pub struct StoredNode<AF, S>
@@ -34,10 +29,17 @@ where
     pub(crate) node: TreeBitMapNode<AF, S>,
     // Child nodes linked from this node
     pub(crate) node_set: NodeSet<AF, S>,
+}
+
+
+#[allow(clippy::type_complexity)]
+#[derive(Debug, Clone)]
+pub struct NodeSet<AF: AddressFamily, S: Stride>(
+    pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `uniq_id`s that are present in
     // value collections in the meta-data tree in the child nodes
-    pub(crate) rbm_index: RoaringBitmap,
-}
+    pub Atomic<RoaringBitmap>
+);
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
@@ -54,9 +56,78 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         for i in 0..size {
             l[i] = MaybeUninit::new(Atomic::null());
         }
-        NodeSet(l.into())
+        NodeSet(l.into(), RoaringBitmap::new().into())
+    }
+
+    pub fn update_rbm_index(
+        &self,
+        multi_uniq_id: u32,
+        guard: &crate::epoch::Guard
+    ) -> Result<u32, crate::prelude::multi::PrefixStoreError> where
+        S: crate::local_array::atomic_stride::Stride,
+        AF: crate::AddressFamily {
+        
+        let mut try_count = 0;
+
+        self.1.fetch_update(
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst, 
+            guard, 
+            |mut a_rbm_index| {
+                // SAFETY: The rbm_index gets created as an empty
+                // RoaringBitmap at init time of the NodeSet, so it cannot be
+                // a NULL pointer at this point. We're cloning the loaded
+                // value, NOT mutating it, so we don't run into concurrent
+                // write scenarios (which we would if we'd use `deref_mut()`).
+                let mut rbm_index = unsafe { a_rbm_index.deref() }.clone();
+                rbm_index.insert(multi_uniq_id);
+
+                a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+
+                try_count += 1;
+                Some(a_rbm_index)
+            }
+        ).map_err(|_| crate::prelude::multi::PrefixStoreError::StoreNotReadyError)?;
+    
+        trace!("Added {} to {:?}", multi_uniq_id, unsafe { self.1.load(std::sync::atomic::Ordering::SeqCst, guard).as_ref() });
+        Ok(try_count)
+    }
+
+    pub fn remove_from_rbm_index(
+        &self,
+        multi_uniq_id: u32,
+        guard: &crate::epoch::Guard
+    ) -> Result<u32, crate::prelude::multi::PrefixStoreError> where
+        S: crate::local_array::atomic_stride::Stride,
+        AF: crate::AddressFamily {
+        
+        let mut try_count = 0;
+
+        self.1.fetch_update(
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst, 
+            guard, 
+            |mut a_rbm_index| {
+                // SAFETY: The rbm_index gets created as an empty
+                // RoaringBitmap at init time of the NodeSet, so it cannot be
+                // a NULL pointer at this point. We're cloning the loaded
+                // value, NOT mutating it, so we don't run into concurrent
+                // write scenarios (which we would if we'd use `deref_mut()`).
+                let mut rbm_index = unsafe { a_rbm_index.deref() }.clone();
+                rbm_index.remove(multi_uniq_id);
+
+                a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+
+                try_count += 1;
+                Some(a_rbm_index)
+            }
+        ).map_err(|_| crate::prelude::multi::PrefixStoreError::StoreNotReadyError)?;
+    
+        trace!("Removed {} to {:?}", multi_uniq_id, unsafe { self.1.load(std::sync::atomic::Ordering::SeqCst, guard).as_ref() });
+        Ok(try_count)
     }
 }
+
 
 // ----------- Prefix related structs ---------------------------------------
 

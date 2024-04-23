@@ -199,8 +199,6 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
 
-use roaring::RoaringBitmap;
-
 use std::marker::PhantomData;
 
 use crate::{local_array::{
@@ -355,9 +353,11 @@ impl<
 
     // Create a new node in the store with payload `next_node`.
     //
-    // Next node will be ignored if a node with the same `id` already exists.
-    // Returns:
-    // a tuple with the node_id of the created node and the number of retry_count
+    // Next node will be ignored if a node with the same `id` already exists,
+    // but the multi_uniq_id will be added to the rbm_index of the NodeSet.
+    //
+    // Returns: a tuple with the node_id of the created node and the number of
+    // retry_count
     #[allow(clippy::type_complexity)]
     pub(crate) fn store_node(
         &self,
@@ -371,6 +371,7 @@ impl<
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
+                u32, // multi_uniq_id
                 u8,  // the store level
                 u32, // retry_count
             ) -> Result<
@@ -382,11 +383,11 @@ impl<
         let back_off = crossbeam_utils::Backoff::new();
 
         let search_level_3 =
-            store_node_closure![Stride3; id; multi_uniq_id; guard; back_off;];
+            store_node_closure![Stride3; id; guard; back_off;];
         let search_level_4 =
-            store_node_closure![Stride4; id; multi_uniq_id; guard; back_off;];
+            store_node_closure![Stride4; id; guard; back_off;];
         let search_level_5 =
-            store_node_closure![Stride5; id; multi_uniq_id; guard; back_off;];
+            store_node_closure![Stride5; id; guard; back_off;];
 
         if log_enabled!(log::Level::Trace) {
             debug!(
@@ -403,6 +404,7 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 new_node,
+                multi_uniq_id,
                 0,
                 0,
             ),
@@ -410,6 +412,7 @@ impl<
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
+                multi_uniq_id,
                 0,
                 0,
             ),
@@ -417,6 +420,7 @@ impl<
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
+                multi_uniq_id,
                 0,
                 0,
             ),

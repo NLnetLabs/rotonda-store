@@ -450,7 +450,7 @@ mod tests {
                     i_len_s += 1;
                     tree_bitmap.insert(pfx, multi_uniq_id, NoMeta::Empty)?;
 
-                    let res_pfx = Prefix::new_relaxed(
+                    let _res_pfx = Prefix::new_relaxed(
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
                         i_len_s,
                     );
@@ -462,7 +462,7 @@ mod tests {
                             std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
                             s_len,
                         )?;
-                        let res = tree_bitmap.match_prefix(
+                        let _res = tree_bitmap.match_prefix(
                             &pfx,
                             &MatchOptions {
                                 match_type: MatchType::LongestMatch,
