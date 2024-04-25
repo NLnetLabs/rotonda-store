@@ -43,7 +43,7 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::<PrefixAs>::new(
             Prefix::new(net, len)?,
-            PrefixAs(asn),
+            vec![Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(asn))],
         );
         pfxs.push(pfx);
         // trie.insert(&pfx);
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx.prefix, 0, pfx.meta)?;
+            tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone())?;
         }
         
         #[cfg(feature = "cli")]

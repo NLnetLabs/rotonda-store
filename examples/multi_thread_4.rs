@@ -74,12 +74,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // print!("{}-", i);
                         match tree_bitmap.insert(
                             &pfx.unwrap(),
-                            0,
-                            ComplexPrefixAs([i as u32].to_vec()),
+                            Record::new(
+                                0,
+                                0,
+                                RouteStatus::InConvergence,
+                                ComplexPrefixAs([i as u32].to_vec()),
+                            )
                         ) {
                             Ok(metrics) => {
-                                if metrics.1 > 0 {
-                                    eprintln!("{} {} {:?} retry count: {},", std::thread::current().name().unwrap(), metrics.0, pfx, metrics.1);
+                                if metrics.cas_count > 0 {
+                                    eprintln!("{} {} {:?} retry count: {},", std::thread::current().name().unwrap(), metrics.prefix_new, pfx, metrics.cas_count);
                                 }
                             }
                             Err(e) => {

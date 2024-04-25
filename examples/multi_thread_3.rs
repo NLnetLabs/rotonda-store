@@ -38,11 +38,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     x += 1;
                     // print!("{}-", i);
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), 0, PrefixAs(i as u32))
+                        .insert(&pfx.unwrap(), Record::new(0,0, RouteStatus::InConvergence, PrefixAs(i as u32)))
                     {
                         Ok(metrics) => {
-                            if metrics.1 > 0  {
-                                println!("{} {} {:?} retry count {},", std::thread::current().name().unwrap(), metrics.0, pfx, metrics.1);
+                            if metrics.cas_count > 0  {
+                                println!("{} {:?} {:?} retry count {},", std::thread::current().name().unwrap(), metrics, pfx, metrics.cas_count);
                             }
                         }
                         Err(e) => {

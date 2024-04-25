@@ -3,7 +3,7 @@
     
 mod full_table {    
     use crate::{
-        prelude::*, SingleThreadedStore,
+        prelude::*, PublicPrefixSingleRecord, SingleThreadedStore
     };
 
     use std::error::Error;
@@ -57,7 +57,7 @@ mod full_table {
         const FOUND_PREFIXES: u32 = 1322993;
 
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<ComplexPrefixAs>>,
+            pfxs: &mut Vec<PublicPrefixSingleRecord<ComplexPrefixAs>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -71,7 +71,7 @@ mod full_table {
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
                 let len: u8 = record[1].parse().unwrap();
                 let asn: u32 = record[2].parse().unwrap();
-                let pfx = PrefixRecord::new(
+                let pfx = PublicPrefixSingleRecord::new(
                     Prefix::new(net.into(), len)?,
                     ComplexPrefixAs(vec![asn]),
                 );
@@ -87,7 +87,7 @@ mod full_table {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
+            let mut pfxs: Vec<PublicPrefixSingleRecord<ComplexPrefixAs>> = vec![];
             let v4_strides = vec![8];
             let v6_strides = vec![8];
             let mut tree_bitmap = SingleThreadedStore::<ComplexPrefixAs>::new(v4_strides, v6_strides);

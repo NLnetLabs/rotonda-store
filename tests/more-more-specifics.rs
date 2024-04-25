@@ -3,7 +3,7 @@ mod tests {
     use rotonda_store::{ 
         meta_examples::PrefixAs,
         prelude::*,
-        prelude::multi::*
+        prelude::multi::*,
     };
 
     use std::error::Error;
@@ -30,7 +30,9 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(pfx, 0, PrefixAs(666))?;
+            tree_bitmap.insert(
+                pfx, Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(666))
+            )?;
         }
         println!("------ end of inserts\n");
 
@@ -99,8 +101,10 @@ mod tests {
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 120, 0).into(), 24), // 13
         ];
 
+        let ltime = 0;
+        let status = RouteStatus::InConvergence;
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(&pfx.unwrap(), 0, PrefixAs(666))?;
+            tree_bitmap.insert(&pfx.unwrap(), Record::new(0, ltime, status, PrefixAs(666)))?;
         }
         println!("------ end of inserts\n");
         let guard = &epoch::pin();

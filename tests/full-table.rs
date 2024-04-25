@@ -75,7 +75,12 @@ mod tests {
                 let asn: u32 = record[2].parse().unwrap();
                 let pfx = PrefixRecord::new(
                     Prefix::new(net.into(), len)?,
-                    ComplexPrefixAs(vec![asn]),
+                    vec![Record::new(
+                        0,
+                        0,
+                        RouteStatus::InConvergence,
+                        ComplexPrefixAs(vec![asn])
+                    )],
                 );
                 pfxs.push(pfx);
             }
@@ -100,7 +105,7 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, 0, pfx.meta) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone()) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

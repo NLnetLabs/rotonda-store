@@ -46,12 +46,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let guard = &crossbeam_epoch::pin();
                         while x < 100 {
                             let asn = PrefixAs(rng.gen());
-                            match tree_bitmap.insert(&pfx, 0, asn) {
+                            match tree_bitmap.insert(&pfx, Record::new(0, 0, RouteStatus::InConvergence, asn)) {
                                 Ok(metrics) => {
-                                    if let Upsert::Insert = metrics.0 {
+                                    if metrics.prefix_new {
                                         println!(
                                             "thread {} won: {} with value {}",
-                                            i, metrics.0, asn
+                                            i, metrics.prefix_new, asn
                                         );
                                     }
                                 }

@@ -43,7 +43,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // x += 1;
                 // print!("{}-", i);
                 let asn: u32 = rng.gen();
-                match tree_bitmap.insert(&pfx.unwrap(), 0, PrefixAs(asn)) {
+                match tree_bitmap.insert(
+                    &pfx.unwrap(),
+                    Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(asn))
+                ) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

@@ -26,7 +26,7 @@ mod tests {
         )
         .unwrap();
 
-        trie.insert(&min_pfx, 0, NoMeta::Empty)?;
+        trie.insert(&min_pfx, Record::new(0, 0, RouteStatus::InConvergence, NoMeta::Empty))?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -54,7 +54,7 @@ mod tests {
         );
 
         // drop(locks);
-        trie.insert(&max_pfx?, 0, NoMeta::Empty)?;
+        trie.insert(&max_pfx?, Record::new(0, 0, RouteStatus::InConvergence, NoMeta::Empty))?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(255, 255, 255, 255).into(),
             32,
@@ -304,7 +304,7 @@ mod tests {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx?, 0, PrefixAs(666))?;
+            tree_bitmap.insert(&pfx?, Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(666)))?;
         }
 
         // let (store_v4, store_v6) = tree_bitmap.acquire_prefixes_rwlock_read();
@@ -390,7 +390,7 @@ mod tests {
             let mut i_len_s = 0;
             for pfx in pfx_vec {
                 i_len_s += 1;
-                tree_bitmap.insert(&pfx, 0, NoMeta::Empty)?;
+                tree_bitmap.insert(&pfx, Record::new(0, 0, RouteStatus::InConvergence, NoMeta::Empty))?;
 
                 let res_pfx = Prefix::new_relaxed(
                     std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
@@ -448,7 +448,7 @@ mod tests {
 
                 for pfx in &pfx_vec {
                     i_len_s += 1;
-                    tree_bitmap.insert(pfx, multi_uniq_id, NoMeta::Empty)?;
+                    tree_bitmap.insert(pfx, Record::new(multi_uniq_id, 0, RouteStatus::InConvergence, NoMeta::Empty))?;
 
                     let _res_pfx = Prefix::new_relaxed(
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
