@@ -1,5 +1,6 @@
-use std::sync::Arc;
-use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
+use flurry::HashMap;
+use std::sync::{Arc, RwLock};
+use std::{fmt::{Debug, Display}, mem::MaybeUninit, sync::atomic::Ordering};
 
 use arc_swap::access::Access;
 use arc_swap::ArcSwap;
@@ -11,8 +12,9 @@ use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
 use crate::local_array::tree::*;
+use crate::prefix_record::PublicRecord;
 use crate::AddressFamily;
-use crate::prelude::Meta;
+use crate::prelude::{multi, Meta};
 
 
 // ----------- Node related structs -----------------------------------------
@@ -143,7 +145,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
-    pub(crate) record: AtomicRecord<M>,
+    pub(crate) record_map: MultiMap<M>,
     // the next aggregated record for this prefix and hash_id
     // pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
     // the reference to the next set of records for this prefix, if any.
@@ -153,7 +155,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     pub fn new<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
-        record: Arc<M>,
+        record: PublicRecord<M>,
         level: u8,
     ) -> Self {
         // start calculation size of next set, it's dependent on the level
@@ -181,10 +183,13 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
+        let mut rec_map = HashMap::new();
+        rec_map.pin().insert(record.multi_uniq_id, MultiMapValue::from(record));
+
         StoredPrefix {
             serial: 1,
             prefix: pfx_id,
-            record: AtomicRecord::<M>::new(record),
+            record_map: MultiMap::new(rec_map),
             next_bucket,
         }
     }
@@ -193,14 +198,100 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub(crate) fn get_record_as_arc(
-        &self,
-    ) -> Arc<M> {
-        self.record.as_arc()
+    pub fn upsert_record<'a, PB: PrefixBuckets<AF, M>>(
+        &'a self,
+        record: MultiMapValue<M>,
+        multi_uniq_id: u32,
+        guard: &'a flurry::Guard
+    ) -> Option<&'a MultiMapValue<M>> {
+        // start calculation size of next set, it's dependent on the level
+        // we're in.
+        // let pfx_id = PrefixId::new(record.net, record.len);
+        // let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
+        // let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+
+        // trace!("this level {} next level {}", this_level, next_level);
+        // let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+        //     debug!(
+        //         "{} store: INSERT with new bucket of size {} at prefix len {}",
+        //         std::thread::current().name().unwrap(),
+        //         1 << (next_level - this_level),
+        //         pfx_id.get_len()
+        //     );
+        //     PrefixSet::init((1 << (next_level - this_level)) as usize)
+        // } else {
+        //     debug!(
+        //         "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
+        //         std::thread::current().name().unwrap(),
+        //         pfx_id.get_len()
+        //     );
+        //     PrefixSet::empty()
+        // };
+        // End of calculation
+
+        self.record_map.0.insert(multi_uniq_id, record, guard)
     }
 
-    pub(crate) fn get_meta_cloned(&self) -> M {
-        (*(*self.record.as_arc_swap().load())).clone()
+    // pub(crate) fn get_records(&self) -> Vec<(&u32, &Record<M>) {
+    //     self.0.get_records()
+    // }
+
+    // pub(crate) fn get_record_as_arc(
+    //     &self,
+    // ) -> Arc<M> {
+    //     self.record.as_arc()
+    // }
+
+    // pub(crate) fn get_meta_cloned(&self) -> M {
+    //     (*(*self.record.as_arc_swap().load())).clone()
+    // }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub enum RouteStatus {
+    Active,
+    Withdrawn,
+    InConvergence,
+    Stale
+}
+
+impl std::fmt::Display for RouteStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RouteStatus::Active => write!(f, "active"),
+            RouteStatus::Withdrawn => write!(f, "withdrawn"),
+            RouteStatus::InConvergence => write!(f, "in convergence"),
+            RouteStatus::Stale => write!(f, "stale")
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MultiMapValue<M> where M: Clone {
+    pub meta: M,
+    pub ltime: u64,
+    pub status: RouteStatus
+}
+
+impl<M: Clone> MultiMapValue<M> {
+    pub(crate) fn new(meta: M, ltime: u64, status: RouteStatus) -> Self {
+        Self { meta, ltime, status }
+    }
+}
+
+impl<M: crate::prefix_record::Meta> std::fmt::Display for MultiMapValue<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.meta, self.ltime, self.status)
+    }
+}
+
+impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
+    fn from(value: PublicRecord<M>) -> Self {
+        Self {
+            meta: value.meta,
+            ltime: value.ltime,
+            status: value.status,
+        }
     }
 }
 
@@ -208,31 +299,65 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
 // This is the record that holds the aggregates at the top-level for a given
 // prefix.
 
-#[derive(Debug)]
-pub(crate) struct AtomicRecord<M: crate::prefix_record::Meta>(
-    ArcSwap<M>,
+#[derive(Clone, Debug)]
+pub(crate) struct MultiMap<M: Send + Sync + Clone>(
+    flurry::HashMap<u32, MultiMapValue<M>>
 );
 
-impl<M: crate::prefix_record::Meta> AtomicRecord<M> {
-    pub fn new(record: Arc<M>) -> Self {
-        AtomicRecord(ArcSwap::new(record))
+impl<M: Send + Sync + Clone + Debug + Display + Meta> MultiMap<M> {
+    pub fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
+        Self(record_map)
     }
 
-    pub fn as_arc_swap(
-        &self,
-    ) -> &arc_swap::ArcSwapAny<Arc<M>> {
-        &self.0
+    // pub fn as_arc_swap(
+    //     &self,
+    // ) -> &arc_swap::ArcSwapAny<Arc<M>> {
+    //     &self.0
+    // }
+
+    // pub fn as_arc(&self, guard: &crossbeam_epoch::Guard) -> crossbeam_epoch::Shared<'_, std::collections::HashMap<u32, std::sync::RwLock<M>>> {
+    //     self.0.load(Ordering::SeqCst, guard).clone()
+    // }
+
+    // pub fn get_meta_cloned(&self, guard: &crossbeam_epoch::Guard) -> Option<HashMap<u32, std::sync::RwLock<M>>> {
+    //     unsafe { self.0.load_consume(guard).as_ref() }.map(|r: &HashMap<u32, RwLock<M>>| *r)
+    // }
+
+    // pub fn get_records(&self) -> Vec<(&u32, &Record<M>)> {
+    //     self.0.pin().iter().collect::<Vec<_>>()
+    // }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
-    pub fn as_arc(&self) -> Arc<M> {
-        self.0.load().clone()
+    pub fn guard(&self) -> flurry::Guard<'_> {
+        self.0.guard()
     }
 
-    pub fn get_meta_cloned(&self) -> M {
-        self.0
-            .map(|r: &M| r)
-            .load()
-            .clone()
+    pub fn get_record_for(&self, multi_uniq_id: u32) -> Option<MultiMapValue<M>> {
+        self.0.pin().get(&multi_uniq_id).cloned()
+    }
+
+    pub fn iter_all_records<'a>(&'a self, guard: &'a flurry::Guard<'a>) -> impl Iterator<Item = (&'a u32, &'a MultiMapValue<M>)> + 'a {
+        self.0.iter(guard)
+    }
+
+    pub fn as_records(&self) -> Vec<MultiMapValue<M>> {
+        self.0.pin().iter().map(|r| r.1.clone()).collect::<Vec<_>>()
+    }
+
+    pub fn as_public_records_vec(&self) -> Vec<PublicRecord<M>> {
+        self.0.pin().iter().map(PublicRecord::from).collect::<Vec<_>>()
+    }
+
+    // Insert of replace the PublicRecord in the HashMap for the key of
+    // record.multi_uniq_id. Returns the number of entries in the HashMap
+    // after updating it.
+    pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
+        let record_map = self.0.pin();
+        let mui_new = record_map.insert(record.multi_uniq_id, MultiMapValue::from(record));
+        mui_new.map(|_| self.len())
     }
 }
 

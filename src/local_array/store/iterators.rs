@@ -7,11 +7,11 @@
 // as such all the iterators here are composed of iterators over the
 // individual nodes. The Node Iterators live in the node.rs file.
 
-use std::sync::Arc;
 use std::{marker::PhantomData, sync::atomic::Ordering};
 
 use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
+use crate::prefix_record::PublicRecord;
 use crate::{
     af::AddressFamily,
     prefix_record::Meta,
@@ -58,7 +58,7 @@ pub(crate) struct PrefixIter<
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for PrefixIter<'a, AF, M, PB>
 {
-    type Item = (inetnum::addr::Prefix, M);
+    type Item = (inetnum::addr::Prefix, Vec<PublicRecord<M>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!(
@@ -195,7 +195,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                                 // There's a prefix here, that's the next one
                                 trace!("D. found prefix {:?}", p.prefix);
                             }
-                            p.get_meta_cloned()
+                            p.record_map.as_public_records_vec()
                         })
                     {
                         return Some((
@@ -216,7 +216,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             if log_enabled!(log::Level::Debug) {
                                 debug!("E. found prefix {:?}", p.prefix);
                             }
-                            p.get_meta_cloned()
+                            p.record_map.as_public_records_vec()
                         })
                     {
                         self.cursor += 1;
@@ -314,7 +314,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
 {
-    type Item = (PrefixId<AF>, Arc<M>);
+    type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!("MoreSpecificsPrefixIter");
@@ -335,7 +335,7 @@ impl<
                         ),
                         self.guard,
                     )
-                    .0.map(|p| (p.prefix, p.get_record_as_arc()));
+                    .0.map(|p| (p.prefix, p.record_map.as_public_records_vec()));
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -454,7 +454,7 @@ pub(crate) struct LessSpecificPrefixIter<
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for LessSpecificPrefixIter<'a, AF, M, PB>
 {
-    type Item = (PrefixId<AF>, Arc<M>);
+    type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
 
     // This iterator moves down all prefix lengths, starting with the length
     // of the (search prefix - 1), looking for shorter prefixes, where the
@@ -518,8 +518,8 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 self.cur_bucket.get_by_index(index, self.guard);
 
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
-                trace!("get_record {:?}", stored_prefix.record);
-                let pfx_rec = stored_prefix.get_record_as_arc();
+                trace!("get_record {:?}", stored_prefix.record_map);
+                let pfx_rec = stored_prefix.record_map.as_public_records_vec();
                 // There is a prefix  here, but we need to check if it's
                 // the right one.
                 if self.cur_prefix_id
@@ -588,7 +588,7 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Arc<M>)> + '_ {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
@@ -692,7 +692,7 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Arc<M>)> + '_ {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("less specifics for {:?}", start_prefix_id);
         trace!("level {}, len {}", 0, start_prefix_id.get_len());
 
@@ -726,7 +726,7 @@ impl<
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (Prefix, M)> + 'a {
+    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),

@@ -40,7 +40,7 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new(
             Prefix::new(ip, len)?,
-            PrefixAs(asn),
+            vec![Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(asn))],
         );
 
         // let ip: Vec<_> = record[0]
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
 
     for pfx in pfxs.into_iter() {
-        tree_bitmap.insert(&pfx.prefix, 0, pfx.meta)?;
+        tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone())?;
     }
     let ready = std::time::Instant::now();
     // println!("{:#?}", tree_bitmap.store.prefixes);
@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
-                                                pfx.prefix, pfx.meta
+                                                pfx.prefix, pfx.meta[0]
                                             );
                                         });
                                     println!(
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
-                                                pfx.prefix, pfx.meta
+                                                pfx.prefix, pfx.meta[0]
                                             );
                                         });
                                     println!(
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
-                                                pfx.prefix, pfx.meta
+                                                pfx.prefix, pfx.meta[0]
                                             );
                                         });
                                     println!(

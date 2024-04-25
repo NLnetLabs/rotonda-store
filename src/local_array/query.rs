@@ -1,12 +1,10 @@
-use std::sync::Arc;
-
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use inetnum::addr::Prefix;
-use crate::prefix_record::{MergeUpdate, Meta};
+use crate::prefix_record::{MergeUpdate, Meta, PublicRecord};
 
 use crate::QueryResult;
 
@@ -48,7 +46,9 @@ where
             } else {
                 None
             },
-            prefix_meta: prefix.map(|r| r.get_meta_cloned()),
+            prefix_meta: prefix.map(|r| {
+                r.record_map.as_public_records_vec()
+            }).unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
             more_specifics: Some(more_specifics_vec.collect()),
@@ -81,7 +81,9 @@ where
             } else {
                 None
             },
-            prefix_meta: prefix.map(|r| r.get_meta_cloned()),
+            prefix_meta: prefix.map(|r| {
+                r.record_map.as_public_records_vec()
+            }).unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| iter.collect()),
             more_specifics: None,
@@ -93,7 +95,7 @@ where
         prefix_id: PrefixId<AF>,
         guard: &'a Guard,
     ) -> Result<
-        impl Iterator<Item = (PrefixId<AF>, Arc<M>)> + '_,
+        impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_,
         std::io::Error,
     > {
         Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
@@ -111,7 +113,7 @@ where
             .store
             .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
             .0
-            .map(|pfx| (pfx.prefix, pfx.get_record_as_arc()));
+            .map(|pfx| (pfx.prefix, pfx.record_map.as_public_records_vec()));
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -143,7 +145,7 @@ where
 
         QueryResult {
             prefix: stored_prefix.as_ref().map(|p| p.0.into_pub()),
-            prefix_meta: stored_prefix.as_ref().map(|pfx| (*pfx.1).clone()),
+            prefix_meta: stored_prefix.as_ref().map(|pfx| pfx.1.clone()).unwrap_or_default(),
             less_specifics: if options.include_less_specifics {
                 Some(
                     self.store
@@ -221,7 +223,7 @@ where
                 0 => {
                     return QueryResult {
                         prefix: None,
-                        prefix_meta: None,
+                        prefix_meta: vec![],
                         match_type: MatchType::EmptyMatch,
                         less_specifics: None,
                         more_specifics: None,
@@ -235,7 +237,7 @@ where
                             PrefixId::new(AF::zero(), 0),
                             guard,
                         )
-                        .map(|sp| sp.0.get_meta_cloned());
+                        .map(|sp| sp.0.record_map.as_public_records_vec()).unwrap_or_default();
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
@@ -726,7 +728,7 @@ where
             prefix: prefix.map(|pfx: (&StoredPrefix<AF, M>, usize)| {
                 pfx.0.prefix.into_pub()
             }),
-            prefix_meta: prefix.map(|pfx| pfx.0.get_meta_cloned()),
+            prefix_meta: prefix.map(|pfx| pfx.0.record_map.as_public_records_vec()).unwrap_or_default(),
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec
@@ -735,7 +737,7 @@ where
                     .filter_map(move |p| {
                         self.store
                             .retrieve_prefix_with_guard(*p, guard)
-                            .map(|p| Some((p.0.prefix, p.0.get_record_as_arc())))
+                            .map(|p| Some((p.0.prefix, p.0.record_map.as_public_records_vec())))
                     })
                     .collect()
             } else {
@@ -754,7 +756,7 @@ where
                                     )
                                 })
                                 .0
-                        }).map(|sp| (sp.prefix, sp.get_record_as_arc()))
+                        }).map(|sp| (sp.prefix, sp.record_map.as_public_records_vec()))
                         .collect()
                 })
             } else {

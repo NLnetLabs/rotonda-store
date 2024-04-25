@@ -1,4 +1,4 @@
-use crate::prefix_record::{MergeUpdate, Meta};
+use crate::prefix_record::{MergeUpdate, Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
 use log::{error, log_enabled, trace};
 
@@ -9,11 +9,12 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, Upsert};
+use crate::custom_alloc::{CustomAllocStorage, Upsert, UpsertReport};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
 pub(crate) use super::atomic_stride::*;
+use super::store::atomic_types::{MultiMapValue, RouteStatus};
 use super::store::errors::PrefixStoreError;
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -446,14 +447,15 @@ impl<
     pub fn insert(
         &self,
         pfx: PrefixId<AF>,
-        record: M,
-        multi_uniq_id: u32,
+        record: PublicRecord<M>,
         user_data: Option<&<M as MergeUpdate>::UserDataIn>,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
+    ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();
+        // let record = MultiMapValue::new(meta, ltime, status);
 
         if pfx.get_len() == 0 {
-            let res = self.update_default_route_prefix_meta(record, guard, user_data)?;
+            let res = self.update_default_route_prefix_meta(
+                record, guard, user_data)?;
             return Ok(res);
         }
 
@@ -479,6 +481,7 @@ impl<
             let is_last_stride = pfx.get_len() <= stride_end;
             let stride_start = stride_end - stride;
             let back_off = crossbeam_utils::Backoff::new();
+            let multi_uniq_id = record.multi_uniq_id;
 
             // insert_match! returns the node_id of the next node to be
             // traversed. It was created if it did not exist.
@@ -486,7 +489,7 @@ impl<
                 // applicable to the whole outer match in the macro
                 self;
                 user_data;
-                multi_uniq_id;
+                // multi_uniq_id;
                 guard;
                 nibble_len;
                 nibble;
@@ -556,14 +559,14 @@ impl<
     //   those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
         &self,
-        new_meta: M,
+        record: PublicRecord<M>,
         guard: &epoch::Guard,
         user_data: Option<&<M as MergeUpdate>::UserDataIn>,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
+    ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
-            new_meta,
+            record,
             guard,
             user_data,
         )

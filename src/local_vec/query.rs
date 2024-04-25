@@ -2,7 +2,7 @@ use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::*;
 use crate::local_vec::tree::{SizedStrideNode, TreeBitMap};
 use crate::node_id::SortableNodeId;
-use crate::prefix_record::RecordSet;
+use crate::prefix_record::{PublicRecord, RecordSet, RecordSingleSet};
 use crate::{MatchOptions, MatchType};
 
 use crate::af::AddressFamily;
@@ -25,19 +25,19 @@ impl<AF: AddressFamily> PrefixId<AF> {
     }
 }
 
-//------------- QueryResult -------------------------------------------------
+//------------- QuerySingleResult --------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<M: crate::prefix_record::Meta> {
+pub struct QuerySingleResult<M: crate::prefix_record::Meta> {
     pub match_type: MatchType,
     pub prefix: Option<Prefix>,
     pub prefix_meta: Option<M>,
-    pub less_specifics: Option<RecordSet<M>>,
-    pub more_specifics: Option<RecordSet<M>>,
+    pub less_specifics: Option<RecordSingleSet<M>>,
+    pub more_specifics: Option<RecordSingleSet<M>>,
 }
 
 impl<M: crate::prefix_record::Meta> std::fmt::Display
-    for QueryResult<M>
+    for QuerySingleResult<M>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let pfx_str = match self.prefix {
@@ -54,6 +54,45 @@ impl<M: crate::prefix_record::Meta> std::fmt::Display
             self.match_type,
             pfx_str,
             pfx_meta_str,
+            if let Some(ls) = self.less_specifics.as_ref() {
+                format!("{}", ls)
+            } else {
+                "".to_string()
+            },
+            if let Some(ms) = self.more_specifics.as_ref() {
+                format!("{}", ms)
+            } else {
+                "".to_string()
+            },
+        )
+    }
+}
+
+//------------- QueryResult --------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct QueryResult<M: crate::prefix_record::Meta> {
+    pub match_type: MatchType,
+    pub prefix: Option<Prefix>,
+    pub prefix_meta: PublicRecord<M>,
+    pub less_specifics: Option<RecordSet<M>>,
+    pub more_specifics: Option<RecordSet<M>>,
+}
+
+impl<M: crate::prefix_record::Meta> std::fmt::Display
+    for QueryResult<M>
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        let pfx_str = match self.prefix {
+            Some(pfx) => format!("{}", pfx),
+            None => "".to_string(),
+        };
+        write!(
+            f,
+            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
+            self.match_type,
+            pfx_str,
+            self.prefix_meta,
             if let Some(ls) = self.less_specifics.as_ref() {
                 format!("{}", ls)
             } else {
@@ -91,7 +130,7 @@ where
         &'a self,
         search_pfx: PrefixId<Store::AF>,
         options: &MatchOptions,
-    ) -> QueryResult<Store::Meta> {
+    ) -> QuerySingleResult<Store::Meta> {
         let mut stride_end = 0;
 
         let mut node = self.retrieve_node(self.get_root_node_id()).unwrap();
@@ -725,7 +764,7 @@ where
             }
         };
 
-        QueryResult {
+        QuerySingleResult {
             prefix: if let Some(pfx) = prefix {
                 Prefix::new(pfx.net.into_ipaddr(), pfx.len).ok()
             } else {
@@ -737,7 +776,7 @@ where
                 less_specifics_vec.map(|vec| {
                     vec.iter()
                         .map(|p| self.retrieve_prefix(p.get_part()).unwrap())
-                        .collect::<RecordSet<Store::Meta>>()
+                        .collect::<RecordSingleSet<Store::Meta>>()
                 })
             } else {
                 None

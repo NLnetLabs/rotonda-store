@@ -189,7 +189,6 @@ use std::{
     fmt::Debug,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc,
     },
 };
 
@@ -203,7 +202,7 @@ use std::marker::PhantomData;
 
 use crate::{local_array::{
     bit_span::BitSpan, store::errors::PrefixStoreError,
-}, prefix_record::MergeUpdate};
+}, prefix_record::{MergeUpdate, PublicRecord}};
 use crate::{local_array::tree::*, stats::CreatedNodes};
 
 // use crate::prefix_record::InternalPrefixRecord;
@@ -282,6 +281,24 @@ impl Default for Counters {
 pub struct StoreStats {
     pub v4: Vec<CreatedNodes>,
     pub v6: Vec<CreatedNodes>,
+}
+
+//------------ UpsertReport --------------------------------------------------
+
+#[derive(Debug)]
+pub struct UpsertReport {
+    // Indicates the number of Atomic Compare-and-Swap operations were
+    // necessary to create/update the Record entry. High numbers indicate
+    // contention.
+    pub cas_count: usize,
+    // Indicates whether this was the first mui record for this prefix was
+    // created. So, the prefix did not exist before hand.
+    pub prefix_new: bool,
+    // Indicates whether this mui was new for this prefix. False means an old
+    // value was overwritten.
+    pub mui_new: bool,
+    // The number of mui records for this prefix after the upsert operation.
+    pub mui_count: usize
 }
 
 // ----------- CustomAllocStorage -------------------------------------------
@@ -585,12 +602,13 @@ impl<
     pub(crate) fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: M,
+        record: PublicRecord<M>,
         guard: &Guard,
         user_data: Option<&<M as MergeUpdate>::UserDataIn>,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
+    ) -> Result<UpsertReport, PrefixStoreError> {
         let mut retry_count = 0;
-        let mut new_record = Arc::new(record);
+        let multi_uniq_id = record.multi_uniq_id;
+        // let mut new_record = Arc::new(record);
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
@@ -615,7 +633,7 @@ impl<
                     }
                     let new_stored_prefix = StoredPrefix::new::<PB>(
                         PrefixId::new(prefix.get_net(), prefix.get_len()),
-                        new_record,
+                        record.clone(),
                         level,
                     );
 
@@ -633,7 +651,7 @@ impl<
                             if log_enabled!(log::Level::Info) {
                                 let StoredPrefix {
                                     prefix,
-                                    record: stored_record,
+                                    record_map: stored_record,
                                     ..
                                 } = unsafe { spfx.deref() };
                                 if log_enabled!(log::Level::Info) {
@@ -641,7 +659,7 @@ impl<
                                         "{} store: Inserted new prefix record {}/{} with {:?}",
                                         std::thread::current().name().unwrap(),
                                         prefix.get_net().into_ipaddr(), prefix.get_len(),
-                                        stored_record.get_meta_cloned()
+                                        stored_record.get_record_for(multi_uniq_id)
                                     );
                                 }
                             }
@@ -649,7 +667,7 @@ impl<
                             self.counters
                                 .inc_prefixes_count(prefix.get_len());
 
-                            return Ok((Upsert::Insert, retry_count));
+                            return Ok(UpsertReport { cas_count: retry_count, prefix_new: true, mui_new: true, mui_count: 1 });
                         }
                         // ...somebody beat us to it, the slot's not empty
                         // anymore, we'll have to do it again.
@@ -663,8 +681,8 @@ impl<
                             }
                             retry_count += 1;
 
-                            new_record =
-                                new.into_box().get_record_as_arc().clone();
+                            // record =
+                            //     new.into_box().record.get_meta_for(multi_uniq_id).unwrap().clone();
 
                             // reuse the returned existing prefix_record,
                             // for the next iteration.
@@ -698,40 +716,42 @@ impl<
                     // each invocation the implementer of the MergeUpdate
                     // trait can choose to output some user defined UserDataOut
                     // which we store and return to them.
-                    let mut user_data_out_final = None;
+                    // let mut user_data_out_final = None;
+                    let mui_new = unsafe { inner_stored_prefix.deref() }.record_map.upsert_record(record);
 
-                    unsafe { inner_stored_prefix.deref() }
-                        .record
-                        .as_arc_swap()
-                        .rcu(|meta| {
-                            // Track how many times the RCU operation invoked
-                            // us. We don't actually know if this is a retry
-                            // or the first invocation, so our counter becomes
-                            // one too high. We can't set it to -1 to start
-                            // with as it is unsigned, so outside the closure
-                            // below we correct the counter by subtracting
-                            // one from it.
-                            retry_count += 1;
+                    // let mui_new = record_map
+                    //     .update_record(record);
+                        // .as_arc_swap()
+                        // .rcu(|meta| {
+                        //     // Track how many times the RCU operation invoked
+                        //     // us. We don't actually know if this is a retry
+                        //     // or the first invocation, so our counter becomes
+                        //     // one too high. We can't set it to -1 to start
+                        //     // with as it is unsigned, so outside the closure
+                        //     // below we correct the counter by subtracting
+                        //     // one from it.
+                        //     retry_count += 1;
 
-                            // TODO: if retry_count > 1 then backoff?
+                        //     // TODO: if retry_count > 1 then backoff?
 
-                            let (res, user_data_out) = meta
-                                .clone_merge_update(
-                                    &new_record,
-                                    user_data,
-                                )
-                                .unwrap();
-                            user_data_out_final = Some(user_data_out);
-                            res
-                        });
+                        //     let (res, user_data_out) = meta
+                        //         .clone_merge_update(
+                        //             &new_record,
+                        //             user_data,
+                        //         )
+                        //         .unwrap();
+                        //     user_data_out_final = Some(user_data_out);
+                        //     res
+                        // });
 
+                    // user_data_out_final = Some(user_data_out);
                     // Correct the retry counter as it is off by one.
-                    retry_count -= 1;
+                    // retry_count -= 1;
 
                     // The user data must have been set by now so this unwrap is safe.
-                    let user_data = user_data_out_final.unwrap();
+                    // let user_data = user_data_out_final.unwrap();
 
-                    return Ok((Upsert::Update(user_data), retry_count));
+                    return Ok(UpsertReport { prefix_new: false, cas_count: retry_count, mui_new: mui_new.is_none(), mui_count: mui_new.unwrap_or(1) });
                 }
             }
         }

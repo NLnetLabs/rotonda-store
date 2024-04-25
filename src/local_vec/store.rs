@@ -2,7 +2,7 @@ use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::node_id::InMemNodeId;
 use crate::prefix_record::InternalPrefixRecord;
-use super::query::QueryResult;
+use super::query::QuerySingleResult;
 use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
@@ -38,7 +38,7 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
         &'a self,
         search_pfx: &Prefix,
         options: &MatchOptions,
-    ) -> QueryResult<M> {
+    ) -> QuerySingleResult<M> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
                 PrefixId::<IPv4>::new(addr.into(), search_pfx.len()),
@@ -77,12 +77,12 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
         }
     }
 
-    pub fn prefixes_iter(&'a self) -> crate::PrefixRecordIter<'a, M> {
+    pub fn prefixes_iter(&'a self) -> crate::PrefixSingleRecordIter<'a, M> {
         let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, M>> =
             self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
-        crate::PrefixRecordIter::<'a, M> {
+        crate::PrefixSingleRecordIter::<'a, M> {
             v4: Some(rs4),
             v6: rs6,
         }

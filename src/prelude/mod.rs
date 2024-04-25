@@ -24,7 +24,9 @@ pub mod multi {
     };
     pub use crate::local_array::tree::{PrefixId, StrideNodeId, TreeBitMap};
     pub use crate::local_array::store::errors::PrefixStoreError;
+    pub use crate::prefix_record::PublicRecord as Record;
+    pub use crate::local_array::store::atomic_types::RouteStatus;
 
-    pub use crate::custom_alloc::{Upsert, Counters, StoreStats};
+    pub use crate::custom_alloc::{Upsert, Counters, StoreStats, UpsertReport};
     pub use crate::custom_alloc::CustomAllocStorage;
 }

@@ -2,11 +2,13 @@ use std::fmt;
 use std::fmt::Debug;
 use std::{cmp::Ordering, sync::Arc};
 
+use crate::local_array::store::atomic_types::{MultiMapValue, RouteStatus};
 use crate::{af::AddressFamily, local_array::node::PrefixId};
 use inetnum::addr::Prefix;
 
 //------------ InternalPrefixRecord -----------------------------------------
 
+// This struct is used for the SingleThreadedStore only.
 #[derive(Clone, Copy)]
 pub struct InternalPrefixRecord<AF, M>
 where
@@ -151,10 +153,10 @@ where
     }
 }
 
-impl<M: Meta> From<PublicPrefixRecord<M>>
+impl<M: Meta> From<PublicPrefixSingleRecord<M>>
     for InternalPrefixRecord<crate::IPv4, M>
 {
-    fn from(record: PublicPrefixRecord<M>) -> Self {
+    fn from(record: PublicPrefixSingleRecord<M>) -> Self {
         Self {
             net: crate::IPv4::from_ipaddr(record.prefix.addr()),
             len: record.prefix.len(),
@@ -163,10 +165,10 @@ impl<M: Meta> From<PublicPrefixRecord<M>>
     }
 }
 
-impl<M: Meta> From<PublicPrefixRecord<M>>
+impl<M: Meta> From<PublicPrefixSingleRecord<M>>
     for InternalPrefixRecord<crate::IPv6, M>
 {
-    fn from(record: PublicPrefixRecord<M>) -> Self {
+    fn from(record: PublicPrefixSingleRecord<M>) -> Self {
         Self {
             net: crate::IPv6::from_ipaddr(record.prefix.addr()),
             len: record.prefix.len(),
@@ -175,15 +177,15 @@ impl<M: Meta> From<PublicPrefixRecord<M>>
     }
 }
 
-//------------ PublicPrefixRecord -------------------------------------------
+//------------ PublicPrefixSingleRecord --------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct PublicPrefixRecord<M: Meta> {
+pub struct PublicPrefixSingleRecord<M: Meta> {
     pub prefix: Prefix,
     pub meta: M,
 }
 
-impl<M: Meta> PublicPrefixRecord<M> {
+impl<M: Meta> PublicPrefixSingleRecord<M> {
     pub fn new(prefix: Prefix, meta: M) -> Self {
         Self { prefix, meta }
     }
@@ -198,7 +200,7 @@ impl<M: Meta> PublicPrefixRecord<M> {
     }
 }
 
-impl<AF, M> From<(PrefixId<AF>, Arc<M>)> for PublicPrefixRecord<M>
+impl<AF, M> From<(PrefixId<AF>, Arc<M>)> for PublicPrefixSingleRecord<M>
 where
     AF: AddressFamily,
     M: Meta,
@@ -211,15 +213,270 @@ where
     }
 }
 
+impl<M: Meta> std::fmt::Display for PublicPrefixSingleRecord<M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} :{:?}", self.prefix, self.meta)
+    }
+}
+
+impl<M: Meta> From<(Prefix, M)> for PublicPrefixSingleRecord<M> {
+    fn from((prefix, meta): (Prefix, M)) -> Self {
+        Self { prefix, meta }
+    }
+}
+
+
+//------------ PublicRecord -------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct PublicRecord<M> {
+    pub multi_uniq_id: u32,
+    pub ltime: u64,
+    pub status: RouteStatus,
+    pub meta: M,
+}
+
+impl<M> PublicRecord<M> {
+    pub fn new(multi_uniq_id: u32, ltime: u64, status: RouteStatus, meta: M) -> Self {
+        Self { meta, multi_uniq_id, ltime, status }
+    }
+}
+
+impl<AF, M> From<(PrefixId<AF>, u32, MultiMapValue<M>)> for PublicRecord<M>
+where
+    AF: AddressFamily,
+    M: Meta,
+{
+    fn from(value: (PrefixId<AF>, u32, MultiMapValue<M>)) -> Self {
+        Self {
+            multi_uniq_id: value.1,
+            meta: value.2.meta,
+            ltime: value.2.ltime,
+            status: value.2.status,
+        }
+    }
+}
+
+impl<M: Debug> std::fmt::Display for PublicRecord<M> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{} :{:?}", self.multi_uniq_id, self.meta)
+    }
+}
+
+impl<M: Clone> From<(&u32, &MultiMapValue<M>)> for PublicRecord<M> {
+    fn from(value: (&u32, &MultiMapValue<M>)) -> Self {
+        Self {
+            multi_uniq_id: *value.0,
+            meta: value.1.meta.clone(),
+            ltime: value.1.ltime,
+            status: value.1.status,
+        }
+    }
+}
+
+
+//------------ PublicPrefixRecord -------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct PublicPrefixRecord<M: Meta> {
+    pub prefix: Prefix,
+    pub meta: Vec<PublicRecord<M>>,
+}
+
+impl<M: Meta> PublicPrefixRecord<M> {
+    pub fn new(prefix: Prefix, meta: Vec<PublicRecord<M>>) -> Self {
+        Self { prefix, meta }
+    }
+}
+
+impl<AF, M> From<(PrefixId<AF>, Vec<PublicRecord<M>>)> for PublicPrefixRecord<M>
+where
+    AF: AddressFamily,
+    M: Meta,
+{
+    fn from(record: (PrefixId<AF>, Vec<PublicRecord<M>>)) -> Self {
+        Self {
+            prefix: record.0.into_pub(),
+            meta: record.1,
+        }
+    }
+}
+
 impl<M: Meta> std::fmt::Display for PublicPrefixRecord<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} :{:?}", self.prefix, self.meta)
     }
 }
 
-impl<M: Meta> From<(Prefix, M)> for PublicPrefixRecord<M> {
-    fn from((prefix, meta): (Prefix, M)) -> Self {
+impl<M: Meta> From<(Prefix, Vec<PublicRecord<M>>)> for PublicPrefixRecord<M> {
+    fn from((prefix, meta): (Prefix, Vec<PublicRecord<M>>)) -> Self {
         Self { prefix, meta }
+    }
+}
+
+
+//------------ RecordSingleSet -----------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct RecordSingleSet<M: Meta> {
+    pub v4: Vec<PublicPrefixSingleRecord<M>>,
+    pub v6: Vec<PublicPrefixSingleRecord<M>>,
+}
+
+impl<M: Meta> RecordSingleSet<M> {
+    pub fn new() -> Self {
+        Self {
+            v4: Default::default(),
+            v6: Default::default(),
+        }
+    }
+
+    pub fn push(&mut self, prefix: Prefix, meta: M) {
+        match prefix.addr() {
+            std::net::IpAddr::V4(_) => &mut self.v4,
+            std::net::IpAddr::V6(_) => &mut self.v6,
+        }.push(PublicPrefixSingleRecord::new(prefix, meta));
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.v4.is_empty() && self.v6.is_empty()
+    }
+
+    pub fn iter(&self) -> RecordSetSingleIter<M> {
+        RecordSetSingleIter {
+            v4: if self.v4.is_empty() {
+                None
+            } else {
+                Some(self.v4.iter())
+            },
+            v6: self.v6.iter(),
+        }
+    }
+
+    #[must_use]
+    pub fn reverse(mut self) -> RecordSingleSet<M> {
+        self.v4.reverse();
+        self.v6.reverse();
+        self
+    }
+
+    pub fn len(&self) -> usize {
+        self.v4.len() + self.v6.len()
+    }
+}
+
+impl<M: Meta> Default for RecordSingleSet<M> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<M: Meta> fmt::Display for RecordSingleSet<M> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let arr_str_v4 =
+            self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
+                format!("{} {}", pfx_arr, *pfx)
+            });
+        let arr_str_v6 =
+            self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
+                format!("{} {}", pfx_arr, *pfx)
+            });
+
+        write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
+    }
+}
+
+impl<M: Meta>
+    From<(Vec<PublicPrefixSingleRecord<M>>, Vec<PublicPrefixSingleRecord<M>>)>
+    for RecordSingleSet<M>
+{
+    fn from(
+        (v4, v6): (Vec<PublicPrefixSingleRecord<M>>, Vec<PublicPrefixSingleRecord<M>>),
+    ) -> Self {
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
+    for RecordSingleSet<M>
+{
+    fn from_iter<I: IntoIterator<Item = Arc<PublicPrefixSingleRecord<M>>>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let u_pfx = pfx.prefix;
+            match u_pfx.addr() {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                }
+            }
+        }
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, AF: AddressFamily, M: Meta + 'a>
+    std::iter::FromIterator<(PrefixId<AF>, Arc<M>)>
+    for RecordSingleSet<M>
+{
+    fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Arc<M>)>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let u_pfx = pfx.0.into_pub();
+            match u_pfx.addr() {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(PublicPrefixSingleRecord::new(u_pfx, (*pfx.1).clone()));
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(PublicPrefixSingleRecord::new(u_pfx, (*pfx.1).clone()));
+                }
+            }
+        }
+        Self { v4, v6 }
+    }
+}
+
+impl<'a, AF: AddressFamily, M: Meta + 'a>
+    std::iter::FromIterator<&'a InternalPrefixRecord<AF, M>>
+    for RecordSingleSet<M>
+{
+    fn from_iter<I: IntoIterator<Item = &'a InternalPrefixRecord<AF, M>>>(
+        iter: I,
+    ) -> Self {
+        let mut v4 = vec![];
+        let mut v6 = vec![];
+        for pfx in iter {
+            let u_pfx = (*pfx).prefix_into_pub();
+            match u_pfx.addr() {
+                std::net::IpAddr::V4(_) => {
+                    v4.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                }
+                std::net::IpAddr::V6(_) => {
+                    v6.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                }
+            }
+        }
+        Self { v4, v6 }
+    }
+}
+
+impl<M: Meta> std::ops::Index<usize> for RecordSingleSet<M> {
+    type Output = PublicPrefixSingleRecord<M>;
+
+    fn index(&self, index: usize) -> &Self::Output {
+        if index < self.v4.len() {
+            &self.v4[index]
+        } else {
+            &self.v6[index - self.v4.len()]
+        }
     }
 }
 
@@ -239,7 +496,7 @@ impl<M: Meta> RecordSet<M> {
         }
     }
 
-    pub fn push(&mut self, prefix: Prefix, meta: M) {
+    pub fn push(&mut self, prefix: Prefix, meta: Vec<PublicRecord<M>>) {
         match prefix.addr() {
             std::net::IpAddr::V4(_) => &mut self.v4,
             std::net::IpAddr::V6(_) => &mut self.v6,
@@ -283,11 +540,11 @@ impl<M: Meta> fmt::Display for RecordSet<M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let arr_str_v4 =
             self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
-                format!("{} {}", pfx_arr, *pfx)
+                format!("{} {:#?}", pfx_arr, *pfx)
             });
         let arr_str_v6 =
             self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
-                format!("{} {}", pfx_arr, *pfx)
+                format!("{} {:#?}", pfx_arr, *pfx)
             });
 
         write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
@@ -305,10 +562,11 @@ impl<M: Meta>
     }
 }
 
-impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixRecord<M>>>
+impl<'a, M: Meta + 'a>
+    std::iter::FromIterator<PublicPrefixRecord<M>>
     for RecordSet<M>
 {
-    fn from_iter<I: IntoIterator<Item = Arc<PublicPrefixRecord<M>>>>(
+    fn from_iter<I: IntoIterator<Item = PublicPrefixRecord<M>>>(
         iter: I,
     ) -> Self {
         let mut v4 = vec![];
@@ -317,10 +575,10 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixRecord<M>>>
             let u_pfx = pfx.prefix;
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta));
                 }
             }
         }
@@ -329,10 +587,10 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixRecord<M>>>
 }
 
 impl<'a, AF: AddressFamily, M: Meta + 'a>
-    std::iter::FromIterator<(PrefixId<AF>, Arc<M>)>
+    std::iter::FromIterator<(PrefixId<AF>, Vec<PublicRecord<M>>)>
     for RecordSet<M>
 {
-    fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Arc<M>)>>(
+    fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)>>(
         iter: I,
     ) -> Self {
         let mut v4 = vec![];
@@ -341,10 +599,10 @@ impl<'a, AF: AddressFamily, M: Meta + 'a>
             let u_pfx = pfx.0.into_pub();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixRecord::new(u_pfx, (*pfx.1).clone()));
+                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.1));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixRecord::new(u_pfx, (*pfx.1).clone()));
+                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.1));
                 }
             }
         }
@@ -352,23 +610,23 @@ impl<'a, AF: AddressFamily, M: Meta + 'a>
     }
 }
 
-impl<'a, AF: AddressFamily, M: Meta + 'a>
-    std::iter::FromIterator<&'a InternalPrefixRecord<AF, M>>
+impl<'a, M: Meta + 'a>
+    std::iter::FromIterator<&'a PublicPrefixRecord<M>>
     for RecordSet<M>
 {
-    fn from_iter<I: IntoIterator<Item = &'a InternalPrefixRecord<AF, M>>>(
+    fn from_iter<I: IntoIterator<Item = &'a PublicPrefixRecord<M>>>(
         iter: I,
     ) -> Self {
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
-            let u_pfx = (*pfx).prefix_into_pub();
+            let u_pfx = pfx.prefix;
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone().into()));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
+                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone().into()));
                 }
             }
         }
@@ -388,7 +646,32 @@ impl<M: Meta> std::ops::Index<usize> for RecordSet<M> {
     }
 }
 
-//------------ RecordSetIter ------------------------------------------------
+
+//------------ RecordSetSingleIter -------------------------------------------
+
+#[derive(Clone, Debug)]
+pub struct RecordSetSingleIter<'a, M: Meta> {
+    v4: Option<std::slice::Iter<'a, PublicPrefixSingleRecord<M>>>,
+    v6: std::slice::Iter<'a, PublicPrefixSingleRecord<M>>,
+}
+
+impl<'a, M: Meta> Iterator for RecordSetSingleIter<'a, M> {
+    type Item = PublicPrefixSingleRecord<M>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.v4.is_none() {
+            return self.v6.next().map(|res| res.to_owned());
+        }
+
+        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
+            return Some(res.to_owned());
+        }
+        self.v4 = None;
+        self.next()
+    }
+}
+
+//------------ RecordSetIter -------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct RecordSetIter<'a, M: Meta> {

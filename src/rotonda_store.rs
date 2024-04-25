@@ -1,6 +1,7 @@
 use std::{fmt, slice};
 
-pub use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
+use crate::prefix_record::{PublicRecord, RecordSet};
+pub use crate::prefix_record::{PublicPrefixSingleRecord, Meta, RecordSingleSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use inetnum::addr::Prefix;
@@ -110,21 +111,21 @@ impl std::fmt::Display for MatchType {
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
 // while iterating.
 #[derive(Clone, Debug)]
-pub struct PrefixRecordIter<'a, M: Meta> {
+pub struct PrefixSingleRecordIter<'a, M: Meta> {
     pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, M>>>,
     pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, M>>,
 }
 
 impl<'a, M: Meta> Iterator
-    for PrefixRecordIter<'a, M>
+    for PrefixSingleRecordIter<'a, M>
 {
-    type Item = PublicPrefixRecord<M>;
+    type Item = PublicPrefixSingleRecord<M>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {
             return self.v6.next().map(|res| {
-                PublicPrefixRecord::new(
+                PublicPrefixSingleRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                     res.meta.clone(),
                 )
@@ -132,7 +133,7 @@ impl<'a, M: Meta> Iterator
         }
 
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
-            return Some(PublicPrefixRecord::new(
+            return Some(PublicPrefixSingleRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                 res.meta.clone(),
             ));
@@ -160,7 +161,7 @@ pub struct QueryResult<M: crate::prefix_record::Meta> {
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
-    pub prefix_meta: Option<M>,
+    pub prefix_meta: Vec<PublicRecord<M>>,
     /// The less-specifics of the resulting prefix together with their meta data
     pub less_specifics: Option<RecordSet<M>>,
     /// The more-specifics of the resulting prefix together with their meta data
@@ -173,16 +174,16 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
             Some(pfx) => format!("{}", pfx),
             None => "".to_string(),
         };
-        let pfx_meta_str = match &self.prefix_meta {
-            Some(pfx_meta) => format!("{}", pfx_meta),
-            None => "".to_string(),
-        };
+        // let pfx_meta_str = match &self.prefix_meta {
+        //     Some(pfx_meta) => format!("{}", pfx_meta),
+        //     None => "".to_string(),
+        // };
         write!(
             f,
             "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
             self.match_type,
             pfx_str,
-            pfx_meta_str,
+            format_args!("{:?}", self.prefix_meta),
             if let Some(ls) = self.less_specifics.as_ref() {
                 format!("{}", ls)
             } else {
