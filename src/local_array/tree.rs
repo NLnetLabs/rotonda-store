@@ -9,12 +9,11 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, Upsert, UpsertReport};
+use crate::custom_alloc::{CustomAllocStorage, UpsertReport};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
 pub(crate) use super::atomic_stride::*;
-use super::store::atomic_types::{MultiMapValue, RouteStatus};
 use super::store::errors::PrefixStoreError;
 
 pub(crate) use crate::local_array::node::TreeBitMapNode;
@@ -487,8 +486,6 @@ impl<
             let node_result = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
-                user_data;
-                // multi_uniq_id;
                 guard;
                 nibble_len;
                 nibble;

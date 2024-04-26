@@ -195,7 +195,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                                 // There's a prefix here, that's the next one
                                 trace!("D. found prefix {:?}", p.prefix);
                             }
-                            p.record_map.as_public_records_vec()
+                            p.record_map.as_public_records()
                         })
                     {
                         return Some((
@@ -216,7 +216,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             if log_enabled!(log::Level::Debug) {
                                 debug!("E. found prefix {:?}", p.prefix);
                             }
-                            p.record_map.as_public_records_vec()
+                            p.record_map.as_public_records()
                         })
                     {
                         self.cursor += 1;
@@ -335,7 +335,7 @@ impl<
                         ),
                         self.guard,
                     )
-                    .0.map(|p| (p.prefix, p.record_map.as_public_records_vec()));
+                    .0.map(|p| (p.prefix, p.record_map.as_public_records()));
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -519,7 +519,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
                 trace!("get_record {:?}", stored_prefix.record_map);
-                let pfx_rec = stored_prefix.record_map.as_public_records_vec();
+                let pfx_rec = stored_prefix.record_map.as_public_records();
                 // There is a prefix  here, but we need to check if it's
                 // the right one.
                 if self.cur_prefix_id

@@ -47,7 +47,7 @@ where
                 None
             },
             prefix_meta: prefix.map(|r| {
-                r.record_map.as_public_records_vec()
+                r.record_map.as_public_records()
             }).unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
@@ -82,7 +82,7 @@ where
                 None
             },
             prefix_meta: prefix.map(|r| {
-                r.record_map.as_public_records_vec()
+                r.record_map.as_public_records()
             }).unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| iter.collect()),
@@ -113,7 +113,7 @@ where
             .store
             .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
             .0
-            .map(|pfx| (pfx.prefix, pfx.record_map.as_public_records_vec()));
+            .map(|pfx| (pfx.prefix, pfx.record_map.as_public_records()));
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -237,7 +237,7 @@ where
                             PrefixId::new(AF::zero(), 0),
                             guard,
                         )
-                        .map(|sp| sp.0.record_map.as_public_records_vec()).unwrap_or_default();
+                        .map(|sp| sp.0.record_map.as_public_records()).unwrap_or_default();
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
@@ -728,7 +728,7 @@ where
             prefix: prefix.map(|pfx: (&StoredPrefix<AF, M>, usize)| {
                 pfx.0.prefix.into_pub()
             }),
-            prefix_meta: prefix.map(|pfx| pfx.0.record_map.as_public_records_vec()).unwrap_or_default(),
+            prefix_meta: prefix.map(|pfx| pfx.0.record_map.as_public_records()).unwrap_or_default(),
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec
@@ -737,7 +737,7 @@ where
                     .filter_map(move |p| {
                         self.store
                             .retrieve_prefix_with_guard(*p, guard)
-                            .map(|p| Some((p.0.prefix, p.0.record_map.as_public_records_vec())))
+                            .map(|p| Some((p.0.prefix, p.0.record_map.as_public_records())))
                     })
                     .collect()
             } else {
@@ -756,7 +756,7 @@ where
                                     )
                                 })
                                 .0
-                        }).map(|sp| (sp.prefix, sp.record_map.as_public_records_vec()))
+                        }).map(|sp| (sp.prefix, sp.record_map.as_public_records()))
                         .collect()
                 })
             } else {

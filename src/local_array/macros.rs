@@ -6,7 +6,7 @@
 macro_rules! insert_match {
     (
         $self: ident;
-        $user_data: ident;
+        // $user_data: ident;
         // $multi_uniq_id: ident;
         $guard: ident;
         $nibble_len: expr;

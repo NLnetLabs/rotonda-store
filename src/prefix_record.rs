@@ -242,32 +242,17 @@ impl<M> PublicRecord<M> {
     }
 }
 
-impl<AF, M> From<(PrefixId<AF>, u32, MultiMapValue<M>)> for PublicRecord<M>
-where
-    AF: AddressFamily,
-    M: Meta,
-{
-    fn from(value: (PrefixId<AF>, u32, MultiMapValue<M>)) -> Self {
-        Self {
-            multi_uniq_id: value.1,
-            meta: value.2.meta,
-            ltime: value.2.ltime,
-            status: value.2.status,
-        }
-    }
-}
-
 impl<M: Debug> std::fmt::Display for PublicRecord<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} :{:?}", self.multi_uniq_id, self.meta)
     }
 }
 
-impl<M: Clone> From<(&u32, &MultiMapValue<M>)> for PublicRecord<M> {
-    fn from(value: (&u32, &MultiMapValue<M>)) -> Self {
+impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
+    fn from(value: (u32, MultiMapValue<M>)) -> Self {
         Self {
-            multi_uniq_id: *value.0,
-            meta: value.1.meta.clone(),
+            multi_uniq_id: value.0,
+            meta: value.1.meta,
             ltime: value.1.ltime,
             status: value.1.status,
         }
