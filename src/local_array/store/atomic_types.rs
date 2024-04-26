@@ -267,7 +267,7 @@ impl std::fmt::Display for RouteStatus {
 }
 
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct MultiMapValue<M> where M: Clone {
+pub(crate) struct MultiMapValue<M> {
     pub meta: M,
     pub ltime: u64,
     pub status: RouteStatus
@@ -300,11 +300,11 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
 // prefix.
 
 #[derive(Clone, Debug)]
-pub(crate) struct MultiMap<M: Send + Sync + Clone>(
+pub(crate) struct MultiMap<M: Send + Sync>(
     flurry::HashMap<u32, MultiMapValue<M>>
 );
 
-impl<M: Send + Sync + Clone + Debug + Display + Meta> MultiMap<M> {
+impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
         Self(record_map)
     }

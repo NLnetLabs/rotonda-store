@@ -604,7 +604,7 @@ impl<
         prefix: PrefixId<AF>,
         record: PublicRecord<M>,
         guard: &Guard,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut retry_count = 0;
         let multi_uniq_id = record.multi_uniq_id;

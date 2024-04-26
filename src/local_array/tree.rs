@@ -448,14 +448,14 @@ impl<
         &self,
         pfx: PrefixId<AF>,
         record: PublicRecord<M>,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();
         // let record = MultiMapValue::new(meta, ltime, status);
 
         if pfx.get_len() == 0 {
             let res = self.update_default_route_prefix_meta(
-                record, guard, user_data)?;
+                record, guard)?;
             return Ok(res);
         }
 
@@ -561,14 +561,14 @@ impl<
         &self,
         record: PublicRecord<M>,
         guard: &epoch::Guard,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
             record,
             guard,
-            user_data,
+            // user_data,
         )
     }
 

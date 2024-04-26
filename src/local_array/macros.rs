@@ -100,7 +100,7 @@ macro_rules! insert_match {
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },
                                     (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard, $user_data)
+                                        return $self.store.upsert_prefix($pfx, $record, $guard)
                                             .and_then(|mut r| {
                                                 r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
                                                 Ok(r)
@@ -109,7 +109,7 @@ macro_rules! insert_match {
                                         // $self.stats[$stats_level].inc_prefix_count($level);
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard, $user_data)
+                                        return $self.store.upsert_prefix($pfx, $record, $guard)
                                             .and_then(|mut r| { 
                                                 r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
                                                 Ok(r) 
