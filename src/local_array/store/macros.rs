@@ -101,7 +101,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             ).ok();
 
                             trace!("Retry_count rbm index {:?}", retry_count);
-                            println!("add multi uniq id to bitmap index {}", $multi_uniq_id);
+                            trace!("add multi uniq id to bitmap index {}", $multi_uniq_id);
                             return Some(SizedStrideRefMut::$stride(node));
                         };
                         // Meh, it's not, but we can a go to the next level

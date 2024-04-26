@@ -481,7 +481,6 @@ impl<
             let is_last_stride = pfx.get_len() <= stride_end;
             let stride_start = stride_end - stride;
             let back_off = crossbeam_utils::Backoff::new();
-            let multi_uniq_id = record.multi_uniq_id;
 
             // insert_match! returns the node_id of the next node to be
             // traversed. It was created if it did not exist.

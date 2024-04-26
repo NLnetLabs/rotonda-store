@@ -187,9 +187,7 @@
 
 use std::{
     fmt::Debug,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-    },
+    sync::atomic::{AtomicUsize, Ordering}
 };
 
 use log::{debug, info, log_enabled, trace};

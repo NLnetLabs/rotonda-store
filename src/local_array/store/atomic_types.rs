@@ -183,7 +183,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let mut rec_map = HashMap::new();
+        let rec_map = HashMap::new();
         rec_map.pin().insert(record.multi_uniq_id, MultiMapValue::from(record));
 
         StoredPrefix {
@@ -198,7 +198,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub fn upsert_record<'a, PB: PrefixBuckets<AF, M>>(
+    pub(crate) fn upsert_record<'a, PB: PrefixBuckets<AF, M>>(
         &'a self,
         record: MultiMapValue<M>,
         multi_uniq_id: u32,
@@ -351,7 +351,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         self.0.pin().iter().map(PublicRecord::from).collect::<Vec<_>>()
     }
 
-    // Insert of replace the PublicRecord in the HashMap for the key of
+    // Insert or replace the PublicRecord in the HashMap for the key of
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it.
     pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
