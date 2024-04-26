@@ -1,9 +1,6 @@
 use flurry::HashMap;
-use std::sync::{Arc, RwLock};
 use std::{fmt::{Debug, Display}, mem::MaybeUninit, sync::atomic::Ordering};
 
-use arc_swap::access::Access;
-use arc_swap::ArcSwap;
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use log::{debug, log_enabled, trace};
@@ -14,7 +11,7 @@ use roaring::RoaringBitmap;
 use crate::local_array::tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::AddressFamily;
-use crate::prelude::{multi, Meta};
+use crate::prelude::Meta;
 
 
 // ----------- Node related structs -----------------------------------------
@@ -154,6 +151,45 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
 
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     pub fn new<PB: PrefixBuckets<AF, M>>(
+        pfx_id: PrefixId<AF>,
+        level: u8,
+    ) -> Self {
+        // start calculation size of next set, it's dependent on the level
+        // we're in.
+        // let pfx_id = PrefixId::new(record.net, record.len);
+        let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
+        let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+
+        trace!("this level {} next level {}", this_level, next_level);
+        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+            debug!(
+                "{} store: INSERT with new bucket of size {} at prefix len {}",
+                std::thread::current().name().unwrap(),
+                1 << (next_level - this_level),
+                pfx_id.get_len()
+            );
+            PrefixSet::init((1 << (next_level - this_level)) as usize)
+        } else {
+            debug!(
+                "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
+                std::thread::current().name().unwrap(),
+                pfx_id.get_len()
+            );
+            PrefixSet::empty()
+        };
+        // End of calculation
+
+        let rec_map = HashMap::new();
+
+        StoredPrefix {
+            serial: 1,
+            prefix: pfx_id,
+            record_map: MultiMap::new(rec_map),
+            next_bucket,
+        }
+    }
+
+    pub fn new_with_record<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
         record: PublicRecord<M>,
         level: u8,
@@ -331,24 +367,20 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         self.0.len()
     }
 
-    pub fn guard(&self) -> flurry::Guard<'_> {
+    pub(crate) fn guard(&self) -> flurry::Guard<'_> {
         self.0.guard()
     }
 
-    pub fn get_record_for(&self, multi_uniq_id: u32) -> Option<MultiMapValue<M>> {
-        self.0.pin().get(&multi_uniq_id).cloned()
+    pub(crate) fn get_value_for_mui<'a>(&'a self, multi_uniq_id: u32, guard: &'a flurry::Guard) -> Option<&'a MultiMapValue<M>> {
+        self.0.get(&multi_uniq_id, guard)
     }
 
-    pub fn iter_all_records<'a>(&'a self, guard: &'a flurry::Guard<'a>) -> impl Iterator<Item = (&'a u32, &'a MultiMapValue<M>)> + 'a {
-        self.0.iter(guard)
+    pub fn iter_all_records<'a>(&'a self, guard: &'a flurry::Guard<'a>) -> impl Iterator<Item = PublicRecord<M>> + 'a {
+        self.0.iter(guard).map(|r| PublicRecord::from((*r.0, r.1.clone())))
     }
 
-    pub fn as_records(&self) -> Vec<MultiMapValue<M>> {
-        self.0.pin().iter().map(|r| r.1.clone()).collect::<Vec<_>>()
-    }
-
-    pub fn as_public_records_vec(&self) -> Vec<PublicRecord<M>> {
-        self.0.pin().iter().map(PublicRecord::from).collect::<Vec<_>>()
+    pub fn as_public_records(&self) -> Vec<PublicRecord<M>> {
+        self.0.pin().iter().map(|r| PublicRecord::from((*r.0, r.1.clone()))).collect::<Vec<_>>()
     }
 
     // Insert or replace the PublicRecord in the HashMap for the key of
