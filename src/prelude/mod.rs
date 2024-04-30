@@ -5,8 +5,7 @@ pub use crate::{AddressFamily, IPv4, IPv6};
 
 pub use crate::prefix_record::{
     PublicPrefixRecord as PrefixRecord,
-    Meta,
-    MergeUpdate
+    Meta
 };
 pub use crate::{MatchOptions, MatchType, QueryResult};
 pub use crate::stride::{Stride3, Stride4, Stride5};

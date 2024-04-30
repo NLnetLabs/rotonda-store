@@ -4,7 +4,7 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::local_vec::tree::*;
 
 use crate::af::AddressFamily;
-use crate::prefix_record::MergeUpdate;
+// use crate::prefix_record::MergeUpdate;
 
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
@@ -20,7 +20,7 @@ where
 {
     type NodeType;
     type AF: AddressFamily;
-    type Meta: crate::prefix_record::Meta + MergeUpdate;
+    type Meta: crate::prefix_record::Meta;
 
     fn init(
         start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>,
@@ -98,7 +98,7 @@ pub(crate) struct InMemStorage<
     pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<AF: AddressFamily, Meta: crate::prefix_record::Meta + MergeUpdate>
+impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     StorageBackend for InMemStorage<AF, Meta>
 {
     type NodeType = InMemNodeId;

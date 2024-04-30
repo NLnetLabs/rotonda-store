@@ -51,7 +51,7 @@ where
 
 impl<M, AF> std::fmt::Display for InternalPrefixRecord<AF, M>
 where
-    M: Meta + MergeUpdate,
+    M: Meta,
     AF: AddressFamily,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -689,40 +689,40 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// wants to be able to be stored. It should describe how the metadata for an
 /// existing record should be merged with newly arriving records for the same
 /// key.
-pub trait MergeUpdate: Send + Sync {
-    /// User-defined data to be passed in to the merge implementation.
-    type UserDataIn: Debug + Sync + Send;
+// pub trait MergeUpdate: Send + Sync {
+//     /// User-defined data to be passed in to the merge implementation.
+//     type UserDataIn: Debug + Sync + Send;
 
-    /// User-defined data returned by the users implementation of the merge
-    /// operations. Set to () if not needed.
-    /// TODO: Define () as the default when the 'associated_type_defaults'
-    /// Rust feature is stabilized. See:
-    ///   https://github.com/rust-lang/rust/issues/29661
-    type UserDataOut;
+//     /// User-defined data returned by the users implementation of the merge
+//     /// operations. Set to () if not needed.
+//     /// TODO: Define () as the default when the 'associated_type_defaults'
+//     /// Rust feature is stabilized. See:
+//     ///   https://github.com/rust-lang/rust/issues/29661
+//     type UserDataOut;
 
-    fn merge_update(
-        &mut self,
-        update_meta: Self,
-        user_data: Option<&Self::UserDataIn>,
-    ) -> Result<Self::UserDataOut, Box<dyn std::error::Error>>;
+//     fn merge_update(
+//         &mut self,
+//         update_meta: Self,
+//         user_data: Option<&Self::UserDataIn>,
+//     ) -> Result<Self::UserDataOut, Box<dyn std::error::Error>>;
 
-    // This is part of the Read-Copy-Update pattern for updating a record
-    // concurrently. The Read part should be done by the caller and then
-    // the result should be passed in into this function together with
-    // the new meta-data that updates it. This function will then create
-    // a copy (in the pattern lingo, but in Rust that would be a Clone,
-    // since we're not requiring Copy for Meta) and update that with a
-    // copy of the new meta-data. It then returns the result of that merge.
-    // The caller should then proceed to insert that as a new entry
-    // in the global store.
-    fn clone_merge_update(
-        &self,
-        update_meta: &Self,
-        user_data: Option<&Self::UserDataIn>,
-    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-    where
-        Self: std::marker::Sized;
-}
+//     // This is part of the Read-Copy-Update pattern for updating a record
+//     // concurrently. The Read part should be done by the caller and then
+//     // the result should be passed in into this function together with
+//     // the new meta-data that updates it. This function will then create
+//     // a copy (in the pattern lingo, but in Rust that would be a Clone,
+//     // since we're not requiring Copy for Meta) and update that with a
+//     // copy of the new meta-data. It then returns the result of that merge.
+//     // The caller should then proceed to insert that as a new entry
+//     // in the global store.
+//     fn clone_merge_update(
+//         &self,
+//         update_meta: &Self,
+//         user_data: Option<&Self::UserDataIn>,
+//     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
+//     where
+//         Self: std::marker::Sized;
+// }
 
 /// Trait for types that can be used as metadata of a record
 pub trait Meta

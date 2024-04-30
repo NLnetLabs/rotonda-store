@@ -1,4 +1,4 @@
-use crate::prefix_record::{MergeUpdate, Meta, PublicRecord};
+use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
 use log::{error, log_enabled, trace};
 
@@ -360,7 +360,7 @@ impl std::fmt::Display for StrideType {
 
 pub struct TreeBitMap<
     AF: AddressFamily,
-    M: Meta + MergeUpdate,
+    M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
@@ -370,7 +370,7 @@ pub struct TreeBitMap<
 impl<
         'a,
         AF: AddressFamily,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > TreeBitMap<AF, M, NB, PB>
@@ -659,7 +659,7 @@ impl<
 
 impl<
         AF: AddressFamily,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > Default for TreeBitMap<AF, M, NB, PB>
@@ -673,7 +673,7 @@ impl<
 #[cfg(feature = "cli")]
 impl<
         AF: AddressFamily,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > std::fmt::Display for TreeBitMap<AF, M, NB, PB>

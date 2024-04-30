@@ -4,7 +4,7 @@ use epoch::Guard;
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use inetnum::addr::Prefix;
-use crate::prefix_record::{MergeUpdate, Meta, PublicRecord};
+use crate::prefix_record::{Meta, PublicRecord};
 
 use crate::QueryResult;
 
@@ -20,7 +20,7 @@ use super::store::atomic_types::StoredPrefix;
 impl<'a, AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
 where
     AF: AddressFamily,
-    M: Meta + MergeUpdate,
+    M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 {

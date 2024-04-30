@@ -1,34 +1,32 @@
 //------------ PrefixAs Metadata impl ---------------------------------------
 
-use crate::prefix_record::MergeUpdate;
-
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PrefixAs(pub u32);
 
-impl MergeUpdate for PrefixAs {
-    type UserDataIn = ();
-    type UserDataOut = ();
+// impl MergeUpdate for PrefixAs {
+//     type UserDataIn = ();
+//     type UserDataOut = ();
 
-    fn merge_update(
-        &mut self,
-        update_record: PrefixAs,
-        _: Option<&Self::UserDataIn>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.0 = update_record.0;
-        Ok(())
-    }
+//     fn merge_update(
+//         &mut self,
+//         update_record: PrefixAs,
+//         _: Option<&Self::UserDataIn>,
+//     ) -> Result<(), Box<dyn std::error::Error>> {
+//         self.0 = update_record.0;
+//         Ok(())
+//     }
 
-    fn clone_merge_update(
-        &self,
-        update_meta: &Self,
-        _: Option<&Self::UserDataIn>,
-    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-    where
-        Self: std::marker::Sized,
-    {
-        Ok((PrefixAs(update_meta.0), ()))
-    }
-}
+//     fn clone_merge_update(
+//         &self,
+//         update_meta: &Self,
+//         _: Option<&Self::UserDataIn>,
+//     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
+//     where
+//         Self: std::marker::Sized,
+//     {
+//         Ok((PrefixAs(update_meta.0), ()))
+//     }
+// }
 
 impl std::fmt::Display for PrefixAs {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -66,23 +64,23 @@ impl std::fmt::Display for NoMeta {
     }
 }
 
-impl MergeUpdate for NoMeta {
-    type UserDataIn = ();
-    type UserDataOut = ();
+// impl MergeUpdate for NoMeta {
+//     type UserDataIn = ();
+//     type UserDataOut = ();
 
-    fn merge_update(
-        &mut self,
-        _: NoMeta,
-        _: Option<&Self::UserDataIn>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        Ok(())
-    }
+//     fn merge_update(
+//         &mut self,
+//         _: NoMeta,
+//         _: Option<&Self::UserDataIn>,
+//     ) -> Result<(), Box<dyn std::error::Error>> {
+//         Ok(())
+//     }
 
-    fn clone_merge_update(
-        &self,
-        _: &NoMeta,
-        _: Option<&Self::UserDataIn>,
-    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>> {
-        Ok((NoMeta::Empty, ()))
-    }
-}
+//     fn clone_merge_update(
+//         &self,
+//         _: &NoMeta,
+//         _: Option<&Self::UserDataIn>,
+//     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>> {
+//         Ok((NoMeta::Empty, ()))
+//     }
+// }

@@ -201,7 +201,7 @@ use std::marker::PhantomData;
 use crate::{local_array::tree::*, stats::CreatedNodes};
 use crate::{
     local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
-    prefix_record::{MergeUpdate, PublicRecord},
+    prefix_record::PublicRecord,
 };
 
 // use crate::prefix_record::InternalPrefixRecord;

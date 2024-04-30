@@ -7,7 +7,6 @@ use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
 use inetnum::addr::Prefix;
-use crate::prefix_record::MergeUpdate;
 
 use super::query::PrefixId;
 use super::tree::SizedStrideNode;
@@ -16,15 +15,12 @@ use super::tree::SizedStrideNode;
 /// Can be used in multi-threaded contexts by wrapping it in a `Arc<Mutex<_>>`.
 /// Be aware that this is undesirable in cases with high contention.
 /// Use cases with high contention are best served by the [`crate::MultiThreadedStore`].
-pub struct Store<M: crate::prefix_record::Meta>
-where
-    M: MergeUpdate,
-{
+pub struct Store<M: crate::prefix_record::Meta> {
     v4: TreeBitMap<InMemStorage<IPv4, M>>,
     v6: TreeBitMap<InMemStorage<IPv6, M>>,
 }
 
-impl<M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
+impl<M: crate::prefix_record::Meta> Store<M> {
     pub fn new(v4_strides: Vec<u8>, v6_strides: Vec<u8>) -> Self {
         Store {
             v4: TreeBitMap::new(v4_strides),
@@ -33,7 +29,7 @@ impl<M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
     }
 }
 
-impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
+impl<'a, M: crate::prefix_record::Meta> Store<M> {
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix,
@@ -55,7 +51,7 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
         &mut self,
         prefix: &Prefix,
         meta: M,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+        // user_data: Option<&<M>::UserDataIn>,
     ) -> Result<(), std::boxed::Box<dyn std::error::Error>> {
         match prefix.addr() {
             std::net::IpAddr::V4(addr) => {
@@ -63,16 +59,14 @@ impl<'a, M: crate::prefix_record::Meta + MergeUpdate> Store<M> {
                     addr.into(),
                     prefix.len(),
                     meta,
-                ),
-                user_data)
+                ))
             }
             std::net::IpAddr::V6(addr) => {
                 self.v6.insert(InternalPrefixRecord::new_with_meta(
                     addr.into(),
                     prefix.len(),
                     meta,
-                ),
-                user_data)
+                ))
             }
         }
     }
