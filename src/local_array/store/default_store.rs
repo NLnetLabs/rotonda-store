@@ -1,7 +1,6 @@
 use std::fmt;
 use crate::prelude::*;
 use crate::prelude::multi::*;
-use crate::local_array::store::atomic_types::RouteStatus;
 
 // The default stride sizes for IPv4, IPv6, resp.
 #[create_store((

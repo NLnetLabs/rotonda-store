@@ -13,6 +13,8 @@ use crate::prefix_record::PublicRecord;
 use crate::AddressFamily;
 use crate::prelude::Meta;
 
+use super::errors::PrefixStoreError;
+
 
 // ----------- Node related structs -----------------------------------------
 
@@ -130,6 +132,12 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 
 // ----------- Prefix related structs ---------------------------------------
 
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub(crate) struct PathSelections {
+    // serial: usize,
+    path_selection_muis: (Option<u32>, Option<u32>) 
+}
+
 // ----------- StoredPrefix -------------------------------------------------
 // This is the top-level struct that's linked from the slots in the buckets.
 // It contains a super_agg_record that is supposed to hold counters for the
@@ -138,19 +146,19 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 #[derive(Debug)]
 pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     // the serial number
-    pub serial: usize,
+    // pub serial: usize,
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
     pub(crate) record_map: MultiMap<M>,
-    // the next aggregated record for this prefix and hash_id
-    // pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
+    // (mui of best path entry, mui of backup path entry) from the record_map
+    pub(crate) path_selections: Atomic<PathSelections>,
     // the reference to the next set of records for this prefix, if any.
     pub next_bucket: PrefixSet<AF, M>,
 }
 
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
-    pub fn new<PB: PrefixBuckets<AF, M>>(
+    pub(crate) fn new<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
         level: u8,
     ) -> Self {
@@ -182,14 +190,15 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         let rec_map = HashMap::new();
 
         StoredPrefix {
-            serial: 1,
+            // serial: 1,
             prefix: pfx_id,
+            path_selections: Atomic::null(),
             record_map: MultiMap::new(rec_map),
             next_bucket,
         }
     }
 
-    pub fn new_with_record<PB: PrefixBuckets<AF, M>>(
+    pub(crate) fn new_with_record<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
         record: PublicRecord<M>,
         level: u8,
@@ -220,11 +229,14 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         // End of calculation
 
         let rec_map = HashMap::new();
+        let mui = record.multi_uniq_id;
         rec_map.pin().insert(record.multi_uniq_id, MultiMapValue::from(record));
 
         StoredPrefix {
-            serial: 1,
+            // serial: 1,
             prefix: pfx_id,
+            // In a new prefix, the first inserted record will always be the best path
+            path_selections: Atomic::new(PathSelections { path_selection_muis: (Some(mui), None) }),
             record_map: MultiMap::new(rec_map),
             next_bucket,
         }
@@ -234,75 +246,48 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub(crate) fn upsert_record<'a, PB: PrefixBuckets<AF, M>>(
-        &'a self,
-        record: MultiMapValue<M>,
-        multi_uniq_id: u32,
-        guard: &'a flurry::Guard
-    ) -> Option<&'a MultiMapValue<M>> {
-        // start calculation size of next set, it's dependent on the level
-        // we're in.
-        // let pfx_id = PrefixId::new(record.net, record.len);
-        // let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
-        // let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
-
-        // trace!("this level {} next level {}", this_level, next_level);
-        // let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-        //     debug!(
-        //         "{} store: INSERT with new bucket of size {} at prefix len {}",
-        //         std::thread::current().name().unwrap(),
-        //         1 << (next_level - this_level),
-        //         pfx_id.get_len()
-        //     );
-        //     PrefixSet::init((1 << (next_level - this_level)) as usize)
-        // } else {
-        //     debug!(
-        //         "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
-        //         std::thread::current().name().unwrap(),
-        //         pfx_id.get_len()
-        //     );
-        //     PrefixSet::empty()
-        // };
-        // End of calculation
-
-        self.record_map.0.insert(multi_uniq_id, record, guard)
+    pub(crate) fn get_path_selections(&self, guard: &Guard) -> Option<(PathSelections, usize)> {
+        let path_selections = self.path_selections.load(Ordering::Release, guard);
+        unsafe { path_selections.as_ref() }.map(|ps| (*ps, path_selections.tag()))
     }
 
-    // pub(crate) fn get_records(&self) -> Vec<(&u32, &Record<M>) {
-    //     self.0.get_records()
-    // }
+    pub(crate) fn set_path_selections(&self, path_selections: PathSelections, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let current = self.path_selections.load(Ordering::AcqRel, guard);
 
-    // pub(crate) fn get_record_as_arc(
-    //     &self,
-    // ) -> Arc<M> {
-    //     self.record.as_arc()
-    // }
+        if unsafe { current.as_ref() } == Some(&path_selections) {
+            return Ok(())
+        }
+        
+        self.path_selections.compare_exchange(
+            current,
+            Owned::new(path_selections),
+            Ordering::AcqRel,
+            Ordering::Release,
+            guard
+        ).map_err(|_| PrefixStoreError::PathSelectionOutdated)?;
 
-    // pub(crate) fn get_meta_cloned(&self) -> M {
-    //     (*(*self.record.as_arc_swap().load())).clone()
-    // }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
-pub enum RouteStatus {
+pub enum RouteStatus { 
     Active,
-    Withdrawn,
-    InConvergence,
-    Stale
+    InActive,
+    Withdrawn
 }
 
 impl std::fmt::Display for RouteStatus {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             RouteStatus::Active => write!(f, "active"),
+            RouteStatus::InActive => write!(f, "inactive"),
             RouteStatus::Withdrawn => write!(f, "withdrawn"),
-            RouteStatus::InConvergence => write!(f, "in convergence"),
-            RouteStatus::Stale => write!(f, "stale")
         }
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct MultiMapValue<M> {
     pub meta: M,
     pub ltime: u64,
@@ -331,37 +316,19 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
     }
 }
 
-// ----------- SuperAggRecord -----------------------------------------------
+// ----------- MultiMap ------------------------------------------------------
 // This is the record that holds the aggregates at the top-level for a given
 // prefix.
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub(crate) struct MultiMap<M: Send + Sync>(
-    flurry::HashMap<u32, MultiMapValue<M>>
+    pub(crate) flurry::HashMap<u32, MultiMapValue<M>>
 );
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
         Self(record_map)
     }
-
-    // pub fn as_arc_swap(
-    //     &self,
-    // ) -> &arc_swap::ArcSwapAny<Arc<M>> {
-    //     &self.0
-    // }
-
-    // pub fn as_arc(&self, guard: &crossbeam_epoch::Guard) -> crossbeam_epoch::Shared<'_, std::collections::HashMap<u32, std::sync::RwLock<M>>> {
-    //     self.0.load(Ordering::SeqCst, guard).clone()
-    // }
-
-    // pub fn get_meta_cloned(&self, guard: &crossbeam_epoch::Guard) -> Option<HashMap<u32, std::sync::RwLock<M>>> {
-    //     unsafe { self.0.load_consume(guard).as_ref() }.map(|r: &HashMap<u32, RwLock<M>>| *r)
-    // }
-
-    // pub fn get_records(&self) -> Vec<(&u32, &Record<M>)> {
-    //     self.0.pin().iter().collect::<Vec<_>>()
-    // }
 
     pub fn len(&self) -> usize {
         self.0.len()
@@ -426,6 +393,17 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
         }
     }
 
+    pub(crate) fn get_stored_prefix_with_tag<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> Option<(&'a StoredPrefix<AF, Meta>, usize)> {
+        let pfx = self.0.load(Ordering::Acquire, guard);
+        match pfx.is_null() {
+            true => None,
+            false => Some((unsafe { pfx.deref() }, pfx.tag() )),
+        }
+    }
+
     pub(crate) fn get_stored_prefix_mut<'a>(
         &'a self,
         guard: &'a Guard,
@@ -441,7 +419,7 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::SeqCst, guard).into_owned() }.serial
+        unsafe { self.0.load(Ordering::AcqRel, guard).into_owned() }.tag()
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
@@ -479,7 +457,22 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
             None
         }
     }
-}
+
+    pub(crate) fn calculate_path_selections<'a>(
+        &'a self,
+        guard: &'a Guard
+    ) -> Result<(), super::errors::PrefixStoreError> {
+        if let Some(stored_prefix) = unsafe { self.0.load(Ordering::Acquire, guard).as_ref() } {
+            let flurry_guard = stored_prefix.record_map.guard();
+            let paths_iter = stored_prefix.record_map.0.iter(&flurry_guard);
+            // let path_selections_mui = routecore::some_path_selection_procedure(paths_iter);
+            let path_selections_mui = PathSelections { path_selection_muis: (None, None) };
+            stored_prefix.set_path_selections(path_selections_mui, guard)?;
+        }
+
+        Ok(())
+    }
+ }
 
 
 // ----------- FamilyBuckets Trait ------------------------------------------

@@ -5,6 +5,7 @@ pub enum PrefixStoreError {
     NodeCreationMaxRetryError,
     NodeNotFound,
     StoreNotReadyError,
+    PathSelectionOutdated
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -21,6 +22,9 @@ impl fmt::Display for PrefixStoreError {
             }
             PrefixStoreError::StoreNotReadyError => {
                 write!(f, "Error: Store isn't ready yet.")
+            }
+            PrefixStoreError::PathSelectionOutdated => {
+                write!(f, "Error: The Path Selection process is based on outdated paths.")
             }
         }
     }

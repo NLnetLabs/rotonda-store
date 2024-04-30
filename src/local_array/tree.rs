@@ -9,7 +9,7 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, UpsertReport};
+use crate::custom_alloc::{CustomAllocStorage, TieBreakerInfo, UpsertReport};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
@@ -447,6 +447,7 @@ impl<
         &self,
         pfx: PrefixId<AF>,
         record: PublicRecord<M>,
+        update_path_selections: Option<TieBreakerInfo>,
         // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();
@@ -492,6 +493,7 @@ impl<
                 is_last_stride;
                 pfx;
                 record;
+                update_path_selections; // perform an update for the paths in this record
                 stride_start; // the length at the start of the stride a.k.a. start_bit
                 stride;
                 cur_i;
@@ -563,6 +565,8 @@ impl<
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
             record,
+            // Do not update the path selection for the default route.
+            None,
             guard,
             // user_data,
         )

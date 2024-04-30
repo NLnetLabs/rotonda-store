@@ -14,6 +14,7 @@ macro_rules! insert_match {
         $is_last_stride: expr;
         $pfx: ident; // the whole search prefix
         $record: ident; // the record holding the metadata
+        $update_path_selections: ident; // boolean indicate whether to update the path selections for this route
         $truncate_len: ident; // the start of the length of this stride
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
@@ -100,7 +101,7 @@ macro_rules! insert_match {
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },
                                     (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard)
+                                        return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
                                             .and_then(|mut r| {
                                                 r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
                                                 Ok(r)
@@ -109,7 +110,7 @@ macro_rules! insert_match {
                                         // $self.stats[$stats_level].inc_prefix_count($level);
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard)
+                                        return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
                                             .and_then(|mut r| { 
                                                 r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
                                                 Ok(r) 

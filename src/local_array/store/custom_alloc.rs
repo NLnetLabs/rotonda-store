@@ -300,6 +300,26 @@ pub struct UpsertReport {
     pub mui_count: usize,
 }
 
+//------------ TieBreakerInfo ------------------------------------------------
+
+#[derive(Debug, Copy, Clone)]
+pub enum RouteSource {
+    Ebgp,
+    Ibgp,
+}
+
+#[derive(Debug, Copy, Clone)]
+pub struct DegreeOfPreference(pub u32);
+
+#[derive(Debug, Copy, Clone)]
+pub struct TieBreakerInfo {
+    source: RouteSource,
+    degree_of_preference: Option<DegreeOfPreference>,
+    local_asn: inetnum::asn::Asn,
+    // bgp_idenfitier: BgpIdentifier,
+    peer_addr:  std::net::IpAddr,
+}
+
 // ----------- CustomAllocStorage -------------------------------------------
 //
 // CustomAllocStorage is a storage backend that uses a custom allocator, that
@@ -307,7 +327,7 @@ pub struct UpsertReport {
 #[derive(Debug)]
 pub struct CustomAllocStorage<
     AF: AddressFamily,
-    M: crate::prefix_record::Meta + MergeUpdate,
+    M: crate::prefix_record::Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
@@ -599,14 +619,15 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         record: PublicRecord<M>,
+        update_path_selections: Option<TieBreakerInfo>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut retry_count = 0;
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
-                PrefixId::new(prefix.get_net(), prefix.get_len()),
-                guard,
+                // PrefixId::new(prefix.get_net(), prefix.get_len()),
+                prefix, guard,
             )?;
 
         let inner_stored_prefix =
@@ -633,7 +654,7 @@ impl<
                 // We're expecting an empty slot.
                 match atomic_stored_prefix.0.compare_exchange(
                     Shared::null(),
-                    Owned::new(new_stored_prefix),
+                    Owned::new(new_stored_prefix).with_tag(1),
                     Ordering::AcqRel,
                     Ordering::Acquire,
                     guard,
@@ -661,14 +682,13 @@ impl<
 
                         // ..and update the record_map with the actual record
                         // we got from the user.
-                        unsafe { spfx.as_ref() }
-                            .unwrap()
+                        unsafe { spfx.deref() }
                             .record_map
                             .upsert_record(record)
                     }
                     // ...somebody beat us to it, the slot's not empty
                     // anymore, we'll have to do it again.
-                    Err(CompareExchangeError { current, new }) => {
+                    Err(CompareExchangeError { current, new: _ }) => {
                         if log_enabled!(log::Level::Info) {
                             info!(
                                     "{} store: Prefix can't be inserted as new {:?}",
@@ -677,10 +697,12 @@ impl<
                                 );
                         }
                         retry_count += 1;
+                        let tag = current.tag();
+                        let winner = unsafe { current.with_tag(tag + 1).deref() };
 
                         // update the record_map from the winning thread
                         // with our caller's record.
-                        new.record_map.upsert_record(record)
+                        winner.record_map.upsert_record(record)
                     }
                 }
             }
@@ -698,11 +720,16 @@ impl<
 
                 // Update the already existing record_map with our caller's
                 // record.
-                unsafe { inner_stored_prefix.deref() }
+                let tag = inner_stored_prefix.tag();
+                unsafe { inner_stored_prefix.with_tag(tag + 1).deref() }
                     .record_map
                     .upsert_record(record)
             }
         };
+
+        if update_path_selections.is_some() {
+            atomic_stored_prefix.calculate_path_selections(guard)?;
+        }
 
         Ok(UpsertReport {
             prefix_new: false,
@@ -849,7 +876,7 @@ impl<
         &'a self,
         prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<(&StoredPrefix<AF, M>, &'a usize)> {
+    ) -> Option<(&StoredPrefix<AF, M>, usize)> {
         struct SearchLevel<
             's,
             AF: AddressFamily,
@@ -862,7 +889,7 @@ impl<
                 &'a Guard,
             ) -> Option<(
                 &'a StoredPrefix<AF, M>,
-                &'a usize,
+                usize,
             )>,
         }
 
@@ -875,6 +902,7 @@ impl<
                 let index = Self::hash_prefix_id(prefix_id, level);
 
                 let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+                let tag = prefixes.tag();
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
 
                 if let Some(stored_prefix) =
@@ -882,8 +910,8 @@ impl<
                         .get_stored_prefix(guard)
                 {
                     if prefix_id == stored_prefix.prefix {
-                        trace!("found requested prefix {:?}", prefix_id);
-                        return Some((stored_prefix, &stored_prefix.serial));
+                        trace!("found requested prefix {:?} with tag {}", prefix_id, tag);
+                        return Some((stored_prefix, tag));
                     };
                     level += 1;
                     (search_level.f)(

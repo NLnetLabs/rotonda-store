@@ -29,4 +29,5 @@ pub mod multi {
 
     pub use crate::custom_alloc::{Upsert, Counters, StoreStats, UpsertReport};
     pub use crate::custom_alloc::CustomAllocStorage;
+    pub use crate::custom_alloc::TieBreakerInfo;
 }
