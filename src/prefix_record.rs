@@ -22,7 +22,7 @@ where
 
 impl<M, AF> InternalPrefixRecord<AF, M>
 where
-    M: Meta + MergeUpdate,
+    M: Meta,
     AF: AddressFamily,
 {
     pub fn new_with_meta(
@@ -727,8 +727,8 @@ pub trait MergeUpdate: Send + Sync {
 /// Trait for types that can be used as metadata of a record
 pub trait Meta
 where
-    Self: fmt::Debug + fmt::Display + Clone + Sized + MergeUpdate {}
+    Self: fmt::Debug + fmt::Display + Clone + Sized + Send + Sync {}
 
 impl<T> Meta for T
 where
-    T: fmt::Debug + fmt::Display + Clone + Sized + MergeUpdate {}
+    T: fmt::Debug + fmt::Display + Clone + Sized + Send + Sync {}
