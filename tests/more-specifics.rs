@@ -93,7 +93,11 @@ mod tests {
             ), // 27
         ];
         for pfx in pfxs.iter().flatten() {
-            tree_bitmap.insert(pfx, Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(666)))?;
+            tree_bitmap.insert(
+                pfx,
+                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
+                None
+            )?;
         }
         println!("------ end of inserts\n");
 

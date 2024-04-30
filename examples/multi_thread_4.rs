@@ -77,9 +77,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             Record::new(
                                 0,
                                 0,
-                                RouteStatus::InConvergence,
+                                RouteStatus::Active,
                                 ComplexPrefixAs([i as u32].to_vec()),
-                            )
+                            ),
+                            None
                         ) {
                             Ok(metrics) => {
                                 if metrics.cas_count > 0 {

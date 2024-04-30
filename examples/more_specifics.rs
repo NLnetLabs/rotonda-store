@@ -215,7 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
         let p: Prefix = pfx.unwrap();
-        tree_bitmap.insert(&p, Record::new(0,0, RouteStatus::InConvergence, PrefixAs(666)))?;
+        tree_bitmap.insert(&p, Record::new(0,0, RouteStatus::Active, PrefixAs(666)), None)?;
     }
     println!("------ end of inserts\n");
     // println!(

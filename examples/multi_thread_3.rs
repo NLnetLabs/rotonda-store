@@ -38,7 +38,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     x += 1;
                     // print!("{}-", i);
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), Record::new(0,0, RouteStatus::InConvergence, PrefixAs(i as u32)))
+                        .insert(
+                            &pfx.unwrap(),
+                            Record::new(0,0, RouteStatus::Active, PrefixAs(i as u32)),
+                            None
+                        )
                     {
                         Ok(metrics) => {
                             if metrics.cas_count > 0  {

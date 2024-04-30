@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let asn: u32 = record[2].parse().unwrap();
             let pfx = PrefixRecord::<PrefixAs>::new(
                 Prefix::new(net.into(), len)?,
-                vec![Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(asn))],
+                vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
             );
             pfxs.push(pfx);
         }
@@ -57,7 +57,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             let inserts_num = rec_vec.len();
             for rec in rec_vec.into_iter() {
-                tree_bitmap.insert(&rec.prefix, rec.meta[0].clone())?;
+                tree_bitmap.insert(&rec.prefix, rec.meta[0].clone(), None)?;
             }
             let ready = std::time::Instant::now();
             let dur_insert_nanos =

@@ -31,7 +31,7 @@ mod tests {
 
         for pfx in pfxs.iter() {
             tree_bitmap.insert(
-                pfx, Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(666))
+                pfx, Record::new(0, 0, RouteStatus::Active, PrefixAs(666)), None
             )?;
         }
         println!("------ end of inserts\n");
@@ -102,9 +102,9 @@ mod tests {
         ];
 
         let ltime = 0;
-        let status = RouteStatus::InConvergence;
+        let status = RouteStatus::Active;
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(&pfx.unwrap(), Record::new(0, ltime, status, PrefixAs(666)))?;
+            tree_bitmap.insert(&pfx.unwrap(), Record::new(0, ltime, status, PrefixAs(666)), None)?;
         }
         println!("------ end of inserts\n");
         let guard = &epoch::pin();

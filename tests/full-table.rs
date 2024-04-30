@@ -78,7 +78,7 @@ mod tests {
                     vec![Record::new(
                         0,
                         0,
-                        RouteStatus::InConvergence,
+                        RouteStatus::Active,
                         ComplexPrefixAs(vec![asn])
                     )],
                 );
@@ -105,7 +105,7 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone()) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone(), None) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

@@ -18,8 +18,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("insert {}", pfx.unwrap());
 
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), 
-                        Record::new(0, 0, RouteStatus::InConvergence, NoMeta::Empty)
+                        .insert(
+                            &pfx.unwrap(), 
+                            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                            None
                     ) {
                         Ok(_) => {}
                         Err(e) => {

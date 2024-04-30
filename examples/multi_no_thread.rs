@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         x += 1;
         // print!("{}-", i);
-        match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::InConvergence, PrefixAs(x % 1000))) {
+        match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, PrefixAs(x % 1000)), None) {
             Ok(_) => {}
             Err(e) => {
                 println!("{}", e);

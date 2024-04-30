@@ -258,7 +258,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         println!("insert {}", pfx?);
         // let p : rotonda_store::Prefix<u32, PrefixAs> = pfx.into();
-        tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::InConvergence, NoMeta::Empty))?;
+        tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, NoMeta::Empty), None)?;
     }
     println!("------ end of inserts\n");
     // println!(

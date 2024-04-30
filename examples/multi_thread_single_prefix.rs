@@ -42,7 +42,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let guard = &crossbeam_epoch::pin();
                         while x < 10_000 {
                             let asn = PrefixAs(rng.gen());
-                            match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::InConvergence, asn)) {
+                            match tree_bitmap.insert(
+                                &pfx.unwrap(),
+                                Record::new(0, 0, RouteStatus::Active, asn),
+                                None
+                            ) {
                                 Ok(metrics) => {
                                     if metrics.prefix_new {
                                         println!(
