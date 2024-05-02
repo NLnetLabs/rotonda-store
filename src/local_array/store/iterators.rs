@@ -13,19 +13,19 @@ use super::custom_alloc::CustomAllocStorage;
 use crate::prefix_record::PublicRecord;
 use crate::{
     af::AddressFamily,
-    prefix_record::Meta,
     local_array::{
         bit_span::BitSpan,
         node::{
             NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter, PrefixId,
             SizedStrideRef, Stride3, Stride4, Stride5, StrideNodeId,
         },
-    }
+    },
+    prefix_record::Meta,
 };
 
 use crossbeam_epoch::Guard;
-use log::{debug, log_enabled, trace};
 use inetnum::addr::Prefix;
+use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 // ----------- PrefixIter ---------------------------------------------------
@@ -165,9 +165,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             // We are doing depth-first iteration, so we check for a child first and
             // descend into that if it exists.
 
-            let s_pfx = self
-                .cur_bucket
-                .get_by_index(self.cursor, self.guard);
+            let s_pfx = self.cur_bucket.get_by_index(self.cursor, self.guard);
 
             // DEPTH FIRST ITERATION
             match s_pfx.get_next_bucket(self.guard) {
@@ -355,7 +353,7 @@ impl<
                             // checked to not appear in the global_withdrawn
                             // mbin, that's what the method call does.
                             (
-                                p.prefix, 
+                                p.prefix,
                                 p.record_map.as_active_records_not_in_bmin(self.global_withdrawn_bmin)
                             )
                         }
@@ -382,10 +380,14 @@ impl<
             }
 
             if let Some(next_ptr) = next_ptr {
-                let node = if self.mui.is_none() { 
+                let node = if self.mui.is_none() {
                     self.store.retrieve_node_with_guard(next_ptr, self.guard)
-                } else { 
-                    self.store.retrieve_node_for_mui(next_ptr, self.mui.unwrap(), self.guard)
+                } else {
+                    self.store.retrieve_node_for_mui(
+                        next_ptr,
+                        self.mui.unwrap(),
+                        self.guard,
+                    )
                 };
 
                 match node {
@@ -545,8 +547,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             }
 
             // LEVEL DEPTH ITERATION
-            let s_pfx =
-                self.cur_bucket.get_by_index(index, self.guard);
+            let s_pfx = self.cur_bucket.get_by_index(index, self.guard);
 
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
                 trace!("get_record {:?}", stored_prefix.record_map);
@@ -555,27 +556,27 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // the mui in the global_withdrawn_bmin anymore,
                     // we wouldn't have gotten to this point if it
                     // was.
-                    stored_prefix.record_map.get_record_for_active_mui(mui).into_iter().collect()
+                    stored_prefix
+                        .record_map
+                        .get_record_for_active_mui(mui)
+                        .into_iter()
+                        .collect()
                 } else {
                     // Other muis for this prefix will have to be
                     // checked to not appear in the global_withdrawn
-                    // muis, that's what the method call does. 
-                    stored_prefix.record_map.as_active_records_not_in_bmin(self.global_withdrawn_bmin)
+                    // muis, that's what the method call does.
+                    stored_prefix.record_map.as_active_records_not_in_bmin(
+                        self.global_withdrawn_bmin,
+                    )
                 };
                 // There is a prefix  here, but we need to check if it's
                 // the right one.
-                if self.cur_prefix_id
-                    == stored_prefix.prefix
-                {
-                    trace!(
-                        "found requested prefix {:?}",
-                        self.cur_prefix_id
-                    );
+                if self.cur_prefix_id == stored_prefix.prefix {
+                    trace!("found requested prefix {:?}", self.cur_prefix_id);
                     self.cur_len -= 1;
                     self.cur_level = 0;
-                    self.cur_bucket = self
-                        .prefixes
-                        .get_root_prefix_set(self.cur_len);
+                    self.cur_bucket =
+                        self.prefixes.get_root_prefix_set(self.cur_len);
                     return Some((stored_prefix.prefix, pfx_rec));
                 };
                 // Advance to the next level or the next len.
@@ -589,9 +590,8 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     true => {
                         self.cur_len -= 1;
                         self.cur_level = 0;
-                        self.cur_bucket = self
-                            .prefixes
-                            .get_root_prefix_set(self.cur_len);
+                        self.cur_bucket =
+                            self.prefixes.get_root_prefix_set(self.cur_len);
                     }
                     // There's a child, move a level up and set the child
                     // as current. Length remains the same.
@@ -717,7 +717,11 @@ impl<
                     }
                 };
 
-                let global_withdrawn_bmin = unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).deref() };
+                let global_withdrawn_bmin = unsafe {
+                    self.withdrawn_muis_bmin
+                        .load(Ordering::Acquire, guard)
+                        .deref()
+                };
 
                 Some(MoreSpecificPrefixIter {
                     store: self,
@@ -727,7 +731,7 @@ impl<
                     start_bit_span,
                     parent_and_position: vec![],
                     global_withdrawn_bmin,
-                    mui
+                    mui,
                 })
             } else {
                 None
@@ -759,8 +763,12 @@ impl<
         } else {
             let cur_len = start_prefix_id.get_len() - 1;
             let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
-            let global_withdrawn_bmin = unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).deref() };
-            
+            let global_withdrawn_bmin = unsafe {
+                self.withdrawn_muis_bmin
+                    .load(Ordering::Acquire, guard)
+                    .deref()
+            };
+
             Some(LessSpecificPrefixIter {
                 prefixes: &self.prefixes,
                 cur_len,
