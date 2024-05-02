@@ -363,7 +363,7 @@ impl<
         // multi_uniq_id: u32,
         guard: &'a Guard,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        info!("store: initialize store");
+        info!("store: initialize store {}", AF::BITS);
 
         let store = CustomAllocStorage {
             buckets: NodeBuckets::<AF>::init(),
@@ -432,10 +432,11 @@ impl<
 
         if log_enabled!(log::Level::Trace) {
             debug!(
-                "{} store: Store node {}: {:?}",
+                "{} store: Store node {}: {:?} mui {}",
                 std::thread::current().name().unwrap(),
                 id,
-                next_node
+                next_node,
+                multi_uniq_id
             );
         }
         self.counters.inc_nodes_count();
@@ -545,10 +546,11 @@ impl<
 
         if log_enabled!(log::Level::Trace) {
             trace!(
-                "{} store: Retrieve node {} from l{}",
+                "{} store: Retrieve node {} from l{} for mui {}",
                 std::thread::current().name().unwrap(),
                 id,
-                id.get_id().1
+                id.get_id().1,
+                mui
             );
         }
 
@@ -598,7 +600,7 @@ impl<
 
         if log_enabled!(log::Level::Trace) {
             trace!(
-                "{} store: Retrieve node {} from l{}",
+                "{} store: Retrieve node mut {} from l{}",
                 std::thread::current().name().unwrap(),
                 id,
                 id.get_id().1
