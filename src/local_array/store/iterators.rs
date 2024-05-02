@@ -6,7 +6,7 @@
 // storage (and some over the TreeBitMap nodes, the parent of the store),
 // as such all the iterators here are composed of iterators over the
 // individual nodes. The Node Iterators live in the node.rs file.
-use std::{marker::PhantomData, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
@@ -30,9 +30,8 @@ use roaring::RoaringBitmap;
 
 // ----------- PrefixIter ---------------------------------------------------
 
-// Iterator over all the prefixes in the storage.
-// This Iterator does *not* use the tree, it iterates over all the length
-// arrays in the CustomAllocStorage.
+// Iterator over all the prefixes in the storage. This Iterator does *not* use
+// the tree, it iterates over all the length arrays in the CustomAllocStorage.
 
 pub(crate) struct PrefixIter<
     'a,
@@ -44,15 +43,12 @@ pub(crate) struct PrefixIter<
     cur_len: u8,
     cur_bucket: &'a PrefixSet<AF, M>,
     cur_level: u8,
-    // level depth of IPv4 as defined in rotonda-macros/maps.rs
-    // Option(parent, cursor position at the parent)
-    // 26 is the max number of levels in IPv6, which is the max number of
-    // of both IPv4 and IPv6.
+    // level depth of IPv4 as defined in rotonda-macros/maps.rs Option(parent,
+    // cursor position at the parent) 26 is the max number of levels in IPv6,
+    // which is the max number of of both IPv4 and IPv6.
     parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
     cursor: usize,
     guard: &'a Guard,
-    // _af: PhantomData<AF>,
-    // _meta: PhantomData<M>,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -77,12 +73,12 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
             if PB::get_bits_for_len(self.cur_len, self.cur_level) == 0 {
                 // END OF THE LENGTH
+
                 // This length is done too, go to the next length
                 trace!("next length {}", self.cur_len + 1);
                 self.cur_len += 1;
 
-                // a new length, a new life
-                // reset the level depth and cursor,
+                // a new length, a new life reset the level depth and cursor,
                 // but also empty all the parents
                 self.cur_level = 0;
                 self.cursor = 0;
@@ -107,13 +103,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             if self.cursor >= bucket_size {
                 if self.cur_level == 0 {
                     // END OF THE LENGTH
+                    
                     // This length is done too, go to the next length
                     trace!("next length {}", self.cur_len);
                     self.cur_len += 1;
 
-                    // a new length, a new life
-                    // reset the level depth and cursor,
-                    // but also empty all the parents
+                    // a new length, a new life reset the level depth and
+                    // cursor, but also empty all the parents
                     self.cur_level = 0;
                     self.cursor = 0;
                     self.parents = [None; 26];
@@ -127,20 +123,20 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     self.cur_bucket =
                         self.prefixes.get_root_prefix_set(self.cur_len);
                 } else {
-                    // END OF THIS BUCKET
-                    // GO BACK UP ONE LEVEL
-                    // The level is done, but the length isn't
-                    // Go back up one level and continue
+                    // END OF THIS BUCKET GO BACK UP ONE LEVEL
+                    
+                    // The level is done, but the length isn't Go back up one
+                    // level and continue
                     match self.parents[self.cur_level as usize] {
                         Some(parent) => {
-                            // There is a parent, go back up. Since we're doing depth-first
-                            // we have to check if there's a prefix directly at the parent
-                            // and return that.
+                            // There is a parent, go back up. Since we're
+                            // doing depth-first we have to check if there's a
+                            // prefix directly at the parent and return that.
                             self.cur_level -= 1;
 
                             // move the current bucket to the parent and move
-                            // the cursor position where we left off. The
-                            // next run of the loop will read it.
+                            // the cursor position where we left off. The next
+                            // run of the loop will read it.
                             self.cur_bucket = parent.0;
                             self.cursor = parent.1 + 1;
 
@@ -161,18 +157,17 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 }
             };
 
-            // we're somewhere in the PrefixSet iteration, read the next StoredPrefix.
-            // We are doing depth-first iteration, so we check for a child first and
-            // descend into that if it exists.
+            // we're somewhere in the PrefixSet iteration, read the next
+            // StoredPrefix. We are doing depth-first iteration, so we check
+            // for a child first and descend into that if it exists.
 
             let s_pfx = self.cur_bucket.get_by_index(self.cursor, self.guard);
 
             // DEPTH FIRST ITERATION
             match s_pfx.get_next_bucket(self.guard) {
                 Some(bucket) => {
-                    // DESCEND ONe LEVEL
-                    // There's a child here, descend into it, but...
-                    // trace!("C. got next bucket {:?}", bucket);
+                    // DESCEND ONe LEVEL There's a child here, descend into
+                    // it, but... trace!("C. got next bucket {:?}", bucket);
 
                     // save our parent and cursor position first, and then..
                     self.parents[(self.cur_level + 1) as usize] =
@@ -205,9 +200,8 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     }
                 }
                 None => {
-                    // No reference to another PrefixSet, all that's
-                    // left, is checking for a prefix at the current
-                    // cursor position.
+                    // No reference to another PrefixSet, all that's left, is
+                    // checking for a prefix at the current cursor position.
                     if let Some(meta) =
                         s_pfx.get_stored_prefix(self.guard).map(|p| {
                             // There's a prefix here, that's the next one
@@ -280,13 +274,12 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 
 // The first iterator it goes over should have a bit_span that is the
 // difference between the requested prefix and the node that hosts that
-// prefix. See the method initializing this iterator
-// (`get_node_for_id_prefix` takes care of it in there). The consecutive
-// iterators will all have a bit_span of { bits: 0, len: 0 }. Yes, we could
-// also use the PrefixIter there (it iterates over all prefixes of a node),
-// but then we would have to deal with two different types of iterators.
-// Note that the iterator is neither depth- or breadth-first and the
-// results are essentially unordered.
+// prefix. See the method initializing this iterator (`get_node_for_id_prefix`
+// takes care of it in there). The consecutive iterators will all have a
+// bit_span of { bits: 0, len: 0 }. Yes, we could also use the PrefixIter
+// there (it iterates over all prefixes of a node), but then we would have to
+// deal with two different types of iterators. Note that the iterator is
+// neither depth- or breadth-first and the results are essentially unordered.
 
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
@@ -330,15 +323,17 @@ impl<
                 return self
                     .store
                     .non_recursive_retrieve_prefix_with_guard(
-                        next_pfx.unwrap_or_else(
-                            || panic!(
-                                "BOOM! More-specific prefix {:?} disappeared from the store",
+                        next_pfx.unwrap_or_else(|| {
+                            panic!(
+                                "BOOM! More-specific prefix {:?} disappeared \
+                                from the store",
                                 next_pfx
                             )
-                        ),
+                        }),
                         self.guard,
                     )
-                    .0.map(|p| {
+                    .0
+                    .map(|p| {
                         if let Some(mui) = self.mui {
                             // We don't have to check for the appearance of
                             // the mui in the global_withdrawn_bmin anymore,
@@ -346,7 +341,10 @@ impl<
                             // was.
                             (
                                 p.prefix,
-                                p.record_map.get_record_for_active_mui(mui).into_iter().collect()
+                                p.record_map
+                                    .get_record_for_active_mui(mui)
+                                    .into_iter()
+                                    .collect(),
                             )
                         } else {
                             // Other muis for this prefix will have to be
@@ -354,7 +352,9 @@ impl<
                             // mbin, that's what the method call does.
                             (
                                 p.prefix,
-                                p.record_map.as_active_records_not_in_bmin(self.global_withdrawn_bmin)
+                                p.record_map.as_active_records_not_in_bmin(
+                                    self.global_withdrawn_bmin,
+                                ),
                             )
                         }
                     });
@@ -401,7 +401,12 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!("next stride new iterator stride 3 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
+                        trace!(
+                            "next stride new iterator stride 3 {:?} start \
+                        bit_span {:?}",
+                            self.cur_ptr_iter,
+                            self.start_bit_span
+                        );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
@@ -419,7 +424,12 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!("next stride new iterator stride 4 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
+                        trace!(
+                            "next stride new iterator stride 4 {:?} start \
+                        bit_span {:?}",
+                            self.cur_ptr_iter,
+                            self.start_bit_span
+                        );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
@@ -437,7 +447,12 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!("next stride new iterator stride 5 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
+                        trace!(
+                            "next stride new iterator stride 5 {:?} start \
+                        bit_span {:?}",
+                            self.cur_ptr_iter,
+                            self.start_bit_span
+                        );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
@@ -458,10 +473,10 @@ impl<
 
 // ----------- LessSpecificPrefixIter ---------------------------------------
 
-// This iterator iterates over all the less-specifics for a given prefix.
-// It does *not* use the tree, it goes directly into the CustomAllocStorage
-// and retrieves the less-specifics by going from len to len, searching for
-// the prefixes.
+// This iterator iterates over all the less-specifics for a given prefix. It
+// does *not* use the tree, it goes directly into the CustomAllocStorage and
+// retrieves the less-specifics by going from len to len, searching for the
+// prefixes.
 
 pub(crate) struct LessSpecificPrefixIter<
     'a,
@@ -479,9 +494,6 @@ pub(crate) struct LessSpecificPrefixIter<
     // records for those.
     global_withdrawn_bmin: &'a RoaringBitmap,
     guard: &'a Guard,
-    _af: PhantomData<AF>,
-    _meta: PhantomData<M>,
-    _pb: PhantomData<PB>,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -778,9 +790,6 @@ impl<
                 mui,
                 global_withdrawn_bmin,
                 guard,
-                _af: PhantomData,
-                _meta: PhantomData,
-                _pb: PhantomData,
             })
         }
         .into_iter()
@@ -800,8 +809,6 @@ impl<
             cursor: 0,
             parents: [None; 26],
             guard,
-            // _af: PhantomData,
-            // _meta: PhantomData,
         }
     }
 }
