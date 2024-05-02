@@ -1,5 +1,8 @@
+use std::sync::atomic::Ordering;
+
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
+use roaring::RoaringBitmap;
 
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
@@ -13,7 +16,7 @@ use crate::local_array::tree::TreeBitMap;
 use crate::{MatchOptions, MatchType};
 
 use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
-use super::store::atomic_types::StoredPrefix;
+use super::store::atomic_types::{RouteStatus, StoredPrefix};
 
 //------------ Prefix Matching ----------------------------------------------
 
@@ -27,6 +30,7 @@ where
     pub fn more_specifics_from(
         &'a self,
         prefix_id: PrefixId<AF>,
+        mui: Option<u32>,
         guard: &'a Guard,
     ) -> QueryResult<M> {
         let result = self
@@ -34,7 +38,7 @@ where
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
         let prefix = result.0;
         let more_specifics_vec =
-            self.store.more_specific_prefix_iter_from(prefix_id, guard);
+            self.store.more_specific_prefix_iter_from(prefix_id, mui, guard);
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
@@ -47,7 +51,7 @@ where
                 None
             },
             prefix_meta: prefix.map(|r| {
-                r.record_map.as_public_records()
+                self.get_filtered_records(r, mui, guard)
             }).unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
@@ -58,6 +62,7 @@ where
     pub fn less_specifics_from(
         &'a self,
         prefix_id: PrefixId<AF>,
+        mui: Option<u32>,
         guard: &'a Guard,
     ) -> QueryResult<M> {
         let result = self
@@ -67,7 +72,7 @@ where
         let prefix = result.0;
         let less_specifics_vec = result.1.map(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.store.less_specific_prefix_iter(prefix_id, guard)
+                self.store.less_specific_prefix_iter(prefix_id, mui, guard)
             },
         );
 
@@ -82,7 +87,7 @@ where
                 None
             },
             prefix_meta: prefix.map(|r| {
-                r.record_map.as_public_records()
+                self.get_filtered_records(r, mui, guard)
             }).unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| iter.collect()),
@@ -93,18 +98,20 @@ where
     pub fn more_specifics_iter_from(
         &'a self,
         prefix_id: PrefixId<AF>,
+        mui: Option<u32>,
         guard: &'a Guard,
     ) -> Result<
         impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_,
         std::io::Error,
     > {
-        Ok(self.store.more_specific_prefix_iter_from(prefix_id, guard))
+        Ok(self.store.more_specific_prefix_iter_from(prefix_id, mui, guard))
     }
 
     pub fn match_prefix_by_store_direct(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
+        mui: Option<u32>,
         guard: &'a Guard,
     ) -> QueryResult<M> {
         // `non_recursive_retrieve_prefix_with_guard` returns an exact match
@@ -113,7 +120,28 @@ where
             .store
             .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
             .0
-            .map(|pfx| (pfx.prefix, pfx.record_map.as_public_records()));
+            .map(|pfx| (
+            pfx.prefix, 
+                    if !options.include_withdrawn {
+                        // Filter out all the withdrawn records, both with
+                        // globally withdrawn muis, and with local statuses
+                        // set to Withdrawn.
+                        self.get_filtered_records(pfx, mui, guard).into_iter().collect()
+                    } else {
+                        // Do no filter out any records, but do rewrite the
+                        // local statuses of the records with muis that
+                        // appear in the specified bitmap index.
+                        pfx.record_map.as_records_with_global_status(
+                            unsafe { 
+                                self.store.withdrawn_muis_bmin.load(
+                                    Ordering::Acquire, guard
+                                ).deref() 
+                            },
+                            RouteStatus::Withdrawn
+                        )
+                    }
+                )
+            );
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -129,7 +157,7 @@ where
             (MatchType::LongestMatch | MatchType::EmptyMatch, None) => {
                 stored_prefix = self
                     .store
-                    .less_specific_prefix_iter(search_pfx, guard)
+                    .less_specific_prefix_iter(search_pfx, mui, guard)
                     .max_by(|p0, p1| p0.0.get_len().cmp(&p1.0.get_len()));
                 if stored_prefix.is_some() {
                     MatchType::LongestMatch
@@ -155,6 +183,7 @@ where
                             } else {
                                 search_pfx
                             },
+                            mui,
                             guard,
                         )
                         .collect(),
@@ -171,6 +200,7 @@ where
                             } else {
                                 search_pfx
                             },
+                            mui,
                             guard,
                         )
                         // .map(|p| (p.prefix_into_pub(), p))
@@ -237,7 +267,7 @@ where
                             PrefixId::new(AF::zero(), 0),
                             guard,
                         )
-                        .map(|sp| sp.0.record_map.as_public_records()).unwrap_or_default();
+                        .map(|sp| sp.0.record_map.as_records()).unwrap_or_default();
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
@@ -728,7 +758,7 @@ where
             prefix: prefix.map(|pfx: (&StoredPrefix<AF, M>, usize)| {
                 pfx.0.prefix.into_pub()
             }),
-            prefix_meta: prefix.map(|pfx| pfx.0.record_map.as_public_records()).unwrap_or_default(),
+            prefix_meta: prefix.map(|pfx| pfx.0.record_map.as_records()).unwrap_or_default(),
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec
@@ -737,7 +767,7 @@ where
                     .filter_map(move |p| {
                         self.store
                             .retrieve_prefix_with_guard(*p, guard)
-                            .map(|p| Some((p.0.prefix, p.0.record_map.as_public_records())))
+                            .map(|p| Some((p.0.prefix, p.0.record_map.as_records())))
                     })
                     .collect()
             } else {
@@ -756,12 +786,26 @@ where
                                     )
                                 })
                                 .0
-                        }).map(|sp| (sp.prefix, sp.record_map.as_public_records()))
+                        }).map(|sp| (sp.prefix, sp.record_map.as_records()))
                         .collect()
                 })
             } else {
                 None
             },
+        }
+    }
+
+    // Helper to filter out records that are not-active (Inactive or
+    // Withdrawn), or whose mui appears in the global withdrawn index.
+    fn get_filtered_records(&self, pfx: &StoredPrefix<AF, M>, mui: Option<u32>, guard: &Guard) -> Vec<PublicRecord<M>> {
+        if let Some(mui) = mui {
+            pfx.record_map.get_record_for_active_mui(mui).into_iter().collect()
+        } else {
+            let bmin = unsafe { 
+                self.store.withdrawn_muis_bmin.load(
+                    Ordering::Acquire, guard).as_ref()
+                }.unwrap();
+            pfx.record_map.as_active_records_not_in_bmin(bmin) 
         }
     }
 }

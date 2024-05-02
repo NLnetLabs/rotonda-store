@@ -37,8 +37,8 @@ where
 #[derive(Debug, Clone)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
-    // A Bitmap index that keeps track of the `uniq_id`s that are present in
-    // value collections in the meta-data tree in the child nodes
+    // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
+    // present in value collections in the meta-data tree in the child nodes
     pub Atomic<RoaringBitmap>
 );
 
@@ -71,8 +71,8 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         let mut try_count = 0;
 
         self.1.fetch_update(
-            std::sync::atomic::Ordering::SeqCst,
-            std::sync::atomic::Ordering::SeqCst, 
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire, 
             guard, 
             |mut a_rbm_index| {
                 // SAFETY: The rbm_index gets created as an empty
@@ -105,8 +105,8 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         let mut try_count = 0;
 
         self.1.fetch_update(
-            std::sync::atomic::Ordering::SeqCst,
-            std::sync::atomic::Ordering::SeqCst, 
+            std::sync::atomic::Ordering::AcqRel,
+            std::sync::atomic::Ordering::Acquire, 
             guard, 
             |mut a_rbm_index| {
                 // SAFETY: The rbm_index gets created as an empty
@@ -270,7 +270,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum RouteStatus { 
     Active,
     InActive,
@@ -338,16 +338,61 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         self.0.guard()
     }
 
-    pub(crate) fn get_value_for_mui<'a>(&'a self, multi_uniq_id: u32, guard: &'a flurry::Guard) -> Option<&'a MultiMapValue<M>> {
-        self.0.get(&multi_uniq_id, guard)
+    pub(crate) fn get_record_for_active_mui(&self, mui: u32) -> Option<PublicRecord<M>> {
+        self.0.get(&mui, &self.0.guard()).and_then(|r| if r.status == RouteStatus::Active { Some(PublicRecord::from((mui, r.clone()))) } else { None })
     }
 
     pub fn iter_all_records<'a>(&'a self, guard: &'a flurry::Guard<'a>) -> impl Iterator<Item = PublicRecord<M>> + 'a {
         self.0.iter(guard).map(|r| PublicRecord::from((*r.0, r.1.clone())))
     }
 
-    pub fn as_public_records(&self) -> Vec<PublicRecord<M>> {
+    // return all records regardless of their local status, or any globally
+    // set status for the mui of the record. However, the local status for a
+    // record whose mui appears in the specified bitmap index, will be
+    // rewritten with the specified RouteStatus. 
+    pub fn as_records_with_global_status(&self, bmin: &RoaringBitmap, rewrite_status: RouteStatus) -> Vec<PublicRecord<M>> {
+        self.0.pin().into_iter().map(move |r| {
+            let mut rec = r.1.clone();
+            if bmin.contains(*r.0) {
+                rec.status = rewrite_status;
+            }
+            PublicRecord::from((*r.0, rec)) 
+        }).collect::<Vec<_>>()
+    }
+
+    pub fn as_records(&self) -> Vec<PublicRecord<M>> {
         self.0.pin().iter().map(|r| PublicRecord::from((*r.0, r.1.clone()))).collect::<Vec<_>>()
+    }
+
+    // Returns a vec of records whose keys are not in the supplied bitmap
+    // index, and whose local Status is set to Active. Used to filter out
+    // withdrawn routes.
+    pub fn as_active_records_not_in_bmin(&self, bmin: &RoaringBitmap) -> Vec<PublicRecord<M>> {
+        self.0.pin().iter().filter_map(|r| { 
+            if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
+                Some(PublicRecord::from((*r.0, r.1.clone())))
+            } else {
+                None
+            }
+        }).collect::<Vec<_>>()
+    }
+
+    // Change the local status of the record for this mui to Withdrawn.
+    pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
+        let record_map = self.0.pin();
+        if let Some(mut rec) = record_map.get(&mui).cloned() {
+            rec.status = RouteStatus::Withdrawn;
+            record_map.insert(mui, rec);
+        }
+    }
+
+    // Change the local status of the record for this mui to Active.
+    pub fn mark_as_active_for_mui(&self, mui: u32) {
+        let record_map = self.0.pin();
+        if let Some(mut rec) = record_map.get(&mui).cloned() {
+            rec.status = RouteStatus::Active;
+            record_map.insert(mui, rec);
+        }
     }
 
     // Insert or replace the PublicRecord in the HashMap for the key of

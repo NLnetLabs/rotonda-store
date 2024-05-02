@@ -63,7 +63,7 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 
 /// Options for the `match_prefix` method
 /// 
-/// The `MatchOptions` struct is used to specify the options for the 
+/// The `MatchOptions` struct is used to specify the options for the
 /// `match_prefix` method on the store.
 /// 
 /// Note that the `match_type` field may be different from the actual
@@ -75,11 +75,14 @@ pub struct MatchOptions {
     /// The requested [MatchType]
     pub match_type: MatchType,
     /// Unused
-    pub include_all_records: bool,
+    pub include_withdrawn: bool,
     /// Whether to include all less-specific records in the query result
     pub include_less_specifics: bool,
     // Whether to include all more-specific records in the query result
     pub include_more_specifics: bool,
+    /// Whether to return records for a specific multi_uniq_id, None indicates
+    /// all records.
+    pub mui: Option<u32>
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -11,6 +11,7 @@ pub use crate::{MatchOptions, MatchType, QueryResult};
 pub use crate::stride::{Stride3, Stride4, Stride5};
 
 pub mod multi {
+    pub use std::sync::atomic::Ordering;
     pub use crate::MultiThreadedStore;
 
     pub use rotonda_macros::create_store;

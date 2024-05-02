@@ -57,6 +57,78 @@ macro_rules! impl_search_level {
 
 #[macro_export]
 #[doc(hidden)]
+macro_rules! impl_search_level_for_mui {
+    (
+        $(
+            $stride: ident;
+            $id: ident;
+            $mui: ident;
+        ),
+    * ) => {
+        $(
+        SearchLevel {
+            f: &|search_level: &SearchLevel<AF, $stride>,
+                nodes,
+                mut level: u8,
+                guard| {
+                    // HASHING FUNCTION
+                    let index = Self::hash_node_id($id, level);
+
+                    // Read the node from the block pointed to by the Atomic
+                    // pointer.
+                    let stored_node = unsafe {
+                        &mut nodes.0.load(Ordering::SeqCst, guard).deref()[index].assume_init_ref()
+                    };
+                    let this_node = stored_node.load(Ordering::Acquire, guard);
+
+                    match this_node.is_null() {
+                        true => None,
+                        false => {
+                            let StoredNode { node_id, node, node_set, .. } = unsafe { 
+                                this_node.deref() 
+                            };
+
+                            // early return if the mui is not in the index
+                            // stored in this node, meaning the mui does not
+                            // appear anywhere in the sub-tree formed from
+                            // this node.
+                            let bmin: &RoaringBitmap = unsafe { 
+                                node_set.1.load(Ordering::Acquire, guard).deref()
+                            };
+                            if !bmin.contains($mui) {
+                                return None;
+                            }
+                            
+                            if $id == *node_id {
+                                // YES, It's the one we're looking for!
+                                return Some(SizedStrideRef::$stride(&node));
+                            };
+                            // Meh, it's not, but we can a go to the next
+                            // level and see if it lives there.
+                            level += 1;
+                            match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                                // on to the next level!
+                                next_bit_shift if next_bit_shift > 0 => {
+                                    (search_level.f)(
+                                        search_level,
+                                        &node_set,
+                                        level,
+                                        guard,
+                                    )
+                                }
+                                // There's no next level, we found nothing.
+                                _ => None,
+                            }
+                        }
+                    }
+                }
+        }
+        )*
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
 macro_rules! retrieve_node_mut_with_guard_closure {
     (
         $(

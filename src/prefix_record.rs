@@ -608,10 +608,10 @@ impl<'a, M: Meta + 'a>
             let u_pfx = pfx.prefix;
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone().into()));
+                    v4.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone().into()));
+                    v6.push(PublicPrefixRecord::new(u_pfx, pfx.meta.clone()));
                 }
             }
         }

@@ -195,6 +195,7 @@ use log::{debug, info, log_enabled, trace};
 use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
+use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
 
@@ -206,7 +207,8 @@ use crate::{
 
 // use crate::prefix_record::InternalPrefixRecord;
 use crate::{
-    impl_search_level, retrieve_node_mut_with_guard_closure,
+    impl_search_level, impl_search_level_for_mui, 
+    retrieve_node_mut_with_guard_closure,
     store_node_closure,
 };
 
@@ -334,6 +336,8 @@ pub struct CustomAllocStorage<
     pub(crate) buckets: NB,
     pub prefixes: PB,
     pub default_route_prefix_serial: AtomicUsize,
+    // Global Roaring Bitmap INdex that stores MUIs.
+    pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
     _m: PhantomData<M>,
     _af: PhantomData<AF>,
@@ -365,6 +369,7 @@ impl<
             buckets: NodeBuckets::<AF>::init(),
             prefixes: PrefixBuckets::<AF, M>::init(),
             default_route_prefix_serial: AtomicUsize::new(0),
+            withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             _af: PhantomData,
             _m: PhantomData,
@@ -482,6 +487,61 @@ impl<
         let search_level_3 = impl_search_level![Stride3; id;];
         let search_level_4 = impl_search_level![Stride4; id;];
         let search_level_5 = impl_search_level![Stride5; id;];
+
+        if log_enabled!(log::Level::Trace) {
+            trace!(
+                "{} store: Retrieve node {} from l{}",
+                std::thread::current().name().unwrap(),
+                id,
+                id.get_id().1
+            );
+        }
+
+        match self.get_stride_for_id(id) {
+            3 => (search_level_3.f)(
+                &search_level_3,
+                self.buckets.get_store3(id),
+                0,
+                guard,
+            ),
+            4 => (search_level_4.f)(
+                &search_level_4,
+                self.buckets.get_store4(id),
+                0,
+                guard,
+            ),
+            _ => (search_level_5.f)(
+                &search_level_5,
+                self.buckets.get_store5(id),
+                0,
+                guard,
+            ),
+        }
+    }
+
+    // retrieve a node, but only its bitmap index contains the specified mui.
+    // Used for iterators per mui.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn retrieve_node_for_mui(
+        &'a self,
+        id: StrideNodeId<AF>,
+        // The mui that is tested to be present in the nodes bitmap index
+        mui: u32,
+        guard: &'a Guard,
+    ) -> Option<SizedStrideRef<'a, AF>> {
+        struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
+            f: &'s dyn for<'a> Fn(
+                &SearchLevel<AF, S>,
+                &NodeSet<AF, S>,
+                u8,
+                &'a Guard,
+            )
+                -> Option<SizedStrideRef<'a, AF>>,
+        }
+
+        let search_level_3 = impl_search_level_for_mui![Stride3; id; mui;];
+        let search_level_4 = impl_search_level_for_mui![Stride4; id; mui;];
+        let search_level_5 = impl_search_level_for_mui![Stride5; id; mui;];
 
         if log_enabled!(log::Level::Trace) {
             trace!(
@@ -737,6 +797,95 @@ impl<
             mui_new: mui_new.is_none(),
             mui_count: mui_new.unwrap_or(1),
         })
+    }
+
+    // Change the status of the record for the specified (prefix, mui)
+    // combination  to Withdrawn.
+    pub fn mark_mui_as_withdrawn_for_prefix(&mut self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let (atomic_stored_prefix, _level) = self
+            .non_recursive_retrieve_prefix_mut_with_guard(
+                prefix, guard,
+            )?;
+        
+        let current = unsafe { atomic_stored_prefix.0.load(Ordering::AcqRel, guard).as_ref() }.unwrap();
+        current.record_map.mark_as_withdrawn_for_mui(mui);
+
+        Ok(())
+    }
+
+    // Change the status of the record for the specified (prefix, mui)
+    // combination  to Active.
+    pub fn mark_mui_as_active_for_prefix(&mut self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let (atomic_stored_prefix, _level) = self
+            .non_recursive_retrieve_prefix_mut_with_guard(
+                prefix, guard,
+            )?;
+        
+        let current = unsafe { atomic_stored_prefix.0.load(Ordering::AcqRel, guard).as_ref() }.unwrap();
+        current.record_map.mark_as_active_for_mui(mui);
+
+        Ok(())
+    }
+
+    // Change the status of the mui globally to Withdrawn. Iterators and match
+    // functions will by default not return any records for this mui.
+    pub fn mark_mui_as_withdrawn(&mut self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.insert(mui);
+
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Release,
+                guard
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new = unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
+
+    // Change the status of the mui globally to Active. Iterators and match
+    // functions will default to the status on the record itself.
+    pub fn mark_mui_as_active(&mut self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.remove(mui);
+
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Release,
+                guard
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new = unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
+
+    // Whether this mui is globally withdrawn. Note that this overrules (by
+    // default) any (prefix, mui) combination in iterators and match functions.
+    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+        unsafe { self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard).as_ref() }.unwrap().contains(mui)
+    }
+
+    // Whether this mui is globally active. Note that the local statuses of
+    // records (prefix, mui) may be set to withdrawn in iterators and match
+    // functions.
+    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+        !unsafe { self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard).as_ref() }.unwrap().contains(mui)
     }
 
     // This function is used by the upsert_prefix function above.
