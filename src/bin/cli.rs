@@ -219,9 +219,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &p,
                                     &MatchOptions {
                                         match_type: MatchType::ExactMatch,
-                                        include_all_records: true,
+                                        include_withdrawn: true,
                                         include_less_specifics: true,
                                         include_more_specifics: true,
+                                        mui: None,
                                     },
                                     guard,
                                 );
@@ -250,7 +251,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .more_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
-                                            guard
+                                            None,
+                                            guard,
                                         )
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
@@ -262,7 +264,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .less_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
-                                            guard
+                                            None,
+                                            guard,
                                         )
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
@@ -280,9 +283,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         &MatchOptions {
                                             match_type:
                                                 MatchType::ExactMatch,
-                                            include_all_records: true,
+                                            include_withdrawn: true,
                                             include_less_specifics: true,
-                                            include_more_specifics: true
+                                            include_more_specifics: true,
+                                            mui: None
                                         },
                                         guard
                                     )
@@ -294,7 +298,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .more_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
-                                            guard
+                                            None,
+                                            guard,
                                         )
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
@@ -306,6 +311,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .less_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
+                                            None,
                                             guard
                                         )
                                         .less_specifics

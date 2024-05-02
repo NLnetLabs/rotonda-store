@@ -2,6 +2,7 @@ use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
 
+use std::sync::atomic::Ordering;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;

@@ -294,9 +294,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
-                include_all_records: false,
+                include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
+                mui: None
             },
             guard
         );
