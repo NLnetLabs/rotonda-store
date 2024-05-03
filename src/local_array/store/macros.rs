@@ -168,12 +168,12 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             // to, does not need to be written to, it's part
                             // of a trie, so it just needs to "exist" (and it
                             // already does).
-                            let retry_count = nodes.update_rbm_index(
+                            let retry_count = node_set.update_rbm_index(
                                 $multi_uniq_id, guard
                             ).ok();
 
                             trace!("Retry_count rbm index {:?}", retry_count);
-                            trace!("add multi uniq id to bitmap index {}", $multi_uniq_id);
+                            trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, node);
                             return Some(SizedStrideRefMut::$stride(node));
                         };
                         // Meh, it's not, but we can a go to the next level
@@ -252,6 +252,13 @@ macro_rules! store_node_closure {
                                     );
                                 }
 
+                                trace!("multi uniq id {}", multi_uniq_id);
+
+                                let node_set = if next_level > 0 { 
+                                    NodeSet::init((1 << (next_level - this_level)) as usize )
+                                } else { NodeSet(
+                                    Atomic::null(), nodes.1.load(Ordering::Acquire, $guard).into()) };
+
                                 // Update the rbm_index in this node with the
                                 // multi_uniq_id that the caller specified. We're
                                 // doing this independently from setting the
@@ -273,16 +280,7 @@ macro_rules! store_node_closure {
                                 // threshold. In that case a false positive is
                                 // stored in the index, which leads to more
                                 // in-vain searching, but not to data corruption.
-                                retry_count += nodes.update_rbm_index(
-                                    multi_uniq_id, $guard
-                                )?;
-
-                                trace!("multi uniq id {}", multi_uniq_id);
-
-                                let node_set = if next_level > 0 { 
-                                    NodeSet::init((1 << (next_level - this_level)) as usize )
-                                } else { NodeSet(
-                                    Atomic::null(), nodes.1.load(Ordering::Acquire, $guard).into()) };
+                                retry_count += node_set.update_rbm_index(multi_uniq_id, $guard)?;
 
                                 match node_ref.compare_exchange(
                                     Shared::null(),
@@ -355,7 +353,7 @@ macro_rules! store_node_closure {
 
                                     // Same remarks here as the above
                                     // fetch_update.
-                                    nodes.update_rbm_index(
+                                    stored_node.node_set.update_rbm_index(
                                         multi_uniq_id, $guard
                                     )?;
 
