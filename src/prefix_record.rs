@@ -242,9 +242,14 @@ impl<M> PublicRecord<M> {
     }
 }
 
-impl<M: Debug> std::fmt::Display for PublicRecord<M> {
+impl<M: std::fmt::Display> std::fmt::Display for PublicRecord<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} :{:?}", self.multi_uniq_id, self.meta)
+        write!(f, "{}: {{ ltime: {}, status: {}, meta: {} }}",
+            self.multi_uniq_id,
+            self.ltime,
+            self.status,
+            self.meta
+        )
     }
 }
 
@@ -272,6 +277,10 @@ impl<M: Meta> PublicPrefixRecord<M> {
     pub fn new(prefix: Prefix, meta: Vec<PublicRecord<M>>) -> Self {
         Self { prefix, meta }
     }
+
+    pub fn get_record_for_mui(&self, mui: u32) -> Option<&PublicRecord<M>> {
+        self.meta.iter().find(|r| r.multi_uniq_id == mui)
+    }
 }
 
 impl<AF, M> From<(PrefixId<AF>, Vec<PublicRecord<M>>)> for PublicPrefixRecord<M>
@@ -287,9 +296,13 @@ where
     }
 }
 
-impl<M: Meta> std::fmt::Display for PublicPrefixRecord<M> {
+impl<M: Meta + std::fmt::Display> std::fmt::Display for PublicPrefixRecord<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} :{:?}", self.prefix, self.meta)
+        write!(f, "{}: [", self.prefix)?;
+        for rec in &self.meta {
+            write!(f, "{},", rec)?;
+        }
+        write!(f, "]")
     }
 }
 
