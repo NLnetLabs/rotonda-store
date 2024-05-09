@@ -12,6 +12,8 @@ mod common {
 
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
     use rotonda_store::{
         prelude::*, prelude::multi::*, 
         meta_examples::{ PrefixAs, NoMeta}
@@ -445,9 +447,9 @@ mod tests {
     fn test_multi_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
-        for multi_uniq_id in [1_u32,2,3,4,5] {
-            println!("Multi Uniq ID {multi_uniq_id}");
+        let mut tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+        for mui in [1_u32,2,3,4,5] {
+            println!("Multi Uniq ID {mui}");
 
             for i_net in 0..2 {
 
@@ -469,7 +471,7 @@ mod tests {
                     i_len_s += 1;
                     tree_bitmap.insert(
                         pfx,
-                        Record::new(multi_uniq_id, 0, RouteStatus::Active, NoMeta::Empty),
+                        Record::new(mui, 0, RouteStatus::Active, NoMeta::Empty),
                         None
                     )?;
 
@@ -492,7 +494,7 @@ mod tests {
                                 include_withdrawn: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
-                                mui: None
+                                mui: Some(mui)
                             },
                             guard,
                         );
@@ -505,13 +507,109 @@ mod tests {
         }
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.more_specifics_iter_from(
-            &rotonda_store::prelude::Prefix::new("0.0.0.0".parse::<std::net::Ipv4Addr>().unwrap().into(),0).unwrap(),
-            None,
-            guard
-        ) {
-            print!(".pfx {:?}.", pfx);
+        println!("records for mui {}", 5);
+        for rec in tree_bitmap.iter_records_for_mui_v4(5 ,false, guard).collect::<Vec<_>>() {
+            println!("{}", rec);
+
+            assert_eq!(rec.meta.len(), 1);
+            assert_eq!(rec.meta[0].multi_uniq_id, 5);
+            assert_eq!(rec.meta[0].status, RouteStatus::Active);
         };
+        for rec in tree_bitmap.iter_records_for_mui_v4(1 ,false, guard).collect::<Vec<_>>() {
+            println!("{}", rec);
+        };
+
+        // println!("all records");
+        // for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
+        //     println!("{}", rec);
+        // };
+
+        // Withdraw records for mui 1 globally.
+        tree_bitmap.mark_mui_as_withdrawn_v4(1)?;
+
+        let all_recs_for_pfx = tree_bitmap.match_prefix(
+            &Prefix::from_str("1.0.0.0/16")?,
+            &MatchOptions {
+                match_type: MatchType::LongestMatch,
+                include_withdrawn: true,
+                include_less_specifics: false,
+                include_more_specifics: false,
+                mui: None
+            },
+            guard
+        );
+        print!(".pfx {:#?}.", all_recs_for_pfx);
+        assert_eq!(all_recs_for_pfx.prefix_meta.len(), 5);
+        let wd_rec = all_recs_for_pfx.prefix_meta.iter().filter(|r| r.status == RouteStatus::Withdrawn).collect::<Vec<_>>();
+        assert_eq!(wd_rec.len(), 1);
+        assert_eq!(wd_rec[0].multi_uniq_id, 1);
+
+        let active_recs_for_pfx = tree_bitmap.match_prefix(
+            &Prefix::from_str("1.0.0.0/16")?,
+            &MatchOptions {
+                match_type: MatchType::LongestMatch,
+                include_withdrawn: false,
+                include_less_specifics: false,
+                include_more_specifics: false,
+                mui: None
+            },
+            guard
+        );
+        assert_eq!(active_recs_for_pfx.prefix_meta.len(), 4);
+        assert!(!active_recs_for_pfx.prefix_meta.iter().any(|r| r.multi_uniq_id == 1));
+
+        let wd_pfx = Prefix::from_str("1.0.0.0/16")?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(
+            &wd_pfx,
+            2
+        )?;
+
+        println!("all records");
+
+        let all_recs = tree_bitmap.prefixes_iter(guard);
+        
+        for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
+            println!("{}", rec);
+        };
+
+        let mui_2_recs = all_recs.filter_map(|r| r.get_record_for_mui(2).cloned());
+        let wd_2_rec = mui_2_recs.filter(|r| r.status == RouteStatus::Withdrawn).collect::<Vec<_>>();
+        assert_eq!(wd_2_rec.len(), 1);
+        assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
+
+        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec)));
+        println!("mui_2_recs prefixes_iter");
+        for rec in mui_2_recs {
+            println!("{} {:#?}", rec.0, rec.1);
+        }
+        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec)));
+
+        let active_2_rec = mui_2_recs.filter(|r| r.1.status == RouteStatus::Active).collect::<Vec<_>>();
+        assert_eq!(active_2_rec.len(), 3);
+        assert!(!active_2_rec.iter().any(|r| r.0 == wd_pfx));
+
+        let mui_2_recs = tree_bitmap.iter_records_for_mui_v4(2, false, guard);
+        println!("mui_2_recs iter_records_for_mui_v4");
+        for rec in mui_2_recs {
+            println!("{} {:#?}", rec.prefix, rec.meta);
+        }
+
+        let mui_1_recs = tree_bitmap.iter_records_for_mui_v4(1, false, guard).collect::<Vec<_>>();
+        assert!(mui_1_recs.is_empty());
+
+        println!("mui_1_recs iter_records_for_mui_v4");
+        for rec in mui_1_recs {
+            println!("{} {:#?}", rec.prefix, rec.meta);
+        }
+
+        let mui_1_recs = tree_bitmap.iter_records_for_mui_v4(1, true, guard).collect::<Vec<_>>();
+        assert_eq!(mui_1_recs.len(), 4);
+        println!("mui_1_recs iter_records_for_mui_v4 w/ withdrawn");
+        for rec in mui_1_recs {
+            println!("{} {:#?}", rec.prefix, rec.meta);
+            assert_eq!(rec.meta[0].status, RouteStatus::Withdrawn);
+        }
+
         Ok(())
     }
 }
