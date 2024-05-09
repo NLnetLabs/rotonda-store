@@ -279,7 +279,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         guard: &Guard,
     ) -> Option<(PathSelections, usize)> {
         let path_selections =
-            self.path_selections.load(Ordering::Release, guard);
+            self.path_selections.load(Ordering::Acquire, guard);
         unsafe { path_selections.as_ref() }
             .map(|ps| (*ps, path_selections.tag()))
     }
@@ -289,7 +289,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         path_selections: PathSelections,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self.path_selections.load(Ordering::AcqRel, guard);
+        let current = self.path_selections.load(Ordering::Acquire, guard);
 
         if unsafe { current.as_ref() } == Some(&path_selections) {
             return Ok(());
@@ -300,7 +300,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
                 current,
                 Owned::new(path_selections),
                 Ordering::AcqRel,
-                Ordering::Release,
+                Ordering::Acquire,
                 guard,
             )
             .map_err(|_| PrefixStoreError::PathSelectionOutdated)?;
@@ -542,7 +542,7 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::AcqRel, guard).into_owned() }.tag()
+        unsafe { self.0.load(Ordering::Acquire, guard).into_owned() }.tag()
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {

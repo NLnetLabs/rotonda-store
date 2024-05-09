@@ -809,7 +809,7 @@ impl<
                 prefix, guard,
             )?;
         
-        let current = unsafe { atomic_stored_prefix.0.load(Ordering::AcqRel, guard).as_ref() }.unwrap();
+        let current = unsafe { atomic_stored_prefix.0.load(Ordering::Acquire, guard).as_ref() }.unwrap();
         current.record_map.mark_as_withdrawn_for_mui(mui);
 
         Ok(())
@@ -823,7 +823,7 @@ impl<
                 prefix, guard,
             )?;
         
-        let current = unsafe { atomic_stored_prefix.0.load(Ordering::AcqRel, guard).as_ref() }.unwrap();
+        let current = unsafe { atomic_stored_prefix.0.load(Ordering::Acquire, guard).as_ref() }.unwrap();
         current.record_map.mark_as_active_for_mui(mui);
 
         Ok(())
@@ -832,7 +832,7 @@ impl<
     // Change the status of the mui globally to Withdrawn. Iterators and match
     // functions will by default not return any records for this mui.
     pub fn mark_mui_as_withdrawn(&mut self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard);
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.insert(mui);
@@ -842,7 +842,7 @@ impl<
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
-                Ordering::Release,
+                Ordering::Acquire,
                 guard
             ) {
                 Ok(_) => return Ok(()),
@@ -856,7 +856,7 @@ impl<
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
     pub fn mark_mui_as_active(&mut self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard);
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.remove(mui);
@@ -866,7 +866,7 @@ impl<
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
-                Ordering::Release,
+                Ordering::Acquire,
                 guard
             ) {
                 Ok(_) => return Ok(()),
@@ -880,14 +880,14 @@ impl<
     // Whether this mui is globally withdrawn. Note that this overrules (by
     // default) any (prefix, mui) combination in iterators and match functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-        unsafe { self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard).as_ref() }.unwrap().contains(mui)
+        unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).as_ref() }.unwrap().contains(mui)
     }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
     pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
-        !unsafe { self.withdrawn_muis_bmin.load(Ordering::AcqRel, guard).as_ref() }.unwrap().contains(mui)
+        !unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).as_ref() }.unwrap().contains(mui)
     }
 
     // This function is used by the upsert_prefix function above.
