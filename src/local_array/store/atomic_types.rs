@@ -394,6 +394,22 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         })
     }
 
+
+    pub(crate) fn get_record_for_mui_with_rewritten_status(
+        &self,
+        mui: u32,
+        bmin: &RoaringBitmap,
+        rewrite_status: RouteStatus
+    ) -> Option<PublicRecord<M>> {
+        self.0.get(&mui, &self.0.guard()).map(|r| {
+            let mut r = r.clone();
+            if bmin.contains(mui) {
+                r.status = rewrite_status;
+            }
+            PublicRecord::from((mui, r))
+        })
+    }
+
     pub fn iter_all_records<'a>(
         &'a self,
         guard: &'a flurry::Guard<'a>,
@@ -407,7 +423,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // set status for the mui of the record. However, the local status for a
     // record whose mui appears in the specified bitmap index, will be
     // rewritten with the specified RouteStatus.
-    pub fn as_records_with_global_status(
+    pub fn as_records_with_rewritten_status(
         &self,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,

@@ -130,7 +130,7 @@ where
                         // Do no filter out any records, but do rewrite the
                         // local statuses of the records with muis that
                         // appear in the specified bitmap index.
-                        pfx.record_map.as_records_with_global_status(
+                        pfx.record_map.as_records_with_rewritten_status(
                             unsafe { 
                                 self.store.withdrawn_muis_bmin.load(
                                     Ordering::Acquire, guard

@@ -10,6 +10,7 @@ use std::sync::atomic::Ordering;
 
 use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
+use crate::local_array::store::atomic_types::RouteStatus;
 use crate::prefix_record::PublicRecord;
 use crate::{
     af::AddressFamily,
@@ -320,6 +321,36 @@ impl<
             let next_pfx = self.cur_pfx_iter.next();
 
             if next_pfx.is_some() {
+                // If we have a mui, we have to deal slightly different with
+                // the records: There can only be one record for a (prefix,
+                // mui) combination, and the record may be filtered out by the
+                // global status of the mui, or its local status. In that case
+                // we don't return here (because that would result in a Prefix
+                // with an empty record vec).
+                if let Some(mui) = self.mui {
+                    if let Some(p) = self
+                    .store
+                    .non_recursive_retrieve_prefix_with_guard(
+                        next_pfx.unwrap_or_else(|| {
+                            panic!(
+                                "BOOM! More-specific prefix {:?} disappeared \
+                                from the store",
+                                next_pfx
+                            )
+                        }),
+                        self.guard,
+                    )
+                    .0 {
+                        // We don't have to check for the appearance of the
+                        // mui in the global_withdrawn_bmin anymore, we
+                        // wouldn't have gotten to this point if it was.
+                        if let Some(rec) =  p.record_map
+                        .get_record_for_mui_with_rewritten_status(mui, self.global_withdrawn_bmin, RouteStatus::Withdrawn) {
+                            return Some((p.prefix, vec![rec]));
+                        }
+                    };   
+                } else {
+
                 return self
                     .store
                     .non_recursive_retrieve_prefix_with_guard(
@@ -334,30 +365,18 @@ impl<
                     )
                     .0
                     .map(|p| {
-                        if let Some(mui) = self.mui {
-                            // We don't have to check for the appearance of
-                            // the mui in the global_withdrawn_bmin anymore,
-                            // we wouldn't have gotten to this point if it
-                            // was.
-                            (
-                                p.prefix,
-                                p.record_map
-                                    .get_record_for_active_mui(mui)
-                                    .into_iter()
-                                    .collect(),
-                            )
-                        } else {
-                            // Other muis for this prefix will have to be
-                            // checked to not appear in the global_withdrawn
-                            // mbin, that's what the method call does.
-                            (
-                                p.prefix,
-                                p.record_map.as_active_records_not_in_bmin(
-                                    self.global_withdrawn_bmin,
-                                ),
-                            )
-                        }
+                        // All mui records for this prefix will have to be
+                        // checked to not appear in the global_withdrawn mbin,
+                        // hence the `not_in_bmin` in the method call name.
+                        (
+                            p.prefix,
+                            p.record_map.as_records_with_rewritten_status(
+                                self.global_withdrawn_bmin,
+                                RouteStatus::Withdrawn
+                            ),
+                        )
                     });
+                }
             }
 
             // Our current prefix iterator for this node is done, look for
