@@ -244,7 +244,7 @@ impl<M> PublicRecord<M> {
 
 impl<M: std::fmt::Display> std::fmt::Display for PublicRecord<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}: {{ ltime: {}, status: {}, meta: {} }}",
+        write!(f, "{{ mui: {}, ltime: {}, status: {}, meta: {} }}",
             self.multi_uniq_id,
             self.ltime,
             self.status,
@@ -538,11 +538,11 @@ impl<M: Meta> fmt::Display for RecordSet<M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let arr_str_v4 =
             self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
-                format!("{} {:#?}", pfx_arr, *pfx)
+                format!("{} {}", pfx_arr, *pfx)
             });
         let arr_str_v6 =
             self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
-                format!("{} {:#?}", pfx_arr, *pfx)
+                format!("{} {}", pfx_arr, *pfx)
             });
 
         write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)

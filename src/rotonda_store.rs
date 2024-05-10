@@ -85,7 +85,7 @@ pub struct MatchOptions {
     pub mui: Option<u32>
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum MatchType {
     ExactMatch,
     LongestMatch,
@@ -181,22 +181,22 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
         //     Some(pfx_meta) => format!("{}", pfx_meta),
         //     None => "".to_string(),
         // };
-        write!(
-            f,
-            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
-            self.match_type,
-            pfx_str,
-            format_args!("{:?}", self.prefix_meta),
-            if let Some(ls) = self.less_specifics.as_ref() {
-                format!("{}", ls)
-            } else {
-                "".to_string()
-            },
-            if let Some(ms) = self.more_specifics.as_ref() {
-                format!("{}", ms)
-            } else {
-                "".to_string()
-            },
-        )
+        writeln!(f, "match_type: {}", self.match_type)?;
+        writeln!(f, "prefix: {}", pfx_str)?;
+        write!(f, "meta: [ ")?;
+        for rec in &self.prefix_meta {
+            write!(f, "{},", rec)?;
+        }
+        writeln!(f, " ]")?;
+        writeln!(f, "less_specifics: {{ {} }}", if let Some(ls) = self.less_specifics.as_ref() {
+            format!("{}", ls)
+        } else {
+            "".to_string()
+        })?;
+        writeln!(f, "more_specifics: {{ {} }}", if let Some(ms) = self.more_specifics.as_ref() {
+            format!("{}", ms)
+        } else {
+            "".to_string()
+        })
     }
 }

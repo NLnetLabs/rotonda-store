@@ -87,7 +87,7 @@ impl<M: crate::prefix_record::Meta> std::fmt::Display
             Some(pfx) => format!("{}", pfx),
             None => "".to_string(),
         };
-        write!(
+        writeln!(
             f,
             "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
             self.match_type,
