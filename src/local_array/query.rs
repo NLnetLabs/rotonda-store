@@ -30,6 +30,7 @@ where
         &'a self,
         prefix_id: PrefixId<AF>,
         mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
         let result = self
@@ -37,7 +38,7 @@ where
             .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
         let prefix = result.0;
         let more_specifics_vec =
-            self.store.more_specific_prefix_iter_from(prefix_id, mui, guard);
+            self.store.more_specific_prefix_iter_from(prefix_id, mui, include_withdrawn, guard);
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
@@ -62,6 +63,7 @@ where
         &'a self,
         prefix_id: PrefixId<AF>,
         mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
         let result = self
@@ -71,7 +73,7 @@ where
         let prefix = result.0;
         let less_specifics_vec = result.1.map(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.store.less_specific_prefix_iter(prefix_id, mui, guard)
+                self.store.less_specific_prefix_iter(prefix_id, mui, include_withdrawn, guard)
             },
         );
 
@@ -98,12 +100,13 @@ where
         &'a self,
         prefix_id: PrefixId<AF>,
         mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
     ) -> Result<
         impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_,
         std::io::Error,
     > {
-        Ok(self.store.more_specific_prefix_iter_from(prefix_id, mui, guard))
+        Ok(self.store.more_specific_prefix_iter_from(prefix_id, mui, include_withdrawn, guard))
     }
 
     pub fn match_prefix_by_store_direct(
@@ -148,15 +151,15 @@ where
         // empty match.
         let match_type = match (&options.match_type, &stored_prefix) {
             // we found an exact match, we don't need to do anything.
-            (_, Some((_pfx, _meta))) => {
+            (_, Some((_pfx, meta))) if !meta.is_empty() => {
                 MatchType::ExactMatch
             }
             // we didn't find an exact match, but the user requested it
             // so we need to find the longest matching prefix.
-            (MatchType::LongestMatch | MatchType::EmptyMatch, None) => {
+            (MatchType::LongestMatch | MatchType::EmptyMatch, _) => {
                 stored_prefix = self
                     .store
-                    .less_specific_prefix_iter(search_pfx, mui, guard)
+                    .less_specific_prefix_iter(search_pfx, mui, options.include_withdrawn, guard)
                     .max_by(|p0, p1| p0.0.get_len().cmp(&p1.0.get_len()));
                 if stored_prefix.is_some() {
                     MatchType::LongestMatch
@@ -167,7 +170,7 @@ where
             // We got an empty match, but the user requested an exact match,
             // even so, we're going to look for more and/or less specifics if
             // the user asked for it.
-            (MatchType::ExactMatch, None) => MatchType::EmptyMatch,
+            (MatchType::ExactMatch, _) => MatchType::EmptyMatch,
         };
 
         QueryResult {
@@ -183,6 +186,7 @@ where
                                 search_pfx
                             },
                             mui,
+                            options.include_withdrawn,
                             guard,
                         )
                         .collect(),
@@ -200,6 +204,7 @@ where
                                 search_pfx
                             },
                             mui,
+                            options.include_withdrawn,
                             guard,
                         )
                         // .map(|p| (p.prefix_into_pub(), p))
@@ -797,14 +802,11 @@ where
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
     fn get_filtered_records(&self, pfx: &StoredPrefix<AF, M>, mui: Option<u32>, guard: &Guard) -> Vec<PublicRecord<M>> {
-        if let Some(mui) = mui {
-            pfx.record_map.get_record_for_active_mui(mui).into_iter().collect()
-        } else {
-            let bmin = unsafe { 
-                self.store.withdrawn_muis_bmin.load(
-                    Ordering::Acquire, guard).as_ref()
-                }.unwrap();
-            pfx.record_map.as_active_records_not_in_bmin(bmin) 
-        }
+        let bmin = unsafe { 
+            self.store.withdrawn_muis_bmin.load(
+                Ordering::Acquire, guard).as_ref()
+            }.unwrap();
+        
+        pfx.record_map.get_filtered_records(mui, bmin)
     }
 }

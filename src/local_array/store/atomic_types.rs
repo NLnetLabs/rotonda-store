@@ -410,6 +410,21 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         })
     }
 
+
+    // Helper to filter out records that are not-active (Inactive or
+    // Withdrawn), or whose mui appears in the global withdrawn index.
+    pub fn get_filtered_records(
+        &self, 
+        mui: Option<u32>,
+        bmin: &RoaringBitmap,
+    ) -> Vec<PublicRecord<M>> {
+        if let Some(mui) = mui {
+            self.get_record_for_active_mui(mui).into_iter().collect()
+        } else {
+            self.as_active_records_not_in_bmin(bmin) 
+        }
+    }
+
     pub fn iter_all_records<'a>(
         &'a self,
         guard: &'a flurry::Guard<'a>,

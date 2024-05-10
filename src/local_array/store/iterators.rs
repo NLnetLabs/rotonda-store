@@ -104,7 +104,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             if self.cursor >= bucket_size {
                 if self.cur_level == 0 {
                     // END OF THE LENGTH
-                    
+
                     // This length is done too, go to the next length
                     trace!("next length {}", self.cur_len);
                     self.cur_len += 1;
@@ -125,7 +125,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         self.prefixes.get_root_prefix_set(self.cur_len);
                 } else {
                     // END OF THIS BUCKET GO BACK UP ONE LEVEL
-                    
+
                     // The level is done, but the length isn't Go back up one
                     // level and continue
                     match self.parents[self.cur_level as usize] {
@@ -297,9 +297,11 @@ pub(crate) struct MoreSpecificPrefixIter<
     parent_and_position: Vec<SizedNodeMoreSpecificIter<AF>>,
     // If specified, we're only iterating over records for this mui.
     mui: Option<u32>,
-    // This is the tree-wide index of withdrawn muis, used to filter out the
-    // records for those.
+    // This is the tree-wide index of withdrawn muis, used to rewrite the
+    // statuses of these records, or filter them out.
     global_withdrawn_bmin: &'a RoaringBitmap,
+    // Whether we should filter out the withdrawn records in the search result
+    include_withdrawn: bool,
     guard: &'a Guard,
 }
 
@@ -329,53 +331,77 @@ impl<
                 // with an empty record vec).
                 if let Some(mui) = self.mui {
                     if let Some(p) = self
-                    .store
-                    .non_recursive_retrieve_prefix_with_guard(
-                        next_pfx.unwrap_or_else(|| {
-                            panic!(
+                        .store
+                        .non_recursive_retrieve_prefix_with_guard(
+                            next_pfx.unwrap_or_else(|| {
+                                panic!(
                                 "BOOM! More-specific prefix {:?} disappeared \
                                 from the store",
                                 next_pfx
                             )
-                        }),
-                        self.guard,
-                    )
-                    .0 {
-                        // We don't have to check for the appearance of the
-                        // mui in the global_withdrawn_bmin anymore, we
-                        // wouldn't have gotten to this point if it was.
-                        if let Some(rec) =  p.record_map
-                        .get_record_for_mui_with_rewritten_status(mui, self.global_withdrawn_bmin, RouteStatus::Withdrawn) {
+                            }),
+                            self.guard,
+                        )
+                        .0
+                    {
+                        // We may either have to rewrite the local status with
+                        // the provided global status OR we may have to omit
+                        // all of the records with either global of local
+                        // withdrawn status.
+                        if self.include_withdrawn {
+                            if let Some(rec) = p
+                                .record_map
+                                .get_record_for_mui_with_rewritten_status(
+                                    mui,
+                                    self.global_withdrawn_bmin,
+                                    RouteStatus::Withdrawn,
+                                )
+                            {
+                                return Some((p.prefix, vec![rec]));
+                            }
+                        } else if let Some(rec) =
+                            p.record_map.get_record_for_active_mui(mui)
+                        {
                             return Some((p.prefix, vec![rec]));
                         }
-                    };   
+                    };
                 } else {
-
-                return self
-                    .store
-                    .non_recursive_retrieve_prefix_with_guard(
-                        next_pfx.unwrap_or_else(|| {
-                            panic!(
+                    return self
+                        .store
+                        .non_recursive_retrieve_prefix_with_guard(
+                            next_pfx.unwrap_or_else(|| {
+                                panic!(
                                 "BOOM! More-specific prefix {:?} disappeared \
                                 from the store",
                                 next_pfx
                             )
-                        }),
-                        self.guard,
-                    )
-                    .0
-                    .map(|p| {
-                        // All mui records for this prefix will have to be
-                        // checked to not appear in the global_withdrawn mbin,
-                        // hence the `not_in_bmin` in the method call name.
-                        (
-                            p.prefix,
-                            p.record_map.as_records_with_rewritten_status(
-                                self.global_withdrawn_bmin,
-                                RouteStatus::Withdrawn
-                            ),
+                            }),
+                            self.guard,
                         )
-                    });
+                        .0
+                        .map(|p| {
+                            // Just like the mui specific records, we may have
+                            // to either rewrite the local status (if the user
+                            // wants the withdrawn records) or omit them.
+                            if self.include_withdrawn {
+                                (
+                                    p.prefix,
+                                    p.record_map
+                                        .as_records_with_rewritten_status(
+                                            self.global_withdrawn_bmin,
+                                            RouteStatus::Withdrawn,
+                                        ),
+                                )
+                            } else {
+                                (
+                                    p.prefix,
+                                    p.record_map
+                                        .as_active_records_not_in_bmin(
+                                            self.global_withdrawn_bmin,
+                                        ),
+                                )
+                            }
+                        });
                 }
             }
 
@@ -509,6 +535,8 @@ pub(crate) struct LessSpecificPrefixIter<
     cur_level: u8,
     cur_prefix_id: PrefixId<AF>,
     mui: Option<u32>,
+    // Whether to include withdrawn records, both globally and local.
+    include_withdrawn: bool,
     // This is the tree-wide index of withdrawn muis, used to filter out the
     // records for those.
     global_withdrawn_bmin: &'a RoaringBitmap,
@@ -583,24 +611,48 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
                 trace!("get_record {:?}", stored_prefix.record_map);
                 let pfx_rec = if let Some(mui) = self.mui {
-                    // We don't have to check for the appearance of
-                    // the mui in the global_withdrawn_bmin anymore,
-                    // we wouldn't have gotten to this point if it
-                    // was.
-                    stored_prefix
-                        .record_map
-                        .get_record_for_active_mui(mui)
-                        .into_iter()
-                        .collect()
+                    // We don't have to check for the appearance of We may
+                    // either have to rewrite the local status with the
+                    // provided global status OR we may have to omit all of
+                    // the records with either global of local withdrawn
+                    // status.
+                    if self.include_withdrawn {
+                        stored_prefix
+                            .record_map
+                            .get_record_for_mui_with_rewritten_status(
+                                mui,
+                                self.global_withdrawn_bmin,
+                                RouteStatus::Withdrawn,
+                            )
+                            .into_iter()
+                            .collect()
+                    } else {
+                        stored_prefix
+                            .record_map
+                            .get_record_for_active_mui(mui)
+                            .into_iter()
+                            .collect()
+                    }
                 } else {
-                    // Other muis for this prefix will have to be
-                    // checked to not appear in the global_withdrawn
-                    // muis, that's what the method call does.
-                    stored_prefix.record_map.as_active_records_not_in_bmin(
-                        self.global_withdrawn_bmin,
-                    )
+                    // Just like the mui specific records, we may have
+                    // to either rewrite the local status (if the user
+                    // wants the withdrawn records) or omit them.
+                    if self.include_withdrawn {
+                        stored_prefix
+                            .record_map
+                            .as_records_with_rewritten_status(
+                                self.global_withdrawn_bmin,
+                                RouteStatus::Withdrawn,
+                            )
+                    } else {
+                        stored_prefix
+                            .record_map
+                            .as_active_records_not_in_bmin(
+                                self.global_withdrawn_bmin,
+                            )
+                    }
                 };
-                // There is a prefix  here, but we need to check if it's
+                // There is a prefix here, but we need to check if it's
                 // the right one.
                 if self.cur_prefix_id == stored_prefix.prefix {
                     trace!("found requested prefix {:?}", self.cur_prefix_id);
@@ -608,7 +660,11 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     self.cur_level = 0;
                     self.cur_bucket =
                         self.prefixes.get_root_prefix_set(self.cur_len);
-                    return Some((stored_prefix.prefix, pfx_rec));
+                    return if !pfx_rec.is_empty() {
+                        Some((stored_prefix.prefix, pfx_rec))
+                    } else {
+                        None
+                    };
                 };
                 // Advance to the next level or the next len.
                 match stored_prefix
@@ -661,6 +717,7 @@ impl<
         &'a self,
         start_prefix_id: PrefixId<AF>,
         mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("more specifics for {:?}", start_prefix_id);
@@ -762,6 +819,7 @@ impl<
                     start_bit_span,
                     parent_and_position: vec![],
                     global_withdrawn_bmin,
+                    include_withdrawn,
                     mui,
                 })
             } else {
@@ -780,6 +838,7 @@ impl<
         // Indicate whether we want to return only records for a specific mui,
         // None indicates returning all records for a prefix.
         mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("less specifics for {:?}", start_prefix_id);
@@ -808,6 +867,7 @@ impl<
                 cur_prefix_id: start_prefix_id,
                 mui,
                 global_withdrawn_bmin,
+                include_withdrawn,
                 guard,
             })
         }

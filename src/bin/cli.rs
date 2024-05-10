@@ -252,6 +252,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .more_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
+                                            false,
                                             guard,
                                         )
                                         .more_specifics
@@ -265,6 +266,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .less_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
+                                            false,
                                             guard,
                                         )
                                         .less_specifics
@@ -299,6 +301,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .more_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
+                                            false,
                                             guard,
                                         )
                                         .more_specifics
@@ -312,6 +315,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .less_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
+                                            false,
                                             guard
                                         )
                                         .less_specifics
