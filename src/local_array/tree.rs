@@ -1,6 +1,6 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
-use log::{error, log_enabled, trace};
+use log::{error, log_enabled, trace, debug};
 
 use std::hash::Hash;
 use std::sync::atomic::{

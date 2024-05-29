@@ -122,7 +122,7 @@ macro_rules! insert_match {
                     }
                 } else {
                     if log_enabled!(log::Level::Trace) {
-                        trace!("{} contention: Retrying id {} from store l{}. attempt {}",
+                        debug!("{} contention: Retrying id {} from store l{}. attempt {}",
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
                                 $self.store.get_stride_sizes()[$level as usize],
@@ -134,7 +134,7 @@ macro_rules! insert_match {
                     // We're giving up after a number of tries.
                     if local_retry_count >= 8 {
                         if log_enabled!(log::Level::Trace) {
-                            trace!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
+                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
                                 $self.store.get_stride_sizes()[$level as usize],
@@ -143,7 +143,11 @@ macro_rules! insert_match {
                         }
                         return Err(PrefixStoreError::NodeCreationMaxRetryError);
                     }
-                    $back_off.spin();
+                    if $back_off.is_completed() {
+                        std::thread::park();
+                    } else {
+                        $back_off.snooze();
+                    }
                 }
             }
         }
