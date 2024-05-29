@@ -221,7 +221,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         }
     }
 
-    pub(crate) fn new_with_record<PB: PrefixBuckets<AF, M>>(
+    pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
         record: PublicRecord<M>,
         level: u8,
@@ -274,7 +274,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub(crate) fn get_path_selections(
+    pub(crate) fn _get_path_selections(
         &self,
         guard: &Guard,
     ) -> Option<(PathSelections, usize)> {
@@ -334,7 +334,7 @@ pub(crate) struct MultiMapValue<M> {
 }
 
 impl<M: Clone> MultiMapValue<M> {
-    pub(crate) fn new(meta: M, ltime: u64, status: RouteStatus) -> Self {
+    pub(crate) fn _new(meta: M, ltime: u64, status: RouteStatus) -> Self {
         Self {
             meta,
             ltime,
@@ -425,7 +425,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
-    pub fn iter_all_records<'a>(
+    pub fn _iter_all_records<'a>(
         &'a self,
         guard: &'a flurry::Guard<'a>,
     ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
@@ -547,7 +547,7 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
         }
     }
 
-    pub(crate) fn get_stored_prefix_with_tag<'a>(
+    pub(crate) fn _get_stored_prefix_with_tag<'a>(
         &'a self,
         guard: &'a Guard,
     ) -> Option<(&'a StoredPrefix<AF, Meta>, usize)> {
@@ -620,7 +620,7 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
             unsafe { self.0.load(Ordering::Acquire, guard).as_ref() }
         {
             let flurry_guard = stored_prefix.record_map.guard();
-            let paths_iter = stored_prefix.record_map.0.iter(&flurry_guard);
+            let _paths_iter = stored_prefix.record_map.0.iter(&flurry_guard);
             // let path_selections_mui = routecore::some_path_selection_procedure(paths_iter);
             let path_selections_mui = PathSelections {
                 path_selection_muis: (None, None),

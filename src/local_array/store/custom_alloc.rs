@@ -315,11 +315,11 @@ pub struct DegreeOfPreference(pub u32);
 
 #[derive(Debug, Copy, Clone)]
 pub struct TieBreakerInfo {
-    source: RouteSource,
-    degree_of_preference: Option<DegreeOfPreference>,
-    local_asn: inetnum::asn::Asn,
+    _source: RouteSource,
+    _degree_of_preference: Option<DegreeOfPreference>,
+    _local_asn: inetnum::asn::Asn,
     // bgp_idenfitier: BgpIdentifier,
-    peer_addr:  std::net::IpAddr,
+    _peer_addr:  std::net::IpAddr,
 }
 
 // ----------- CustomAllocStorage -------------------------------------------
