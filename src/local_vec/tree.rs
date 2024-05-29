@@ -66,7 +66,7 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy>
     }
 }
 
-pub(crate) struct PrefixCacheGuard<
+pub struct PrefixCacheGuard<
     'a,
     AF: 'static + AddressFamily,
     Meta: crate::prefix_record::Meta,
@@ -431,7 +431,7 @@ where
 
     // This function assembles the prefixes of a child node starting on a specified bit position in a ptr_vec of
     // `current_node` into a vec, then adds all prefixes of these children recursively into a vec and returns that.
-    pub fn get_all_more_specifics_from_nibble<S: Stride>(
+    pub fn get_all_more_specifics_from_nibble<S>(
         &self,
         current_node: &TreeBitMapNode<Store::AF, S, Store::NodeType>,
         nibble: u32,

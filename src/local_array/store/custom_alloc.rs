@@ -837,6 +837,7 @@ impl<
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.insert(mui);
 
+        #[allow(clippy::assigning_clones)]
         loop {
             match self.withdrawn_muis_bmin.compare_exchange(
                 current,
@@ -861,6 +862,7 @@ impl<
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.remove(mui);
 
+        #[allow(clippy::assigning_clones)]
         loop {
             match self.withdrawn_muis_bmin.compare_exchange(
                 current,

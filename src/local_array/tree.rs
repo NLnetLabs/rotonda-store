@@ -321,12 +321,12 @@ impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
 
 //------------------------- Node Collections --------------------------------
 
-pub trait NodeCollection<AF: AddressFamily> {
-    fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>);
-    fn to_vec(&self) -> Vec<StrideNodeId<AF>>;
-    fn as_slice(&self) -> &[AtomicStrideNodeId<AF>];
-    fn empty() -> Self;
-}
+// pub trait NodeCollection<AF: AddressFamily> {
+//     fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>);
+//     fn to_vec(&self) -> Vec<StrideNodeId<AF>>;
+//     fn as_slice(&self) -> &[AtomicStrideNodeId<AF>];
+//     fn empty() -> Self;
+// }
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub enum StrideType {
@@ -655,10 +655,7 @@ impl<
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<AF>,
-    ) -> Option<Vec<PrefixId<AF>>>
-    where
-        S: Stride,
-    {
+    ) -> Option<Vec<PrefixId<AF>>> {
         let (cnvec, mut msvec) = current_node.add_more_specifics_at(
             nibble,
             nibble_len,
