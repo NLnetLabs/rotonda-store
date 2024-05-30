@@ -451,7 +451,7 @@ mod tests {
     fn test_multi_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let mut tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+        let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 

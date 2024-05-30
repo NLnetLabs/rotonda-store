@@ -217,7 +217,6 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
 
     #[derive(Debug)]
     struct MuiData {
-        mui: u32,
         asn: u32,
     }
 
@@ -225,19 +224,15 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
 
     const MUI_DATA: [MuiData; 4] = [
         MuiData {
-            mui: 1,
             asn: 65501
         },
         MuiData {
-            mui: 2,
             asn: 65502
         },
         MuiData {
-            mui: 3,
             asn: 65503
         },
         MuiData {
-            mui: 4,
             asn: 65504
         }
     ];
@@ -334,8 +329,6 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     .map(|t| t.join())
     .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter(&guard).collect::<Vec<_>>());
-
     let match_options = MatchOptions {
         match_type: rotonda_store::MatchType::ExactMatch,
         include_withdrawn: true,
@@ -351,6 +344,25 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         assert_eq!(res.prefix_meta.iter().find(|m| m.multi_uniq_id == 2).unwrap().status, RouteStatus::Withdrawn);
     }
 
-    // let all_active_pfxs = tree_bitmap.
+    
+    let match_options = MatchOptions {
+        match_type: rotonda_store::MatchType::ExactMatch,
+        include_withdrawn: false,
+        include_less_specifics: false,
+        include_more_specifics: true,
+        mui: None,
+    };
+
+    let pfx = Prefix::from_str("0.0.0.0/0").unwrap();
+    let guard = rotonda_store::epoch::pin();
+    let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
+    
+    println!("{:#?}", res);
+
+    let active_len = all_pfxs_iter.iter().filter(|p| p.meta.iter().all(|m| m.status == RouteStatus::Active)).collect::<Vec<_>>().len();
+    assert_eq!(active_len, all_pfxs_iter.len());
+    let len_2 = res.more_specifics.unwrap().v4.len();
+    assert_eq!(active_len, len_2);
+
     Ok(())
 }
