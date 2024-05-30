@@ -803,7 +803,7 @@ impl<
 
     // Change the status of the record for the specified (prefix, mui)
     // combination  to Withdrawn.
-    pub fn mark_mui_as_withdrawn_for_prefix(&mut self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+    pub fn mark_mui_as_withdrawn_for_prefix(&self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
         let (atomic_stored_prefix, _level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
                 prefix, guard,
@@ -817,7 +817,7 @@ impl<
 
     // Change the status of the record for the specified (prefix, mui)
     // combination  to Active.
-    pub fn mark_mui_as_active_for_prefix(&mut self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+    pub fn mark_mui_as_active_for_prefix(&self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
         let (atomic_stored_prefix, _level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
                 prefix, guard,
@@ -831,7 +831,7 @@ impl<
 
     // Change the status of the mui globally to Withdrawn. Iterators and match
     // functions will by default not return any records for this mui.
-    pub fn mark_mui_as_withdrawn(&mut self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+    pub fn mark_mui_as_withdrawn(&self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
         let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
@@ -856,7 +856,7 @@ impl<
 
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
-    pub fn mark_mui_as_active(&mut self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+    pub fn mark_mui_as_active(&self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
         let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
