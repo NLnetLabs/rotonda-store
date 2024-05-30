@@ -143,11 +143,7 @@ macro_rules! insert_match {
                         }
                         return Err(PrefixStoreError::NodeCreationMaxRetryError);
                     }
-                    if $back_off.is_completed() {
-                        std::thread::park();
-                    } else {
-                        $back_off.snooze();
-                    }
+                    $back_off.spin();
                 }
             }
         }
