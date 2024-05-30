@@ -269,7 +269,7 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 // A iterator over all the more-specifics for a given prefix.
 //
 // This iterator is somewhat different from the other *PrefixIterator types,
-// since it uses the Nodes to select the more specifics. Am Iterator that
+// since it uses the Nodes to select the more specifics. An Iterator that
 // would only use the Prefixes in the store could exist, but iterating over
 // those in search of more specifics would be way more expensive.
 
