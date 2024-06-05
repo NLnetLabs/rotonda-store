@@ -1,6 +1,7 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
 use log::{error, log_enabled, trace, debug};
+use routecore::bgp::path_selection::TiebreakerInfo;
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -9,7 +10,7 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, TieBreakerInfo, UpsertReport};
+use crate::custom_alloc::{CustomAllocStorage, UpsertReport};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
@@ -447,7 +448,7 @@ impl<
         &self,
         pfx: PrefixId<AF>,
         record: PublicRecord<M>,
-        update_path_selections: Option<TieBreakerInfo>,
+        update_path_selections: Option<M::TBI>,
         // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();

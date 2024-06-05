@@ -5,6 +5,7 @@ use std::{cmp::Ordering, sync::Arc};
 use crate::local_array::store::atomic_types::{MultiMapValue, RouteStatus};
 use crate::{af::AddressFamily, local_array::node::PrefixId};
 use inetnum::addr::Prefix;
+use routecore::bgp::path_selection::{OrdRoute, Rfc4271, TiebreakerInfo};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -740,8 +741,18 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// Trait for types that can be used as metadata of a record
 pub trait Meta
 where
-    Self: fmt::Debug + fmt::Display + Clone + Sized + Send + Sync {}
+    Self: fmt::Debug + fmt::Display + Clone + Sized + Send + Sync {
+        type Orderable<'a>: Ord where Self: 'a;
+        type TBI: Copy;
 
-impl<T> Meta for T
-where
-    T: fmt::Debug + fmt::Display + Clone + Sized + Send + Sync {}
+        fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_>;
+    }
+
+impl Meta for inetnum::asn::Asn {
+    type Orderable<'a> = inetnum::asn::Asn;
+    type TBI = ();
+
+    fn as_orderable(&self, _tbi: Self::TBI) -> inetnum::asn::Asn {
+        *self
+    }
+}

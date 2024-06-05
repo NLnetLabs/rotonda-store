@@ -199,6 +199,8 @@ use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
 
+use routecore::bgp::path_selection::TiebreakerInfo;
+
 use crate::{local_array::tree::*, stats::CreatedNodes};
 use crate::{
     local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
@@ -302,25 +304,6 @@ pub struct UpsertReport {
     pub mui_count: usize,
 }
 
-//------------ TieBreakerInfo ------------------------------------------------
-
-#[derive(Debug, Copy, Clone)]
-pub enum RouteSource {
-    Ebgp,
-    Ibgp,
-}
-
-#[derive(Debug, Copy, Clone)]
-pub struct DegreeOfPreference(pub u32);
-
-#[derive(Debug, Copy, Clone)]
-pub struct TieBreakerInfo {
-    _source: RouteSource,
-    _degree_of_preference: Option<DegreeOfPreference>,
-    _local_asn: inetnum::asn::Asn,
-    // bgp_idenfitier: BgpIdentifier,
-    _peer_addr:  std::net::IpAddr,
-}
 
 // ----------- CustomAllocStorage -------------------------------------------
 //
@@ -681,7 +664,7 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         record: PublicRecord<M>,
-        update_path_selections: Option<TieBreakerInfo>,
+        update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut retry_count = 0;
@@ -716,6 +699,8 @@ impl<
                 // We're expecting an empty slot.
                 match atomic_stored_prefix.0.compare_exchange(
                     Shared::null(),
+                    // tag with value 1, means the path selection is set to
+                    // outdated.
                     Owned::new(new_stored_prefix).with_tag(1),
                     Ordering::AcqRel,
                     Ordering::Acquire,
@@ -751,20 +736,20 @@ impl<
                     // ...somebody beat us to it, the slot's not empty
                     // anymore, we'll have to do it again.
                     Err(CompareExchangeError { current, new: _ }) => {
-                        if log_enabled!(log::Level::Info) {
-                            info!(
+                        if log_enabled!(log::Level::Debug) {
+                            debug!(
                                     "{} store: Prefix can't be inserted as new {:?}",
                                     std::thread::current().name().unwrap(),
                                     current
                                 );
                         }
                         retry_count += 1;
-                        let tag = current.tag();
-                        let winner = unsafe { current.with_tag(tag + 1).deref() };
+                        let stored_prefix = unsafe { current.deref() };
 
                         // update the record_map from the winning thread
                         // with our caller's record.
-                        winner.record_map.upsert_record(record)
+                        stored_prefix.set_ps_outdated(guard)?;
+                        stored_prefix.record_map.upsert_record(record)
                     }
                 }
             }
@@ -782,15 +767,17 @@ impl<
 
                 // Update the already existing record_map with our caller's
                 // record.
-                let tag = inner_stored_prefix.tag();
-                unsafe { inner_stored_prefix.with_tag(tag + 1).deref() }
+                debug!("tag {}", inner_stored_prefix.tag());
+                let stored_prefix = unsafe { inner_stored_prefix.deref() };
+                stored_prefix.set_ps_outdated(guard)?;
+                stored_prefix
                     .record_map
                     .upsert_record(record)
             }
         };
 
-        if update_path_selections.is_some() {
-            atomic_stored_prefix.calculate_path_selections(guard)?;
+        if let Some(tbi) = update_path_selections {
+            unsafe { inner_stored_prefix.deref() }.calculate_and_store_best_backup(&tbi, guard)?;
         }
 
         Ok(UpsertReport {
@@ -902,7 +889,7 @@ impl<
     // The error condition really shouldn't happen, because that basically
     // means the root node for that particular prefix length doesn't exist.
     #[allow(clippy::type_complexity)]
-    fn non_recursive_retrieve_prefix_mut_with_guard(
+    pub(crate) fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
         search_prefix_id: PrefixId<AF>,
         guard: &'a Guard,

@@ -158,7 +158,17 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub(crate) struct PathSelections {
     // serial: usize,
-    path_selection_muis: (Option<u32>, Option<u32>),
+    pub(crate) path_selection_muis: (Option<u32>, Option<u32>),
+}
+
+impl PathSelections {
+    pub fn best(&self) -> Option<u32> {
+        self.path_selection_muis.0
+    }
+
+    pub fn backup(&self) -> Option<u32> {
+        self.path_selection_muis.1
+    }
 }
 
 // ----------- StoredPrefix -------------------------------------------------
@@ -175,7 +185,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     // the aggregated data for this prefix
     pub(crate) record_map: MultiMap<M>,
     // (mui of best path entry, mui of backup path entry) from the record_map
-    pub(crate) path_selections: Atomic<PathSelections>,
+    path_selections: Atomic<PathSelections>,
     // the reference to the next set of records for this prefix, if any.
     pub next_bucket: PrefixSet<AF, M>,
 }
@@ -215,7 +225,9 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         StoredPrefix {
             // serial: 1,
             prefix: pfx_id,
-            path_selections: Atomic::null(),
+            path_selections: Atomic::init(PathSelections {
+                path_selection_muis: (None, None),
+            }),
             record_map: MultiMap::new(rec_map),
             next_bucket,
         }
@@ -274,14 +286,19 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub(crate) fn _get_path_selections(
+    pub(crate) fn get_path_selections(
         &self,
         guard: &Guard,
-    ) -> Option<(PathSelections, usize)> {
+    ) -> PathSelections {
         let path_selections =
             self.path_selections.load(Ordering::Acquire, guard);
-        unsafe { path_selections.as_ref() }
-            .map(|ps| (*ps, path_selections.tag()))
+
+        unsafe { path_selections.as_ref() }.map_or(
+            PathSelections {
+                path_selection_muis: (None, None),
+            },
+            |ps| *ps,
+        )
     }
 
     pub(crate) fn set_path_selections(
@@ -289,23 +306,58 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         path_selections: PathSelections,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self.path_selections.load(Ordering::Acquire, guard);
+        let current = self.path_selections.load(Ordering::SeqCst, guard);
 
         if unsafe { current.as_ref() } == Some(&path_selections) {
+            debug!("unchanged path_selections");
             return Ok(());
         }
 
         self.path_selections
             .compare_exchange(
                 current,
-                Owned::new(path_selections),
+                // Set the tag to indicate we're updated
+                Owned::new(path_selections).with_tag(0),
                 Ordering::AcqRel,
                 Ordering::Acquire,
                 guard,
             )
             .map_err(|_| PrefixStoreError::PathSelectionOutdated)?;
-
         Ok(())
+    }
+
+    pub(crate) fn set_ps_outdated(
+        &self,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        self.path_selections
+            .fetch_update(Ordering::Acquire, Ordering::Acquire, guard, |p| {
+                Some(p.with_tag(1))
+            })
+            .map(|_| ())
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)
+    }
+
+    pub(crate) fn is_ps_outdated(&self, guard: &Guard) -> bool {
+        self.path_selections.load(Ordering::Acquire, guard).tag() == 1
+    }
+
+    pub(crate) fn calculate_and_store_best_backup<'a>(
+        &'a self,
+        tbi: &M::TBI,
+        guard: &'a Guard,
+    ) -> Result<(Option<u32>, Option<u32>), super::errors::PrefixStoreError>
+    {
+        let path_selection_muis = self.record_map.best_backup(*tbi);
+
+        self.set_path_selections(
+            PathSelections {
+                path_selection_muis,
+            },
+            guard,
+        )?;
+
+        Ok(path_selection_muis)
     }
 }
 
@@ -364,9 +416,23 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
 // prefix.
 
 #[derive(Debug)]
-pub(crate) struct MultiMap<M: Send + Sync>(
+pub(crate) struct MultiMap<M: Meta>(
     pub(crate) flurry::HashMap<u32, MultiMapValue<M>>,
 );
+
+pub struct IdOrderable<T>(pub u32, T);
+
+impl<T: PartialOrd + Eq + PartialEq> PartialOrd for IdOrderable<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.1.partial_cmp(&other.1)
+    }
+}
+
+impl<T: PartialOrd + Eq + PartialOrd> PartialEq for IdOrderable<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1
+    }
+}
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
@@ -394,12 +460,22 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         })
     }
 
+    pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
+        let flurry_guard = self.guard();
+        let ord_routes = self
+            .0
+            .iter(&flurry_guard)
+            .map(|r| (r.0, r.1.meta.as_orderable(tbi)));
+        let (best, bckup) =
+            routecore::bgp::path_selection::best_backup(ord_routes);
+        (best.map(|b| *b.0), bckup.map(|b| *b.0))
+    }
 
     pub(crate) fn get_record_for_mui_with_rewritten_status(
         &self,
         mui: u32,
         bmin: &RoaringBitmap,
-        rewrite_status: RouteStatus
+        rewrite_status: RouteStatus,
     ) -> Option<PublicRecord<M>> {
         self.0.get(&mui, &self.0.guard()).map(|r| {
             let mut r = r.clone();
@@ -410,18 +486,17 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         })
     }
 
-
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
     pub fn get_filtered_records(
-        &self, 
+        &self,
         mui: Option<u32>,
         bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
         if let Some(mui) = mui {
             self.get_record_for_active_mui(mui).into_iter().collect()
         } else {
-            self.as_active_records_not_in_bmin(bmin) 
+            self.as_active_records_not_in_bmin(bmin)
         }
     }
 
@@ -612,24 +687,6 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
         }
     }
 
-    pub(crate) fn calculate_path_selections<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Result<(), super::errors::PrefixStoreError> {
-        if let Some(stored_prefix) =
-            unsafe { self.0.load(Ordering::Acquire, guard).as_ref() }
-        {
-            let flurry_guard = stored_prefix.record_map.guard();
-            let _paths_iter = stored_prefix.record_map.0.iter(&flurry_guard);
-            // let path_selections_mui = routecore::some_path_selection_procedure(paths_iter);
-            let path_selections_mui = PathSelections {
-                path_selection_muis: (None, None),
-            };
-            stored_prefix.set_path_selections(path_selections_mui, guard)?;
-        }
-
-        Ok(())
-    }
 }
 
 // ----------- FamilyBuckets Trait ------------------------------------------

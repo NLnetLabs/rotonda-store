@@ -2,6 +2,9 @@
 #![cfg(test)]
     
 mod full_table {    
+    use inetnum::asn::Asn;
+    use routecore::bgp::path_selection::{Rfc4271, TiebreakerInfo};
+
     use crate::{
         prelude::*, PublicPrefixSingleRecord, SingleThreadedStore
     };
@@ -10,7 +13,7 @@ mod full_table {
     use std::fs::File;
     use std::process;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
     // impl MergeUpdate for ComplexPrefixAs {
@@ -38,6 +41,21 @@ mod full_table {
     //         new_meta.push(self.0[0]);
     //         Ok((ComplexPrefixAs(new_meta), ()))
     //     }
+    // }
+
+    impl Meta for ComplexPrefixAs {
+        type Orderable<'a> = Asn;
+        type TBI = ();
+
+        fn as_orderable(&self, _tbi: Self::TBI) -> Asn { 
+            self.0[0].into()
+        }
+    }
+
+    // impl Orderable<u32, Rfc4271> for ComplexPrefixAs {
+    //     fn get_id(&self) -> &Self {
+    //         &self.0
+    //     }   
     // }
 
     impl std::fmt::Display for ComplexPrefixAs {

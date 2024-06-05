@@ -1,4 +1,5 @@
 use log::trace;
+use routecore::bgp::path_selection::{OrdRoute, Rfc4271};
 use std::time::Duration;
 use std::{sync::Arc, thread};
 
@@ -6,7 +7,7 @@ use std::{sync::Arc, thread};
 use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ComplexPrefixAs(pub Vec<u32>);
 
 // impl MergeUpdate for ComplexPrefixAs {
@@ -35,6 +36,15 @@ pub struct ComplexPrefixAs(pub Vec<u32>);
 //         Ok((ComplexPrefixAs(new_meta), ()))
 //     }
 // }
+
+impl Meta for ComplexPrefixAs {
+    type Orderable<'a> = ComplexPrefixAs;
+    type TBI = ();
+    
+    fn as_orderable(&self, _tbi: Self::TBI) -> ComplexPrefixAs {
+        self.clone()
+    }
+}
 
 impl std::fmt::Display for ComplexPrefixAs {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {

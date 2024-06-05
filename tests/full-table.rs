@@ -1,6 +1,7 @@
 #![cfg(feature = "csv")]
 #[cfg(test)]
 mod tests {
+    use inetnum::asn::Asn;
     use rotonda_store::{
         prelude::*, 
         prelude::multi::*,
@@ -10,39 +11,21 @@ mod tests {
     use std::fs::File;
     use std::process;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
     pub struct ComplexPrefixAs(pub Vec<u32>);
-
-    // impl MergeUpdate for ComplexPrefixAs {
-    //     type UserDataIn = String;
-    //     type UserDataOut = ();
-
-    //     fn merge_update(
-    //         &mut self,
-    //         update_record: ComplexPrefixAs,
-    //         _: Option<&Self::UserDataIn>,
-    //     ) -> Result<(), Box<dyn std::error::Error>> {
-    //         self.0 = update_record.0;
-    //         Ok(())
-    //     }
-
-    //     fn clone_merge_update(
-    //         &self,
-    //         update_meta: &Self,
-    //         _: Option<&Self::UserDataIn>,
-    //     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-    //     where
-    //         Self: std::marker::Sized,
-    //     {
-    //         let mut new_meta = update_meta.0.clone();
-    //         new_meta.push(self.0[0]);
-    //         Ok((ComplexPrefixAs(new_meta), ()))
-    //     }
-    // }
 
     impl std::fmt::Display for ComplexPrefixAs {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write!(f, "AS{:?}", self.0)
+        }
+    }
+
+    impl Meta for ComplexPrefixAs {
+        type Orderable<'a> = Asn;
+        type TBI = ();
+
+        fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
+            Asn::from(self.0[0])
         }
     }
 

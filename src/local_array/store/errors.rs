@@ -1,12 +1,13 @@
 use std::fmt;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PrefixStoreError {
     NodeCreationMaxRetryError,
     NodeNotFound,
     StoreNotReadyError,
     PathSelectionOutdated,
-    PrefixNotFound
+    PrefixNotFound,
+    BestPathNotFound
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -29,6 +30,9 @@ impl fmt::Display for PrefixStoreError {
             }
             PrefixStoreError::PrefixNotFound => {
                 write!(f, "Error: The Prefix cannot be found.")
+            }
+            PrefixStoreError::BestPathNotFound => {
+                write!(f, "Error: The Prefix does not have a stored best path.")
             }
         }
     }

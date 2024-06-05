@@ -1,5 +1,10 @@
 //------------ PrefixAs Metadata impl ---------------------------------------
 
+use inetnum::asn::Asn;
+use routecore::bgp::path_selection::{Rfc4271, TiebreakerInfo};
+
+use crate::Meta;
+
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PrefixAs(pub u32);
 
@@ -27,6 +32,14 @@ pub struct PrefixAs(pub u32);
 //         Ok((PrefixAs(update_meta.0), ()))
 //     }
 // }
+
+impl Meta for PrefixAs {
+    type Orderable<'a> = Asn;
+    type TBI = ();
+    fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
+        self.0.into()
+    }
+}
 
 impl std::fmt::Display for PrefixAs {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -63,6 +76,13 @@ impl std::fmt::Display for NoMeta {
         f.write_str("NoMeta")
     }
 }
+
+impl Meta for NoMeta {
+    type Orderable<'a> = ();
+    type TBI = ();
+    fn as_orderable(&self, _tbi: Self::TBI) {}
+}
+
 
 // impl MergeUpdate for NoMeta {
 //     type UserDataIn = ();
