@@ -72,8 +72,8 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
         (5, std::net::Ipv4Addr::from_str("192.168.12.5")?)
     ] {
         asns_insert.push(asns.next().unwrap());
-        let rec = Record::new(mui,0, RouteStatus::Active, Ipv4Route(mui, pa_map.clone()));
         pa_map.set::<HopPath>(HopPath::from(asns_insert.clone()));
+        let rec = Record::new(mui,0, RouteStatus::Active, Ipv4Route(mui, pa_map.clone()));
         tree_bitmap.insert(
             &pfx, 
             rec,
