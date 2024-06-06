@@ -465,10 +465,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let ord_routes = self
             .0
             .iter(&flurry_guard)
-            .map(|r| (r.0, r.1.meta.as_orderable(tbi)));
+            .map(|r| (r.1.meta.as_orderable(tbi), r.0));
         let (best, bckup) =
-            routecore::bgp::path_selection::best_backup(ord_routes);
-        (best.map(|b| *b.0), bckup.map(|b| *b.0))
+            routecore::bgp::path_selection::best_backup_generic(ord_routes);
+        (best.map(|b| *b.1), bckup.map(|b| *b.1))
     }
 
     pub(crate) fn get_record_for_mui_with_rewritten_status(

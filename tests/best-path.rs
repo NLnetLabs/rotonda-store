@@ -104,13 +104,13 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
 
     tree_bitmap.calculate_and_store_best_and_backup_path(
         &pfx,
-        &TiebreakerInfo { 
-            source: RouteSource::Ebgp,
-            degree_of_preference: None,
-            local_asn: 65400.into(),
-            bgp_identifier: BgpIdentifier::from([0; 4]),
-            peer_addr: std::net::IpAddr::V4(std::net::Ipv4Addr::from_str("192.168.12.1")?)
-        },
+        &TiebreakerInfo::new( 
+            RouteSource::Ebgp,
+            None,
+            65400.into(),
+            BgpIdentifier::from([0; 4]),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::from_str("192.168.12.1")?)
+        ),
         &rotonda_store::epoch::pin()
     )?;
 
