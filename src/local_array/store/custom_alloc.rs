@@ -144,46 +144,44 @@
 // Both valgrind and miri report memory leaks on the multi-threaded prefix
 // store. Valgrind only reports it when it a binary stops using the tree,
 // while still keeping it around. An interrupted use of the mt-prefix-store
-// does not report any memory leaks. Miri is persistent in reporting
-// memory leaks in the mt-prefix-store. They both report the memory leaks
-// in the same location: the init method of the node- and prefix-buckets.
+// does not report any memory leaks. Miri is persistent in reporting memory
+// leaks in the mt-prefix-store. They both report the memory leaks in the same
+// location: the init method of the node- and prefix-buckets.
 //
-// I have reasons to believe these reported memory leaks aren't real, or
-// that crossbeam-epoch leaks a bit of memory when creating a new `Atomic`
+// I have reasons to believe these reported memory leaks aren't real, or that
+// crossbeam-epoch leaks a bit of memory when creating a new `Atomic`
 // instance. Since neither prefix nor node buckets can or should be dropped
 // this is not a big issue anyway, it just means that an `Atomic` occupies
 // more memory than it could in an optimal situation. Since we're not storing
-// the actual meta-data in an `Atomic` (it is stored in an `ArcSwap`), this
+// the actual meta-data in an `Atomic` (it is stored in an `flurry Map`), this
 // means memory usage won't grow on updating the meta-data on a prefix,
 // (unless the meta-data itself grows of course, but that's up to the user).
 //
-// To get a better understanding on the nature of the reported memory leaks
-// I have created a branch (`vec_set`) that replaces the dynamically sized
-// array with a (equally sparse) Vec, that is not filled with
-// `Atomic:::null()`, but with `Option<StoredPrefix` instead, in order to
-// see if this would eliminate the memory leaks reporting. It did not.
-// Valgrind still reports the memory leaks at the same location, although
-// they're now reported as `indirectly leaked`, instead of `directly`. Miri
-// is unchanged. The attentive reader may now suspect that the `Atomic`
-// inside the `AtomicStoredPrefix` may be the culprit, but:
-// a. Both miri and valgrind report the leaks still in the same place:
-//    the creation of the buckets, not the creation of the stored prefixes.
-// b. Tests that look at the memory usage of the prefix stores under heavy
-//    modification of existing prefixes do not exhibit memory leaking
-//    behavior.
-// c. Tests that look at memory usage under addition of new prefixes
-//    exhibit linear incrementation of memory usage (which is expected).
-// d. Tests that look at memory usage under contention do not exhibit
-//    increased memory usage either.
+// To get a better understanding on the nature of the reported memory leaks I
+// have created a branch (`vec_set`) that replaces the dynamically sized array
+// with a (equally sparse) Vec, that is not filled with `Atomic:::null()`, but
+// with `Option<StoredPrefix` instead, in order to see if this would eliminate
+// the memory leaks reporting. It did not. Valgrind still reports the memory
+// leaks at the same location, although they're now reported as `indirectly
+// leaked`, instead of `directly`. Miri is unchanged. The attentive reader may
+// now suspect that the `Atomic` inside the `AtomicStoredPrefix` may be the
+// culprit, but: a. Both miri and valgrind report the leaks still in the same
+// place: the creation of the buckets, not the creation of the stored
+//    prefixes. b. Tests that look at the memory usage of the prefix stores
+// under heavy modification of existing prefixes do not exhibit memory leaking
+//    behavior. c. Tests that look at memory usage under addition of new
+//    prefixes exhibit linear incrementation of memory usage (which is
+// expected). d. Tests that look at memory usage under contention do not
+//    exhibit increased memory usage either.
 //
-// My strong suspicion is that both Miri and Valgrind report the sparse
-// slots in the buckets as leaks, no matter whether they're `Atomic::null()`,
-// or `None` values, probably as a result of the way `crossbeam-epoch`
-// indexes into these, with pointer arithmetic (unsafe as hell).
+// My strong suspicion is that both Miri and Valgrind report the sparse slots
+// in the buckets as leaks, no matter whether they're `Atomic::null()`, or
+// `None` values, probably as a result of the way `crossbeam-epoch` indexes
+// into these, with pointer arithmetic (unsafe as hell).
 //
-// I would be super grateful if somebody would prove me wrong and can point
-// to an actual memory leak in the mt-prefix-store (and even more if they
-// can produce a fix for it).
+// I would be super grateful if somebody would prove me wrong and can point to
+// an actual memory leak in the mt-prefix-store (and even more if they can
+// produce a fix for it).
 
 use std::{
     fmt::Debug,
