@@ -1,21 +1,19 @@
 use inetnum::addr::Prefix;
-use inetnum::asn::Asn;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::Record;
 use rotonda_store::prelude::multi::RouteStatus;
 use rotonda_store::MatchOptions;
-use routecore::bgp::aspath::AsPath;
+use inetnum::asn::Asn;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::path_attributes::BgpIdentifier;
 use routecore::bgp::path_attributes::PaMap;
-use routecore::bgp::path_selection::DegreeOfPreference;
 use routecore::bgp::path_selection::RouteSource;
 use routecore::bgp::types::LocalPref;
 use routecore::bgp::types::Origin;
-use std::{str::FromStr, sync::atomic::Ordering};
+use std::str::FromStr;
 use rotonda_store::Meta;
 use rotonda_store::MultiThreadedStore;
-use routecore::bgp::{nlri::afisafi::Ipv4UnicastNlri, path_selection::{OrdRoute, Rfc4271, TiebreakerInfo}};
+use routecore::bgp::path_selection::{OrdRoute, Rfc4271, TiebreakerInfo};
 
 #[derive(Clone, Debug)]
 pub struct Ipv4Route(u32, PaMap);

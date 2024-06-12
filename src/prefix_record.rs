@@ -5,7 +5,6 @@ use std::{cmp::Ordering, sync::Arc};
 use crate::local_array::store::atomic_types::{MultiMapValue, RouteStatus};
 use crate::{af::AddressFamily, local_array::node::PrefixId};
 use inetnum::addr::Prefix;
-use routecore::bgp::path_selection::{OrdRoute, Rfc4271, TiebreakerInfo};
 
 //------------ InternalPrefixRecord -----------------------------------------
 

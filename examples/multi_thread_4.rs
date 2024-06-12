@@ -1,5 +1,4 @@
 use log::trace;
-use routecore::bgp::path_selection::{OrdRoute, Rfc4271};
 use std::time::Duration;
 use std::{sync::Arc, thread};
 

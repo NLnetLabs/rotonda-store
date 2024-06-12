@@ -1,7 +1,6 @@
 //------------ PrefixAs Metadata impl ---------------------------------------
 
 use inetnum::asn::Asn;
-use routecore::bgp::path_selection::{Rfc4271, TiebreakerInfo};
 
 use crate::Meta;
 
