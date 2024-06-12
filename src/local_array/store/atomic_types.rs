@@ -156,7 +156,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 // ----------- Prefix related structs ---------------------------------------
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub(crate) struct PathSelections {
+pub struct PathSelections {
     // serial: usize,
     pub(crate) path_selection_muis: (Option<u32>, Option<u32>),
 }
@@ -183,7 +183,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
-    pub(crate) record_map: MultiMap<M>,
+    pub record_map: MultiMap<M>,
     // (mui of best path entry, mui of backup path entry) from the record_map
     path_selections: Atomic<PathSelections>,
     // the reference to the next set of records for this prefix, if any.
@@ -286,7 +286,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub(crate) fn get_path_selections(
+    pub fn get_path_selections(
         &self,
         guard: &Guard,
     ) -> PathSelections {
@@ -326,7 +326,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         Ok(())
     }
 
-    pub(crate) fn set_ps_outdated(
+    pub fn set_ps_outdated(
         &self,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
@@ -338,11 +338,11 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
             .map_err(|_| PrefixStoreError::StoreNotReadyError)
     }
 
-    pub(crate) fn is_ps_outdated(&self, guard: &Guard) -> bool {
+    pub fn is_ps_outdated(&self, guard: &Guard) -> bool {
         self.path_selections.load(Ordering::Acquire, guard).tag() == 1
     }
 
-    pub(crate) fn calculate_and_store_best_backup<'a>(
+    pub fn calculate_and_store_best_backup<'a>(
         &'a self,
         tbi: &M::TBI,
         guard: &'a Guard,
@@ -416,7 +416,7 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
 // prefix.
 
 #[derive(Debug)]
-pub(crate) struct MultiMap<M: Meta>(
+pub struct MultiMap<M: Meta>(
     pub(crate) flurry::HashMap<u32, MultiMapValue<M>>,
 );
 
@@ -435,7 +435,7 @@ impl<T: PartialOrd + Eq + PartialOrd> PartialEq for IdOrderable<T> {
 }
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
-    pub fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
+    pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
         Self(record_map)
     }
 
@@ -447,7 +447,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         self.0.guard()
     }
 
-    pub(crate) fn get_record_for_active_mui(
+    pub fn get_record_for_active_mui(
         &self,
         mui: u32,
     ) -> Option<PublicRecord<M>> {
@@ -465,10 +465,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let ord_routes = self
             .0
             .iter(&flurry_guard)
-            .map(|r| (r.0, r.1.meta.as_orderable(tbi)));
+            .map(|r| (r.1.meta.as_orderable(tbi), r.0));
         let (best, bckup) =
-            routecore::bgp::path_selection::best_backup(ord_routes);
-        (best.map(|b| *b.0), bckup.map(|b| *b.0))
+            routecore::bgp::path_selection::best_backup_generic(ord_routes);
+        (best.map(|b| *b.1), bckup.map(|b| *b.1))
     }
 
     pub(crate) fn get_record_for_mui_with_rewritten_status(

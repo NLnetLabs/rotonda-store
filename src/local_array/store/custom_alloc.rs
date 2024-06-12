@@ -199,8 +199,6 @@ use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
 
-use routecore::bgp::path_selection::TiebreakerInfo;
-
 use crate::{local_array::tree::*, stats::CreatedNodes};
 use crate::{
     local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
@@ -954,7 +952,7 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn non_recursive_retrieve_prefix_with_guard(
+    pub fn non_recursive_retrieve_prefix_with_guard(
         &'a self,
         id: PrefixId<AF>,
         guard: &'a Guard,

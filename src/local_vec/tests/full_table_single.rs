@@ -3,7 +3,6 @@
     
 mod full_table {    
     use inetnum::asn::Asn;
-    use routecore::bgp::path_selection::{Rfc4271, TiebreakerInfo};
 
     use crate::{
         prelude::*, PublicPrefixSingleRecord, SingleThreadedStore

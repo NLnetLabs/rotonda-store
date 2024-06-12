@@ -1,7 +1,6 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
 use log::{error, log_enabled, trace, debug};
-use routecore::bgp::path_selection::TiebreakerInfo;
 
 use std::hash::Hash;
 use std::sync::atomic::{
