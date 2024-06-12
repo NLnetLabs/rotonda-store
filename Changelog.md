@@ -1,17 +1,23 @@
 # Change Log
 
-## Unreleased new version
+## 0.4.0-rc0
 
 Breaking changes
 
+* Removed `MergeUpdate` trait
+
 New
+
+* Leaves now are HashMaps keyed on multi_uniq_ids (`mui`)
+* Facilities for best (and backup) path selection for a prefix
+* Facilities for iterating over and searching for values for (prefix, mui)
+  combinations
 
 Bug fixes
 
 Other changes
 
-* Use inetnum::addr::Prefix, instead of routecore::addr::Prefix
-* Remove routecore dependency
+* Use inetnum structs instead of routecore (Asn, Prefix)
 
 ## 0.3.0
 
