@@ -2,6 +2,7 @@ use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
 
+use std::sync::atomic::Ordering;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
@@ -43,7 +44,7 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::<PrefixAs>::new(
             Prefix::new(net, len)?,
-            PrefixAs(asn),
+            vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
         );
         pfxs.push(pfx);
         // trie.insert(&pfx);
@@ -65,7 +66,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
+            tree_bitmap.insert(
+                &pfx.prefix, pfx.meta[0].clone(), None
+            )?;
         }
         
         #[cfg(feature = "cli")]

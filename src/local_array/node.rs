@@ -132,7 +132,6 @@ where
             base_prefix,
             start_bit_span,
             cursor: None,
-            _af: PhantomData,
         }
     }
 
@@ -743,7 +742,6 @@ pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
    start_bit_span: BitSpan,
    cursor: Option<u32>,
-   _af: PhantomData<AF>,
 }
 
 impl<AF: AddressFamily, S: Stride> std::iter::Iterator for

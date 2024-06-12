@@ -32,7 +32,7 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(pfx, PrefixAs(666), None)?;
+            tree_bitmap.insert(pfx, PrefixAs(666))?;
         }
         println!("------ end of inserts\n");
 
@@ -54,9 +54,10 @@ mod tests {
                 &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::ExactMatch,
-                    include_all_records: false,
+                    include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: true,
+                    mui: None
                 },
             );
             println!("em/m-s: {:#?}", found_result);
@@ -102,7 +103,7 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666), None)?;
+            tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666))?;
         }
         println!("------ end of inserts\n");
         
@@ -129,9 +130,10 @@ mod tests {
                 &spfx.0.unwrap(),
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
-                    include_all_records: false,
+                    include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: true,
+                    mui: None
                 },
             );
             println!("em/m-s: {}", found_result);

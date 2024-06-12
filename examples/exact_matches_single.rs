@@ -260,7 +260,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         println!("insert {}", pfx?);
         // let p : rotonda_store::Prefix<u32, PrefixAs> = pfx.into();
-        tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty, None)?;
+        tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty)?;
     }
     println!("------ end of inserts\n");
     // println!(
@@ -342,9 +342,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
-                include_all_records: false,
+                include_withdrawn: false,
                 include_less_specifics: false,
                 include_more_specifics: false,
+                mui: None
             },
         );
         println!("exact match: {:?}", s_spfx);

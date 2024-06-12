@@ -6,33 +6,33 @@
 // storage (and some over the TreeBitMap nodes, the parent of the store),
 // as such all the iterators here are composed of iterators over the
 // individual nodes. The Node Iterators live in the node.rs file.
-
-use std::sync::Arc;
-use std::{marker::PhantomData, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
+use crate::local_array::store::atomic_types::RouteStatus;
+use crate::prefix_record::PublicRecord;
 use crate::{
     af::AddressFamily,
-    prefix_record::Meta,
     local_array::{
         bit_span::BitSpan,
         node::{
             NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter, PrefixId,
             SizedStrideRef, Stride3, Stride4, Stride5, StrideNodeId,
         },
-    }
+    },
+    prefix_record::Meta,
 };
 
 use crossbeam_epoch::Guard;
-use log::{debug, log_enabled, trace};
 use inetnum::addr::Prefix;
+use log::{debug, log_enabled, trace};
+use roaring::RoaringBitmap;
 
 // ----------- PrefixIter ---------------------------------------------------
 
-// Iterator over all the prefixes in the storage.
-// This Iterator does *not* use the tree, it iterates over all the length
-// arrays in the CustomAllocStorage.
+// Iterator over all the prefixes in the storage. This Iterator does *not* use
+// the tree, it iterates over all the length arrays in the CustomAllocStorage.
 
 pub(crate) struct PrefixIter<
     'a,
@@ -44,21 +44,18 @@ pub(crate) struct PrefixIter<
     cur_len: u8,
     cur_bucket: &'a PrefixSet<AF, M>,
     cur_level: u8,
-    // level depth of IPv4 as defined in rotonda-macros/maps.rs
-    // Option(parent, cursor position at the parent)
-    // 26 is the max number of levels in IPv6, which is the max number of
-    // of both IPv4 and IPv6.
+    // level depth of IPv4 as defined in rotonda-macros/maps.rs Option(parent,
+    // cursor position at the parent) 26 is the max number of levels in IPv6,
+    // which is the max number of of both IPv4 and IPv6.
     parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
     cursor: usize,
     guard: &'a Guard,
-    _af: PhantomData<AF>,
-    _meta: PhantomData<M>,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for PrefixIter<'a, AF, M, PB>
 {
-    type Item = (inetnum::addr::Prefix, M);
+    type Item = (inetnum::addr::Prefix, Vec<PublicRecord<M>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!(
@@ -77,12 +74,12 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 
             if PB::get_bits_for_len(self.cur_len, self.cur_level) == 0 {
                 // END OF THE LENGTH
+
                 // This length is done too, go to the next length
                 trace!("next length {}", self.cur_len + 1);
                 self.cur_len += 1;
 
-                // a new length, a new life
-                // reset the level depth and cursor,
+                // a new length, a new life reset the level depth and cursor,
                 // but also empty all the parents
                 self.cur_level = 0;
                 self.cursor = 0;
@@ -107,13 +104,13 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             if self.cursor >= bucket_size {
                 if self.cur_level == 0 {
                     // END OF THE LENGTH
+
                     // This length is done too, go to the next length
                     trace!("next length {}", self.cur_len);
                     self.cur_len += 1;
 
-                    // a new length, a new life
-                    // reset the level depth and cursor,
-                    // but also empty all the parents
+                    // a new length, a new life reset the level depth and
+                    // cursor, but also empty all the parents
                     self.cur_level = 0;
                     self.cursor = 0;
                     self.parents = [None; 26];
@@ -127,20 +124,20 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     self.cur_bucket =
                         self.prefixes.get_root_prefix_set(self.cur_len);
                 } else {
-                    // END OF THIS BUCKET
-                    // GO BACK UP ONE LEVEL
-                    // The level is done, but the length isn't
-                    // Go back up one level and continue
+                    // END OF THIS BUCKET GO BACK UP ONE LEVEL
+
+                    // The level is done, but the length isn't Go back up one
+                    // level and continue
                     match self.parents[self.cur_level as usize] {
                         Some(parent) => {
-                            // There is a parent, go back up. Since we're doing depth-first
-                            // we have to check if there's a prefix directly at the parent
-                            // and return that.
+                            // There is a parent, go back up. Since we're
+                            // doing depth-first we have to check if there's a
+                            // prefix directly at the parent and return that.
                             self.cur_level -= 1;
 
                             // move the current bucket to the parent and move
-                            // the cursor position where we left off. The
-                            // next run of the loop will read it.
+                            // the cursor position where we left off. The next
+                            // run of the loop will read it.
                             self.cur_bucket = parent.0;
                             self.cursor = parent.1 + 1;
 
@@ -161,20 +158,17 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 }
             };
 
-            // we're somewhere in the PrefixSet iteration, read the next StoredPrefix.
-            // We are doing depth-first iteration, so we check for a child first and
-            // descend into that if it exists.
+            // we're somewhere in the PrefixSet iteration, read the next
+            // StoredPrefix. We are doing depth-first iteration, so we check
+            // for a child first and descend into that if it exists.
 
-            let s_pfx = self
-                .cur_bucket
-                .get_by_index(self.cursor, self.guard);
+            let s_pfx = self.cur_bucket.get_by_index(self.cursor, self.guard);
 
             // DEPTH FIRST ITERATION
             match s_pfx.get_next_bucket(self.guard) {
                 Some(bucket) => {
-                    // DESCEND ONe LEVEL
-                    // There's a child here, descend into it, but...
-                    // trace!("C. got next bucket {:?}", bucket);
+                    // DESCEND ONe LEVEL There's a child here, descend into
+                    // it, but... trace!("C. got next bucket {:?}", bucket);
 
                     // save our parent and cursor position first, and then..
                     self.parents[(self.cur_level + 1) as usize] =
@@ -195,7 +189,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                                 // There's a prefix here, that's the next one
                                 trace!("D. found prefix {:?}", p.prefix);
                             }
-                            p.get_meta_cloned()
+                            p.record_map.as_records()
                         })
                     {
                         return Some((
@@ -207,16 +201,15 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     }
                 }
                 None => {
-                    // No reference to another PrefixSet, all that's
-                    // left, is checking for a prefix at the current
-                    // cursor position.
+                    // No reference to another PrefixSet, all that's left, is
+                    // checking for a prefix at the current cursor position.
                     if let Some(meta) =
                         s_pfx.get_stored_prefix(self.guard).map(|p| {
                             // There's a prefix here, that's the next one
                             if log_enabled!(log::Level::Debug) {
                                 debug!("E. found prefix {:?}", p.prefix);
                             }
-                            p.get_meta_cloned()
+                            p.record_map.as_records()
                         })
                     {
                         self.cursor += 1;
@@ -276,19 +269,18 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 // A iterator over all the more-specifics for a given prefix.
 //
 // This iterator is somewhat different from the other *PrefixIterator types,
-// since it uses the Nodes to select the more specifics. Am Iterator that
+// since it uses the Nodes to select the more specifics. An Iterator that
 // would only use the Prefixes in the store could exist, but iterating over
 // those in search of more specifics would be way more expensive.
 
 // The first iterator it goes over should have a bit_span that is the
 // difference between the requested prefix and the node that hosts that
-// prefix. See the method initializing this iterator
-// (`get_node_for_id_prefix` takes care of it in there). The consecutive
-// iterators will all have a bit_span of { bits: 0, len: 0 }. Yes, we could
-// also use the PrefixIter there (it iterates over all prefixes of a node),
-// but then we would have to deal with two different types of iterators.
-// Note that the iterator is neither depth- or breadth-first and the
-// results are essentially unordered.
+// prefix. See the method initializing this iterator (`get_node_for_id_prefix`
+// takes care of it in there). The consecutive iterators will all have a
+// bit_span of { bits: 0, len: 0 }. Yes, we could also use the PrefixIter
+// there (it iterates over all prefixes of a node), but then we would have to
+// deal with two different types of iterators. Note that the iterator is
+// neither depth- or breadth-first and the results are essentially unordered.
 
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
@@ -303,6 +295,13 @@ pub(crate) struct MoreSpecificPrefixIter<
     start_bit_span: BitSpan,
     // skip_self: bool,
     parent_and_position: Vec<SizedNodeMoreSpecificIter<AF>>,
+    // If specified, we're only iterating over records for this mui.
+    mui: Option<u32>,
+    // This is the tree-wide index of withdrawn muis, used to rewrite the
+    // statuses of these records, or filter them out.
+    global_withdrawn_bmin: &'a RoaringBitmap,
+    // Whether we should filter out the withdrawn records in the search result
+    include_withdrawn: bool,
     guard: &'a Guard,
 }
 
@@ -314,7 +313,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
     > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
 {
-    type Item = (PrefixId<AF>, Arc<M>);
+    type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!("MoreSpecificsPrefixIter");
@@ -324,18 +323,86 @@ impl<
             let next_pfx = self.cur_pfx_iter.next();
 
             if next_pfx.is_some() {
-                return self
-                    .store
-                    .non_recursive_retrieve_prefix_with_guard(
-                        next_pfx.unwrap_or_else(
-                            || panic!(
-                                "BOOM! More-specific prefix {:?} disappeared from the store",
+                // If we have a mui, we have to deal slightly different with
+                // the records: There can only be one record for a (prefix,
+                // mui) combination, and the record may be filtered out by the
+                // global status of the mui, or its local status. In that case
+                // we don't return here (because that would result in a Prefix
+                // with an empty record vec).
+                if let Some(mui) = self.mui {
+                    if let Some(p) = self
+                        .store
+                        .non_recursive_retrieve_prefix_with_guard(
+                            next_pfx.unwrap_or_else(|| {
+                                panic!(
+                                "BOOM! More-specific prefix {:?} disappeared \
+                                from the store",
                                 next_pfx
                             )
-                        ),
-                        self.guard,
-                    )
-                    .0.map(|p| (p.prefix, p.get_record_as_arc()));
+                            }),
+                            self.guard,
+                        )
+                        .0
+                    {
+                        // We may either have to rewrite the local status with
+                        // the provided global status OR we may have to omit
+                        // all of the records with either global of local
+                        // withdrawn status.
+                        if self.include_withdrawn {
+                            if let Some(rec) = p
+                                .record_map
+                                .get_record_for_mui_with_rewritten_status(
+                                    mui,
+                                    self.global_withdrawn_bmin,
+                                    RouteStatus::Withdrawn,
+                                )
+                            {
+                                return Some((p.prefix, vec![rec]));
+                            }
+                        } else if let Some(rec) =
+                            p.record_map.get_record_for_active_mui(mui)
+                        {
+                            return Some((p.prefix, vec![rec]));
+                        }
+                    };
+                } else {
+                    return self
+                        .store
+                        .non_recursive_retrieve_prefix_with_guard(
+                            next_pfx.unwrap_or_else(|| {
+                                panic!(
+                                "BOOM! More-specific prefix {:?} disappeared \
+                                from the store",
+                                next_pfx
+                            )
+                            }),
+                            self.guard,
+                        )
+                        .0
+                        .map(|p| {
+                            // Just like the mui specific records, we may have
+                            // to either rewrite the local status (if the user
+                            // wants the withdrawn records) or omit them.
+                            if self.include_withdrawn {
+                                (
+                                    p.prefix,
+                                    p.record_map
+                                        .as_records_with_rewritten_status(
+                                            self.global_withdrawn_bmin,
+                                            RouteStatus::Withdrawn,
+                                        ),
+                                )
+                            } else {
+                                (
+                                    p.prefix,
+                                    p.record_map
+                                        .as_active_records_not_in_bmin(
+                                            self.global_withdrawn_bmin,
+                                        ),
+                                )
+                            }
+                        });
+                }
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -358,10 +425,17 @@ impl<
             }
 
             if let Some(next_ptr) = next_ptr {
-                match self
-                    .store
-                    .retrieve_node_with_guard(next_ptr, self.guard)
-                {
+                let node = if self.mui.is_none() {
+                    self.store.retrieve_node_with_guard(next_ptr, self.guard)
+                } else {
+                    self.store.retrieve_node_for_mui(
+                        next_ptr,
+                        self.mui.unwrap(),
+                        self.guard,
+                    )
+                };
+
+                match node {
                     Some(SizedStrideRef::Stride3(next_node)) => {
                         // copy the current iterator into the parent vec and create
                         // a new ptr iterator for this node
@@ -372,7 +446,12 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!("next stride new iterator stride 3 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
+                        trace!(
+                            "next stride new iterator stride 3 {:?} start \
+                        bit_span {:?}",
+                            self.cur_ptr_iter,
+                            self.start_bit_span
+                        );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
@@ -390,7 +469,12 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!("next stride new iterator stride 4 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
+                        trace!(
+                            "next stride new iterator stride 4 {:?} start \
+                        bit_span {:?}",
+                            self.cur_ptr_iter,
+                            self.start_bit_span
+                        );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
@@ -408,7 +492,12 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!("next stride new iterator stride 5 {:?} start bit_span {:?}", self.cur_ptr_iter, self.start_bit_span);
+                        trace!(
+                            "next stride new iterator stride 5 {:?} start \
+                        bit_span {:?}",
+                            self.cur_ptr_iter,
+                            self.start_bit_span
+                        );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
@@ -429,10 +518,10 @@ impl<
 
 // ----------- LessSpecificPrefixIter ---------------------------------------
 
-// This iterator iterates over all the less-specifics for a given prefix.
-// It does *not* use the tree, it goes directly into the CustomAllocStorage
-// and retrieves the less-specifics by going from len to len, searching for
-// the prefixes.
+// This iterator iterates over all the less-specifics for a given prefix. It
+// does *not* use the tree, it goes directly into the CustomAllocStorage and
+// retrieves the less-specifics by going from len to len, searching for the
+// prefixes.
 
 pub(crate) struct LessSpecificPrefixIter<
     'a,
@@ -445,16 +534,19 @@ pub(crate) struct LessSpecificPrefixIter<
     cur_bucket: &'a PrefixSet<AF, M>,
     cur_level: u8,
     cur_prefix_id: PrefixId<AF>,
+    mui: Option<u32>,
+    // Whether to include withdrawn records, both globally and local.
+    include_withdrawn: bool,
+    // This is the tree-wide index of withdrawn muis, used to filter out the
+    // records for those.
+    global_withdrawn_bmin: &'a RoaringBitmap,
     guard: &'a Guard,
-    _af: PhantomData<AF>,
-    _meta: PhantomData<M>,
-    _pb: PhantomData<PB>,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     Iterator for LessSpecificPrefixIter<'a, AF, M, PB>
 {
-    type Item = (PrefixId<AF>, Arc<M>);
+    type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
 
     // This iterator moves down all prefix lengths, starting with the length
     // of the (search prefix - 1), looking for shorter prefixes, where the
@@ -514,27 +606,65 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             }
 
             // LEVEL DEPTH ITERATION
-            let s_pfx =
-                self.cur_bucket.get_by_index(index, self.guard);
+            let s_pfx = self.cur_bucket.get_by_index(index, self.guard);
 
             if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
-                trace!("get_record {:?}", stored_prefix.record);
-                let pfx_rec = stored_prefix.get_record_as_arc();
-                // There is a prefix  here, but we need to check if it's
+                trace!("get_record {:?}", stored_prefix.record_map);
+                let pfx_rec = if let Some(mui) = self.mui {
+                    // We don't have to check for the appearance of We may
+                    // either have to rewrite the local status with the
+                    // provided global status OR we may have to omit all of
+                    // the records with either global of local withdrawn
+                    // status.
+                    if self.include_withdrawn {
+                        stored_prefix
+                            .record_map
+                            .get_record_for_mui_with_rewritten_status(
+                                mui,
+                                self.global_withdrawn_bmin,
+                                RouteStatus::Withdrawn,
+                            )
+                            .into_iter()
+                            .collect()
+                    } else {
+                        stored_prefix
+                            .record_map
+                            .get_record_for_active_mui(mui)
+                            .into_iter()
+                            .collect()
+                    }
+                } else {
+                    // Just like the mui specific records, we may have
+                    // to either rewrite the local status (if the user
+                    // wants the withdrawn records) or omit them.
+                    if self.include_withdrawn {
+                        stored_prefix
+                            .record_map
+                            .as_records_with_rewritten_status(
+                                self.global_withdrawn_bmin,
+                                RouteStatus::Withdrawn,
+                            )
+                    } else {
+                        stored_prefix
+                            .record_map
+                            .as_active_records_not_in_bmin(
+                                self.global_withdrawn_bmin,
+                            )
+                    }
+                };
+                // There is a prefix here, but we need to check if it's
                 // the right one.
-                if self.cur_prefix_id
-                    == stored_prefix.prefix
-                {
-                    trace!(
-                        "found requested prefix {:?}",
-                        self.cur_prefix_id
-                    );
+                if self.cur_prefix_id == stored_prefix.prefix {
+                    trace!("found requested prefix {:?}", self.cur_prefix_id);
                     self.cur_len -= 1;
                     self.cur_level = 0;
-                    self.cur_bucket = self
-                        .prefixes
-                        .get_root_prefix_set(self.cur_len);
-                    return Some((stored_prefix.prefix, pfx_rec));
+                    self.cur_bucket =
+                        self.prefixes.get_root_prefix_set(self.cur_len);
+                    return if !pfx_rec.is_empty() {
+                        Some((stored_prefix.prefix, pfx_rec))
+                    } else {
+                        None
+                    };
                 };
                 // Advance to the next level or the next len.
                 match stored_prefix
@@ -547,9 +677,8 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     true => {
                         self.cur_len -= 1;
                         self.cur_level = 0;
-                        self.cur_bucket = self
-                            .prefixes
-                            .get_root_prefix_set(self.cur_len);
+                        self.cur_bucket =
+                            self.prefixes.get_root_prefix_set(self.cur_len);
                     }
                     // There's a child, move a level up and set the child
                     // as current. Length remains the same.
@@ -587,8 +716,10 @@ impl<
     pub fn more_specific_prefix_iter_from(
         &'a self,
         start_prefix_id: PrefixId<AF>,
+        mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Arc<M>)> + '_ {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
@@ -619,9 +750,13 @@ impl<
             let cur_pfx_iter: SizedPrefixIter<AF>;
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
-            if let Some(node) =
+            let node = if let Some(mui) = mui {
+                self.retrieve_node_for_mui(start_node_id, mui, guard)
+            } else {
                 self.retrieve_node_with_guard(start_node_id, guard)
-            {
+            };
+
+            if let Some(node) = node {
                 match node {
                     SizedStrideRef::Stride3(n) => {
                         cur_pfx_iter = SizedPrefixIter::Stride3(
@@ -670,6 +805,12 @@ impl<
                     }
                 };
 
+                let global_withdrawn_bmin = unsafe {
+                    self.withdrawn_muis_bmin
+                        .load(Ordering::Acquire, guard)
+                        .deref()
+                };
+
                 Some(MoreSpecificPrefixIter {
                     store: self,
                     guard,
@@ -677,6 +818,9 @@ impl<
                     cur_ptr_iter,
                     start_bit_span,
                     parent_and_position: vec![],
+                    global_withdrawn_bmin,
+                    include_withdrawn,
+                    mui,
                 })
             } else {
                 None
@@ -691,8 +835,12 @@ impl<
     pub fn less_specific_prefix_iter(
         &'a self,
         start_prefix_id: PrefixId<AF>,
+        // Indicate whether we want to return only records for a specific mui,
+        // None indicates returning all records for a prefix.
+        mui: Option<u32>,
+        include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Arc<M>)> + '_ {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("less specifics for {:?}", start_prefix_id);
         trace!("level {}, len {}", 0, start_prefix_id.get_len());
 
@@ -705,6 +853,11 @@ impl<
         } else {
             let cur_len = start_prefix_id.get_len() - 1;
             let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
+            let global_withdrawn_bmin = unsafe {
+                self.withdrawn_muis_bmin
+                    .load(Ordering::Acquire, guard)
+                    .deref()
+            };
 
             Some(LessSpecificPrefixIter {
                 prefixes: &self.prefixes,
@@ -712,10 +865,10 @@ impl<
                 cur_bucket,
                 cur_level: 0,
                 cur_prefix_id: start_prefix_id,
+                mui,
+                global_withdrawn_bmin,
+                include_withdrawn,
                 guard,
-                _af: PhantomData,
-                _meta: PhantomData,
-                _pb: PhantomData,
             })
         }
         .into_iter()
@@ -726,7 +879,7 @@ impl<
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (Prefix, M)> + 'a {
+    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PrefixIter {
             prefixes: &self.prefixes,
             cur_bucket: self.prefixes.get_root_prefix_set(0),
@@ -735,8 +888,6 @@ impl<
             cursor: 0,
             parents: [None; 26],
             guard,
-            _af: PhantomData,
-            _meta: PhantomData,
         }
     }
 }

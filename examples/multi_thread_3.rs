@@ -38,11 +38,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     x += 1;
                     // print!("{}-", i);
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), PrefixAs(i as u32))
+                        .insert(
+                            &pfx.unwrap(),
+                            Record::new(0,0, RouteStatus::Active, PrefixAs(i as u32)),
+                            None
+                        )
                     {
                         Ok(metrics) => {
-                            if metrics.1 > 0  {
-                                println!("{} {} {:?} retry count {},", std::thread::current().name().unwrap(), metrics.0, pfx, metrics.1);
+                            if metrics.cas_count > 0  {
+                                println!("{} {:?} {:?} retry count {},", std::thread::current().name().unwrap(), metrics, pfx, metrics.cas_count);
                             }
                         }
                         Err(e) => {
@@ -73,9 +77,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &pfx.unwrap(),
         &MatchOptions {
             match_type: rotonda_store::MatchType::ExactMatch,
-            include_all_records: true,
+            include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
+            mui: None
         },
         guard,
     );

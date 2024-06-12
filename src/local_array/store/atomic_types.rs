@@ -1,25 +1,25 @@
-use std::sync::Arc;
-use std::{fmt::Debug, mem::MaybeUninit, sync::atomic::Ordering};
+use flurry::HashMap;
+use std::{
+    fmt::{Debug, Display},
+    mem::MaybeUninit,
+    sync::atomic::Ordering,
+};
 
-use arc_swap::access::Access;
-use arc_swap::ArcSwap;
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
+use roaring::RoaringBitmap;
 
 use crate::local_array::tree::*;
-use crate::AddressFamily;
+use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
+use crate::AddressFamily;
+
+use super::errors::PrefixStoreError;
 
 // ----------- Node related structs -----------------------------------------
-
-#[allow(clippy::type_complexity)]
-#[derive(Debug)]
-pub struct NodeSet<AF: AddressFamily, S: Stride>(
-    pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
-);
 
 #[derive(Debug)]
 pub struct StoredNode<AF, S>
@@ -29,9 +29,20 @@ where
     AF: AddressFamily,
 {
     pub(crate) node_id: StrideNodeId<AF>,
+    // The ptrbitarr and pfxbitarr for this node
     pub(crate) node: TreeBitMapNode<AF, S>,
+    // Child nodes linked from this node
     pub(crate) node_set: NodeSet<AF, S>,
 }
+
+#[allow(clippy::type_complexity)]
+#[derive(Debug, Clone)]
+pub struct NodeSet<AF: AddressFamily, S: Stride>(
+    pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
+    // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
+    // present in value collections in the meta-data tree in the child nodes
+    pub Atomic<RoaringBitmap>,
+);
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn init(size: usize) -> Self {
@@ -48,11 +59,117 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         for i in 0..size {
             l[i] = MaybeUninit::new(Atomic::null());
         }
-        NodeSet(l.into())
+        NodeSet(l.into(), RoaringBitmap::new().into())
+    }
+
+    pub fn update_rbm_index(
+        &self,
+        multi_uniq_id: u32,
+        guard: &crate::epoch::Guard,
+    ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
+    where
+        S: crate::local_array::atomic_stride::Stride,
+        AF: crate::AddressFamily,
+    {
+        let mut try_count = 0;
+
+        self.1
+            .fetch_update(
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+                guard,
+                |mut a_rbm_index| {
+                    // SAFETY: The rbm_index gets created as an empty
+                    // RoaringBitmap at init time of the NodeSet, so it cannot
+                    // be a NULL pointer at this point. We're cloning the
+                    // loaded value, NOT mutating it, so we don't run into
+                    // concurrent write scenarios (which we would if we'd use
+                    // `deref_mut()`).
+                    let mut rbm_index =
+                        unsafe { a_rbm_index.deref() }.clone();
+                    rbm_index.insert(multi_uniq_id);
+
+                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+
+                    try_count += 1;
+                    Some(a_rbm_index)
+                },
+            )
+            .map_err(|_| {
+                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+            })?;
+
+        trace!("Added {} to {:?}", multi_uniq_id, unsafe {
+            self.1
+                .load(std::sync::atomic::Ordering::SeqCst, guard)
+                .as_ref()
+        });
+        Ok(try_count)
+    }
+
+    pub fn remove_from_rbm_index(
+        &self,
+        multi_uniq_id: u32,
+        guard: &crate::epoch::Guard,
+    ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
+    where
+        S: crate::local_array::atomic_stride::Stride,
+        AF: crate::AddressFamily,
+    {
+        let mut try_count = 0;
+
+        self.1
+            .fetch_update(
+                std::sync::atomic::Ordering::AcqRel,
+                std::sync::atomic::Ordering::Acquire,
+                guard,
+                |mut a_rbm_index| {
+                    // SAFETY: The rbm_index gets created as an empty
+                    // RoaringBitmap at init time of the NodeSet, so it cannot
+                    // be a NULL pointer at this point. We're cloning the
+                    // loaded value, NOT mutating it, so we don't run into
+                    // concurrent write scenarios (which we would if we'd use
+                    // `deref_mut()`).
+                    let mut rbm_index =
+                        unsafe { a_rbm_index.deref() }.clone();
+                    rbm_index.remove(multi_uniq_id);
+
+                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+
+                    try_count += 1;
+                    Some(a_rbm_index)
+                },
+            )
+            .map_err(|_| {
+                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+            })?;
+
+        trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
+            self.1
+                .load(std::sync::atomic::Ordering::SeqCst, guard)
+                .as_ref()
+        });
+        Ok(try_count)
     }
 }
 
 // ----------- Prefix related structs ---------------------------------------
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct PathSelections {
+    // serial: usize,
+    pub(crate) path_selection_muis: (Option<u32>, Option<u32>),
+}
+
+impl PathSelections {
+    pub fn best(&self) -> Option<u32> {
+        self.path_selection_muis.0
+    }
+
+    pub fn backup(&self) -> Option<u32> {
+        self.path_selection_muis.1
+    }
+}
 
 // ----------- StoredPrefix -------------------------------------------------
 // This is the top-level struct that's linked from the slots in the buckets.
@@ -62,21 +179,20 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 #[derive(Debug)]
 pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     // the serial number
-    pub serial: usize,
+    // pub serial: usize,
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
-    pub(crate) record: AtomicRecord<M>,
-    // the next aggregated record for this prefix and hash_id
-    // pub(crate) next_agg_record: Atomic<StoredAggRecord<AF, M>>,
+    pub record_map: MultiMap<M>,
+    // (mui of best path entry, mui of backup path entry) from the record_map
+    path_selections: Atomic<PathSelections>,
     // the reference to the next set of records for this prefix, if any.
     pub next_bucket: PrefixSet<AF, M>,
 }
 
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
-    pub fn new<PB: PrefixBuckets<AF, M>>(
+    pub(crate) fn new<PB: PrefixBuckets<AF, M>>(
         pfx_id: PrefixId<AF>,
-        record: Arc<M>,
         level: u8,
     ) -> Self {
         // start calculation size of next set, it's dependent on the level
@@ -104,10 +220,64 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
+        let rec_map = HashMap::new();
+
         StoredPrefix {
-            serial: 1,
+            // serial: 1,
             prefix: pfx_id,
-            record: AtomicRecord::<M>::new(record),
+            path_selections: Atomic::init(PathSelections {
+                path_selection_muis: (None, None),
+            }),
+            record_map: MultiMap::new(rec_map),
+            next_bucket,
+        }
+    }
+
+    pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
+        pfx_id: PrefixId<AF>,
+        record: PublicRecord<M>,
+        level: u8,
+    ) -> Self {
+        // start calculation size of next set, it's dependent on the level
+        // we're in.
+        // let pfx_id = PrefixId::new(record.net, record.len);
+        let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
+        let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+
+        trace!("this level {} next level {}", this_level, next_level);
+        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+            debug!(
+                "{} store: INSERT with new bucket of size {} at prefix len {}",
+                std::thread::current().name().unwrap(),
+                1 << (next_level - this_level),
+                pfx_id.get_len()
+            );
+            PrefixSet::init((1 << (next_level - this_level)) as usize)
+        } else {
+            debug!(
+                "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
+                std::thread::current().name().unwrap(),
+                pfx_id.get_len()
+            );
+            PrefixSet::empty()
+        };
+        // End of calculation
+
+        let rec_map = HashMap::new();
+        let mui = record.multi_uniq_id;
+        rec_map
+            .pin()
+            .insert(record.multi_uniq_id, MultiMapValue::from(record));
+
+        StoredPrefix {
+            // serial: 1,
+            prefix: pfx_id,
+            // In a new prefix, the first inserted record will always be the
+            // best path
+            path_selections: Atomic::new(PathSelections {
+                path_selection_muis: (Some(mui), None),
+            }),
+            record_map: MultiMap::new(rec_map),
             next_bucket,
         }
     }
@@ -116,46 +286,305 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub(crate) fn get_record_as_arc(
+    pub fn get_path_selections(
         &self,
-    ) -> Arc<M> {
-        self.record.as_arc()
+        guard: &Guard,
+    ) -> PathSelections {
+        let path_selections =
+            self.path_selections.load(Ordering::Acquire, guard);
+
+        unsafe { path_selections.as_ref() }.map_or(
+            PathSelections {
+                path_selection_muis: (None, None),
+            },
+            |ps| *ps,
+        )
     }
 
-    pub(crate) fn get_meta_cloned(&self) -> M {
-        (*(*self.record.as_arc_swap().load())).clone()
+    pub(crate) fn set_path_selections(
+        &self,
+        path_selections: PathSelections,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self.path_selections.load(Ordering::SeqCst, guard);
+
+        if unsafe { current.as_ref() } == Some(&path_selections) {
+            debug!("unchanged path_selections");
+            return Ok(());
+        }
+
+        self.path_selections
+            .compare_exchange(
+                current,
+                // Set the tag to indicate we're updated
+                Owned::new(path_selections).with_tag(0),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard,
+            )
+            .map_err(|_| PrefixStoreError::PathSelectionOutdated)?;
+        Ok(())
+    }
+
+    pub fn set_ps_outdated(
+        &self,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        self.path_selections
+            .fetch_update(Ordering::Acquire, Ordering::Acquire, guard, |p| {
+                Some(p.with_tag(1))
+            })
+            .map(|_| ())
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)
+    }
+
+    pub fn is_ps_outdated(&self, guard: &Guard) -> bool {
+        self.path_selections.load(Ordering::Acquire, guard).tag() == 1
+    }
+
+    pub fn calculate_and_store_best_backup<'a>(
+        &'a self,
+        tbi: &M::TBI,
+        guard: &'a Guard,
+    ) -> Result<(Option<u32>, Option<u32>), super::errors::PrefixStoreError>
+    {
+        let path_selection_muis = self.record_map.best_backup(*tbi);
+
+        self.set_path_selections(
+            PathSelections {
+                path_selection_muis,
+            },
+            guard,
+        )?;
+
+        Ok(path_selection_muis)
     }
 }
 
-// ----------- SuperAggRecord -----------------------------------------------
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RouteStatus {
+    Active,
+    InActive,
+    Withdrawn,
+}
+
+impl std::fmt::Display for RouteStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RouteStatus::Active => write!(f, "active"),
+            RouteStatus::InActive => write!(f, "inactive"),
+            RouteStatus::Withdrawn => write!(f, "withdrawn"),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct MultiMapValue<M> {
+    pub meta: M,
+    pub ltime: u64,
+    pub status: RouteStatus,
+}
+
+impl<M: Clone> MultiMapValue<M> {
+    pub(crate) fn _new(meta: M, ltime: u64, status: RouteStatus) -> Self {
+        Self {
+            meta,
+            ltime,
+            status,
+        }
+    }
+}
+
+impl<M: crate::prefix_record::Meta> std::fmt::Display for MultiMapValue<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.meta, self.ltime, self.status)
+    }
+}
+
+impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
+    fn from(value: PublicRecord<M>) -> Self {
+        Self {
+            meta: value.meta,
+            ltime: value.ltime,
+            status: value.status,
+        }
+    }
+}
+
+// ----------- MultiMap ------------------------------------------------------
 // This is the record that holds the aggregates at the top-level for a given
 // prefix.
 
 #[derive(Debug)]
-pub(crate) struct AtomicRecord<M: crate::prefix_record::Meta>(
-    ArcSwap<M>,
+pub struct MultiMap<M: Meta>(
+    pub(crate) flurry::HashMap<u32, MultiMapValue<M>>,
 );
 
-impl<M: crate::prefix_record::Meta> AtomicRecord<M> {
-    pub fn new(record: Arc<M>) -> Self {
-        AtomicRecord(ArcSwap::new(record))
+pub struct IdOrderable<T>(pub u32, T);
+
+impl<T: PartialOrd + Eq + PartialEq> PartialOrd for IdOrderable<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.1.partial_cmp(&other.1)
+    }
+}
+
+impl<T: PartialOrd + Eq + PartialOrd> PartialEq for IdOrderable<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1
+    }
+}
+
+impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
+    pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
+        Self(record_map)
     }
 
-    pub fn as_arc_swap(
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub(crate) fn guard(&self) -> flurry::Guard<'_> {
+        self.0.guard()
+    }
+
+    pub fn get_record_for_active_mui(
         &self,
-    ) -> &arc_swap::ArcSwapAny<Arc<M>> {
-        &self.0
+        mui: u32,
+    ) -> Option<PublicRecord<M>> {
+        self.0.get(&mui, &self.0.guard()).and_then(|r| {
+            if r.status == RouteStatus::Active {
+                Some(PublicRecord::from((mui, r.clone())))
+            } else {
+                None
+            }
+        })
     }
 
-    pub fn as_arc(&self) -> Arc<M> {
-        self.0.load().clone()
+    pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
+        let flurry_guard = self.guard();
+        let ord_routes = self
+            .0
+            .iter(&flurry_guard)
+            .map(|r| (r.1.meta.as_orderable(tbi), r.0));
+        let (best, bckup) =
+            routecore::bgp::path_selection::best_backup_generic(ord_routes);
+        (best.map(|b| *b.1), bckup.map(|b| *b.1))
     }
 
-    pub fn get_meta_cloned(&self) -> M {
+    pub(crate) fn get_record_for_mui_with_rewritten_status(
+        &self,
+        mui: u32,
+        bmin: &RoaringBitmap,
+        rewrite_status: RouteStatus,
+    ) -> Option<PublicRecord<M>> {
+        self.0.get(&mui, &self.0.guard()).map(|r| {
+            let mut r = r.clone();
+            if bmin.contains(mui) {
+                r.status = rewrite_status;
+            }
+            PublicRecord::from((mui, r))
+        })
+    }
+
+    // Helper to filter out records that are not-active (Inactive or
+    // Withdrawn), or whose mui appears in the global withdrawn index.
+    pub fn get_filtered_records(
+        &self,
+        mui: Option<u32>,
+        bmin: &RoaringBitmap,
+    ) -> Vec<PublicRecord<M>> {
+        if let Some(mui) = mui {
+            self.get_record_for_active_mui(mui).into_iter().collect()
+        } else {
+            self.as_active_records_not_in_bmin(bmin)
+        }
+    }
+
+    pub fn _iter_all_records<'a>(
+        &'a self,
+        guard: &'a flurry::Guard<'a>,
+    ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
         self.0
-            .map(|r: &M| r)
-            .load()
-            .clone()
+            .iter(guard)
+            .map(|r| PublicRecord::from((*r.0, r.1.clone())))
+    }
+
+    // return all records regardless of their local status, or any globally
+    // set status for the mui of the record. However, the local status for a
+    // record whose mui appears in the specified bitmap index, will be
+    // rewritten with the specified RouteStatus.
+    pub fn as_records_with_rewritten_status(
+        &self,
+        bmin: &RoaringBitmap,
+        rewrite_status: RouteStatus,
+    ) -> Vec<PublicRecord<M>> {
+        self.0
+            .pin()
+            .into_iter()
+            .map(move |r| {
+                let mut rec = r.1.clone();
+                if bmin.contains(*r.0) {
+                    rec.status = rewrite_status;
+                }
+                PublicRecord::from((*r.0, rec))
+            })
+            .collect::<Vec<_>>()
+    }
+
+    pub fn as_records(&self) -> Vec<PublicRecord<M>> {
+        self.0
+            .pin()
+            .iter()
+            .map(|r| PublicRecord::from((*r.0, r.1.clone())))
+            .collect::<Vec<_>>()
+    }
+
+    // Returns a vec of records whose keys are not in the supplied bitmap
+    // index, and whose local Status is set to Active. Used to filter out
+    // withdrawn routes.
+    pub fn as_active_records_not_in_bmin(
+        &self,
+        bmin: &RoaringBitmap,
+    ) -> Vec<PublicRecord<M>> {
+        self.0
+            .pin()
+            .iter()
+            .filter_map(|r| {
+                if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
+                    Some(PublicRecord::from((*r.0, r.1.clone())))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+
+    // Change the local status of the record for this mui to Withdrawn.
+    pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
+        let record_map = self.0.pin();
+        if let Some(mut rec) = record_map.get(&mui).cloned() {
+            rec.status = RouteStatus::Withdrawn;
+            record_map.insert(mui, rec);
+        }
+    }
+
+    // Change the local status of the record for this mui to Active.
+    pub fn mark_as_active_for_mui(&self, mui: u32) {
+        let record_map = self.0.pin();
+        if let Some(mut rec) = record_map.get(&mui).cloned() {
+            rec.status = RouteStatus::Active;
+            record_map.insert(mui, rec);
+        }
+    }
+
+    // Insert or replace the PublicRecord in the HashMap for the key of
+    // record.multi_uniq_id. Returns the number of entries in the HashMap
+    // after updating it.
+    pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
+        let record_map = self.0.pin();
+        let mui_new = record_map
+            .insert(record.multi_uniq_id, MultiMapValue::from(record));
+        mui_new.map(|_| self.len())
     }
 }
 
@@ -165,9 +594,10 @@ impl<M: crate::prefix_record::Meta> AtomicRecord<M> {
 // avoid going outside our atomic procedure.
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
-pub struct AtomicStoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta>(
-    pub Atomic<StoredPrefix<AF, M>>,
-);
+pub struct AtomicStoredPrefix<
+    AF: AddressFamily,
+    M: crate::prefix_record::Meta,
+>(pub Atomic<StoredPrefix<AF, M>>);
 
 impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     AtomicStoredPrefix<AF, Meta>
@@ -192,6 +622,17 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
         }
     }
 
+    pub(crate) fn _get_stored_prefix_with_tag<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> Option<(&'a StoredPrefix<AF, Meta>, usize)> {
+        let pfx = self.0.load(Ordering::Acquire, guard);
+        match pfx.is_null() {
+            true => None,
+            false => Some((unsafe { pfx.deref() }, pfx.tag())),
+        }
+    }
+
     pub(crate) fn get_stored_prefix_mut<'a>(
         &'a self,
         guard: &'a Guard,
@@ -207,7 +648,7 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     #[allow(dead_code)]
     pub(crate) fn get_serial(&self) -> usize {
         let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::SeqCst, guard).into_owned() }.serial
+        unsafe { self.0.load(Ordering::Acquire, guard).into_owned() }.tag()
     }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
@@ -245,8 +686,8 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
             None
         }
     }
-}
 
+}
 
 // ----------- FamilyBuckets Trait ------------------------------------------
 //
@@ -282,8 +723,8 @@ where
 // is keyed on the tuple (addr_bits, len, serial number) we can get away with
 // storing ONLY THE SERIAL NUMBER in the pfx_vec: The addr_bits and len are
 // implied in the position in the array a serial number has. A PrefixSet
-// doesn't know anything about the node it is contained in, so it needs a
-// base address to be able to calculate the complete prefix of a child prefix.
+// doesn't know anything about the node it is contained in, so it needs a base
+// address to be able to calculate the complete prefix of a child prefix.
 
 #[derive(Debug)]
 #[repr(align(8))]

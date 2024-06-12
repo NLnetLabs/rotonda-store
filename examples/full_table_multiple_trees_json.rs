@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let asn: u32 = record[2].parse().unwrap();
             let pfx = PrefixRecord::<PrefixAs>::new(
                 Prefix::new(net.into(), len)?,
-                PrefixAs(asn),
+                vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
             );
             pfxs.push(pfx);
         }
@@ -45,19 +45,19 @@ fn main() -> Result<(), Box<dyn Error>> {
     for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
-            let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
+            let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
             let tree_bitmap = MyStore::<PrefixAs>::new()?;
 
-            if let Err(err) = load_prefixes(&mut pfxs) {
+            if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);
                 process::exit(1);
             }
             // println!("finished loading {} prefixes...", pfxs.len());
             let start = std::time::Instant::now();
 
-            let inserts_num = pfxs.len();
-            for pfx in pfxs.into_iter() {
-                tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
+            let inserts_num = rec_vec.len();
+            for rec in rec_vec.into_iter() {
+                tree_bitmap.insert(&rec.prefix, rec.meta[0].clone(), None)?;
             }
             let ready = std::time::Instant::now();
             let dur_insert_nanos =
@@ -82,9 +82,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                                 &pfx,
                                 &MatchOptions {
                                     match_type: MatchType::LongestMatch,
-                                    include_all_records: false,
+                                    include_withdrawn: false,
                                     include_less_specifics: false,
                                     include_more_specifics: false,
+                                    mui: None
                                 },
                                 guard
                             );

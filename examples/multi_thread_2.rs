@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     thread::park();
                 }
 
-                match tree_bitmap.insert(&pfx.unwrap(), PrefixAs(i as u32)) {
+                match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, PrefixAs(i as u32)), None) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
@@ -58,9 +58,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &pfx.unwrap(),
         &MatchOptions {
             match_type: rotonda_store::MatchType::ExactMatch,
-            include_all_records: true,
+            include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
+            mui: None
         },
         guard,
     );

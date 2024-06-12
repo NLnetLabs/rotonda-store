@@ -1,6 +1,7 @@
 use std::{fmt, slice};
 
-pub use crate::prefix_record::{PublicPrefixRecord, Meta, RecordSet};
+use crate::prefix_record::{PublicRecord, RecordSet};
+pub use crate::prefix_record::{PublicPrefixSingleRecord, Meta, RecordSingleSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use inetnum::addr::Prefix;
@@ -62,7 +63,7 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 
 /// Options for the `match_prefix` method
 /// 
-/// The `MatchOptions` struct is used to specify the options for the 
+/// The `MatchOptions` struct is used to specify the options for the
 /// `match_prefix` method on the store.
 /// 
 /// Note that the `match_type` field may be different from the actual
@@ -74,14 +75,17 @@ pub struct MatchOptions {
     /// The requested [MatchType]
     pub match_type: MatchType,
     /// Unused
-    pub include_all_records: bool,
+    pub include_withdrawn: bool,
     /// Whether to include all less-specific records in the query result
     pub include_less_specifics: bool,
     // Whether to include all more-specific records in the query result
     pub include_more_specifics: bool,
+    /// Whether to return records for a specific multi_uniq_id, None indicates
+    /// all records.
+    pub mui: Option<u32>
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum MatchType {
     ExactMatch,
     LongestMatch,
@@ -110,21 +114,21 @@ impl std::fmt::Display for MatchType {
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
 // while iterating.
 #[derive(Clone, Debug)]
-pub struct PrefixRecordIter<'a, M: Meta> {
+pub struct PrefixSingleRecordIter<'a, M: Meta> {
     pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, M>>>,
     pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, M>>,
 }
 
 impl<'a, M: Meta> Iterator
-    for PrefixRecordIter<'a, M>
+    for PrefixSingleRecordIter<'a, M>
 {
-    type Item = PublicPrefixRecord<M>;
+    type Item = PublicPrefixSingleRecord<M>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // V4 is already done.
         if self.v4.is_none() {
             return self.v6.next().map(|res| {
-                PublicPrefixRecord::new(
+                PublicPrefixSingleRecord::new(
                     Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                     res.meta.clone(),
                 )
@@ -132,7 +136,7 @@ impl<'a, M: Meta> Iterator
         }
 
         if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
-            return Some(PublicPrefixRecord::new(
+            return Some(PublicPrefixSingleRecord::new(
                 Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
                 res.meta.clone(),
             ));
@@ -160,7 +164,7 @@ pub struct QueryResult<M: crate::prefix_record::Meta> {
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
-    pub prefix_meta: Option<M>,
+    pub prefix_meta: Vec<PublicRecord<M>>,
     /// The less-specifics of the resulting prefix together with their meta data
     pub less_specifics: Option<RecordSet<M>>,
     /// The more-specifics of the resulting prefix together with their meta data
@@ -173,26 +177,26 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
             Some(pfx) => format!("{}", pfx),
             None => "".to_string(),
         };
-        let pfx_meta_str = match &self.prefix_meta {
-            Some(pfx_meta) => format!("{}", pfx_meta),
-            None => "".to_string(),
-        };
-        write!(
-            f,
-            "match_type: {}\nprefix: {}\nmetadata: {}\nless_specifics: {}\nmore_specifics: {}",
-            self.match_type,
-            pfx_str,
-            pfx_meta_str,
-            if let Some(ls) = self.less_specifics.as_ref() {
-                format!("{}", ls)
-            } else {
-                "".to_string()
-            },
-            if let Some(ms) = self.more_specifics.as_ref() {
-                format!("{}", ms)
-            } else {
-                "".to_string()
-            },
-        )
+        // let pfx_meta_str = match &self.prefix_meta {
+        //     Some(pfx_meta) => format!("{}", pfx_meta),
+        //     None => "".to_string(),
+        // };
+        writeln!(f, "match_type: {}", self.match_type)?;
+        writeln!(f, "prefix: {}", pfx_str)?;
+        write!(f, "meta: [ ")?;
+        for rec in &self.prefix_meta {
+            write!(f, "{},", rec)?;
+        }
+        writeln!(f, " ]")?;
+        writeln!(f, "less_specifics: {{ {} }}", if let Some(ls) = self.less_specifics.as_ref() {
+            format!("{}", ls)
+        } else {
+            "".to_string()
+        })?;
+        writeln!(f, "more_specifics: {{ {} }}", if let Some(ms) = self.more_specifics.as_ref() {
+            format!("{}", ms)
+        } else {
+            "".to_string()
+        })
     }
 }

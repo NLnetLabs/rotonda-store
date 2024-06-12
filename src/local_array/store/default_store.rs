@@ -11,7 +11,7 @@ use crate::prelude::multi::*;
 struct DefaultStore;
 
 impl<
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<IPv4>,
         PB: PrefixBuckets<IPv4, M>
     > fmt::Display for CustomAllocStorage<IPv4, M, NB, PB>
@@ -26,7 +26,7 @@ impl<
 }
 
 impl<
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<IPv6>,
         PB: PrefixBuckets<IPv6, M>
     > fmt::Display for CustomAllocStorage<IPv6, M, NB, PB>

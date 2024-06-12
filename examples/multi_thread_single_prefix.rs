@@ -42,12 +42,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let guard = &crossbeam_epoch::pin();
                         while x < 10_000 {
                             let asn = PrefixAs(rng.gen());
-                            match tree_bitmap.insert(&pfx.unwrap(), asn) {
+                            match tree_bitmap.insert(
+                                &pfx.unwrap(),
+                                Record::new(0, 0, RouteStatus::Active, asn),
+                                None
+                            ) {
                                 Ok(metrics) => {
-                                    if let Upsert::Insert = metrics.0 {
+                                    if metrics.prefix_new {
                                         println!(
                                             "thread {} won: {} with value {}",
-                                            i, metrics.0, asn
+                                            i, metrics.prefix_new, asn
                                         );
                                     }
                                 }
@@ -59,9 +63,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         &pfx.unwrap(),
                         &MatchOptions {
                             match_type: rotonda_store::MatchType::ExactMatch,
-                            include_all_records: true,
+                            include_withdrawn: true,
                             include_less_specifics: true,
                             include_more_specifics: true,
+                            mui: None
                         },
                         guard,
                     ).prefix_meta;

@@ -40,7 +40,7 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new(
             Prefix::new(ip, len)?,
-            PrefixAs(asn),
+            vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
         );
 
         // let ip: Vec<_> = record[0]
@@ -71,7 +71,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start = std::time::Instant::now();
 
     for pfx in pfxs.into_iter() {
-        tree_bitmap.insert(&pfx.prefix, pfx.meta)?;
+        tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone(), None)?;
     }
     let ready = std::time::Instant::now();
     // println!("{:#?}", tree_bitmap.store.prefixes);
@@ -104,7 +104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
-                                                pfx.prefix, pfx.meta
+                                                pfx.prefix, pfx.meta[0]
                                             );
                                         });
                                     println!(
@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
-                                                pfx.prefix, pfx.meta
+                                                pfx.prefix, pfx.meta[0]
                                             );
                                         });
                                     println!(
@@ -140,7 +140,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
-                                                pfx.prefix, pfx.meta
+                                                pfx.prefix, pfx.meta[0]
                                             );
                                         });
                                     println!(
@@ -219,9 +219,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     &p,
                                     &MatchOptions {
                                         match_type: MatchType::ExactMatch,
-                                        include_all_records: true,
+                                        include_withdrawn: true,
                                         include_less_specifics: true,
                                         include_more_specifics: true,
+                                        mui: None,
                                     },
                                     guard,
                                 );
@@ -250,7 +251,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .more_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
-                                            guard
+                                            None,
+                                            false,
+                                            guard,
                                         )
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
@@ -262,7 +265,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .less_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
-                                            guard
+                                            None,
+                                            false,
+                                            guard,
                                         )
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
@@ -280,9 +285,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         &MatchOptions {
                                             match_type:
                                                 MatchType::ExactMatch,
-                                            include_all_records: true,
+                                            include_withdrawn: true,
                                             include_less_specifics: true,
-                                            include_more_specifics: true
+                                            include_more_specifics: true,
+                                            mui: None
                                         },
                                         guard
                                     )
@@ -294,7 +300,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .more_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
-                                            guard
+                                            None,
+                                            false,
+                                            guard,
                                         )
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
@@ -306,6 +314,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .less_specifics_from(
                                             &Prefix::new_relaxed(ip, len)?,
+                                            None,
+                                            false,
                                             guard
                                         )
                                         .less_specifics

@@ -1,4 +1,4 @@
-//! A treebitmap based Prefix Store
+//! A treebitmap based IP Prefix Store
 
 //! IP prefixes storage and retrieval data structures for IPv4 and IPv6 prefixes.
 //! This crate contains structures for both single and multi-threaded contexts, as
@@ -7,7 +7,7 @@
 //! The underlying tree structure is based on the tree bitmap as outlined in
 //! [this paper](https://www.cs.cornell.edu/courses/cs419/2005sp/tree-bitmap.pdf).
 //!
-//! Part of the (upcoming) Rotonda modular BGP engine.
+//! Part of the Rotonda modular BGP engine.
 
 //! Read more about the data-structure in this [blog post](https://blog.nlnetlabs.nl/donkeys-mules-horses/).
 mod af;

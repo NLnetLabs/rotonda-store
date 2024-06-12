@@ -2,43 +2,60 @@
 #![cfg(test)]
     
 mod full_table {    
+    use inetnum::asn::Asn;
+
     use crate::{
-        prelude::*, SingleThreadedStore,
+        prelude::*, PublicPrefixSingleRecord, SingleThreadedStore
     };
 
     use std::error::Error;
     use std::fs::File;
     use std::process;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
     pub struct ComplexPrefixAs(pub Vec<u32>);
 
-    impl MergeUpdate for ComplexPrefixAs {
-        type UserDataIn = ();
-        type UserDataOut = ();
+    // impl MergeUpdate for ComplexPrefixAs {
+    //     type UserDataIn = ();
+    //     type UserDataOut = ();
 
-        fn merge_update(
-            &mut self,
-            update_record: ComplexPrefixAs,
-            _: Option<&Self::UserDataIn>,
-        ) -> Result<(), Box<dyn std::error::Error>> {
-            self.0 = update_record.0;
-            Ok(())
-        }
+    //     fn merge_update(
+    //         &mut self,
+    //         update_record: ComplexPrefixAs,
+    //         _: Option<&Self::UserDataIn>,
+    //     ) -> Result<(), Box<dyn std::error::Error>> {
+    //         self.0 = update_record.0;
+    //         Ok(())
+    //     }
 
-        fn clone_merge_update(
-            &self,
-            update_meta: &Self,
-            _: Option<&Self::UserDataIn>,
-        ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-        where
-            Self: std::marker::Sized,
-        {
-            let mut new_meta = update_meta.0.clone();
-            new_meta.push(self.0[0]);
-            Ok((ComplexPrefixAs(new_meta), ()))
+    //     fn clone_merge_update(
+    //         &self,
+    //         update_meta: &Self,
+    //         _: Option<&Self::UserDataIn>,
+    //     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
+    //     where
+    //         Self: std::marker::Sized,
+    //     {
+    //         let mut new_meta = update_meta.0.clone();
+    //         new_meta.push(self.0[0]);
+    //         Ok((ComplexPrefixAs(new_meta), ()))
+    //     }
+    // }
+
+    impl Meta for ComplexPrefixAs {
+        type Orderable<'a> = Asn;
+        type TBI = ();
+
+        fn as_orderable(&self, _tbi: Self::TBI) -> Asn { 
+            self.0[0].into()
         }
     }
+
+    // impl Orderable<u32, Rfc4271> for ComplexPrefixAs {
+    //     fn get_id(&self) -> &Self {
+    //         &self.0
+    //     }   
+    // }
 
     impl std::fmt::Display for ComplexPrefixAs {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -57,7 +74,7 @@ mod full_table {
         const FOUND_PREFIXES: u32 = 1322993;
 
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<ComplexPrefixAs>>,
+            pfxs: &mut Vec<PublicPrefixSingleRecord<ComplexPrefixAs>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -71,7 +88,7 @@ mod full_table {
                 let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
                 let len: u8 = record[1].parse().unwrap();
                 let asn: u32 = record[2].parse().unwrap();
-                let pfx = PrefixRecord::new(
+                let pfx = PublicPrefixSingleRecord::new(
                     Prefix::new(net.into(), len)?,
                     ComplexPrefixAs(vec![asn]),
                 );
@@ -87,7 +104,7 @@ mod full_table {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
+            let mut pfxs: Vec<PublicPrefixSingleRecord<ComplexPrefixAs>> = vec![];
             let v4_strides = vec![8];
             let v6_strides = vec![8];
             let mut tree_bitmap = SingleThreadedStore::<ComplexPrefixAs>::new(v4_strides, v6_strides);
@@ -99,7 +116,7 @@ mod full_table {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta, None) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
@@ -110,9 +127,10 @@ mod full_table {
                 let query = tree_bitmap.match_prefix(&pfx.prefix,
                         &MatchOptions {
                         match_type: MatchType::LongestMatch,
-                        include_all_records: false,
+                        include_withdrawn: false,
                         include_less_specifics: false,
                         include_more_specifics: false,
+                        mui: None
                     },
                 );
 
@@ -147,9 +165,10 @@ mod full_table {
                             &pfx.unwrap(),
                             &MatchOptions {
                                 match_type: MatchType::LongestMatch,
-                                include_all_records: false,
+                                include_withdrawn: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
+                                mui: None
                             },
                         );
                         if let Some(_pfx) = res.prefix {

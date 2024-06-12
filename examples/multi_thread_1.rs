@@ -18,8 +18,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     println!("insert {}", pfx.unwrap());
 
                     match tree_bitmap
-                        .insert(&pfx.unwrap(), NoMeta::Empty)
-                    {
+                        .insert(
+                            &pfx.unwrap(), 
+                            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                            None
+                    ) {
                         Ok(_) => {}
                         Err(e) => {
                             println!("{}", e);
@@ -41,9 +44,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: rotonda_store::MatchType::ExactMatch,
-                include_all_records: false,
+                include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: true,
+                mui: None
             },
             guard,
         );

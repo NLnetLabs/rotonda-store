@@ -187,28 +187,28 @@
 
 use std::{
     fmt::Debug,
-    sync::{
-        atomic::{AtomicUsize, Ordering},
-        Arc,
-    },
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crossbeam_epoch::{self as epoch, Atomic};
-
-use crossbeam_utils::Backoff;
 use log::{debug, info, log_enabled, trace};
 
+use crossbeam_epoch::{self as epoch, Atomic};
+use crossbeam_utils::Backoff;
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
+use roaring::RoaringBitmap;
+
 use std::marker::PhantomData;
 
-use crate::{local_array::{
-    bit_span::BitSpan, store::errors::PrefixStoreError,
-}, prefix_record::MergeUpdate};
 use crate::{local_array::tree::*, stats::CreatedNodes};
+use crate::{
+    local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
+    prefix_record::PublicRecord,
+};
 
 // use crate::prefix_record::InternalPrefixRecord;
 use crate::{
-    impl_search_level, retrieve_node_mut_with_guard_closure,
+    impl_search_level, impl_search_level_for_mui, 
+    retrieve_node_mut_with_guard_closure,
     store_node_closure,
 };
 
@@ -284,6 +284,25 @@ pub struct StoreStats {
     pub v6: Vec<CreatedNodes>,
 }
 
+//------------ UpsertReport --------------------------------------------------
+
+#[derive(Debug)]
+pub struct UpsertReport {
+    // Indicates the number of Atomic Compare-and-Swap operations were
+    // necessary to create/update the Record entry. High numbers indicate
+    // contention.
+    pub cas_count: usize,
+    // Indicates whether this was the first mui record for this prefix was
+    // created. So, the prefix did not exist before hand.
+    pub prefix_new: bool,
+    // Indicates whether this mui was new for this prefix. False means an old
+    // value was overwritten.
+    pub mui_new: bool,
+    // The number of mui records for this prefix after the upsert operation.
+    pub mui_count: usize,
+}
+
+
 // ----------- CustomAllocStorage -------------------------------------------
 //
 // CustomAllocStorage is a storage backend that uses a custom allocator, that
@@ -291,13 +310,15 @@ pub struct StoreStats {
 #[derive(Debug)]
 pub struct CustomAllocStorage<
     AF: AddressFamily,
-    M: crate::prefix_record::Meta + MergeUpdate,
+    M: crate::prefix_record::Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
     pub(crate) buckets: NB,
     pub prefixes: PB,
     pub default_route_prefix_serial: AtomicUsize,
+    // Global Roaring Bitmap INdex that stores MUIs.
+    pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
     _m: PhantomData<M>,
     _af: PhantomData<AF>,
@@ -313,14 +334,23 @@ impl<
 {
     pub(crate) fn init(
         root_node: SizedStrideNode<AF>,
+        // A node always gets created as an intermediary to create an actual
+        // meta-data record. A meta-data record has an id that is unique in
+        // the collection of Records, that is stored as a value in the tree.
+        // This unique id is used to be able to decide to replace or add a
+        // record to the meta-data collection in a multi-map. It is also added
+        // to a bitmap index on each node that has children where the unique
+        // id appears on a Record.
+        // multi_uniq_id: u32,
         guard: &'a Guard,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-        info!("store: initialize store");
+        info!("store: initialize store {}", AF::BITS);
 
         let store = CustomAllocStorage {
             buckets: NodeBuckets::<AF>::init(),
             prefixes: PrefixBuckets::<AF, M>::init(),
             default_route_prefix_serial: AtomicUsize::new(0),
+            withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             _af: PhantomData,
             _m: PhantomData,
@@ -328,6 +358,7 @@ impl<
 
         let _retry_count = store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
+            0_u32,
             root_node,
             guard,
         )?;
@@ -344,13 +375,16 @@ impl<
 
     // Create a new node in the store with payload `next_node`.
     //
-    // Next node will be ignored if a node with the same `id` already exists.
-    // Returns:
-    // a tuple with the node_id of the created node and the number of retry_count
+    // Next node will be ignored if a node with the same `id` already exists,
+    // but the multi_uniq_id will be added to the rbm_index of the NodeSet.
+    //
+    // Returns: a tuple with the node_id of the created node and the number of
+    // retry_count
     #[allow(clippy::type_complexity)]
     pub(crate) fn store_node(
         &self,
         id: StrideNodeId<AF>,
+        multi_uniq_id: u32,
         next_node: SizedStrideNode<AF>,
         guard: &Guard,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
@@ -359,6 +393,7 @@ impl<
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
+                u32, // multi_uniq_id
                 u8,  // the store level
                 u32, // retry_count
             ) -> Result<
@@ -378,10 +413,11 @@ impl<
 
         if log_enabled!(log::Level::Trace) {
             debug!(
-                "{} store: Store node {}: {:?}",
+                "{} store: Store node {}: {:?} mui {}",
                 std::thread::current().name().unwrap(),
                 id,
-                next_node
+                next_node,
+                multi_uniq_id
             );
         }
         self.counters.inc_nodes_count();
@@ -391,6 +427,7 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 new_node,
+                multi_uniq_id,
                 0,
                 0,
             ),
@@ -398,6 +435,7 @@ impl<
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
+                multi_uniq_id,
                 0,
                 0,
             ),
@@ -405,6 +443,7 @@ impl<
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
+                multi_uniq_id,
                 0,
                 0,
             ),
@@ -462,10 +501,67 @@ impl<
         }
     }
 
+    // retrieve a node, but only its bitmap index contains the specified mui.
+    // Used for iterators per mui.
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn retrieve_node_for_mui(
+        &'a self,
+        id: StrideNodeId<AF>,
+        // The mui that is tested to be present in the nodes bitmap index
+        mui: u32,
+        guard: &'a Guard,
+    ) -> Option<SizedStrideRef<'a, AF>> {
+        struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
+            f: &'s dyn for<'a> Fn(
+                &SearchLevel<AF, S>,
+                &NodeSet<AF, S>,
+                u8,
+                &'a Guard,
+            )
+                -> Option<SizedStrideRef<'a, AF>>,
+        }
+
+        let search_level_3 = impl_search_level_for_mui![Stride3; id; mui;];
+        let search_level_4 = impl_search_level_for_mui![Stride4; id; mui;];
+        let search_level_5 = impl_search_level_for_mui![Stride5; id; mui;];
+
+        if log_enabled!(log::Level::Trace) {
+            trace!(
+                "{} store: Retrieve node {} from l{} for mui {}",
+                std::thread::current().name().unwrap(),
+                id,
+                id.get_id().1,
+                mui
+            );
+        }
+
+        match self.get_stride_for_id(id) {
+            3 => (search_level_3.f)(
+                &search_level_3,
+                self.buckets.get_store3(id),
+                0,
+                guard,
+            ),
+            4 => (search_level_4.f)(
+                &search_level_4,
+                self.buckets.get_store4(id),
+                0,
+                guard,
+            ),
+            _ => (search_level_5.f)(
+                &search_level_5,
+                self.buckets.get_store5(id),
+                0,
+                guard,
+            ),
+        }
+    }
+
     #[allow(clippy::type_complexity)]
     pub(crate) fn retrieve_node_mut_with_guard(
         &'a self,
         id: StrideNodeId<AF>,
+        multi_uniq_id: u32,
         guard: &'a Guard,
     ) -> Option<SizedStrideRefMut<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
@@ -479,16 +575,13 @@ impl<
                 -> Option<SizedStrideRefMut<'a, AF>>,
         }
 
-        let search_level_3 =
-            retrieve_node_mut_with_guard_closure![Stride3; id;];
-        let search_level_4 =
-            retrieve_node_mut_with_guard_closure![Stride4; id;];
-        let search_level_5 =
-            retrieve_node_mut_with_guard_closure![Stride5; id;];
+        let search_level_3 = retrieve_node_mut_with_guard_closure![Stride3; id; multi_uniq_id;];
+        let search_level_4 = retrieve_node_mut_with_guard_closure![Stride4; id; multi_uniq_id;];
+        let search_level_5 = retrieve_node_mut_with_guard_closure![Stride5; id; multi_uniq_id;];
 
         if log_enabled!(log::Level::Trace) {
             trace!(
-                "{} store: Retrieve node {} from l{}",
+                "{} store: Retrieve node mut {} from l{}",
                 std::thread::current().name().unwrap(),
                 id,
                 id.get_id().1
@@ -568,156 +661,220 @@ impl<
     pub(crate) fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: M,
+        record: PublicRecord<M>,
+        update_path_selections: Option<M::TBI>,
         guard: &Guard,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
+    ) -> Result<UpsertReport, PrefixStoreError> {
         let mut retry_count = 0;
-        let mut new_record = Arc::new(record);
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
-                PrefixId::new(prefix.get_net(), prefix.get_len()),
-                guard,
+                // PrefixId::new(prefix.get_net(), prefix.get_len()),
+                prefix, guard,
             )?;
 
-        let mut inner_stored_prefix =
-            atomic_stored_prefix.0.load(Ordering::SeqCst, guard);
+        let inner_stored_prefix =
+            atomic_stored_prefix.0.load(Ordering::Acquire, guard);
 
-        loop {
-            match inner_stored_prefix.is_null() {
-                // There's no StoredPrefix at this location yet. Create a new
-                // PrefixRecord with our record and try to store it in the
-                // empty slot.
-                true => {
-                    if log_enabled!(log::Level::Debug) {
-                        debug!(
-                            "{} store: Create new prefix record",
-                            std::thread::current().name().unwrap()
-                        );
-                    }
-                    let new_stored_prefix = StoredPrefix::new::<PB>(
-                        PrefixId::new(prefix.get_net(), prefix.get_len()),
-                        new_record,
-                        level,
+        let mui_new = match inner_stored_prefix.is_null() {
+            // There's no StoredPrefix at this location yet. Create a new
+            // PrefixRecord and try to store it in the empty slot.
+            true => {
+                if log_enabled!(log::Level::Debug) {
+                    debug!(
+                        "{} store: Create new prefix record",
+                        std::thread::current().name().unwrap()
                     );
+                }
 
-                    // We're expecting an empty slot.
-                    match atomic_stored_prefix.0.compare_exchange(
-                        Shared::null(),
-                        Owned::new(new_stored_prefix),
-                        Ordering::SeqCst,
-                        Ordering::SeqCst,
-                        guard,
-                    ) {
-                        // ...and we got an empty slot, the newly created
-                        // StorePrefix is stored into it.
-                        Ok(spfx) => {
+                // We're creating a StoredPrefix without our record first,
+                // to avoid having to clone it on retry.
+                let new_stored_prefix = StoredPrefix::new::<PB>(
+                    PrefixId::new(prefix.get_net(), prefix.get_len()),
+                    level,
+                );
+
+                // We're expecting an empty slot.
+                match atomic_stored_prefix.0.compare_exchange(
+                    Shared::null(),
+                    // tag with value 1, means the path selection is set to
+                    // outdated.
+                    Owned::new(new_stored_prefix).with_tag(1),
+                    Ordering::AcqRel,
+                    Ordering::Acquire,
+                    guard,
+                ) {
+                    // ...and we got an empty slot, the newly created
+                    // StoredPrefix is stored into it.
+                    Ok(spfx) => {
+                        if log_enabled!(log::Level::Info) {
+                            let StoredPrefix {
+                                prefix,
+                                record_map: stored_record,
+                                ..
+                            } = unsafe { spfx.deref() };
                             if log_enabled!(log::Level::Info) {
-                                let StoredPrefix {
-                                    prefix,
-                                    record: stored_record,
-                                    ..
-                                } = unsafe { spfx.deref() };
-                                if log_enabled!(log::Level::Info) {
-                                    info!(
+                                info!(
                                         "{} store: Inserted new prefix record {}/{} with {:?}",
                                         std::thread::current().name().unwrap(),
                                         prefix.get_net().into_ipaddr(), prefix.get_len(),
-                                        stored_record.get_meta_cloned()
+                                        stored_record
                                     );
-                                }
                             }
-
-                            self.counters
-                                .inc_prefixes_count(prefix.get_len());
-
-                            return Ok((Upsert::Insert, retry_count));
                         }
-                        // ...somebody beat us to it, the slot's not empty
-                        // anymore, we'll have to do it again.
-                        Err(CompareExchangeError { current, new }) => {
-                            if log_enabled!(log::Level::Info) {
-                                info!(
+
+                        self.counters.inc_prefixes_count(prefix.get_len());
+
+                        // ..and update the record_map with the actual record
+                        // we got from the user.
+                        unsafe { spfx.deref() }
+                            .record_map
+                            .upsert_record(record)
+                    }
+                    // ...somebody beat us to it, the slot's not empty
+                    // anymore, we'll have to do it again.
+                    Err(CompareExchangeError { current, new: _ }) => {
+                        if log_enabled!(log::Level::Debug) {
+                            debug!(
                                     "{} store: Prefix can't be inserted as new {:?}",
                                     std::thread::current().name().unwrap(),
                                     current
                                 );
-                            }
-                            retry_count += 1;
-
-                            new_record =
-                                new.into_box().get_record_as_arc().clone();
-
-                            // reuse the returned existing prefix_record,
-                            // for the next iteration.
-                            inner_stored_prefix = current;
-
-                            continue;
                         }
+                        retry_count += 1;
+                        let stored_prefix = unsafe { current.deref() };
+
+                        // update the record_map from the winning thread
+                        // with our caller's record.
+                        stored_prefix.set_ps_outdated(guard)?;
+                        stored_prefix.record_map.upsert_record(record)
                     }
                 }
-                // There already is a StoredPrefix with a record at this
-                // location. Perform a Read-Copy-Update (RCU) on the record
-                // to update its value.
-                false => {
-                    if log_enabled!(log::Level::Debug) {
-                        debug!(
-                            "{} store: Found existing prefix record for {}/{}",
-                            std::thread::current().name().unwrap(),
-                            prefix.get_net(),
-                            prefix.get_len()
-                        );
-                    }
+            }
+            // There already is a StoredPrefix with a record at this
+            // location.
+            false => {
+                if log_enabled!(log::Level::Debug) {
+                    debug!(
+                        "{} store: Found existing prefix record for {}/{}",
+                        std::thread::current().name().unwrap(),
+                        prefix.get_net(),
+                        prefix.get_len()
+                    );
+                }
 
-                    // We don't have to reload the prefix record at this
-                    // location: Once it is created the prefix-record itself
-                    // will not be changed anymore, only its record can be
-                    // RCU'd.
+                // Update the already existing record_map with our caller's
+                // record.
+                debug!("tag {}", inner_stored_prefix.tag());
+                let stored_prefix = unsafe { inner_stored_prefix.deref() };
+                stored_prefix.set_ps_outdated(guard)?;
+                stored_prefix
+                    .record_map
+                    .upsert_record(record)
+            }
+        };
 
-                    // Prepare to invoke the ArcSwap read-copy-update cycle.
-                    // The cycle will retry the closure until it is able to
-                    // store the result produced by the last invocation. On
-                    // each invocation the implementer of the MergeUpdate
-                    // trait can choose to output some user defined UserDataOut
-                    // which we store and return to them.
-                    let mut user_data_out_final = None;
+        if let Some(tbi) = update_path_selections {
+            unsafe { inner_stored_prefix.deref() }.calculate_and_store_best_backup(&tbi, guard)?;
+        }
 
-                    unsafe { inner_stored_prefix.deref() }
-                        .record
-                        .as_arc_swap()
-                        .rcu(|meta| {
-                            // Track how many times the RCU operation invoked
-                            // us. We don't actually know if this is a retry
-                            // or the first invocation, so our counter becomes
-                            // one too high. We can't set it to -1 to start
-                            // with as it is unsigned, so outside the closure
-                            // below we correct the counter by subtracting
-                            // one from it.
-                            retry_count += 1;
+        Ok(UpsertReport {
+            prefix_new: false,
+            cas_count: retry_count,
+            mui_new: mui_new.is_none(),
+            mui_count: mui_new.unwrap_or(1),
+        })
+    }
 
-                            // TODO: if retry_count > 1 then backoff?
+    // Change the status of the record for the specified (prefix, mui)
+    // combination  to Withdrawn.
+    pub fn mark_mui_as_withdrawn_for_prefix(&self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let (atomic_stored_prefix, _level) = self
+            .non_recursive_retrieve_prefix_mut_with_guard(
+                prefix, guard,
+            )?;
+        
+        let current = unsafe { atomic_stored_prefix.0.load(Ordering::Acquire, guard).as_ref() }.unwrap();
+        current.record_map.mark_as_withdrawn_for_mui(mui);
 
-                            let (res, user_data_out) = meta
-                                .clone_merge_update(
-                                    &new_record,
-                                    user_data,
-                                )
-                                .unwrap();
-                            user_data_out_final = Some(user_data_out);
-                            res
-                        });
+        Ok(())
+    }
 
-                    // Correct the retry counter as it is off by one.
-                    retry_count -= 1;
+    // Change the status of the record for the specified (prefix, mui)
+    // combination  to Active.
+    pub fn mark_mui_as_active_for_prefix(&self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let (atomic_stored_prefix, _level) = self
+            .non_recursive_retrieve_prefix_mut_with_guard(
+                prefix, guard,
+            )?;
+        
+        let current = unsafe { atomic_stored_prefix.0.load(Ordering::Acquire, guard).as_ref() }.unwrap();
+        current.record_map.mark_as_active_for_mui(mui);
 
-                    // The user data must have been set by now so this unwrap is safe.
-                    let user_data = user_data_out_final.unwrap();
+        Ok(())
+    }
 
-                    return Ok((Upsert::Update(user_data), retry_count));
+    // Change the status of the mui globally to Withdrawn. Iterators and match
+    // functions will by default not return any records for this mui.
+    pub fn mark_mui_as_withdrawn(&self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.insert(mui);
+
+        #[allow(clippy::assigning_clones)]
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new = unsafe { updated.current.as_ref() }.unwrap().clone();
                 }
             }
         }
+    }
+
+    // Change the status of the mui globally to Active. Iterators and match
+    // functions will default to the status on the record itself.
+    pub fn mark_mui_as_active(&self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.remove(mui);
+
+        #[allow(clippy::assigning_clones)]
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new = unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
+
+    // Whether this mui is globally withdrawn. Note that this overrules (by
+    // default) any (prefix, mui) combination in iterators and match functions.
+    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+        unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).as_ref() }.unwrap().contains(mui)
+    }
+
+    // Whether this mui is globally active. Note that the local statuses of
+    // records (prefix, mui) may be set to withdrawn in iterators and match
+    // functions.
+    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+        !unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).as_ref() }.unwrap().contains(mui)
     }
 
     // This function is used by the upsert_prefix function above.
@@ -730,7 +887,7 @@ impl<
     // The error condition really shouldn't happen, because that basically
     // means the root node for that particular prefix length doesn't exist.
     #[allow(clippy::type_complexity)]
-    fn non_recursive_retrieve_prefix_mut_with_guard(
+    pub(crate) fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
         search_prefix_id: PrefixId<AF>,
         guard: &'a Guard,
@@ -795,7 +952,7 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn non_recursive_retrieve_prefix_with_guard(
+    pub fn non_recursive_retrieve_prefix_with_guard(
         &'a self,
         id: PrefixId<AF>,
         guard: &'a Guard,
@@ -857,7 +1014,7 @@ impl<
         &'a self,
         prefix_id: PrefixId<AF>,
         guard: &'a Guard,
-    ) -> Option<(&StoredPrefix<AF, M>, &'a usize)> {
+    ) -> Option<(&StoredPrefix<AF, M>, usize)> {
         struct SearchLevel<
             's,
             AF: AddressFamily,
@@ -870,7 +1027,7 @@ impl<
                 &'a Guard,
             ) -> Option<(
                 &'a StoredPrefix<AF, M>,
-                &'a usize,
+                usize,
             )>,
         }
 
@@ -883,6 +1040,7 @@ impl<
                 let index = Self::hash_prefix_id(prefix_id, level);
 
                 let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+                let tag = prefixes.tag();
                 let prefix_ref = unsafe { &prefixes.deref()[index] };
 
                 if let Some(stored_prefix) =
@@ -890,8 +1048,8 @@ impl<
                         .get_stored_prefix(guard)
                 {
                     if prefix_id == stored_prefix.prefix {
-                        trace!("found requested prefix {:?}", prefix_id);
-                        return Some((stored_prefix, &stored_prefix.serial));
+                        trace!("found requested prefix {:?} with tag {}", prefix_id, tag);
+                        return Some((stored_prefix, tag));
                     };
                     level += 1;
                     (search_level.f)(

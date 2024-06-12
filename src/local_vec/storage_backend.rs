@@ -4,15 +4,15 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::local_vec::tree::*;
 
 use crate::af::AddressFamily;
-use crate::prefix_record::MergeUpdate;
+// use crate::prefix_record::MergeUpdate;
 
 use std::fmt::Debug;
 use std::io::{Error, ErrorKind};
 
-pub(crate) type PrefixIter<'a, AF, Meta> = Result<
-    std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>,
-    Box<dyn std::error::Error>,
->;
+// pub(crate) type PrefixIter<'a, AF, Meta> = Result<
+//     std::slice::Iter<'a, InternalPrefixRecord<AF, Meta>>,
+//     Box<dyn std::error::Error>,
+// >;
 
 pub(crate) trait StorageBackend
 where
@@ -20,7 +20,7 @@ where
 {
     type NodeType;
     type AF: AddressFamily;
-    type Meta: crate::prefix_record::Meta + MergeUpdate;
+    type Meta: crate::prefix_record::Meta;
 
     fn init(
         start_node: Option<SizedStrideNode<Self::AF, Self::NodeType>>,
@@ -48,15 +48,15 @@ where
         &mut self,
         index: Self::NodeType,
     ) -> SizedNodeResult<Self::AF, Self::NodeType>;
-    fn retrieve_node_with_guard(
+    fn _retrieve_node_with_guard(
         &self,
         index: Self::NodeType,
     ) -> CacheGuard<Self::AF, Self::NodeType>;
     fn get_root_node_id(&self) -> Self::NodeType;
-    fn get_root_node_mut(
+    fn _get_root_node_mut(
         &mut self,
     ) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>>;
-    fn get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>>;
+    fn _get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>>;
     fn get_nodes_len(&self) -> usize;
     fn acquire_new_prefix_id(
         &self,
@@ -78,15 +78,16 @@ where
         &mut self,
         index: <<Self as StorageBackend>::NodeType as SortableNodeId>::Part,
     ) -> Option<&mut InternalPrefixRecord<Self::AF, Self::Meta>>;
-    fn retrieve_prefix_with_guard(
+    fn _retrieve_prefix_with_guard(
         &self,
         index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta>;
-    fn get_prefixes(
+    fn _get_prefixes(
         &self,
     ) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>>;
+    #[cfg(feature = "cli")]
     fn get_prefixes_len(&self) -> usize;
-    fn prefixes_iter(&self) -> PrefixIter<'_, Self::AF, Self::Meta>;
+    // fn prefixes_iter(&self) -> PrefixIter<'_, Self::AF, Self::Meta>;
 }
 
 #[derive(Debug)]
@@ -98,7 +99,7 @@ pub(crate) struct InMemStorage<
     pub prefixes: Vec<InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<AF: AddressFamily, Meta: crate::prefix_record::Meta + MergeUpdate>
+impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     StorageBackend for InMemStorage<AF, Meta>
 {
     type NodeType = InMemNodeId;
@@ -172,7 +173,7 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta + MergeUpdate>
 
     // Don't use this function, this is just a placeholder and a really
     // inefficient implementation.
-    fn retrieve_node_with_guard(
+    fn _retrieve_node_with_guard(
         &self,
         _id: Self::NodeType,
     ) -> CacheGuard<Self::AF, Self::NodeType> {
@@ -183,13 +184,13 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta + MergeUpdate>
         InMemNodeId(0, 0)
     }
 
-    fn get_root_node_mut(
+    fn _get_root_node_mut(
         &mut self,
     ) -> Option<&mut SizedStrideNode<Self::AF, Self::NodeType>> {
         Some(&mut self.nodes[0])
     }
 
-    fn get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>> {
+    fn _get_nodes(&self) -> &Vec<SizedStrideNode<Self::AF, Self::NodeType>> {
         &self.nodes
     }
 
@@ -233,26 +234,27 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta + MergeUpdate>
         self.prefixes.get_mut(index as usize)
     }
 
-    fn retrieve_prefix_with_guard(
+    fn _retrieve_prefix_with_guard(
         &self,
         _index: Self::NodeType,
     ) -> PrefixCacheGuard<Self::AF, Self::Meta> {
         panic!("nOt ImPlEmEnTed for InMemNode");
     }
 
-    fn get_prefixes(
+    fn _get_prefixes(
         &self,
     ) -> &Vec<InternalPrefixRecord<Self::AF, Self::Meta>> {
         &self.prefixes
     }
 
+    #[cfg(feature = "cli")]
     fn get_prefixes_len(&self) -> usize {
         self.prefixes.len()
     }
 
-    fn prefixes_iter(
-        &self,
-    ) -> PrefixIter<'_, AF, Meta> {
-        Ok(self.prefixes.iter())
-    }
+    // fn prefixes_iter(
+    //     &self,
+    // ) -> PrefixIter<'_, AF, Meta> {
+    //     Ok(self.prefixes.iter())
+    // }
 }

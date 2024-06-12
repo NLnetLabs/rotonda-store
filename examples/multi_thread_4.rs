@@ -6,33 +6,42 @@ use std::{sync::Arc, thread};
 use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub struct ComplexPrefixAs(pub Vec<u32>);
 
-impl MergeUpdate for ComplexPrefixAs {
-    type UserDataIn = ();
-    type UserDataOut = ();
+// impl MergeUpdate for ComplexPrefixAs {
+//     type UserDataIn = ();
+//     type UserDataOut = ();
 
-    fn merge_update(
-        &mut self,
-        update_record: ComplexPrefixAs,
-        _: Option<&Self::UserDataIn>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        self.0 = update_record.0;
-        Ok(())
-    }
+//     fn merge_update(
+//         &mut self,
+//         update_record: ComplexPrefixAs,
+//         _: Option<&Self::UserDataIn>,
+//     ) -> Result<(), Box<dyn std::error::Error>> {
+//         self.0 = update_record.0;
+//         Ok(())
+//     }
 
-    fn clone_merge_update(
-        &self,
-        update_meta: &Self,
-        _: Option<&Self::UserDataIn>,
-    ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-    where
-        Self: std::marker::Sized,
-    {
-        let mut new_meta = update_meta.0.clone();
-        new_meta.push(self.0[0]);
-        Ok((ComplexPrefixAs(new_meta), ()))
+//     fn clone_merge_update(
+//         &self,
+//         update_meta: &Self,
+//         _: Option<&Self::UserDataIn>,
+//     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
+//     where
+//         Self: std::marker::Sized,
+//     {
+//         let mut new_meta = update_meta.0.clone();
+//         new_meta.push(self.0[0]);
+//         Ok((ComplexPrefixAs(new_meta), ()))
+//     }
+// }
+
+impl Meta for ComplexPrefixAs {
+    type Orderable<'a> = ComplexPrefixAs;
+    type TBI = ();
+    
+    fn as_orderable(&self, _tbi: Self::TBI) -> ComplexPrefixAs {
+        self.clone()
     }
 }
 
@@ -74,11 +83,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         // print!("{}-", i);
                         match tree_bitmap.insert(
                             &pfx.unwrap(),
-                            ComplexPrefixAs([i as u32].to_vec()),
+                            Record::new(
+                                0,
+                                0,
+                                RouteStatus::Active,
+                                ComplexPrefixAs([i as u32].to_vec()),
+                            ),
+                            None
                         ) {
                             Ok(metrics) => {
-                                if metrics.1 > 0 {
-                                    eprintln!("{} {} {:?} retry count: {},", std::thread::current().name().unwrap(), metrics.0, pfx, metrics.1);
+                                if metrics.cas_count > 0 {
+                                    eprintln!("{} {} {:?} retry count: {},", std::thread::current().name().unwrap(), metrics.prefix_new, pfx, metrics.cas_count);
                                 }
                             }
                             Err(e) => {
@@ -118,9 +133,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &pfx.unwrap(),
         &MatchOptions {
             match_type: rotonda_store::MatchType::ExactMatch,
-            include_all_records: true,
+            include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
+            mui: None
         },
         guard,
     );

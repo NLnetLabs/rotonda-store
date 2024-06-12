@@ -1,6 +1,6 @@
-use crate::prefix_record::{MergeUpdate, Meta};
+use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
-use log::{error, log_enabled, trace};
+use log::{error, log_enabled, trace, debug};
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -9,7 +9,7 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, Upsert};
+use crate::custom_alloc::{CustomAllocStorage, UpsertReport};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
@@ -321,12 +321,12 @@ impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
 
 //------------------------- Node Collections --------------------------------
 
-pub trait NodeCollection<AF: AddressFamily> {
-    fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>);
-    fn to_vec(&self) -> Vec<StrideNodeId<AF>>;
-    fn as_slice(&self) -> &[AtomicStrideNodeId<AF>];
-    fn empty() -> Self;
-}
+// pub trait NodeCollection<AF: AddressFamily> {
+//     fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>);
+//     fn to_vec(&self) -> Vec<StrideNodeId<AF>>;
+//     fn as_slice(&self) -> &[AtomicStrideNodeId<AF>];
+//     fn empty() -> Self;
+// }
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub enum StrideType {
@@ -360,7 +360,7 @@ impl std::fmt::Display for StrideType {
 
 pub struct TreeBitMap<
     AF: AddressFamily,
-    M: Meta + MergeUpdate,
+    M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 > {
@@ -370,7 +370,7 @@ pub struct TreeBitMap<
 impl<
         'a,
         AF: AddressFamily,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > TreeBitMap<AF, M, NB, PB>
@@ -446,13 +446,16 @@ impl<
     pub fn insert(
         &self,
         pfx: PrefixId<AF>,
-        record: M,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
+        record: PublicRecord<M>,
+        update_path_selections: Option<M::TBI>,
+        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+    ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();
+        // let record = MultiMapValue::new(meta, ltime, status);
 
         if pfx.get_len() == 0 {
-            let res = self.update_default_route_prefix_meta(record, guard, user_data)?;
+            let res = self.update_default_route_prefix_meta(
+                record, guard)?;
             return Ok(res);
         }
 
@@ -484,13 +487,13 @@ impl<
             let node_result = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
-                user_data;
                 guard;
                 nibble_len;
                 nibble;
                 is_last_stride;
                 pfx;
                 record;
+                update_path_selections; // perform an update for the paths in this record
                 stride_start; // the length at the start of the stride a.k.a. start_bit
                 stride;
                 cur_i;
@@ -554,16 +557,33 @@ impl<
     //   those specialized methods we're good to go.
     fn update_default_route_prefix_meta(
         &self,
-        new_meta: M,
+        record: PublicRecord<M>,
         guard: &epoch::Guard,
-        user_data: Option<&<M as MergeUpdate>::UserDataIn>,
-    ) -> Result<(Upsert<<M as MergeUpdate>::UserDataOut>, u32), PrefixStoreError> {
+        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
+    ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
+
+        if let Some(root_node) = self.store.retrieve_node_mut_with_guard(self.store.get_root_node_id(), record.multi_uniq_id, guard) {
+            match root_node {
+                SizedStrideRefMut::Stride3(_) => { 
+                    self.store.buckets.get_store3(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
+                },
+                SizedStrideRefMut::Stride4(_) => {
+                    self.store.buckets.get_store4(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
+                },
+                SizedStrideRefMut::Stride5(_) => {
+                    self.store.buckets.get_store5(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
+                 },
+            };
+        };
+        
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
-            new_meta,
+            record,
+            // Do not update the path selection for the default route.
+            None,
             guard,
-            user_data,
+            // user_data,
         )
     }
 
@@ -635,10 +655,7 @@ impl<
         nibble: u32,
         nibble_len: u8,
         base_prefix: StrideNodeId<AF>,
-    ) -> Option<Vec<PrefixId<AF>>>
-    where
-        S: Stride,
-    {
+    ) -> Option<Vec<PrefixId<AF>>> {
         let (cnvec, mut msvec) = current_node.add_more_specifics_at(
             nibble,
             nibble_len,
@@ -654,7 +671,7 @@ impl<
 
 impl<
         AF: AddressFamily,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > Default for TreeBitMap<AF, M, NB, PB>
@@ -668,7 +685,7 @@ impl<
 #[cfg(feature = "cli")]
 impl<
         AF: AddressFamily,
-        M: Meta + MergeUpdate,
+        M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
     > std::fmt::Display for TreeBitMap<AF, M, NB, PB>

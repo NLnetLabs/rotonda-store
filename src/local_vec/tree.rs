@@ -3,9 +3,7 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::prefix_record::MergeUpdate;
-
-use crate::af::{AddressFamily, Zero};
+use crate::{af::{AddressFamily, Zero}, custom_alloc::UpsertReport};
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::StorageBackend;
 use crate::match_node_for_strides_with_local_vec;
@@ -68,7 +66,7 @@ impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy>
     }
 }
 
-pub(crate) struct PrefixCacheGuard<
+pub struct PrefixCacheGuard<
     'a,
     AF: 'static + AddressFamily,
     Meta: crate::prefix_record::Meta,
@@ -243,7 +241,7 @@ where
     pub(crate) fn insert(
         &mut self,
         pfx: InternalPrefixRecord<Store::AF, Store::Meta>,
-        user_data: Option<&<Store::Meta as MergeUpdate>::UserDataIn>,
+        // user_data: Option<&<Store::Meta>::UserDataIn>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mut stride_end: u8 = 0;
         let mut cur_i = self.store.get_root_node_id();
@@ -268,7 +266,7 @@ where
             let next_node_idx = match_node_for_strides_with_local_vec![
                 // applicable to the whole outer match in the marco
                 self;
-                user_data;
+                // user_data;
                 nibble_len;
                 nibble;
                 is_last_stride;
@@ -337,11 +335,13 @@ where
         &mut self,
         update_node_idx: <<Store as StorageBackend>::NodeType as SortableNodeId>::Part,
         meta: Store::Meta,
-        user_data: Option<&<Store::Meta as MergeUpdate>::UserDataIn>,
-    ) -> Result<<Store::Meta as MergeUpdate>::UserDataOut, Box<dyn std::error::Error>> {
+        // user_data: Option<&<Store::Meta>::UserDataIn>,
+    ) -> Result<UpsertReport, Box<dyn std::error::Error>> {
         match self.store.retrieve_prefix_mut(update_node_idx) {
             Some(update_pfx) => {
-                <Store::Meta>::merge_update(&mut update_pfx.meta, meta, user_data)
+                update_pfx.meta = meta;
+                Ok(UpsertReport { cas_count: 0, prefix_new: false, mui_new: false, mui_count: 0 })
+                // <Store::Meta>::merge_update(&mut update_pfx.meta, meta)
             }
             // TODO
             // Use/create proper error types
@@ -431,7 +431,7 @@ where
 
     // This function assembles the prefixes of a child node starting on a specified bit position in a ptr_vec of
     // `current_node` into a vec, then adds all prefixes of these children recursively into a vec and returns that.
-    pub fn get_all_more_specifics_from_nibble<S: Stride>(
+    pub fn get_all_more_specifics_from_nibble<S>(
         &self,
         current_node: &TreeBitMapNode<Store::AF, S, Store::NodeType>,
         nibble: u32,

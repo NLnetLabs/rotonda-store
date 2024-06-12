@@ -6,13 +6,15 @@
 macro_rules! insert_match {
     (
         $self: ident;
-        $user_data: ident;
+        // $user_data: ident;
+        // $multi_uniq_id: ident;
         $guard: ident;
         $nibble_len: expr;
         $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
         $is_last_stride: expr;
         $pfx: ident; // the whole search prefix
         $record: ident; // the record holding the metadata
+        $update_path_selections: ident; // boolean indicate whether to update the path selections for this route
         $truncate_len: ident; // the start of the length of this stride
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
@@ -48,7 +50,8 @@ macro_rules! insert_match {
             // retry_count from this macro.
             let mut local_retry_count = 0;
             loop {
-                if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $guard) {
+                // retrieve_node_mut_with_guard updates the bitmap index if necessary.
+                if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $record.multi_uniq_id, $guard) {
                     match current_node {
                         $(
                             SizedStrideRefMut::$variant(current_node) => {
@@ -77,7 +80,7 @@ macro_rules! insert_match {
                                         // store. It returns the created id
                                         // and the number of retries before
                                         // success.
-                                        match $self.store.store_node(new_id, n, $guard) {
+                                        match $self.store.store_node(new_id, $record.multi_uniq_id, n, $guard) {
                                             Ok((node_id, s_retry_count)) => {
                                                 break Ok((node_id, $acc_retry_count + s_retry_count + retry_count));
                                             },
@@ -98,14 +101,20 @@ macro_rules! insert_match {
                                         break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },
                                     (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard, $user_data)
-                                            .and_then(|r| Ok((r.0, r.1 + $acc_retry_count + local_retry_count + retry_count)))
+                                        return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
+                                            .and_then(|mut r| {
+                                                r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
+                                                Ok(r)
+                                            })
                                         // Log
                                         // $self.stats[$stats_level].inc_prefix_count($level);
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                        return $self.store.upsert_prefix($pfx, $record, $guard, $user_data)
-                                            .and_then(|r| Ok((r.0, r.1 + $acc_retry_count + local_retry_count + retry_count)))
+                                        return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
+                                            .and_then(|mut r| { 
+                                                r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
+                                                Ok(r) 
+                                            })
                                     }
                                 }   // end of eval_node_or_prefix_at
                             }
@@ -113,7 +122,7 @@ macro_rules! insert_match {
                     }
                 } else {
                     if log_enabled!(log::Level::Trace) {
-                        trace!("{} contention: Retrying id {} from store l{}. attempt {}",
+                        debug!("{} contention: Retrying id {} from store l{}. attempt {}",
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
                                 $self.store.get_stride_sizes()[$level as usize],
@@ -125,7 +134,7 @@ macro_rules! insert_match {
                     // We're giving up after a number of tries.
                     if local_retry_count >= 8 {
                         if log_enabled!(log::Level::Trace) {
-                            trace!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
+                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
                                 $self.store.get_stride_sizes()[$level as usize],

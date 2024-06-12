@@ -1,6 +1,7 @@
 #![cfg(feature = "csv")]
 #[cfg(test)]
 mod tests {
+    use inetnum::asn::Asn;
     use rotonda_store::{
         prelude::*, 
         prelude::multi::*,
@@ -10,39 +11,21 @@ mod tests {
     use std::fs::File;
     use std::process;
 
-    #[derive(Debug, Clone)]
+    #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
     pub struct ComplexPrefixAs(pub Vec<u32>);
-
-    impl MergeUpdate for ComplexPrefixAs {
-        type UserDataIn = String;
-        type UserDataOut = ();
-
-        fn merge_update(
-            &mut self,
-            update_record: ComplexPrefixAs,
-            _: Option<&Self::UserDataIn>,
-        ) -> Result<(), Box<dyn std::error::Error>> {
-            self.0 = update_record.0;
-            Ok(())
-        }
-
-        fn clone_merge_update(
-            &self,
-            update_meta: &Self,
-            _: Option<&Self::UserDataIn>,
-        ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-        where
-            Self: std::marker::Sized,
-        {
-            let mut new_meta = update_meta.0.clone();
-            new_meta.push(self.0[0]);
-            Ok((ComplexPrefixAs(new_meta), ()))
-        }
-    }
 
     impl std::fmt::Display for ComplexPrefixAs {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write!(f, "AS{:?}", self.0)
+        }
+    }
+
+    impl Meta for ComplexPrefixAs {
+        type Orderable<'a> = Asn;
+        type TBI = ();
+
+        fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
+            Asn::from(self.0[0])
         }
     }
 
@@ -75,7 +58,12 @@ mod tests {
                 let asn: u32 = record[2].parse().unwrap();
                 let pfx = PrefixRecord::new(
                     Prefix::new(net.into(), len)?,
-                    ComplexPrefixAs(vec![asn]),
+                    vec![Record::new(
+                        0,
+                        0,
+                        RouteStatus::Active,
+                        ComplexPrefixAs(vec![asn])
+                    )],
                 );
                 pfxs.push(pfx);
             }
@@ -90,8 +78,8 @@ mod tests {
         ];
         for _strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?
-                .with_user_data("Testing".to_string());
+            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?;
+                // .with_user_data("Testing".to_string());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -100,7 +88,7 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta) {
+                match tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone(), None) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
@@ -111,9 +99,10 @@ mod tests {
                 let query = tree_bitmap.match_prefix(&pfx.prefix,
                         &MatchOptions {
                         match_type: MatchType::LongestMatch,
-                        include_all_records: false,
+                        include_withdrawn: false,
                         include_less_specifics: false,
                         include_more_specifics: false,
+                        mui: None
                     },
                     guard
                 );
@@ -149,9 +138,10 @@ mod tests {
                             &pfx.unwrap(),
                             &MatchOptions {
                                 match_type: MatchType::LongestMatch,
-                                include_all_records: false,
+                                include_withdrawn: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
+                                mui: None
                             },
                             guard,
                         );

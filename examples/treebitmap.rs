@@ -184,7 +184,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
-        tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty)?;
+        tree_bitmap.insert(
+            &pfx.unwrap(), 
+            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            None
+        )?;
     }
     println!("------ end of inserts\n");
     // println!("{:#?}", tree_bitmap.store.prefixes);
@@ -290,9 +294,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             &spfx.unwrap(),
             &MatchOptions {
                 match_type: MatchType::LongestMatch,
-                include_all_records: false,
+                include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
+                mui: None
             },
             guard
         );
