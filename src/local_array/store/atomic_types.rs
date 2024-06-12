@@ -420,20 +420,6 @@ pub struct MultiMap<M: Meta>(
     pub(crate) flurry::HashMap<u32, MultiMapValue<M>>,
 );
 
-pub struct IdOrderable<T>(pub u32, T);
-
-impl<T: PartialOrd + Eq + PartialEq> PartialOrd for IdOrderable<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.1.partial_cmp(&other.1)
-    }
-}
-
-impl<T: PartialOrd + Eq + PartialOrd> PartialEq for IdOrderable<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1
-    }
-}
-
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
         Self(record_map)
