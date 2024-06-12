@@ -18,7 +18,7 @@ crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 log             = "^0.4"
 rotonda-macros  = { git = "https://github.com/NLnetLabs/rotonda-macros", branch = "indexed-multi-map" }
-routecore       = { git = "https://github.com/NLnetLabs/routecore", branch = "release-0.5.0-rc1", features = ["bgp", "bmp", "fsm", "serde"] }
+routecore       = { version = "0.5.0-rc1", features = ["bgp", "bmp", "fsm", "serde"] }
 
 inetnum     = { version = "*", features = ["arbitrary", "serde"] }
 ansi_term   = { version = "^0.12", optional = true }
