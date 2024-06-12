@@ -2,6 +2,8 @@
 
 ## 0.4.0-rc0
 
+Released 2024-06-12.
+
 Breaking changes
 
 * Removed `MergeUpdate` trait
