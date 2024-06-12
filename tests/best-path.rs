@@ -10,13 +10,14 @@ use routecore::bgp::path_attributes::PaMap;
 use routecore::bgp::path_selection::RouteSource;
 use routecore::bgp::types::LocalPref;
 use routecore::bgp::types::Origin;
+use std::net::Ipv4Addr;
 use std::str::FromStr;
 use rotonda_store::Meta;
 use rotonda_store::MultiThreadedStore;
 use routecore::bgp::path_selection::{OrdRoute, Rfc4271, TiebreakerInfo};
 
 #[derive(Clone, Debug)]
-pub struct Ipv4Route(u32, PaMap);
+pub struct Ipv4Route(u32, PaMap, TiebreakerInfo);
 
 impl std::fmt::Display for Ipv4Route {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -26,10 +27,12 @@ impl std::fmt::Display for Ipv4Route {
 
 impl Meta for Ipv4Route {
     type Orderable<'a> = OrdRoute<'a, Rfc4271>;
-    type TBI = TiebreakerInfo;
+    // We are storing the TiebreakerInfo *inside* the metadata, so we don't
+    // need to feed it in externally, so this type will be unit for us.
+    type TBI = ();
 
-    fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_> {
-        routecore::bgp::path_selection::OrdRoute::rfc4271(&self.1, tbi).unwrap()
+    fn as_orderable(&self, _tbi: Self::TBI) -> Self::Orderable<'_> {
+        routecore::bgp::path_selection::OrdRoute::rfc4271(&self.1, self.2).unwrap()
     }
 }
 
@@ -61,17 +64,29 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
     pa_map.set::<Origin>(routecore::bgp::types::Origin(routecore::bgp::types::OriginType::Egp));
 
     let mut asns_insert = vec![];
+   
+   // Out TiebreakInfo consists of some values that are the same for all of
+   // our routes, and some that are specific to the route.
+    let tbi_modifier = |peer_addr: Ipv4Addr, local_asn: Asn, bgp_identifier: BgpIdentifier| {
+        TiebreakerInfo::new(
+            RouteSource::Ebgp,
+            None,
+            local_asn,
+            bgp_identifier,
+            std::net::IpAddr::V4(peer_addr)
+        )
+    };
 
-    for (mui, _peer_addr) in [
-        (1, std::net::Ipv4Addr::from_str("192.168.12.1")?),
-        (2, std::net::Ipv4Addr::from_str("192.168.12.2")?),
-        (3, std::net::Ipv4Addr::from_str("192.168.12.3")?),
-        (4, std::net::Ipv4Addr::from_str("192.168.12.4")?),
-        (5, std::net::Ipv4Addr::from_str("192.168.12.5")?)
+    for (mui, tbi) in [
+        (1, tbi_modifier(std::net::Ipv4Addr::from_str("192.168.12.1")?, Asn::from(65400), BgpIdentifier::from([0; 4]) )),
+        (2, tbi_modifier(std::net::Ipv4Addr::from_str("192.168.12.2")?, Asn::from(65400), BgpIdentifier::from([0; 4]) )),
+        (3, tbi_modifier(std::net::Ipv4Addr::from_str("192.168.12.3")?, Asn::from(65400), BgpIdentifier::from([0; 4]) )),
+        (4, tbi_modifier(std::net::Ipv4Addr::from_str("192.168.12.4")?, Asn::from(65400), BgpIdentifier::from([0; 4]) )),
+        (5, tbi_modifier(std::net::Ipv4Addr::from_str("192.168.12.5")?, Asn::from(65400), BgpIdentifier::from([0; 4]) )),
     ] {
         asns_insert.push(asns.next().unwrap());
         pa_map.set::<HopPath>(HopPath::from(asns_insert.clone()));
-        let rec = Record::new(mui,0, RouteStatus::Active, Ipv4Route(mui, pa_map.clone()));
+        let rec = Record::new(mui,0, RouteStatus::Active, Ipv4Route(mui, pa_map.clone(), tbi));
         tree_bitmap.insert(
             &pfx, 
             rec,
@@ -102,13 +117,7 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
 
     tree_bitmap.calculate_and_store_best_and_backup_path(
         &pfx,
-        &TiebreakerInfo::new( 
-            RouteSource::Ebgp,
-            None,
-            65400.into(),
-            BgpIdentifier::from([0; 4]),
-            std::net::IpAddr::V4(std::net::Ipv4Addr::from_str("192.168.12.1")?)
-        ),
+        &(),
         &rotonda_store::epoch::pin()
     )?;
 
