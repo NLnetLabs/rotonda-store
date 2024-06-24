@@ -16,7 +16,9 @@ rust-version = "1.71"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 flurry 		= "0.5.1"
-inetnum    	= { version = "0.1", features = ["arbitrary", "serde"] }
+# inetnum    	= { version = "0.1", features = ["arbitrary", "serde"] }
+# inetnum     = { path = "../../inetnum", features = ["arbitrary", "serde"] }
+inetnum     = { git = "https://github.com/nlnetlabs/inetnum", branch = "bincode", features = ["bincode", "arbitrary", "serde"] }
 log             = "^0.4"
 roaring 	= "0.10.3"
 rotonda-macros  = { version = "0.4.0-rc0" }

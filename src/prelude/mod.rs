@@ -1,6 +1,3 @@
-
-pub use inetnum::addr::Prefix;
-
 pub use crate::{AddressFamily, IPv4, IPv6};
 
 pub use crate::prefix_record::{

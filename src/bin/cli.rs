@@ -5,6 +5,7 @@ use rustyline::Editor;
 
 use rotonda_store::prelude::{*, multi::*};
 use rotonda_store::meta_examples::PrefixAs;
+use inetnum::addr::Prefix;
 use rustyline::history::DefaultHistory;
 
 use std::env;
