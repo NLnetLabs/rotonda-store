@@ -1,4 +1,5 @@
-use flurry::HashMap;
+use std::collections::HashMap;
+use std::sync::{Arc, LockResult, Mutex, MutexGuard, PoisonError, TryLockError};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -7,6 +8,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
+use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
@@ -263,10 +265,10 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let rec_map = HashMap::new();
+        let mut rec_map = HashMap::new();
         let mui = record.multi_uniq_id;
         rec_map
-            .pin()
+            // .pin()
             .insert(record.multi_uniq_id, MultiMapValue::from(record));
 
         StoredPrefix {
@@ -417,27 +419,40 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
-    pub(crate) flurry::HashMap<u32, MultiMapValue<M>>,
+    pub(crate) Arc<Mutex<std::collections::HashMap<u32, MultiMapValue<M>>>>,
 );
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
-        Self(record_map)
+        Self(Arc::new(Mutex::new(record_map)))
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map.len()
     }
 
-    pub(crate) fn guard(&self) -> flurry::Guard<'_> {
-        self.0.guard()
-    }
+    // pub(crate) fn guard(&self) -> Result<MutexGuard<HashMap<u32, MultiMapValue<M>>>, TryLockError<MutexGuard<HashMap<u32, MultiMapValue<M>>>>> {
+    //     let backoff = Backoff::new();
+    //     // let c_map = Arc::clone(&self.0);
+    //     let mut guard = self.0.try_lock();
+    //     while let Err(_) = guard {
+    //         print!("_");
+    //         backoff.spin();
+    //         guard = self.0.try_lock();
+    //     }
+    //     guard
+    // }
 
     pub fn get_record_for_active_mui(
         &self,
         mui: u32,
     ) -> Option<PublicRecord<M>> {
-        self.0.get(&mui, &self.0.guard()).and_then(|r| {
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        
+        record_map.get(&mui).and_then(|r| {
             if r.status == RouteStatus::Active {
                 Some(PublicRecord::from((mui, r.clone())))
             } else {
@@ -447,10 +462,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
-        let flurry_guard = self.guard();
-        let ord_routes = self
-            .0
-            .iter(&flurry_guard)
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        let ord_routes = record_map
+            .iter()
             .map(|r| (r.1.meta.as_orderable(tbi), r.0));
         let (best, bckup) =
             routecore::bgp::path_selection::best_backup_generic(ord_routes);
@@ -463,7 +478,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Option<PublicRecord<M>> {
-        self.0.get(&mui, &self.0.guard()).map(|r| {
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map.get(&mui).map(|r| {
             let mut r = r.clone();
             if bmin.contains(mui) {
                 r.status = rewrite_status;
@@ -486,14 +503,15 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
-    pub fn _iter_all_records<'a>(
-        &'a self,
-        guard: &'a flurry::Guard<'a>,
-    ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
-        self.0
-            .iter(guard)
-            .map(|r| PublicRecord::from((*r.0, r.1.clone())))
-    }
+    // pub fn _iter_all_records<'a>(
+    //     &'a self,
+    //     // guard: &'a flurry::Guard<'a>,
+    // ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
+    //     let map = self.guard().unwrap();
+    //     map
+    //         .iter()
+    //         .map(|r| PublicRecord::from((*r.0, r.1.clone())))
+    // }
 
     // return all records regardless of their local status, or any globally
     // set status for the mui of the record. However, the local status for a
@@ -504,9 +522,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Vec<PublicRecord<M>> {
-        self.0
-            .pin()
-            .into_iter()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map  
+            .iter()
             .map(move |r| {
                 let mut rec = r.1.clone();
                 if bmin.contains(*r.0) {
@@ -518,8 +537,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn as_records(&self) -> Vec<PublicRecord<M>> {
-        self.0
-            .pin()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map
             .iter()
             .map(|r| PublicRecord::from((*r.0, r.1.clone())))
             .collect::<Vec<_>>()
@@ -532,8 +552,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         &self,
         bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
-        self.0
-            .pin()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map
             .iter()
             .filter_map(|r| {
                 if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
@@ -547,7 +568,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Withdrawn.
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
-        let record_map = self.0.pin();
+        let c_map = Arc::clone(&self.0);
+        let mut record_map = c_map.lock().unwrap();
         if let Some(mut rec) = record_map.get(&mui).cloned() {
             rec.status = RouteStatus::Withdrawn;
             record_map.insert(mui, rec);
@@ -556,10 +578,11 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Active.
     pub fn mark_as_active_for_mui(&self, mui: u32) {
-        let record_map = self.0.pin();
-        if let Some(mut rec) = record_map.get(&mui).cloned() {
+        let record_map = Arc::clone(&self.0);
+        let mut r_map = record_map.lock().unwrap();
+        if let Some(mut rec) = r_map.get(&mui).cloned() {
             rec.status = RouteStatus::Active;
-            record_map.insert(mui, rec);
+            r_map.insert(mui, rec);
         }
     }
 
@@ -567,8 +590,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it.
     pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
-        let record_map = self.0.pin();
-        let mui_new = record_map
+        print!("+");
+        let record_map = Arc::clone(&self.0);
+        
+        let mui_new = record_map.lock().unwrap()
             .insert(record.multi_uniq_id, MultiMapValue::from(record));
         mui_new.map(|_| self.len())
     }

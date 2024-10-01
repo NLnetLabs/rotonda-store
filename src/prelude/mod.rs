@@ -6,6 +6,7 @@ pub use crate::prefix_record::{
 };
 pub use crate::{MatchOptions, MatchType, QueryResult};
 pub use crate::stride::{Stride3, Stride4, Stride5};
+pub use inetnum::addr::Prefix;
 
 pub mod multi {
     pub use std::sync::atomic::Ordering;

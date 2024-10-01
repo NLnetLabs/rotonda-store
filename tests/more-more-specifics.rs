@@ -1,5 +1,6 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod tests {
+    use inetnum::addr::Prefix;
     use rotonda_store::{ 
         meta_examples::PrefixAs,
         prelude::*,

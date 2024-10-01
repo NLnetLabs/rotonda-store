@@ -2,6 +2,7 @@
 #[cfg(test)]
 mod tests {
     use inetnum::asn::Asn;
+    use inetnum::addr::Prefix;
     use rotonda_store::{
         prelude::*, 
         prelude::multi::*,
@@ -33,6 +34,7 @@ mod tests {
     fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
         // These constants are all contingent on the exact csv file,
         // being loaded!
+
         const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
         const SEARCHES_NUM: u32 = 2080800;
         const INSERTS_NUM: usize = 893943;
