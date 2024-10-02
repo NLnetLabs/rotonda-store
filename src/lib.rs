@@ -38,3 +38,5 @@ pub use crate::rotonda_store::*;
 // re-exports
 pub use inetnum::addr;
 pub use crossbeam_epoch::{self as epoch, Guard};
+
+pub use prefix_record::{PublicRecord, RecordSet};

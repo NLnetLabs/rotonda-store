@@ -363,7 +363,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum RouteStatus {
     Active,
     InActive,
@@ -590,7 +590,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it.
     pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
-        print!("+");
         let record_map = Arc::clone(&self.0);
         
         let mui_new = record_map.lock().unwrap()
