@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, LockResult, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{Arc, Mutex};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -8,7 +8,6 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
-use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
@@ -222,15 +221,13 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let rec_map = HashMap::new();
-
         StoredPrefix {
             // serial: 1,
             prefix: pfx_id,
             path_selections: Atomic::init(PathSelections {
                 path_selection_muis: (None, None),
             }),
-            record_map: MultiMap::new(rec_map),
+            record_map: MultiMap::new(vec![]),
             next_bucket,
         }
     }
@@ -265,11 +262,9 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let mut rec_map = HashMap::new();
         let mui = record.multi_uniq_id;
-        rec_map
-            // .pin()
-            .insert(record.multi_uniq_id, MultiMapValue::from(record));
+        let rec_map =
+            vec![(record.multi_uniq_id, MultiMapValue::from(record))];
 
         StoredPrefix {
             // serial: 1,
@@ -288,10 +283,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub fn get_path_selections(
-        &self,
-        guard: &Guard,
-    ) -> PathSelections {
+    pub fn get_path_selections(&self, guard: &Guard) -> PathSelections {
         let path_selections =
             self.path_selections.load(Ordering::Acquire, guard);
 
@@ -419,11 +411,11 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
-    pub(crate) Arc<Mutex<std::collections::HashMap<u32, MultiMapValue<M>>>>,
+    pub(crate) Arc<Mutex<Vec<(u32, MultiMapValue<M>)>>>,
 );
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
-    pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
+    pub(crate) fn new(record_map: Vec<(u32, MultiMapValue<M>)>) -> Self {
         Self(Arc::new(Mutex::new(record_map)))
     }
 
@@ -451,25 +443,27 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     ) -> Option<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        
-        record_map.get(&mui).and_then(|r| {
-            if r.status == RouteStatus::Active {
-                Some(PublicRecord::from((mui, r.clone())))
-            } else {
-                None
-            }
-        })
+
+        record_map
+            .binary_search_by_key(&mui, |&(mui, _)| mui)
+            .ok()
+            .and_then(|mui| {
+                if record_map[mui].1.status == RouteStatus::Active {
+                    Some(PublicRecord::from(record_map[mui].clone()))
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        let ord_routes = record_map
-            .iter()
-            .map(|r| (r.1.meta.as_orderable(tbi), r.0));
+        let ord_routes =
+            record_map.iter().map(|r| (r.1.meta.as_orderable(tbi), r.0));
         let (best, bckup) =
             routecore::bgp::path_selection::best_backup_generic(ord_routes);
-        (best.map(|b| *b.1), bckup.map(|b| *b.1))
+        (best.map(|b| b.1), bckup.map(|b| b.1))
     }
 
     pub(crate) fn get_record_for_mui_with_rewritten_status(
@@ -480,13 +474,18 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     ) -> Option<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        record_map.get(&mui).map(|r| {
-            let mut r = r.clone();
-            if bmin.contains(mui) {
-                r.status = rewrite_status;
-            }
-            PublicRecord::from((mui, r))
-        })
+        record_map
+            .binary_search_by_key(&mui, |&(mui, _)| mui)
+            .map(|r| {
+                // Make a cloned record, since we don't actually change the
+                // status in the store, only in the returned record.
+                let mut fake_rec = record_map[r].clone();
+                if bmin.contains(mui) {
+                    fake_rec.1.status = rewrite_status;
+                }
+                PublicRecord::from(fake_rec)
+            })
+            .ok()
     }
 
     // Helper to filter out records that are not-active (Inactive or
@@ -524,14 +523,14 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     ) -> Vec<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        record_map  
+        record_map
             .iter()
             .map(move |r| {
                 let mut rec = r.1.clone();
-                if bmin.contains(*r.0) {
+                if bmin.contains(r.0) {
                     rec.status = rewrite_status;
                 }
-                PublicRecord::from((*r.0, rec))
+                PublicRecord::from((r.0, rec))
             })
             .collect::<Vec<_>>()
     }
@@ -541,7 +540,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let record_map = c_map.lock().unwrap();
         record_map
             .iter()
-            .map(|r| PublicRecord::from((*r.0, r.1.clone())))
+            .map(|r| PublicRecord::from((r.0, r.1.clone())))
             .collect::<Vec<_>>()
     }
 
@@ -557,8 +556,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         record_map
             .iter()
             .filter_map(|r| {
-                if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
-                    Some(PublicRecord::from((*r.0, r.1.clone())))
+                if r.1.status == RouteStatus::Active && !bmin.contains(r.0) {
+                    Some(PublicRecord::from((r.0, r.1.clone())))
                 } else {
                     None
                 }
@@ -570,19 +569,18 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
         let c_map = Arc::clone(&self.0);
         let mut record_map = c_map.lock().unwrap();
-        if let Some(mut rec) = record_map.get(&mui).cloned() {
-            rec.status = RouteStatus::Withdrawn;
-            record_map.insert(mui, rec);
+        if let Ok(rec) = record_map.binary_search_by_key(&mui, |&(m, _)| m) {
+            record_map[rec].1.status = RouteStatus::Withdrawn;
+            println!("\n\n{} record_map {:?}\n\n", mui, record_map);
         }
     }
 
     // Change the local status of the record for this mui to Active.
     pub fn mark_as_active_for_mui(&self, mui: u32) {
-        let record_map = Arc::clone(&self.0);
-        let mut r_map = record_map.lock().unwrap();
-        if let Some(mut rec) = r_map.get(&mui).cloned() {
-            rec.status = RouteStatus::Active;
-            r_map.insert(mui, rec);
+        let c_map = Arc::clone(&self.0);
+        let mut record_map = c_map.lock().unwrap();
+        if let Ok(rec) = record_map.binary_search_by_key(&mui, |&(m, _)| m) {
+            record_map[rec].1.status = RouteStatus::Active;
         }
     }
 
@@ -590,12 +588,21 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it.
     pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
-        print!("+");
-        let record_map = Arc::clone(&self.0);
-        
-        let mui_new = record_map.lock().unwrap()
-            .insert(record.multi_uniq_id, MultiMapValue::from(record));
-        mui_new.map(|_| self.len())
+        let arc_map = Arc::clone(&self.0);
+        let mut record_map = arc_map.lock().unwrap();
+        let si = record_map
+            .partition_point(|&(mui, _)| mui < record.multi_uniq_id);
+
+        if si < record_map.len() {
+            if record_map[si].0 == record.multi_uniq_id {
+                record_map[si].1 = record.into();
+            } else {
+                record_map.insert(si, (record.multi_uniq_id, record.into()));
+            }
+        } else {
+            record_map.push((record.multi_uniq_id, record.into()));
+        }
+        Some(record_map.len())
     }
 }
 
@@ -697,7 +704,6 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
             None
         }
     }
-
 }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
