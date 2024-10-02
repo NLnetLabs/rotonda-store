@@ -1,7 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{
-    Arc, LockResult, Mutex, MutexGuard, PoisonError, TryLockError,
-};
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -426,6 +424,22 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         Self(Arc::new(Mutex::new(record_map)))
     }
 
+    fn guard_with_retry(
+        &self,
+        mut retry_count: usize,
+    ) -> (MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize) {
+        let backoff = Backoff::new();
+
+        loop {
+            if let Ok(guard) = self.0.try_lock() {
+                return (guard, retry_count);
+            }
+
+            backoff.spin();
+            retry_count += 1;
+        }
+    }
+
     pub fn len(&self) -> usize {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
@@ -467,7 +481,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map.get(&mui).map(|r| {
-            // We'll return a cloned record: the record in the store reaminsi
+            // We'll return a cloned record: the record in the store remains
             // untouched.
             let mut r = r.clone();
             if bmin.contains(mui) {
@@ -558,7 +572,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
         let c_map = Arc::clone(&self.0);
         let mut record_map = c_map.lock().unwrap();
-        if let Some(mut rec) = record_map.get_mut(&mui) {
+        if let Some(rec) = record_map.get_mut(&mui) {
             rec.status = RouteStatus::Withdrawn;
             // record_map.insert(mui, rec);
         }
@@ -568,7 +582,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn mark_as_active_for_mui(&self, mui: u32) {
         let record_map = Arc::clone(&self.0);
         let mut r_map = record_map.lock().unwrap();
-        if let Some(mut rec) = r_map.get_mut(&mui) {
+        if let Some(rec) = r_map.get_mut(&mui) {
             rec.status = RouteStatus::Active;
             // r_map.insert(mui, rec);
         }
@@ -576,15 +590,28 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Insert or replace the PublicRecord in the HashMap for the key of
     // record.multi_uniq_id. Returns the number of entries in the HashMap
-    // after updating it.
-    pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
-        let record_map = Arc::clone(&self.0);
+    // after updating it, if it's more than 1. Returns None if this is the
+    // first entry.
+    pub fn upsert_record(
+        &self,
+        record: PublicRecord<M>,
+    ) -> (Option<usize>, usize) {
+        let c_map = self.clone();
+        let (mut record_map, retry_count) = c_map.guard_with_retry(0);
 
-        let mui_new = record_map
-            .lock()
-            .unwrap()
-            .insert(record.multi_uniq_id, MultiMapValue::from(record));
-        mui_new.map(|_| self.len())
+        if let Some(_) = record_map
+            .insert(record.multi_uniq_id, MultiMapValue::from(record))
+        {
+            (Some(record_map.len()), retry_count)
+        } else {
+            (None, retry_count)
+        }
+    }
+}
+
+impl<M: Meta> Clone for MultiMap<M> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
     }
 }
 
