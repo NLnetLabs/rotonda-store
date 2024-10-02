@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, LockResult, Mutex, MutexGuard, PoisonError, TryLockError};
+use std::sync::{
+    Arc, LockResult, Mutex, MutexGuard, PoisonError, TryLockError,
+};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -288,10 +290,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub fn get_path_selections(
-        &self,
-        guard: &Guard,
-    ) -> PathSelections {
+    pub fn get_path_selections(&self, guard: &Guard) -> PathSelections {
         let path_selections =
             self.path_selections.load(Ordering::Acquire, guard);
 
@@ -433,25 +432,13 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         record_map.len()
     }
 
-    // pub(crate) fn guard(&self) -> Result<MutexGuard<HashMap<u32, MultiMapValue<M>>>, TryLockError<MutexGuard<HashMap<u32, MultiMapValue<M>>>>> {
-    //     let backoff = Backoff::new();
-    //     // let c_map = Arc::clone(&self.0);
-    //     let mut guard = self.0.try_lock();
-    //     while let Err(_) = guard {
-    //         print!("_");
-    //         backoff.spin();
-    //         guard = self.0.try_lock();
-    //     }
-    //     guard
-    // }
-
     pub fn get_record_for_active_mui(
         &self,
         mui: u32,
     ) -> Option<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        
+
         record_map.get(&mui).and_then(|r| {
             if r.status == RouteStatus::Active {
                 Some(PublicRecord::from((mui, r.clone())))
@@ -464,9 +451,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        let ord_routes = record_map
-            .iter()
-            .map(|r| (r.1.meta.as_orderable(tbi), r.0));
+        let ord_routes =
+            record_map.iter().map(|r| (r.1.meta.as_orderable(tbi), r.0));
         let (best, bckup) =
             routecore::bgp::path_selection::best_backup_generic(ord_routes);
         (best.map(|b| *b.1), bckup.map(|b| *b.1))
@@ -481,6 +467,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map.get(&mui).map(|r| {
+            // We'll return a cloned record: the record in the store reaminsi
+            // untouched.
             let mut r = r.clone();
             if bmin.contains(mui) {
                 r.status = rewrite_status;
@@ -524,7 +512,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     ) -> Vec<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        record_map  
+        record_map
             .iter()
             .map(move |r| {
                 let mut rec = r.1.clone();
@@ -570,9 +558,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
         let c_map = Arc::clone(&self.0);
         let mut record_map = c_map.lock().unwrap();
-        if let Some(mut rec) = record_map.get(&mui).cloned() {
+        if let Some(mut rec) = record_map.get_mut(&mui) {
             rec.status = RouteStatus::Withdrawn;
-            record_map.insert(mui, rec);
+            // record_map.insert(mui, rec);
         }
     }
 
@@ -580,9 +568,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn mark_as_active_for_mui(&self, mui: u32) {
         let record_map = Arc::clone(&self.0);
         let mut r_map = record_map.lock().unwrap();
-        if let Some(mut rec) = r_map.get(&mui).cloned() {
+        if let Some(mut rec) = r_map.get_mut(&mui) {
             rec.status = RouteStatus::Active;
-            r_map.insert(mui, rec);
+            // r_map.insert(mui, rec);
         }
     }
 
@@ -591,8 +579,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // after updating it.
     pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
         let record_map = Arc::clone(&self.0);
-        
-        let mui_new = record_map.lock().unwrap()
+
+        let mui_new = record_map
+            .lock()
+            .unwrap()
             .insert(record.multi_uniq_id, MultiMapValue::from(record));
         mui_new.map(|_| self.len())
     }
@@ -696,7 +686,6 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
             None
         }
     }
-
 }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
