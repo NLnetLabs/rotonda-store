@@ -85,11 +85,11 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                     // loaded value, NOT mutating it, so we don't run into
                     // concurrent write scenarios (which we would if we'd use
                     // `deref_mut()`).
-                    let mut rbm_index =
-                        unsafe { a_rbm_index.deref() }.clone();
+
+                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
                     rbm_index.insert(multi_uniq_id);
 
-                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+                    // a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
                     try_count += 1;
                     Some(a_rbm_index)
@@ -99,11 +99,11 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 crate::prelude::multi::PrefixStoreError::StoreNotReadyError
             })?;
 
-        trace!("Added {} to {:?}", multi_uniq_id, unsafe {
-            self.1
-                .load(std::sync::atomic::Ordering::SeqCst, guard)
-                .as_ref()
-        });
+        // trace!("Added {} to {:?}", multi_uniq_id, unsafe {
+        //     self.1
+        //         .load(std::sync::atomic::Ordering::SeqCst, guard)
+        //         .as_ref()
+        // });
         Ok(try_count)
     }
 
@@ -286,10 +286,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub fn get_path_selections(
-        &self,
-        guard: &Guard,
-    ) -> PathSelections {
+    pub fn get_path_selections(&self, guard: &Guard) -> PathSelections {
         let path_selections =
             self.path_selections.load(Ordering::Acquire, guard);
 
@@ -672,7 +669,6 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
             None
         }
     }
-
 }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
