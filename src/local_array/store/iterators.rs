@@ -299,7 +299,7 @@ pub(crate) struct MoreSpecificPrefixIter<
     mui: Option<u32>,
     // This is the tree-wide index of withdrawn muis, used to rewrite the
     // statuses of these records, or filter them out.
-    global_withdrawn_bmin: &'a RoaringBitmap,
+    // global_withdrawn_bmin: &'a RoaringBitmap,
     // Whether we should filter out the withdrawn records in the search result
     include_withdrawn: bool,
     guard: &'a Guard,
@@ -353,7 +353,7 @@ impl<
                                 .record_map
                                 .get_record_for_mui_with_rewritten_status(
                                     mui,
-                                    self.global_withdrawn_bmin,
+                                    // self.global_withdrawn_bmin,
                                     RouteStatus::Withdrawn,
                                 )
                             {
@@ -388,7 +388,7 @@ impl<
                                     p.prefix,
                                     p.record_map
                                         .as_records_with_rewritten_status(
-                                            self.global_withdrawn_bmin,
+                                            // self.global_withdrawn_bmin,
                                             RouteStatus::Withdrawn,
                                         ),
                                 )
@@ -397,7 +397,7 @@ impl<
                                     p.prefix,
                                     p.record_map
                                         .as_active_records_not_in_bmin(
-                                            self.global_withdrawn_bmin,
+                                            // self.global_withdrawn_bmin,
                                         ),
                                 )
                             }
@@ -539,7 +539,7 @@ pub(crate) struct LessSpecificPrefixIter<
     include_withdrawn: bool,
     // This is the tree-wide index of withdrawn muis, used to filter out the
     // records for those.
-    global_withdrawn_bmin: &'a RoaringBitmap,
+    // global_withdrawn_bmin: &'a RoaringBitmap,
     guard: &'a Guard,
 }
 
@@ -621,7 +621,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             .record_map
                             .get_record_for_mui_with_rewritten_status(
                                 mui,
-                                self.global_withdrawn_bmin,
+                                // self.global_withdrawn_bmin,
                                 RouteStatus::Withdrawn,
                             )
                             .into_iter()
@@ -641,14 +641,14 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         stored_prefix
                             .record_map
                             .as_records_with_rewritten_status(
-                                self.global_withdrawn_bmin,
+                                // self.global_withdrawn_bmin,
                                 RouteStatus::Withdrawn,
                             )
                     } else {
                         stored_prefix
                             .record_map
                             .as_active_records_not_in_bmin(
-                                self.global_withdrawn_bmin,
+                                // self.global_withdrawn_bmin,
                             )
                     }
                 };
@@ -805,11 +805,11 @@ impl<
                     }
                 };
 
-                let global_withdrawn_bmin = unsafe {
-                    self.withdrawn_muis_bmin
-                        .load(Ordering::Acquire, guard)
-                        .deref()
-                };
+                // let global_withdrawn_bmin = unsafe {
+                //     self.withdrawn_muis_bmin
+                //         .load(Ordering::Acquire, guard)
+                //         .deref()
+                // };
 
                 Some(MoreSpecificPrefixIter {
                     store: self,
@@ -818,7 +818,7 @@ impl<
                     cur_ptr_iter,
                     start_bit_span,
                     parent_and_position: vec![],
-                    global_withdrawn_bmin,
+                    // global_withdrawn_bmin,
                     include_withdrawn,
                     mui,
                 })
@@ -853,11 +853,11 @@ impl<
         } else {
             let cur_len = start_prefix_id.get_len() - 1;
             let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
-            let global_withdrawn_bmin = unsafe {
-                self.withdrawn_muis_bmin
-                    .load(Ordering::Acquire, guard)
-                    .deref()
-            };
+            // let global_withdrawn_bmin = unsafe {
+            //     self.withdrawn_muis_bmin
+            //         .load(Ordering::Acquire, guard)
+            //         .deref()
+            // };
 
             Some(LessSpecificPrefixIter {
                 prefixes: &self.prefixes,
@@ -866,7 +866,7 @@ impl<
                 cur_level: 0,
                 cur_prefix_id: start_prefix_id,
                 mui,
-                global_withdrawn_bmin,
+                // global_withdrawn_bmin: &RoaringBitmap::new(),
                 include_withdrawn,
                 guard,
             })

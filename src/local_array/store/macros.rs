@@ -84,21 +84,21 @@ macro_rules! impl_search_level_for_mui {
                     match this_node.is_null() {
                         true => None,
                         false => {
-                            let StoredNode { node_id, node, node_set, .. } = unsafe { 
-                                this_node.deref() 
+                            let StoredNode { node_id, node, node_set, .. } = unsafe {
+                                this_node.deref()
                             };
 
                             // early return if the mui is not in the index
                             // stored in this node, meaning the mui does not
                             // appear anywhere in the sub-tree formed from
                             // this node.
-                            let bmin: &RoaringBitmap = unsafe { 
-                                node_set.1.load(Ordering::Acquire, guard).deref()
-                            };
-                            if !bmin.contains($mui) {
-                                return None;
-                            }
-                            
+                            // let bmin: &RoaringBitmap = unsafe {
+                            //     node_set.1.load(Ordering::Acquire, guard).deref()
+                            // };
+                            // if !bmin.contains($mui) {
+                            //     return None;
+                            // }
+
                             if $id == *node_id {
                                 // YES, It's the one we're looking for!
                                 return Some(SizedStrideRef::$stride(&node));
@@ -168,12 +168,12 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             // to, does not need to be written to, it's part
                             // of a trie, so it just needs to "exist" (and it
                             // already does).
-                            let retry_count = node_set.update_rbm_index(
-                                $multi_uniq_id, guard
-                            ).ok();
+                            // let retry_count = node_set.update_rbm_index(
+                            //     $multi_uniq_id, guard
+                            // ).ok();
 
-                            trace!("Retry_count rbm index {:?}", retry_count);
-                            trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, node);
+                            // trace!("Retry_count rbm index {:?}", retry_count);
+                            // trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, node);
                             return Some(SizedStrideRefMut::$stride(node));
                         };
                         // Meh, it's not, but we can a go to the next level
@@ -217,13 +217,13 @@ macro_rules! store_node_closure {
             search_level: &SearchLevel<AF, $stride>,
             nodes,
             new_node: TreeBitMapNode<AF, $stride>,
-            multi_uniq_id: u32,
+            // multi_uniq_id: u32,
             mut level: u8,
             mut retry_count: u32| {
                 let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                 trace!("{:032b}", $id.get_id().0);
                 trace!("id {:?}", $id.get_id());
-                trace!("multi_uniq_id {}", multi_uniq_id);
+                // trace!("multi_uniq_id {}", multi_uniq_id);
 
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
@@ -252,12 +252,12 @@ macro_rules! store_node_closure {
                                     );
                                 }
 
-                                trace!("multi uniq id {}", multi_uniq_id);
+                                // trace!("multi uniq id {}", multi_uniq_id);
 
-                                let node_set = if next_level > 0 { 
+                                let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
                                 } else { NodeSet(
-                                    Atomic::null(), nodes.1.load(Ordering::Acquire, $guard).into()) };
+                                    Atomic::null() )};
 
                                 // Update the rbm_index in this node with the
                                 // multi_uniq_id that the caller specified. We're
@@ -280,7 +280,7 @@ macro_rules! store_node_closure {
                                 // threshold. In that case a false positive is
                                 // stored in the index, which leads to more
                                 // in-vain searching, but not to data corruption.
-                                retry_count += node_set.update_rbm_index(multi_uniq_id, $guard)?;
+                                // retry_count += node_set.update_rbm_index(multi_uniq_id, $guard)?;
 
                                 match node_ref.compare_exchange(
                                     Shared::null(),
@@ -313,7 +313,7 @@ macro_rules! store_node_closure {
                                             search_level,
                                             nodes,
                                             cur_node,
-                                            multi_uniq_id,
+                                            // multi_uniq_id,
                                             level,
                                             retry_count
                                         );
@@ -353,9 +353,9 @@ macro_rules! store_node_closure {
 
                                     // Same remarks here as the above
                                     // fetch_update.
-                                    stored_node.node_set.update_rbm_index(
-                                        multi_uniq_id, $guard
-                                    )?;
+                                    // stored_node.node_set.update_rbm_index(
+                                    //     multi_uniq_id, $guard
+                                    // )?;
 
                                     return Ok(($id, retry_count));
                                 } else {
@@ -364,7 +364,7 @@ macro_rules! store_node_closure {
                                     level += 1;
                                     trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
                                         stored_node.node_id, $id, $id.get_id().1, level, index
-                                    );                                        
+                                    );
 
                                     return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                         // on to the next level!
@@ -373,7 +373,7 @@ macro_rules! store_node_closure {
                                                 search_level,
                                                 &stored_node.node_set,
                                                 new_node,
-                                                multi_uniq_id,
+                                                // multi_uniq_id,
                                                 level,
                                                 retry_count
                                             )

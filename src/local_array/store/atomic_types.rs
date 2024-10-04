@@ -43,7 +43,7 @@ pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
-    pub Atomic<RoaringBitmap>,
+    // pub Atomic<RoaringBitmap>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
@@ -61,98 +61,98 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         for i in 0..size {
             l[i] = MaybeUninit::new(Atomic::null());
         }
-        NodeSet(l.into(), RoaringBitmap::new().into())
+        NodeSet(l.into()) //, RoaringBitmap::new().into())
     }
 
-    pub fn update_rbm_index(
-        &self,
-        multi_uniq_id: u32,
-        guard: &crate::epoch::Guard,
-    ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
-    where
-        S: crate::local_array::atomic_stride::Stride,
-        AF: crate::AddressFamily,
-    {
-        let mut try_count = 0;
+    // pub fn update_rbm_index(
+    //     &self,
+    //     multi_uniq_id: u32,
+    //     guard: &crate::epoch::Guard,
+    // ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
+    // where
+    //     S: crate::local_array::atomic_stride::Stride,
+    //     AF: crate::AddressFamily,
+    // {
+    //     let mut try_count = 0;
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |mut a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
-                    let mut rbm_index =
-                        unsafe { a_rbm_index.deref() }.clone();
-                    rbm_index.insert(multi_uniq_id);
+    //     self.1
+    //         .fetch_update(
+    //             std::sync::atomic::Ordering::AcqRel,
+    //             std::sync::atomic::Ordering::Acquire,
+    //             guard,
+    //             |mut a_rbm_index| {
+    //                 // SAFETY: The rbm_index gets created as an empty
+    //                 // RoaringBitmap at init time of the NodeSet, so it cannot
+    //                 // be a NULL pointer at this point. We're cloning the
+    //                 // loaded value, NOT mutating it, so we don't run into
+    //                 // concurrent write scenarios (which we would if we'd use
+    //                 // `deref_mut()`).
+    //                 let mut rbm_index =
+    //                     unsafe { a_rbm_index.deref() }.clone();
+    //                 rbm_index.insert(multi_uniq_id);
 
-                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+    //                 a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
-                    try_count += 1;
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+    //                 try_count += 1;
+    //                 Some(a_rbm_index)
+    //             },
+    //         )
+    //         .map_err(|_| {
+    //             crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+    //         })?;
 
-        trace!("Added {} to {:?}", multi_uniq_id, unsafe {
-            self.1
-                .load(std::sync::atomic::Ordering::SeqCst, guard)
-                .as_ref()
-        });
-        Ok(try_count)
-    }
+    //     trace!("Added {} to {:?}", multi_uniq_id, unsafe {
+    //         self.1
+    //             .load(std::sync::atomic::Ordering::SeqCst, guard)
+    //             .as_ref()
+    //     });
+    //     Ok(try_count)
+    // }
 
-    pub fn remove_from_rbm_index(
-        &self,
-        multi_uniq_id: u32,
-        guard: &crate::epoch::Guard,
-    ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
-    where
-        S: crate::local_array::atomic_stride::Stride,
-        AF: crate::AddressFamily,
-    {
-        let mut try_count = 0;
+    // pub fn remove_from_rbm_index(
+    //     &self,
+    //     multi_uniq_id: u32,
+    //     guard: &crate::epoch::Guard,
+    // ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
+    // where
+    //     S: crate::local_array::atomic_stride::Stride,
+    //     AF: crate::AddressFamily,
+    // {
+    //     let mut try_count = 0;
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |mut a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
-                    let mut rbm_index =
-                        unsafe { a_rbm_index.deref() }.clone();
-                    rbm_index.remove(multi_uniq_id);
+    //     self.1
+    //         .fetch_update(
+    //             std::sync::atomic::Ordering::AcqRel,
+    //             std::sync::atomic::Ordering::Acquire,
+    //             guard,
+    //             |mut a_rbm_index| {
+    //                 // SAFETY: The rbm_index gets created as an empty
+    //                 // RoaringBitmap at init time of the NodeSet, so it cannot
+    //                 // be a NULL pointer at this point. We're cloning the
+    //                 // loaded value, NOT mutating it, so we don't run into
+    //                 // concurrent write scenarios (which we would if we'd use
+    //                 // `deref_mut()`).
+    //                 let mut rbm_index =
+    //                     unsafe { a_rbm_index.deref() }.clone();
+    //                 rbm_index.remove(multi_uniq_id);
 
-                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+    //                 a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
-                    try_count += 1;
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+    //                 try_count += 1;
+    //                 Some(a_rbm_index)
+    //             },
+    //         )
+    //         .map_err(|_| {
+    //             crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+    //         })?;
 
-        trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
-            self.1
-                .load(std::sync::atomic::Ordering::SeqCst, guard)
-                .as_ref()
-        });
-        Ok(try_count)
-    }
+    //     trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
+    //         self.1
+    //             .load(std::sync::atomic::Ordering::SeqCst, guard)
+    //             .as_ref()
+    //     });
+    //     Ok(try_count)
+    // }
 }
 
 // ----------- Prefix related structs ---------------------------------------
@@ -475,7 +475,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub(crate) fn get_record_for_mui_with_rewritten_status(
         &self,
         mui: u32,
-        bmin: &RoaringBitmap,
+        // bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Option<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
@@ -484,9 +484,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             // We'll return a cloned record: the record in the store remains
             // untouched.
             let mut r = r.clone();
-            if bmin.contains(mui) {
-                r.status = rewrite_status;
-            }
+            // if bmin.contains(mui) {
+            //     r.status = rewrite_status;
+            // }
             PublicRecord::from((mui, r))
         })
     }
@@ -496,12 +496,12 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn get_filtered_records(
         &self,
         mui: Option<u32>,
-        bmin: &RoaringBitmap,
+        // bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
         if let Some(mui) = mui {
             self.get_record_for_active_mui(mui).into_iter().collect()
         } else {
-            self.as_active_records_not_in_bmin(bmin)
+            self.as_active_records_not_in_bmin()
         }
     }
 
@@ -521,7 +521,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // rewritten with the specified RouteStatus.
     pub fn as_records_with_rewritten_status(
         &self,
-        bmin: &RoaringBitmap,
+        // bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Vec<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
@@ -530,9 +530,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             .iter()
             .map(move |r| {
                 let mut rec = r.1.clone();
-                if bmin.contains(*r.0) {
-                    rec.status = rewrite_status;
-                }
+                // if bmin.contains(*r.0) {
+                //     rec.status = rewrite_status;
+                // }
                 PublicRecord::from((*r.0, rec))
             })
             .collect::<Vec<_>>()
@@ -552,14 +552,14 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // withdrawn routes.
     pub fn as_active_records_not_in_bmin(
         &self,
-        bmin: &RoaringBitmap,
+        // bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map
             .iter()
             .filter_map(|r| {
-                if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
+                if r.1.status == RouteStatus::Active {
                     Some(PublicRecord::from((*r.0, r.1.clone())))
                 } else {
                     None

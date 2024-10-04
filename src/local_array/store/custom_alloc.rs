@@ -314,7 +314,7 @@ pub struct CustomAllocStorage<
     pub prefixes: PB,
     pub default_route_prefix_serial: AtomicUsize,
     // Global Roaring Bitmap INdex that stores MUIs.
-    pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    // pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
     _m: PhantomData<M>,
     _af: PhantomData<AF>,
@@ -346,7 +346,7 @@ impl<
             buckets: NodeBuckets::<AF>::init(),
             prefixes: PrefixBuckets::<AF, M>::init(),
             default_route_prefix_serial: AtomicUsize::new(0),
-            withdrawn_muis_bmin: RoaringBitmap::new().into(),
+            // withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             _af: PhantomData,
             _m: PhantomData,
@@ -354,7 +354,7 @@ impl<
 
         let _retry_count = store.store_node(
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
-            0_u32,
+            // 0_u32,
             root_node,
             guard,
         )?;
@@ -380,7 +380,7 @@ impl<
     pub(crate) fn store_node(
         &self,
         id: StrideNodeId<AF>,
-        multi_uniq_id: u32,
+        // multi_uniq_id: u32,
         next_node: SizedStrideNode<AF>,
         guard: &Guard,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
@@ -389,7 +389,7 @@ impl<
                 &SearchLevel<AF, S>,
                 &NodeSet<AF, S>,
                 TreeBitMapNode<AF, S>,
-                u32, // multi_uniq_id
+                // u32, // multi_uniq_id
                 u8,  // the store level
                 u32, // retry_count
             ) -> Result<
@@ -409,11 +409,11 @@ impl<
 
         if log_enabled!(log::Level::Trace) {
             debug!(
-                "{} store: Store node {}: {:?} mui {}",
+                "{} store: Store node {}: {:?}",
                 std::thread::current().name().unwrap(),
                 id,
                 next_node,
-                multi_uniq_id
+                // multi_uniq_id
             );
         }
         self.counters.inc_nodes_count();
@@ -423,7 +423,7 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 new_node,
-                multi_uniq_id,
+                // multi_uniq_id,
                 0,
                 0,
             ),
@@ -431,7 +431,7 @@ impl<
                 &search_level_4,
                 self.buckets.get_store4(id),
                 new_node,
-                multi_uniq_id,
+                // multi_uniq_id,
                 0,
                 0,
             ),
@@ -439,7 +439,7 @@ impl<
                 &search_level_5,
                 self.buckets.get_store5(id),
                 new_node,
-                multi_uniq_id,
+                // multi_uniq_id,
                 0,
                 0,
             ),
@@ -838,27 +838,28 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+        // let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.insert(mui);
+        // let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        // new.insert(mui);
 
-        #[allow(clippy::assigning_clones)]
-        loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
+        // #[allow(clippy::assigning_clones)]
+        // loop {
+        //     match self.withdrawn_muis_bmin.compare_exchange(
+        //         current,
+        //         Owned::new(new),
+        //         Ordering::AcqRel,
+        //         Ordering::Acquire,
+        //         guard,
+        //     ) {
+        //         Ok(_) => return Ok(()),
+        //         Err(updated) => {
+        //             new =
+        //                 unsafe { updated.current.as_ref() }.unwrap().clone();
+        //         }
+        //     }
+        // }
+        Ok(())
     }
 
     // Change the status of the mui globally to Active. Iterators and match
@@ -868,52 +869,55 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+        // let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.remove(mui);
+        // let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        // new.remove(mui);
 
-        #[allow(clippy::assigning_clones)]
-        loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
+        // #[allow(clippy::assigning_clones)]
+        // loop {
+        //     match self.withdrawn_muis_bmin.compare_exchange(
+        //         current,
+        //         Owned::new(new),
+        //         Ordering::AcqRel,
+        //         Ordering::Acquire,
+        //         guard,
+        //     ) {
+        //         Ok(_) => return Ok(()),
+        //         Err(updated) => {
+        //             new =
+        //                 unsafe { updated.current.as_ref() }.unwrap().clone();
+        //         }
+        //     }
+        // }
+        Ok(())
     }
 
     // Whether this mui is globally withdrawn. Note that this overrules (by
     // default) any (prefix, mui) combination in iterators and match functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-        unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
+        // unsafe {
+        //     self.withdrawn_muis_bmin
+        //         .load(Ordering::Acquire, guard)
+        //         .as_ref()
+        // }
+        // .unwrap()
+        // .contains(mui)
+        true
     }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
     pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
-        !unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
+        // !unsafe {
+        //     self.withdrawn_muis_bmin
+        //         .load(Ordering::Acquire, guard)
+        //         .as_ref()
+        // }
+        // .unwrap()
+        // .contains(mui)
+        true
     }
 
     // This function is used by the upsert_prefix function above.

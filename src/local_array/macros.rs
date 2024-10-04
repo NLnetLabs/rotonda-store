@@ -80,7 +80,7 @@ macro_rules! insert_match {
                                         // store. It returns the created id
                                         // and the number of retries before
                                         // success.
-                                        match $self.store.store_node(new_id, $record.multi_uniq_id, n, $guard) {
+                                        match $self.store.store_node(new_id, n, $guard) {
                                             Ok((node_id, s_retry_count)) => {
                                                 break Ok((node_id, $acc_retry_count + s_retry_count + retry_count));
                                             },
@@ -111,9 +111,9 @@ macro_rules! insert_match {
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
                                         return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
-                                            .and_then(|mut r| { 
+                                            .and_then(|mut r| {
                                                 r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
-                                                Ok(r) 
+                                                Ok(r)
                                             })
                                     }
                                 }   // end of eval_node_or_prefix_at
@@ -134,7 +134,7 @@ macro_rules! insert_match {
                     // We're giving up after a number of tries.
                     if local_retry_count >= 8 {
                         if log_enabled!(log::Level::Trace) {
-                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
+                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.",
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
                                 $self.store.get_stride_sizes()[$level as usize],
