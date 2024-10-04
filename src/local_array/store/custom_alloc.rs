@@ -193,6 +193,7 @@ use log::{debug, info, log_enabled, trace};
 use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
+use fastbloom::BloomFilter;
 use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;

@@ -84,21 +84,21 @@ macro_rules! impl_search_level_for_mui {
                     match this_node.is_null() {
                         true => None,
                         false => {
-                            let StoredNode { node_id, node, node_set, .. } = unsafe { 
-                                this_node.deref() 
+                            let StoredNode { node_id, node, node_set, .. } = unsafe {
+                                this_node.deref()
                             };
 
                             // early return if the mui is not in the index
                             // stored in this node, meaning the mui does not
                             // appear anywhere in the sub-tree formed from
                             // this node.
-                            let bmin: &RoaringBitmap = unsafe { 
+                            let bmin: &BloomFilter = unsafe {
                                 node_set.1.load(Ordering::Acquire, guard).deref()
                             };
-                            if !bmin.contains($mui) {
+                            if !bmin.contains(&$mui) {
                                 return None;
                             }
-                            
+
                             if $id == *node_id {
                                 // YES, It's the one we're looking for!
                                 return Some(SizedStrideRef::$stride(&node));
@@ -254,7 +254,7 @@ macro_rules! store_node_closure {
 
                                 trace!("multi uniq id {}", multi_uniq_id);
 
-                                let node_set = if next_level > 0 { 
+                                let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
                                 } else { NodeSet(
                                     Atomic::null(), nodes.1.load(Ordering::Acquire, $guard).into()) };
@@ -364,7 +364,7 @@ macro_rules! store_node_closure {
                                     level += 1;
                                     trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
                                         stored_node.node_id, $id, $id.get_id().1, level, index
-                                    );                                        
+                                    );
 
                                     return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                         // on to the next level!

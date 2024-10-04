@@ -12,6 +12,7 @@ use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
+use fastbloom::BloomFilter;
 use roaring::RoaringBitmap;
 
 use crate::local_array::tree::*;
@@ -43,7 +44,7 @@ pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
-    pub Atomic<RoaringBitmap>,
+    pub Atomic<BloomFilter>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
@@ -61,7 +62,10 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         for i in 0..size {
             l[i] = MaybeUninit::new(Atomic::null());
         }
-        NodeSet(l.into(), RoaringBitmap::new().into())
+        NodeSet(
+            l.into(),
+            BloomFilter::with_num_bits(8192).expected_items(500).into(),
+        )
     }
 
     pub fn update_rbm_index(
@@ -89,7 +93,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                     // `deref_mut()`).
                     let mut rbm_index =
                         unsafe { a_rbm_index.deref() }.clone();
-                    rbm_index.insert(multi_uniq_id);
+                    rbm_index.insert(&multi_uniq_id);
 
                     a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
@@ -109,50 +113,50 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         Ok(try_count)
     }
 
-    pub fn remove_from_rbm_index(
-        &self,
-        multi_uniq_id: u32,
-        guard: &crate::epoch::Guard,
-    ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
-    where
-        S: crate::local_array::atomic_stride::Stride,
-        AF: crate::AddressFamily,
-    {
-        let mut try_count = 0;
+    // pub fn remove_from_rbm_index(
+    //     &self,
+    //     multi_uniq_id: u32,
+    //     guard: &crate::epoch::Guard,
+    // ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
+    // where
+    //     S: crate::local_array::atomic_stride::Stride,
+    //     AF: crate::AddressFamily,
+    // {
+    //     let mut try_count = 0;
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |mut a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
-                    let mut rbm_index =
-                        unsafe { a_rbm_index.deref() }.clone();
-                    rbm_index.remove(multi_uniq_id);
+    //     self.1
+    //         .fetch_update(
+    //             std::sync::atomic::Ordering::AcqRel,
+    //             std::sync::atomic::Ordering::Acquire,
+    //             guard,
+    //             |mut a_rbm_index| {
+    //                 // SAFETY: The rbm_index gets created as an empty
+    //                 // RoaringBitmap at init time of the NodeSet, so it cannot
+    //                 // be a NULL pointer at this point. We're cloning the
+    //                 // loaded value, NOT mutating it, so we don't run into
+    //                 // concurrent write scenarios (which we would if we'd use
+    //                 // `deref_mut()`).
+    //                 let mut rbm_index =
+    //                     unsafe { a_rbm_index.deref() }.clone();
+    //                 rbm_index.remove(multi_uniq_id);
 
-                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+    //                 a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
-                    try_count += 1;
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+    //                 try_count += 1;
+    //                 Some(a_rbm_index)
+    //             },
+    //         )
+    //         .map_err(|_| {
+    //             crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+    //         })?;
 
-        trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
-            self.1
-                .load(std::sync::atomic::Ordering::SeqCst, guard)
-                .as_ref()
-        });
-        Ok(try_count)
-    }
+    //     trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
+    //         self.1
+    //             .load(std::sync::atomic::Ordering::SeqCst, guard)
+    //             .as_ref()
+    //     });
+    //     Ok(try_count)
+    // }
 }
 
 // ----------- Prefix related structs ---------------------------------------
