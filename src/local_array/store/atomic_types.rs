@@ -83,15 +83,13 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 |mut a_rbm_index| {
                     // SAFETY: The rbm_index gets created as an empty
                     // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
+                    // be a NULL pointer at this point.
 
+                    // Data races that could normally arise as a consequence
+                    // of the .deref_mut() are avoided by the guarantees of
+                    // fetch_update (it does CAS).
                     let rbm_index = unsafe { a_rbm_index.deref_mut() };
                     rbm_index.insert(multi_uniq_id);
-
-                    // a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
                     try_count += 1;
                     Some(a_rbm_index)
@@ -128,15 +126,13 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 |mut a_rbm_index| {
                     // SAFETY: The rbm_index gets created as an empty
                     // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
-                    let mut rbm_index =
-                        unsafe { a_rbm_index.deref() }.clone();
-                    rbm_index.remove(multi_uniq_id);
+                    // be a NULL pointer at this point.
 
-                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+                    // Data races that could normally arise as a consequence
+                    // of the .deref_mut() are avoided by the guarantees of
+                    // fetch_update (it does CAS).
+                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
+                    rbm_index.remove(multi_uniq_id);
 
                     try_count += 1;
                     Some(a_rbm_index)
