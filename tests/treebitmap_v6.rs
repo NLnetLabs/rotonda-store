@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod tests {
+    use inetnum::addr::Prefix;
     use rotonda_store::{
         prelude::*, prelude::multi::*, 
         meta_examples::PrefixAs,

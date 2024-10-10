@@ -205,9 +205,8 @@ use crate::{
 
 // use crate::prefix_record::InternalPrefixRecord;
 use crate::{
-    impl_search_level, impl_search_level_for_mui, 
-    retrieve_node_mut_with_guard_closure,
-    store_node_closure,
+    impl_search_level, impl_search_level_for_mui,
+    retrieve_node_mut_with_guard_closure, store_node_closure,
 };
 
 use super::atomic_types::*;
@@ -299,7 +298,6 @@ pub struct UpsertReport {
     // The number of mui records for this prefix after the upsert operation.
     pub mui_count: usize,
 }
-
 
 // ----------- CustomAllocStorage -------------------------------------------
 //
@@ -664,6 +662,7 @@ impl<
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut retry_count = 0;
+        let mut prefix_new = true;
 
         let (atomic_stored_prefix, level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(
@@ -674,7 +673,9 @@ impl<
         let inner_stored_prefix =
             atomic_stored_prefix.0.load(Ordering::Acquire, guard);
 
-        let mui_new = match inner_stored_prefix.is_null() {
+        let (mui_new, insert_retry_count) = match inner_stored_prefix
+            .is_null()
+        {
             // There's no StoredPrefix at this location yet. Create a new
             // PrefixRecord and try to store it in the empty slot.
             true => {
@@ -760,25 +761,25 @@ impl<
                         prefix.get_len()
                     );
                 }
+                prefix_new = false;
 
                 // Update the already existing record_map with our caller's
                 // record.
                 debug!("tag {}", inner_stored_prefix.tag());
                 let stored_prefix = unsafe { inner_stored_prefix.deref() };
                 stored_prefix.set_ps_outdated(guard)?;
-                stored_prefix
-                    .record_map
-                    .upsert_record(record)
+                stored_prefix.record_map.upsert_record(record)
             }
         };
 
         if let Some(tbi) = update_path_selections {
-            unsafe { inner_stored_prefix.deref() }.calculate_and_store_best_backup(&tbi, guard)?;
+            unsafe { inner_stored_prefix.deref() }
+                .calculate_and_store_best_backup(&tbi, guard)?;
         }
 
         Ok(UpsertReport {
-            prefix_new: false,
-            cas_count: retry_count,
+            prefix_new,
+            cas_count: retry_count + insert_retry_count,
             mui_new: mui_new.is_none(),
             mui_count: mui_new.unwrap_or(1),
         })
@@ -786,13 +787,22 @@ impl<
 
     // Change the status of the record for the specified (prefix, mui)
     // combination  to Withdrawn.
-    pub fn mark_mui_as_withdrawn_for_prefix(&self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
-        let (atomic_stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(
-                prefix, guard,
-            )?;
-        
-        let current = unsafe { atomic_stored_prefix.0.load(Ordering::Acquire, guard).as_ref() }.unwrap();
+    pub fn mark_mui_as_withdrawn_for_prefix(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let (atomic_stored_prefix, _level) =
+            self.non_recursive_retrieve_prefix_mut_with_guard(prefix, guard)?;
+
+        let current = unsafe {
+            atomic_stored_prefix
+                .0
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap();
         current.record_map.mark_as_withdrawn_for_mui(mui);
 
         Ok(())
@@ -800,13 +810,22 @@ impl<
 
     // Change the status of the record for the specified (prefix, mui)
     // combination  to Active.
-    pub fn mark_mui_as_active_for_prefix(&self, prefix: PrefixId<AF>, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
-        let (atomic_stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(
-                prefix, guard,
-            )?;
-        
-        let current = unsafe { atomic_stored_prefix.0.load(Ordering::Acquire, guard).as_ref() }.unwrap();
+    pub fn mark_mui_as_active_for_prefix(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let (atomic_stored_prefix, _level) =
+            self.non_recursive_retrieve_prefix_mut_with_guard(prefix, guard)?;
+
+        let current = unsafe {
+            atomic_stored_prefix
+                .0
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap();
         current.record_map.mark_as_active_for_mui(mui);
 
         Ok(())
@@ -814,7 +833,11 @@ impl<
 
     // Change the status of the mui globally to Withdrawn. Iterators and match
     // functions will by default not return any records for this mui.
-    pub fn mark_mui_as_withdrawn(&self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+    pub fn mark_mui_as_withdrawn(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
         let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
@@ -827,11 +850,12 @@ impl<
                 Owned::new(new),
                 Ordering::AcqRel,
                 Ordering::Acquire,
-                guard
+                guard,
             ) {
                 Ok(_) => return Ok(()),
                 Err(updated) => {
-                    new = unsafe { updated.current.as_ref() }.unwrap().clone();
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
                 }
             }
         }
@@ -839,7 +863,11 @@ impl<
 
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
-    pub fn mark_mui_as_active(&self, mui: u32, guard: &Guard) -> Result<(), PrefixStoreError> {
+    pub fn mark_mui_as_active(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
         let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
@@ -852,11 +880,12 @@ impl<
                 Owned::new(new),
                 Ordering::AcqRel,
                 Ordering::Acquire,
-                guard
+                guard,
             ) {
                 Ok(_) => return Ok(()),
                 Err(updated) => {
-                    new = unsafe { updated.current.as_ref() }.unwrap().clone();
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
                 }
             }
         }
@@ -865,14 +894,26 @@ impl<
     // Whether this mui is globally withdrawn. Note that this overrules (by
     // default) any (prefix, mui) combination in iterators and match functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-        unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).as_ref() }.unwrap().contains(mui)
+        unsafe {
+            self.withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap()
+        .contains(mui)
     }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
     pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
-        !unsafe { self.withdrawn_muis_bmin.load(Ordering::Acquire, guard).as_ref() }.unwrap().contains(mui)
+        !unsafe {
+            self.withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap()
+        .contains(mui)
     }
 
     // This function is used by the upsert_prefix function above.
@@ -1023,10 +1064,8 @@ impl<
                 &PrefixSet<AF, M>,
                 u8,
                 &'a Guard,
-            ) -> Option<(
-                &'a StoredPrefix<AF, M>,
-                usize,
-            )>,
+            )
+                -> Option<(&'a StoredPrefix<AF, M>, usize)>,
         }
 
         let search_level = SearchLevel {
@@ -1046,7 +1085,11 @@ impl<
                         .get_stored_prefix(guard)
                 {
                     if prefix_id == stored_prefix.prefix {
-                        trace!("found requested prefix {:?} with tag {}", prefix_id, tag);
+                        trace!(
+                            "found requested prefix {:?} with tag {}",
+                            prefix_id,
+                            tag
+                        );
                         return Some((stored_prefix, tag));
                     };
                     level += 1;

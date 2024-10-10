@@ -13,6 +13,7 @@ mod common {
 mod tests {
     use std::str::FromStr;
 
+    use inetnum::addr::Prefix;
     use rotonda_store::{
         meta_examples::{NoMeta, PrefixAs},
         prelude::multi::*,

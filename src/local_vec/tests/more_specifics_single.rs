@@ -1,5 +1,7 @@
 #![cfg(test)]
 mod tests {
+    use inetnum::addr::Prefix;
+
     use crate::{ 
         prelude::*,
         meta_examples::PrefixAs,

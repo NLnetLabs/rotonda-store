@@ -16,10 +16,11 @@ rust-version = "1.71"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 flurry 		= "0.5.1"
-inetnum    	= { version = "0.1", features = ["arbitrary", "serde"] }
+inetnum = "0.1.0"
 log             = "^0.4"
 roaring 	= "0.10.3"
 rotonda-macros  = { version = "0.4.0-rc0" }
+#rotonda-macros  = { path = "../rotonda-macros" }
 routecore       = { version = "0.5.0-rc1", features = ["bgp", "bmp", "fsm", "serde"] }
 
 ansi_term   = { version = "0.12", optional = true }

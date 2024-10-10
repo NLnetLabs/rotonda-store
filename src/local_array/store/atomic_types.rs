@@ -1,4 +1,5 @@
-use flurry::HashMap;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -7,6 +8,7 @@ use std::{
 
 use crossbeam_epoch::{self as epoch, Atomic};
 
+use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
@@ -81,15 +83,13 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 |mut a_rbm_index| {
                     // SAFETY: The rbm_index gets created as an empty
                     // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
+                    // be a NULL pointer at this point.
 
+                    // Data races that could normally arise as a consequence
+                    // of the .deref_mut() are avoided by the guarantees of
+                    // fetch_update (it does CAS).
                     let rbm_index = unsafe { a_rbm_index.deref_mut() };
                     rbm_index.insert(multi_uniq_id);
-
-                    // a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
 
                     try_count += 1;
                     Some(a_rbm_index)
@@ -126,15 +126,13 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 |mut a_rbm_index| {
                     // SAFETY: The rbm_index gets created as an empty
                     // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point. We're cloning the
-                    // loaded value, NOT mutating it, so we don't run into
-                    // concurrent write scenarios (which we would if we'd use
-                    // `deref_mut()`).
-                    let mut rbm_index =
-                        unsafe { a_rbm_index.deref() }.clone();
-                    rbm_index.remove(multi_uniq_id);
+                    // be a NULL pointer at this point.
 
-                    a_rbm_index = Atomic::new(rbm_index).load_consume(guard);
+                    // Data races that could normally arise as a consequence
+                    // of the .deref_mut() are avoided by the guarantees of
+                    // fetch_update (it does CAS).
+                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
+                    rbm_index.remove(multi_uniq_id);
 
                     try_count += 1;
                     Some(a_rbm_index)
@@ -263,10 +261,10 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let rec_map = HashMap::new();
+        let mut rec_map = HashMap::new();
         let mui = record.multi_uniq_id;
         rec_map
-            .pin()
+            // .pin()
             .insert(record.multi_uniq_id, MultiMapValue::from(record));
 
         StoredPrefix {
@@ -358,7 +356,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub enum RouteStatus {
     Active,
     InActive,
@@ -414,27 +412,44 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
-    pub(crate) flurry::HashMap<u32, MultiMapValue<M>>,
+    pub(crate) Arc<Mutex<std::collections::HashMap<u32, MultiMapValue<M>>>>,
 );
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
-        Self(record_map)
+        Self(Arc::new(Mutex::new(record_map)))
+    }
+
+    fn guard_with_retry(
+        &self,
+        mut retry_count: usize,
+    ) -> (MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize) {
+        let backoff = Backoff::new();
+
+        loop {
+            if let Ok(guard) = self.0.try_lock() {
+                return (guard, retry_count);
+            }
+
+            backoff.spin();
+            retry_count += 1;
+        }
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
-    }
-
-    pub(crate) fn guard(&self) -> flurry::Guard<'_> {
-        self.0.guard()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map.len()
     }
 
     pub fn get_record_for_active_mui(
         &self,
         mui: u32,
     ) -> Option<PublicRecord<M>> {
-        self.0.get(&mui, &self.0.guard()).and_then(|r| {
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+
+        record_map.get(&mui).and_then(|r| {
             if r.status == RouteStatus::Active {
                 Some(PublicRecord::from((mui, r.clone())))
             } else {
@@ -444,11 +459,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
-        let flurry_guard = self.guard();
-        let ord_routes = self
-            .0
-            .iter(&flurry_guard)
-            .map(|r| (r.1.meta.as_orderable(tbi), r.0));
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        let ord_routes =
+            record_map.iter().map(|r| (r.1.meta.as_orderable(tbi), r.0));
         let (best, bckup) =
             routecore::bgp::path_selection::best_backup_generic(ord_routes);
         (best.map(|b| *b.1), bckup.map(|b| *b.1))
@@ -460,7 +474,11 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Option<PublicRecord<M>> {
-        self.0.get(&mui, &self.0.guard()).map(|r| {
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map.get(&mui).map(|r| {
+            // We'll return a cloned record: the record in the store remains
+            // untouched.
             let mut r = r.clone();
             if bmin.contains(mui) {
                 r.status = rewrite_status;
@@ -483,14 +501,15 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
-    pub fn _iter_all_records<'a>(
-        &'a self,
-        guard: &'a flurry::Guard<'a>,
-    ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
-        self.0
-            .iter(guard)
-            .map(|r| PublicRecord::from((*r.0, r.1.clone())))
-    }
+    // pub fn _iter_all_records<'a>(
+    //     &'a self,
+    //     // guard: &'a flurry::Guard<'a>,
+    // ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
+    //     let map = self.guard().unwrap();
+    //     map
+    //         .iter()
+    //         .map(|r| PublicRecord::from((*r.0, r.1.clone())))
+    // }
 
     // return all records regardless of their local status, or any globally
     // set status for the mui of the record. However, the local status for a
@@ -501,9 +520,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Vec<PublicRecord<M>> {
-        self.0
-            .pin()
-            .into_iter()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map
+            .iter()
             .map(move |r| {
                 let mut rec = r.1.clone();
                 if bmin.contains(*r.0) {
@@ -515,8 +535,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn as_records(&self) -> Vec<PublicRecord<M>> {
-        self.0
-            .pin()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map
             .iter()
             .map(|r| PublicRecord::from((*r.0, r.1.clone())))
             .collect::<Vec<_>>()
@@ -529,8 +550,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         &self,
         bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
-        self.0
-            .pin()
+        let c_map = Arc::clone(&self.0);
+        let record_map = c_map.lock().unwrap();
+        record_map
             .iter()
             .filter_map(|r| {
                 if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
@@ -544,30 +566,48 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Withdrawn.
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32) {
-        let record_map = self.0.pin();
-        if let Some(mut rec) = record_map.get(&mui).cloned() {
+        let c_map = Arc::clone(&self.0);
+        let mut record_map = c_map.lock().unwrap();
+        if let Some(rec) = record_map.get_mut(&mui) {
             rec.status = RouteStatus::Withdrawn;
-            record_map.insert(mui, rec);
+            // record_map.insert(mui, rec);
         }
     }
 
     // Change the local status of the record for this mui to Active.
     pub fn mark_as_active_for_mui(&self, mui: u32) {
-        let record_map = self.0.pin();
-        if let Some(mut rec) = record_map.get(&mui).cloned() {
+        let record_map = Arc::clone(&self.0);
+        let mut r_map = record_map.lock().unwrap();
+        if let Some(rec) = r_map.get_mut(&mui) {
             rec.status = RouteStatus::Active;
-            record_map.insert(mui, rec);
+            // r_map.insert(mui, rec);
         }
     }
 
     // Insert or replace the PublicRecord in the HashMap for the key of
     // record.multi_uniq_id. Returns the number of entries in the HashMap
-    // after updating it.
-    pub fn upsert_record(&self, record: PublicRecord<M>) -> Option<usize> {
-        let record_map = self.0.pin();
-        let mui_new = record_map
-            .insert(record.multi_uniq_id, MultiMapValue::from(record));
-        mui_new.map(|_| self.len())
+    // after updating it, if it's more than 1. Returns None if this is the
+    // first entry.
+    pub fn upsert_record(
+        &self,
+        record: PublicRecord<M>,
+    ) -> (Option<usize>, usize) {
+        let c_map = self.clone();
+        let (mut record_map, retry_count) = c_map.guard_with_retry(0);
+
+        if let Some(_) = record_map
+            .insert(record.multi_uniq_id, MultiMapValue::from(record))
+        {
+            (Some(record_map.len()), retry_count)
+        } else {
+            (None, retry_count)
+        }
+    }
+}
+
+impl<M: Meta> Clone for MultiMap<M> {
+    fn clone(&self) -> Self {
+        Self(Arc::clone(&self.0))
     }
 }
 

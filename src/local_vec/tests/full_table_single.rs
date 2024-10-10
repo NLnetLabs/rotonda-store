@@ -2,6 +2,7 @@
 #![cfg(test)]
     
 mod full_table {    
+    use inetnum::addr::Prefix;
     use inetnum::asn::Asn;
 
     use crate::{
