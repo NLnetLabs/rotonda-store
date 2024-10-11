@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -184,8 +184,9 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
     pub record_map: MultiMap<M>,
     // (mui of best path entry, mui of backup path entry) from the record_map
     path_selections: Atomic<PathSelections>,
-    // the reference to the next set of records for this prefix, if any.
-    pub next_bucket: PrefixSet<AF, M>,
+    // the reference to the next set of records for this prefix.
+    // StoredPrefixes in leave nodes do not have a next_bucket, of course.
+    pub next_bucket: Option<PrefixSet<AF, M>>,
 }
 
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
@@ -200,21 +201,21 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
 
         trace!("this level {} next level {}", this_level, next_level);
-        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+        let next_bucket = if next_level > 0 {
             debug!(
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
                 std::thread::current().name().unwrap(),
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
-            PrefixSet::init((1 << (next_level - this_level)) as usize)
+            Some(PrefixSet::init((1 << (next_level - this_level)) as usize))
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 std::thread::current().name().unwrap(),
                 pfx_id.get_len()
             );
-            PrefixSet::empty()
+            None
         };
         // End of calculation
 
@@ -231,54 +232,54 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         }
     }
 
-    pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
-        pfx_id: PrefixId<AF>,
-        record: PublicRecord<M>,
-        level: u8,
-    ) -> Self {
-        // start calculation size of next set, it's dependent on the level
-        // we're in.
-        // let pfx_id = PrefixId::new(record.net, record.len);
-        let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
-        let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+    // pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
+    //     pfx_id: PrefixId<AF>,
+    //     record: PublicRecord<M>,
+    //     level: u8,
+    // ) -> Self {
+    //     // start calculation size of next set, it's dependent on the level
+    //     // we're in.
+    //     // let pfx_id = PrefixId::new(record.net, record.len);
+    //     let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
+    //     let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
 
-        trace!("this level {} next level {}", this_level, next_level);
-        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-            debug!(
-                "{} store: INSERT with new bucket of size {} at prefix len {}",
-                std::thread::current().name().unwrap(),
-                1 << (next_level - this_level),
-                pfx_id.get_len()
-            );
-            PrefixSet::init((1 << (next_level - this_level)) as usize)
-        } else {
-            debug!(
-                "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
-                std::thread::current().name().unwrap(),
-                pfx_id.get_len()
-            );
-            PrefixSet::empty()
-        };
-        // End of calculation
+    //     trace!("this level {} next level {}", this_level, next_level);
+    //     let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+    //         debug!(
+    //             "{} store: INSERT with new bucket of size {} at prefix len {}",
+    //             std::thread::current().name().unwrap(),
+    //             1 << (next_level - this_level),
+    //             pfx_id.get_len()
+    //         );
+    //         PrefixSet::init((1 << (next_level - this_level)) as usize)
+    //     } else {
+    //         debug!(
+    //             "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
+    //             std::thread::current().name().unwrap(),
+    //             pfx_id.get_len()
+    //         );
+    //         PrefixSet::empty()
+    //     };
+    //     // End of calculation
 
-        let mut rec_map = HashMap::new();
-        let mui = record.multi_uniq_id;
-        rec_map
-            // .pin()
-            .insert(record.multi_uniq_id, MultiMapValue::from(record));
+    //     let mut rec_map = HashMap::new();
+    //     let mui = record.multi_uniq_id;
+    //     rec_map
+    //         // .pin()
+    //         .insert(record.multi_uniq_id, MultiMapValue::from(record));
 
-        StoredPrefix {
-            // serial: 1,
-            prefix: pfx_id,
-            // In a new prefix, the first inserted record will always be the
-            // best path
-            path_selections: Atomic::new(PathSelections {
-                path_selection_muis: (Some(mui), None),
-            }),
-            record_map: MultiMap::new(rec_map),
-            next_bucket,
-        }
-    }
+    //     StoredPrefix {
+    //         // serial: 1,
+    //         prefix: pfx_id,
+    //         // In a new prefix, the first inserted record will always be the
+    //         // best path
+    //         path_selections: Atomic::new(PathSelections {
+    //             path_selection_muis: (Some(mui), None),
+    //         }),
+    //         record_map: MultiMap::new(rec_map),
+    //         next_bucket,
+    //     }
+    // }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
         self.prefix
@@ -294,6 +295,29 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
             },
             |ps| *ps,
         )
+    }
+
+    pub(crate) fn get_next_bucket<'a>(
+        &'a self,
+        // guard: &'a Guard,
+    ) -> Option<&PrefixSet<AF, M>> {
+        // let guard = &epoch::pin();
+        // if let Some(stored_prefix) = self.get_stored_prefix(guard) {
+        //     // if stored_prefix.super_agg_record.is_some() {
+        //     if !&stored_prefix
+        //         .next_bucket
+        //         .0
+        //         .load(Ordering::SeqCst, guard)
+        //         .is_null()
+        //     {
+        //         Some(&stored_prefix.next_bucket)
+        //     } else {
+        //         None
+        //     }
+        // } else {
+        //     None
+        // }
+        self.next_bucket.as_ref()
     }
 
     pub(crate) fn set_path_selections(
@@ -688,27 +712,27 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
     // UB! Therefore we keep the prefix record in an Option: If
     // that Option is None, then the PrefixSet is a null pointer and
     // we'll return None
-    pub(crate) fn get_next_bucket<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&PrefixSet<AF, Meta>> {
-        // let guard = &epoch::pin();
-        if let Some(stored_prefix) = self.get_stored_prefix(guard) {
-            // if stored_prefix.super_agg_record.is_some() {
-            if !&stored_prefix
-                .next_bucket
-                .0
-                .load(Ordering::SeqCst, guard)
-                .is_null()
-            {
-                Some(&stored_prefix.next_bucket)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
+    // pub(crate) fn get_next_bucket<'a>(
+    //     &'a self,
+    //     guard: &'a Guard,
+    // ) -> Option<&PrefixSet<AF, Meta>> {
+    //     // let guard = &epoch::pin();
+    //     if let Some(stored_prefix) = self.get_stored_prefix(guard) {
+    //         // if stored_prefix.super_agg_record.is_some() {
+    //         if !&stored_prefix
+    //             .next_bucket
+    //             .0
+    //             .load(Ordering::SeqCst, guard)
+    //             .is_null()
+    //         {
+    //             Some(&stored_prefix.next_bucket)
+    //         } else {
+    //             None
+    //         }
+    //     } else {
+    //         None
+    //     }
+    // }
 }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
@@ -749,20 +773,22 @@ where
 // address to be able to calculate the complete prefix of a child prefix.
 
 #[derive(Debug)]
-#[repr(align(8))]
 pub struct PrefixSet<AF: AddressFamily, M: Meta>(
-    pub Atomic<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>,
+    pub Box<[OnceLock<StoredPrefix<AF, M>>]>,
 );
 
 impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
-        let mut l =
-            Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
+        let mut l = Vec::with_capacity(size);
+
+        // let l = AtomicStoredPrefix<AF, M>>>::new(vec![
+        // AtomicStoredPrefix::empty(),
+        // ]);
         trace!("creating space for {} prefixes in prefix_set", &size);
-        for i in 0..size {
-            l[i] = MaybeUninit::new(AtomicStoredPrefix::empty());
+        for _i in 0..size {
+            l.push(OnceLock::new());
         }
-        PrefixSet(l.into())
+        PrefixSet(l.into_boxed_slice())
     }
 
     // pub fn get_len_recursive(&self) -> usize {
@@ -797,16 +823,18 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub(crate) fn get_by_index<'a>(
         &'a self,
         index: usize,
-        guard: &'a Guard,
-    ) -> &'a AtomicStoredPrefix<AF, M> {
-        assert!(!self.0.load(Ordering::SeqCst, guard).is_null());
-        unsafe {
-            self.0.load(Ordering::SeqCst, guard).deref()[index]
-                .assume_init_ref()
-        }
+        // guard: &'a Guard,
+    ) -> Option<&'a StoredPrefix<AF, M>> {
+        // assert!(!self.0.load(Ordering::SeqCst, guard).is_null());
+        // unsafe {
+        // self.0.load(Ordering::SeqCst, guard).deref().get(index)
+        // .assume_init_ref()
+        // }
+        self.0[index].get()
     }
 
-    pub(crate) fn empty() -> Self {
-        PrefixSet(Atomic::null())
-    }
+    // pub(crate) fn empty() -> Self {
+    // PrefixSet(Atomic::null())
+
+    // }
 }

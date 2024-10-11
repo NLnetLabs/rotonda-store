@@ -185,7 +185,10 @@
 
 use std::{
     fmt::Debug,
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicUsize, Ordering},
+        OnceLock,
+    },
 };
 
 use log::{debug, info, log_enabled, trace};
@@ -194,6 +197,7 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{CompareExchangeError, Guard, Owned, Shared};
 use roaring::RoaringBitmap;
+use routecore::bgp::message::notification::RouteRefreshMessageSubcode;
 
 use std::marker::PhantomData;
 
@@ -664,118 +668,141 @@ impl<
         let mut retry_count = 0;
         let mut prefix_new = true;
 
-        let (atomic_stored_prefix, level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(
-                // PrefixId::new(prefix.get_net(), prefix.get_len()),
-                prefix, guard,
-            )?;
+        // let (stored_prefix, level) = self
+        //     .non_recursive_retrieve_prefix_mut_with_guard(
+        //         // PrefixId::new(prefix.get_net(), prefix.get_len()),
+        //         prefix,
+        //     );
 
-        let inner_stored_prefix =
-            atomic_stored_prefix.0.load(Ordering::Acquire, guard);
+        // let inner_stored_prefix = atomic_stored_prefix; //.0.load(Ordering::Acquire, guard);
 
-        let (mui_new, insert_retry_count) = match inner_stored_prefix
-            .is_null()
-        {
-            // There's no StoredPrefix at this location yet. Create a new
-            // PrefixRecord and try to store it in the empty slot.
-            true => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
-                        "{} store: Create new prefix record",
-                        std::thread::current().name().unwrap()
+        let (mui_new, insert_retry_count) =
+            match self.non_recursive_retrieve_prefix_mut_with_guard(prefix) {
+                // There's no StoredPrefix at this location yet. Create a new
+                // PrefixRecord and try to store it in the empty slot.
+                Err((locked_prefix, level)) => {
+                    let mut res;
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
+                            "{} store: Create new prefix record",
+                            std::thread::current().name().unwrap()
+                        );
+                    }
+
+                    // We're creating a StoredPrefix without our record first,
+                    // to avoid having to clone it on retry.
+
+                    let new_stored_prefix = StoredPrefix::new::<PB>(
+                        PrefixId::new(prefix.get_net(), prefix.get_len()),
+                        level,
                     );
-                }
+                    res = new_stored_prefix
+                        .record_map
+                        .upsert_record(record.clone());
 
-                // We're creating a StoredPrefix without our record first,
-                // to avoid having to clone it on retry.
-                let new_stored_prefix = StoredPrefix::new::<PB>(
-                    PrefixId::new(prefix.get_net(), prefix.get_len()),
-                    level,
-                );
+                    let set_res = locked_prefix.set(new_stored_prefix);
+                    let back_off = Backoff::new();
 
-                // We're expecting an empty slot.
-                match atomic_stored_prefix.0.compare_exchange(
-                    Shared::null(),
-                    // tag with value 1, means the path selection is set to
-                    // outdated.
-                    Owned::new(new_stored_prefix).with_tag(1),
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                    guard,
-                ) {
-                    // ...and we got an empty slot, the newly created
-                    // StoredPrefix is stored into it.
-                    Ok(spfx) => {
-                        if log_enabled!(log::Level::Info) {
-                            let StoredPrefix {
-                                prefix,
-                                record_map: stored_record,
-                                ..
-                            } = unsafe { spfx.deref() };
-                            if log_enabled!(log::Level::Info) {
-                                info!(
-                                        "{} store: Inserted new prefix record {}/{} with {:?}",
-                                        std::thread::current().name().unwrap(),
-                                        prefix.get_net().into_ipaddr(), prefix.get_len(),
-                                        stored_record
-                                    );
-                            }
+                    loop {
+                        if let Ok(()) = set_res {
+                            break;
+                        } else {
+                            if let Some(stored_record) = locked_prefix.get() {
+                                res = stored_record
+                                    .record_map
+                                    .upsert_record(record.clone());
+                                // locked_prefix.set(*stored_record);
+                            };
                         }
-
-                        self.counters.inc_prefixes_count(prefix.get_len());
-
-                        // ..and update the record_map with the actual record
-                        // we got from the user.
-                        unsafe { spfx.deref() }
-                            .record_map
-                            .upsert_record(record)
+                        back_off.snooze();
                     }
-                    // ...somebody beat us to it, the slot's not empty
-                    // anymore, we'll have to do it again.
-                    Err(CompareExchangeError { current, new: _ }) => {
-                        if log_enabled!(log::Level::Debug) {
-                            debug!(
-                                    "{} store: Prefix can't be inserted as new {:?}",
-                                    std::thread::current().name().unwrap(),
-                                    current
-                                );
-                        }
-                        retry_count += 1;
-                        let stored_prefix = unsafe { current.deref() };
 
-                        // update the record_map from the winning thread
-                        // with our caller's record.
-                        stored_prefix.set_ps_outdated(guard)?;
-                        stored_prefix.record_map.upsert_record(record)
-                    }
+                    // We're expecting an empty slot.
+                    // match atomic_stored_prefix.0.compare_exchange(
+                    //     Shared::null(),
+                    //     // tag with value 1, means the path selection is set to
+                    //     // outdated.
+                    //     Owned::new(new_stored_prefix).with_tag(1),
+                    //     Ordering::AcqRel,
+                    //     Ordering::Acquire,
+                    //     guard,
+                    // ) {
+                    //     // ...and we got an empty slot, the newly created
+                    //     // StoredPrefix is stored into it.
+                    //     Ok(spfx) => {
+                    //         if log_enabled!(log::Level::Info) {
+                    //             let StoredPrefix {
+                    //                 prefix,
+                    //                 record_map: stored_record,
+                    //                 ..
+                    //             } = unsafe { spfx.deref() };
+                    //             if log_enabled!(log::Level::Info) {
+                    //                 info!(
+                    //                         "{} store: Inserted new prefix record {}/{} with {:?}",
+                    //                         std::thread::current().name().unwrap(),
+                    //                         prefix.get_net().into_ipaddr(), prefix.get_len(),
+                    //                         stored_record
+                    //                     );
+                    //             }
+                    //         }
+
+                    self.counters.inc_prefixes_count(prefix.get_len());
+
+                    //         // ..and update the record_map with the actual record
+                    //         // we got from the user.
+                    //         unsafe { spfx.deref() }
+                    //             .record_map
+                    //             .upsert_record(record)
+                    //     }
+                    //     // ...somebody beat us to it, the slot's not empty
+                    //     // anymore, we'll have to do it again.
+                    //     Err(CompareExchangeError { current, new: _ }) => {
+                    //         if log_enabled!(log::Level::Debug) {
+                    //             debug!(
+                    //                     "{} store: Prefix can't be inserted as new {:?}",
+                    //                     std::thread::current().name().unwrap(),
+                    //                     current
+                    //                 );
+                    //         }
+                    //         retry_count += 1;
+                    //         let stored_prefix = unsafe { current.deref() };
+
+                    //         // update the record_map from the winning thread
+                    //         // with our caller's record.
+                    //         stored_prefix.set_ps_outdated(guard)?;
+                    //         stored_prefix.record_map.upsert_record(record)
+                    //     }
+                    // }
+                    res
                 }
-            }
-            // There already is a StoredPrefix with a record at this
-            // location.
-            false => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
+                // There already is a StoredPrefix with a record at this
+                // location.
+                Ok((stored_prefix, _)) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
                         "{} store: Found existing prefix record for {}/{}",
                         std::thread::current().name().unwrap(),
                         prefix.get_net(),
                         prefix.get_len()
                     );
+                    }
+                    prefix_new = false;
+
+                    // Update the already existing record_map with our caller's
+                    // record.
+                    // debug!("tag {}", inner_stored_prefix.tag());
+                    // let stored_prefix = unsafe { inner_stored_prefix.deref() };
+                    stored_prefix.set_ps_outdated(guard)?;
+                    let res = stored_prefix.record_map.upsert_record(record);
+
+                    if let Some(tbi) = update_path_selections {
+                        stored_prefix
+                            .calculate_and_store_best_backup(&tbi, guard)?;
+                    }
+
+                    res
                 }
-                prefix_new = false;
-
-                // Update the already existing record_map with our caller's
-                // record.
-                debug!("tag {}", inner_stored_prefix.tag());
-                let stored_prefix = unsafe { inner_stored_prefix.deref() };
-                stored_prefix.set_ps_outdated(guard)?;
-                stored_prefix.record_map.upsert_record(record)
-            }
-        };
-
-        if let Some(tbi) = update_path_selections {
-            unsafe { inner_stored_prefix.deref() }
-                .calculate_and_store_best_backup(&tbi, guard)?;
-        }
+            };
 
         Ok(UpsertReport {
             prefix_new,
@@ -793,17 +820,21 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let (atomic_stored_prefix, _level) =
-            self.non_recursive_retrieve_prefix_mut_with_guard(prefix, guard)?;
+        let (stored_prefix, _level) = self
+            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
+            .or_else(|_| Err(PrefixStoreError::StoreNotReadyError))?;
 
-        let current = unsafe {
-            atomic_stored_prefix
-                .0
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap();
-        current.record_map.mark_as_withdrawn_for_mui(mui);
+        // let current =
+        // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
+
+        // let current = unsafe {
+        //     atomic_stored_prefix
+        //         .0
+        //         .load(Ordering::Acquire, guard)
+        //         .as_ref()
+        // }
+        // .unwrap();
+        stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
 
         Ok(())
     }
@@ -816,17 +847,21 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let (atomic_stored_prefix, _level) =
-            self.non_recursive_retrieve_prefix_mut_with_guard(prefix, guard)?;
+        let (stored_prefix, _level) = self
+            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
+            .or_else(|_| Err(PrefixStoreError::StoreNotReadyError))?;
 
-        let current = unsafe {
-            atomic_stored_prefix
-                .0
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap();
-        current.record_map.mark_as_active_for_mui(mui);
+        // let current =
+        // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
+
+        // let current = unsafe {
+        //     atomic_stored_prefix
+        //         .0
+        //         .load(Ordering::Acquire, guard)
+        //         .as_ref()
+        // }
+        // .unwrap();
+        stored_prefix.record_map.mark_as_active_for_mui(mui);
 
         Ok(())
     }
@@ -929,64 +964,78 @@ impl<
     pub(crate) fn non_recursive_retrieve_prefix_mut_with_guard(
         &'a self,
         search_prefix_id: PrefixId<AF>,
-        guard: &'a Guard,
-    ) -> Result<(&'a AtomicStoredPrefix<AF, M>, u8), PrefixStoreError> {
+        // guard: &'a Guard,
+    ) -> Result<
+        (&'a StoredPrefix<AF, M>, u8),
+        (&'a OnceLock<StoredPrefix<AF, M>>, u8),
+    > {
+        trace!("non_recursive_retrieve_prefix_mut_with_guard");
         let mut prefix_set = self
             .prefixes
             .get_root_prefix_set(search_prefix_id.get_len());
         let mut level: u8 = 0;
-        let mut stored_prefix = None;
+        // let mut stored_prefix: Option<&StoredPrefix<AF, M>> = None;
 
+        trace!("root prefix_set {:?}", prefix_set);
         loop {
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(search_prefix_id, level);
 
-            let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-            trace!("prefixes at level {}? {:?}", level, !prefixes.is_null());
+            // let prefixes = prefix_set;
+            // trace!("prefixes at level {}? {:?}", level, !prefixes.is_null());
 
             // probe the slot with the index that's the result of the hashing.
-            let prefix_probe = if !prefixes.is_null() {
-                trace!("prefix set found.");
-                unsafe { &prefixes.deref()[index] }
-            } else {
-                // We're at the end of the chain and haven't found our
-                // search_prefix_id anywhere. Return the end-of-the-chain
-                // StoredPrefix, so the caller can attach a new one.
-                trace!("no prefix set.");
-                return stored_prefix
-                    .map(|sp| (sp, level))
-                    .ok_or(PrefixStoreError::StoreNotReadyError);
+            // stored_prefix = Some(prefix_set.0[index]);
+            // let prefix_probe = if !prefixes.is_null() {
+            trace!("prefix set found.");
+            let locked_prefix = prefix_set.0.get(index).unwrap();
+            let stored_prefix = match locked_prefix.get() {
+                // None => {
+                // panic!("index for PrefixSet out of bounds. search_prefix_id {:?}, level {}", search_prefix_id, level);
+                // }
+                Some(p) => p,
+                None => {
+                    // We're at the end of the chain and haven't found our
+                    // search_prefix_id anywhere. Return the end-of-the-chain
+                    // StoredPrefix, so the caller can attach a new one.
+                    // trace!("no prefix set.");
+                    trace!("no record. returning last found record.");
+                    return Err((locked_prefix, level));
+                    // .map(|sp| (sp, level)
+                    // .ok_or(locked_prefix)
+                }
             };
 
-            stored_prefix = Some(unsafe { prefix_probe.assume_init_ref() });
+            // stored_prefix = Some(unsafe { prefix_probe });
 
-            if let Some(StoredPrefix {
-                prefix,
-                next_bucket,
-                ..
-            }) = stored_prefix.unwrap().get_stored_prefix_mut(guard)
-            {
-                if search_prefix_id == *prefix {
-                    // GOTCHA!
-                    // Our search-prefix is stored here, so we're returning
-                    // it, so its PrefixRecord can be updated by the caller.
-                    trace!("found requested prefix {:?}", search_prefix_id);
-                    return stored_prefix
-                        .map(|sp| (sp, level))
-                        .ok_or(PrefixStoreError::StoreNotReadyError);
-                } else {
-                    // A Collision. Follow the chain.
-                    level += 1;
-                    prefix_set = next_bucket;
-                    continue;
-                }
+            // if let StoredPrefix {
+            //     prefix,
+            //     next_bucket,
+            //     ..
+            // } = stored_prefix
+            //.get_stored_prefix_mut(guard)
+            // {
+            if search_prefix_id == stored_prefix.prefix {
+                // GOTCHA!
+                // Our search-prefix is stored here, so we're returning
+                // it, so its PrefixRecord can be updated by the caller.
+                trace!("found requested prefix {:?}", search_prefix_id);
+                return Ok((stored_prefix, level));
+                // .map(|sp| (sp, level))
+                // .ok_or(stored_prefix);
+            } else {
+                // A Collision. Follow the chain.
+                level += 1;
+                prefix_set = stored_prefix.next_bucket.as_ref().unwrap();
+                continue;
             }
+            // }
 
             // No record at the deepest level, still we're returning a reference to it,
             // so the caller can insert a new record here.
-            return stored_prefix
-                .map(|sp| (sp, level))
-                .ok_or(PrefixStoreError::StoreNotReadyError);
+            // return Ok((stored_prefix, level));
+            // .map(|sp| (Some(sp), level))
+            // .ok_or(PrefixStoreError::StoreNotReadyError);
         }
     }
 
@@ -1018,29 +1067,31 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            let mut prefixes = prefix_set.0.load(Ordering::Acquire, guard);
+            // let mut prefixes = prefix_set; //.0.load(Ordering::Acquire, guard);
 
-            if !prefixes.is_null() {
-                let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
-                if let Some(stored_prefix) =
-                    unsafe { prefix_ref.assume_init_ref() }
-                        .get_stored_prefix(guard)
-                {
-                    if id == stored_prefix.get_prefix_id() {
-                        trace!("found requested prefix {:?}", id);
-                        parents[level as usize] = Some((prefix_set, index));
-                        return (
-                            Some(stored_prefix),
-                            Some((id, level, prefix_set, parents, index)),
-                        );
-                    };
-                    // Advance to the next level.
-                    prefix_set = &stored_prefix.next_bucket;
+            // if !prefixes.is_none() {
+            // let prefix_ref = prefixes.0[index];
+            if let Some(stored_prefix) = prefix_set.0[index].get()
+            // unsafe { prefix_ref }.get_stored_prefix(guard)
+            {
+                if id == stored_prefix.get_prefix_id() {
+                    trace!("found requested prefix {:?}", id);
+                    parents[level as usize] = Some((prefix_set, index));
+                    return (
+                        Some(stored_prefix),
+                        Some((id, level, prefix_set, parents, index)),
+                    );
+                };
+                // Advance to the next level.
+
+                if let Some(ref next_prefix_set) = stored_prefix.next_bucket {
+                    prefix_set = next_prefix_set;
                     level += 1;
                     backoff.spin();
                     continue;
                 }
             }
+            // }
 
             trace!("no prefix found for {:?}", id);
             parents[level as usize] = Some((prefix_set, index));
@@ -1061,7 +1112,7 @@ impl<
         > {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
-                &PrefixSet<AF, M>,
+                &'a PrefixSet<AF, M>,
                 u8,
                 &'a Guard,
             )
@@ -1076,29 +1127,34 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-                let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-                let tag = prefixes.tag();
-                let prefix_ref = unsafe { &prefixes.deref()[index] };
+                // let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+                // let tag = prefixes.tag();
+                // let prefix_ref = unsafe { &prefixes.deref()[index] };
 
                 if let Some(stored_prefix) =
-                    unsafe { prefix_ref.assume_init_ref() }
-                        .get_stored_prefix(guard)
+                    // unsafe { prefix_ref }.get_stored_prefix(guard)
+                    prefix_set.0[index].get()
                 {
                     if prefix_id == stored_prefix.prefix {
                         trace!(
-                            "found requested prefix {:?} with tag {}",
+                            "found requested prefix {:?}",
                             prefix_id,
-                            tag
+                            // tag
                         );
-                        return Some((stored_prefix, tag));
+                        return Some((stored_prefix, 0));
                     };
                     level += 1;
-                    (search_level.f)(
-                        search_level,
-                        &stored_prefix.next_bucket,
-                        level,
-                        guard,
-                    );
+
+                    if let Some(ref next_prefix_set) =
+                        stored_prefix.next_bucket
+                    {
+                        (search_level.f)(
+                            search_level,
+                            next_prefix_set,
+                            level,
+                            guard,
+                        );
+                    }
                 }
                 None
             },
