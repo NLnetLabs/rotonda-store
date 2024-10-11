@@ -44,6 +44,29 @@ impl<T> OnceBox<T> {
         };
         unsafe { &*res }
     }
+
+    pub fn get_or_create(&self, create: impl FnOnce() -> Box<T>) -> &T {
+        if let Some(res) = self.get() {
+            return res
+        }
+        let ptr = Box::leak(create());
+        let res = match self.ptr.compare_exchange(
+            null_mut(), ptr, Ordering::SeqCst, Ordering::Acquire
+        ) {
+            Ok(current) => {
+                // We set the new value, return it.
+                assert!(current.is_null());
+                ptr as *const _
+            }
+            Err(current) => {
+                // `current` is the real value we need to drop our value.
+                assert!(!current.is_null());
+                let _ = unsafe { Box::from_raw(ptr) };
+                current as *const _
+            }
+        };
+        unsafe { &*res }
+    }
 }
 
 impl<T> Drop for OnceBox<T> {
