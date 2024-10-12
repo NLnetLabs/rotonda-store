@@ -3,9 +3,9 @@ use ansi_term::Colour;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
-use rotonda_store::prelude::{*, multi::*};
-use rotonda_store::meta_examples::PrefixAs;
 use inetnum::addr::Prefix;
+use rotonda_store::meta_examples::PrefixAs;
+use rotonda_store::prelude::{multi::*, *};
 use rustyline::history::DefaultHistory;
 
 use std::env;
@@ -13,7 +13,6 @@ use std::error::Error;
 use std::ffi::OsString;
 use std::fs::File;
 use std::process;
-
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {
@@ -83,7 +82,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // tree_bitmap.print_funky_stats();
     // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
-    let guard = &epoch::pin();
 
     let mut rl = Editor::<(), DefaultHistory>::new()?;
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
@@ -100,28 +98,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match cmd.to_string().as_ref() {
                             "p" => match line.chars().as_str() {
                                 "p4" => {
-                                    tree_bitmap
-                                        .prefixes_iter_v4(guard)
-                                        .for_each(|pfx| {
+                                    tree_bitmap.prefixes_iter_v4().for_each(
+                                        |pfx| {
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        });
+                                        },
+                                    );
                                     println!(
                                         "ipv4 prefixes :\t{}",
                                         tree_bitmap.prefixes_v4_count()
                                     );
                                 }
                                 "p6" => {
-                                    tree_bitmap
-                                        .prefixes_iter_v6(guard)
-                                        .for_each(|pfx| {
+                                    tree_bitmap.prefixes_iter_v6().for_each(
+                                        |pfx| {
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        });
+                                        },
+                                    );
                                     println!(
                                         "ipv6 prefixes :\t{}",
                                         tree_bitmap.prefixes_v6_count()
@@ -136,14 +134,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "ipv6 prefixes :\t{}",
                                         tree_bitmap.prefixes_v6_count()
                                     );
-                                    tree_bitmap
-                                        .prefixes_iter(guard)
-                                        .for_each(|pfx| {
+                                    tree_bitmap.prefixes_iter().for_each(
+                                        |pfx| {
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        });
+                                        },
+                                    );
                                     println!(
                                         "total prefixes :\t{}",
                                         tree_bitmap.prefixes_count()
@@ -225,7 +223,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         include_more_specifics: true,
                                         mui: None,
                                     },
-                                    guard,
                                 );
                                 println!("start query result");
                                 println!("{}", query_result);
@@ -254,7 +251,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
                                             false,
-                                            guard,
                                         )
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
@@ -268,30 +264,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
                                             false,
-                                            guard,
                                         )
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
                                 );
                             }
-                            Err(
-                                inetnum::addr::PrefixError::NonZeroHost,
-                            ) => {
+                            Err(inetnum::addr::PrefixError::NonZeroHost) => {
                                 println!("{}", Colour::Yellow.paint("Warning: Prefix has bits set to the right of the prefix length. Zeroing those out."));
                                 println!(
                                     "{}",
                                     tree_bitmap.match_prefix(
                                         &Prefix::new_relaxed(ip, len)?,
                                         &MatchOptions {
-                                            match_type:
-                                                MatchType::ExactMatch,
+                                            match_type: MatchType::ExactMatch,
                                             include_withdrawn: true,
                                             include_less_specifics: true,
                                             include_more_specifics: true,
                                             mui: None
                                         },
-                                        guard
                                     )
                                 );
                                 println!("--- numatch");
@@ -303,7 +294,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
                                             false,
-                                            guard,
                                         )
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
@@ -317,7 +307,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             &Prefix::new_relaxed(ip, len)?,
                                             None,
                                             false,
-                                            guard
                                         )
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x

@@ -150,7 +150,7 @@ where
     // and the second element is the number of accumulated retries for the
     // compare_exchange of both ptrbitarr and pfxbitarr.
     pub(crate) fn eval_node_or_prefix_at(
-        &mut self,
+        &self,
         nibble: u32,
         nibble_len: u8,
         // all the bits of the search prefix, but with the length set to

@@ -1,12 +1,4 @@
-// ----------- Store Iterators ----------------------------------------------
-//
-// This file hosts the iterators for the CustomAllocStorage type and the
-// implementations for the methods that start'em.
-// Note that these iterators are only the iterators that go over the
-// storage (and some over the TreeBitMap nodes, the parent of the store),
-// as such all the iterators here are composed of iterators over the
-// individual nodes. The Node Iterators live in the node.rs file.
-use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::custom_alloc::CustomAllocStorage;
@@ -24,9 +16,8 @@ use crate::{
     prefix_record::Meta,
 };
 
-use crossbeam_epoch::Guard;
 use inetnum::addr::Prefix;
-use log::{debug, log_enabled, trace};
+use log::trace;
 use roaring::RoaringBitmap;
 
 // ----------- PrefixIter ---------------------------------------------------
@@ -49,7 +40,6 @@ pub(crate) struct PrefixIter<
     // which is the max number of of both IPv4 and IPv6.
     parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
     cursor: usize,
-    guard: &'a Guard,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -300,10 +290,9 @@ pub(crate) struct MoreSpecificPrefixIter<
     mui: Option<u32>,
     // This is the tree-wide index of withdrawn muis, used to rewrite the
     // statuses of these records, or filter them out.
-    global_withdrawn_bmin: &'a RoaringBitmap,
+    global_withdrawn_bmin: RoaringBitmap,
     // Whether we should filter out the withdrawn records in the search result
     include_withdrawn: bool,
-    guard: &'a Guard,
 }
 
 impl<
@@ -341,7 +330,6 @@ impl<
                                 next_pfx
                             )
                             }),
-                            self.guard,
                         )
                         .0
                     {
@@ -354,7 +342,7 @@ impl<
                                 .record_map
                                 .get_record_for_mui_with_rewritten_status(
                                     mui,
-                                    self.global_withdrawn_bmin,
+                                    &self.global_withdrawn_bmin,
                                     RouteStatus::Withdrawn,
                                 )
                             {
@@ -377,7 +365,6 @@ impl<
                                 next_pfx
                             )
                             }),
-                            self.guard,
                         )
                         .0
                         .map(|p| {
@@ -389,7 +376,7 @@ impl<
                                     p.prefix,
                                     p.record_map
                                         .as_records_with_rewritten_status(
-                                            self.global_withdrawn_bmin,
+                                            &self.global_withdrawn_bmin,
                                             RouteStatus::Withdrawn,
                                         ),
                                 )
@@ -398,7 +385,7 @@ impl<
                                     p.prefix,
                                     p.record_map
                                         .as_active_records_not_in_bmin(
-                                            self.global_withdrawn_bmin,
+                                            &self.global_withdrawn_bmin,
                                         ),
                                 )
                             }
@@ -427,13 +414,10 @@ impl<
 
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
-                    self.store.retrieve_node_with_guard(next_ptr, self.guard)
+                    self.store.retrieve_node_with_guard(next_ptr)
                 } else {
-                    self.store.retrieve_node_for_mui(
-                        next_ptr,
-                        self.mui.unwrap(),
-                        self.guard,
-                    )
+                    self.store
+                        .retrieve_node_for_mui(next_ptr, self.mui.unwrap())
                 };
 
                 match node {
@@ -540,8 +524,7 @@ pub(crate) struct LessSpecificPrefixIter<
     include_withdrawn: bool,
     // This is the tree-wide index of withdrawn muis, used to filter out the
     // records for those.
-    global_withdrawn_bmin: &'a RoaringBitmap,
-    guard: &'a Guard,
+    global_withdrawn_bmin: RoaringBitmap,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -622,7 +605,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                             .record_map
                             .get_record_for_mui_with_rewritten_status(
                                 mui,
-                                self.global_withdrawn_bmin,
+                                &self.global_withdrawn_bmin,
                                 RouteStatus::Withdrawn,
                             )
                             .into_iter()
@@ -642,14 +625,14 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         stored_prefix
                             .record_map
                             .as_records_with_rewritten_status(
-                                self.global_withdrawn_bmin,
+                                &self.global_withdrawn_bmin,
                                 RouteStatus::Withdrawn,
                             )
                     } else {
                         stored_prefix
                             .record_map
                             .as_active_records_not_in_bmin(
-                                self.global_withdrawn_bmin,
+                                &self.global_withdrawn_bmin,
                             )
                     }
                 };
@@ -719,7 +702,6 @@ impl<
         start_prefix_id: PrefixId<AF>,
         mui: Option<u32>,
         include_withdrawn: bool,
-        guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("more specifics for {:?}", start_prefix_id);
 
@@ -752,9 +734,9 @@ impl<
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
             let node = if let Some(mui) = mui {
-                self.retrieve_node_for_mui(start_node_id, mui, guard)
+                self.retrieve_node_for_mui(start_node_id, mui)
             } else {
-                self.retrieve_node_with_guard(start_node_id, guard)
+                self.retrieve_node_with_guard(start_node_id)
             };
 
             if let Some(node) = node {
@@ -806,15 +788,11 @@ impl<
                     }
                 };
 
-                let global_withdrawn_bmin = unsafe {
-                    self.withdrawn_muis_bmin
-                        .load(Ordering::Acquire, guard)
-                        .deref()
-                };
+                let global_withdrawn_bmin =
+                    self.withdrawn_muis_bmin.lock().unwrap().clone();
 
                 Some(MoreSpecificPrefixIter {
                     store: self,
-                    guard,
                     cur_pfx_iter,
                     cur_ptr_iter,
                     start_bit_span,
@@ -840,7 +818,6 @@ impl<
         // None indicates returning all records for a prefix.
         mui: Option<u32>,
         include_withdrawn: bool,
-        guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
         trace!("less specifics for {:?}", start_prefix_id);
         trace!("level {}, len {}", 0, start_prefix_id.get_len());
@@ -854,11 +831,8 @@ impl<
         } else {
             let cur_len = start_prefix_id.get_len() - 1;
             let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
-            let global_withdrawn_bmin = unsafe {
-                self.withdrawn_muis_bmin
-                    .load(Ordering::Acquire, guard)
-                    .deref()
-            };
+            let global_withdrawn_bmin =
+                self.withdrawn_muis_bmin.lock().unwrap().clone();
 
             Some(LessSpecificPrefixIter {
                 prefixes: &self.prefixes,
@@ -869,7 +843,6 @@ impl<
                 mui,
                 global_withdrawn_bmin,
                 include_withdrawn,
-                guard,
             })
         }
         .into_iter()
@@ -879,7 +852,6 @@ impl<
     // Iterator over all the prefixes in the storage.
     pub fn prefixes_iter(
         &'a self,
-        guard: &'a Guard,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PrefixIter {
             prefixes: &self.prefixes,
@@ -888,7 +860,6 @@ impl<
             cur_level: 0,
             cursor: 0,
             parents: [None; 26],
-            guard,
         }
     }
 }

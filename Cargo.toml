@@ -15,7 +15,6 @@ rust-version = "1.71"
 [dependencies]
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
-flurry 		= "0.5.1"
 inetnum = "0.1.0"
 log             = "^0.4"
 roaring 	= "0.10.3"

@@ -1,6 +1,6 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
-use log::{error, log_enabled, trace, debug};
+use log::{debug, error, log_enabled, trace};
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -406,9 +406,7 @@ impl<
             };
 
         Ok(TreeBitMap {
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(
-                root_node, guard,
-            )?,
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node)?,
         })
     }
 
@@ -454,8 +452,7 @@ impl<
         // let record = MultiMapValue::new(meta, ltime, status);
 
         if pfx.get_len() == 0 {
-            let res = self.update_default_route_prefix_meta(
-                record, guard)?;
+            let res = self.update_default_route_prefix_meta(record, guard)?;
             return Ok(res);
         }
 
@@ -487,7 +484,7 @@ impl<
             let node_result = insert_match![
                 // applicable to the whole outer match in the macro
                 self;
-                guard;
+                // guard;
                 nibble_len;
                 nibble;
                 is_last_stride;
@@ -563,26 +560,37 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
 
-        if let Some(root_node) = self.store.retrieve_node_mut_with_guard(self.store.get_root_node_id(), record.multi_uniq_id, guard) {
+        if let Some(root_node) = self.store.retrieve_node_mut_with_guard(
+            self.store.get_root_node_id(),
+            record.multi_uniq_id,
+        ) {
             match root_node {
-                SizedStrideRefMut::Stride3(_) => { 
-                    self.store.buckets.get_store3(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
-                },
-                SizedStrideRefMut::Stride4(_) => {
-                    self.store.buckets.get_store4(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
-                },
-                SizedStrideRefMut::Stride5(_) => {
-                    self.store.buckets.get_store5(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
-                 },
+                SizedStrideRef::Stride3(_) => {
+                    self.store
+                        .buckets
+                        .get_store3(self.store.get_root_node_id())
+                        .update_rbm_index(record.multi_uniq_id)?;
+                }
+                SizedStrideRef::Stride4(_) => {
+                    self.store
+                        .buckets
+                        .get_store4(self.store.get_root_node_id())
+                        .update_rbm_index(record.multi_uniq_id)?;
+                }
+                SizedStrideRef::Stride5(_) => {
+                    self.store
+                        .buckets
+                        .get_store5(self.store.get_root_node_id())
+                        .update_rbm_index(record.multi_uniq_id)?;
+                }
             };
         };
-        
+
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
             record,
             // Do not update the path selection for the default route.
             None,
-            guard,
             // user_data,
         )
     }
@@ -598,11 +606,8 @@ impl<
         let guard = &epoch::pin();
 
         trace!("start assembling all more specific prefixes here");
-        trace!(
-            "{:?}",
-            self.store.retrieve_node_with_guard(start_node_id, guard)
-        );
-        match self.store.retrieve_node_with_guard(start_node_id, guard) {
+        trace!("{:?}", self.store.retrieve_node_with_guard(start_node_id));
+        match self.store.retrieve_node_with_guard(start_node_id) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),

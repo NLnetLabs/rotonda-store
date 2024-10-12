@@ -39,7 +39,7 @@ mod tests {
             1,
         );
 
-        let guard = &epoch::pin();
+        // let guard = &epoch::pin();
         let res = trie.match_prefix(
             &expect_pfx?,
             &MatchOptions {
@@ -49,7 +49,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
         println!("prefix: {:?}", &expect_pfx);
         println!("result: {:#?}", &res);
@@ -82,7 +81,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
@@ -330,8 +328,7 @@ mod tests {
         //     v6: store_v6,
         // };
 
-        let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter(guard) {
+        for pfx in tree_bitmap.prefixes_iter() {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,
@@ -342,7 +339,6 @@ mod tests {
                     include_more_specifics: false,
                     mui: None,
                 },
-                guard,
             );
             println!("{}", pfx);
             assert_eq!(res.prefix.unwrap(), pfx.prefix);
@@ -357,7 +353,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
         println!("prefix {:?}", res.prefix);
         println!("res: {:#?}", &res);
@@ -422,7 +417,6 @@ mod tests {
                     i_len_s,
                 );
 
-                let guard = &epoch::pin();
                 for s_len in i_len_s..32 {
                     let pfx = Prefix::new_relaxed(
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
@@ -437,7 +431,6 @@ mod tests {
                             include_more_specifics: false,
                             mui: None,
                         },
-                        guard,
                     );
                     println!("{:?}", pfx);
 
@@ -489,8 +482,6 @@ mod tests {
                         i_len_s,
                     );
 
-                    let guard = &epoch::pin();
-
                     for s_len in i_len_s..4 {
                         let pfx = Prefix::new_relaxed(
                             std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
@@ -505,7 +496,6 @@ mod tests {
                                 include_more_specifics: false,
                                 mui: Some(mui),
                             },
-                            guard,
                         );
                         // println!("{:?}", pfx);
 
@@ -515,10 +505,9 @@ mod tests {
             }
         }
 
-        let guard = &epoch::pin();
         println!("records for mui {}", 5);
         for rec in tree_bitmap
-            .iter_records_for_mui_v4(5, false, guard)
+            .iter_records_for_mui_v4(5, false)
             .collect::<Vec<_>>()
         {
             println!("{}", rec);
@@ -528,7 +517,7 @@ mod tests {
             assert_eq!(rec.meta[0].status, RouteStatus::Active);
         }
         for rec in tree_bitmap
-            .iter_records_for_mui_v4(1, false, guard)
+            .iter_records_for_mui_v4(1, false)
             .collect::<Vec<_>>()
         {
             println!("{}", rec);
@@ -551,7 +540,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
         print!(".pfx {:#?}.", all_recs_for_pfx);
         assert_eq!(all_recs_for_pfx.prefix_meta.len(), 5);
@@ -572,7 +560,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
         assert_eq!(active_recs_for_pfx.prefix_meta.len(), 4);
         assert!(!active_recs_for_pfx
@@ -585,9 +572,9 @@ mod tests {
 
         println!("all records");
 
-        let all_recs = tree_bitmap.prefixes_iter(guard);
+        let all_recs = tree_bitmap.prefixes_iter();
 
-        for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
+        for rec in tree_bitmap.prefixes_iter().collect::<Vec<_>>() {
             println!("{}", rec);
         }
 
@@ -599,14 +586,14 @@ mod tests {
         assert_eq!(wd_2_rec.len(), 1);
         assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
 
-        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
+        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
             r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
         });
         println!("mui_2_recs prefixes_iter");
         for rec in mui_2_recs {
             println!("{} {:#?}", rec.0, rec.1);
         }
-        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
+        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
             r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
         });
 
@@ -616,14 +603,14 @@ mod tests {
         assert_eq!(active_2_rec.len(), 3);
         assert!(!active_2_rec.iter().any(|r| r.0 == wd_pfx));
 
-        let mui_2_recs = tree_bitmap.iter_records_for_mui_v4(2, false, guard);
+        let mui_2_recs = tree_bitmap.iter_records_for_mui_v4(2, false);
         println!("mui_2_recs iter_records_for_mui_v4");
         for rec in mui_2_recs {
             println!("{} {:#?}", rec.prefix, rec.meta);
         }
 
         let mui_1_recs = tree_bitmap
-            .iter_records_for_mui_v4(1, false, guard)
+            .iter_records_for_mui_v4(1, false)
             .collect::<Vec<_>>();
         assert!(mui_1_recs.is_empty());
 
@@ -631,7 +618,7 @@ mod tests {
         assert!(mui_1_recs.is_empty());
 
         let mui_1_recs = tree_bitmap
-            .iter_records_for_mui_v4(1, true, guard)
+            .iter_records_for_mui_v4(1, true)
             .collect::<Vec<_>>();
         assert_eq!(mui_1_recs.len(), 4);
         println!("mui_1_recs iter_records_for_mui_v4 w/ withdrawn");
@@ -650,7 +637,6 @@ mod tests {
                 include_more_specifics: true,
                 mui: None,
             },
-            guard,
         );
 
         println!("more_specifics match {} w/ withdrawn", more_specifics);
@@ -688,7 +674,6 @@ mod tests {
                 include_more_specifics: true,
                 mui: None,
             },
-            guard,
         );
 
         println!("more_specifics match {} w/o withdrawn", more_specifics);
@@ -728,7 +713,6 @@ mod tests {
                 include_more_specifics: true,
                 mui: None,
             },
-            guard,
         );
 
         println!("more_specifics match w/o withdrawn #2 {}", more_specifics);
@@ -778,7 +762,6 @@ mod tests {
                 include_more_specifics: true,
                 mui: None,
             },
-            guard,
         );
         println!("more_specifics match w/o withdrawn #3 {}", more_specifics);
 
@@ -827,7 +810,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
 
         println!("less_specifics match w/o withdrawn #4 {}", less_specifics);
@@ -837,7 +819,6 @@ mod tests {
         let less_specifics = less_specifics.less_specifics.unwrap();
         // All records for the less specific /16 are withdrawn, so this should be empty.
         assert!(less_specifics.is_empty());
-        
 
         //--------------------
 
@@ -852,7 +833,6 @@ mod tests {
                 include_more_specifics: false,
                 mui: None,
             },
-            guard,
         );
         println!("more_specifics match w/o withdrawn #5 {}", less_specifics);
         let less_specifics = less_specifics.less_specifics.unwrap();

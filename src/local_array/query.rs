@@ -5,8 +5,8 @@ use epoch::Guard;
 
 use crate::af::AddressFamily;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
-use inetnum::addr::Prefix;
 use crate::prefix_record::{Meta, PublicRecord};
+use inetnum::addr::Prefix;
 
 use crate::QueryResult;
 
@@ -31,14 +31,16 @@ where
         prefix_id: PrefixId<AF>,
         mui: Option<u32>,
         include_withdrawn: bool,
-        guard: &'a Guard,
     ) -> QueryResult<M> {
         let result = self
             .store
-            .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
+            .non_recursive_retrieve_prefix_with_guard(prefix_id);
         let prefix = result.0;
-        let more_specifics_vec =
-            self.store.more_specific_prefix_iter_from(prefix_id, mui, include_withdrawn, guard);
+        let more_specifics_vec = self.store.more_specific_prefix_iter_from(
+            prefix_id,
+            mui,
+            include_withdrawn,
+        );
 
         QueryResult {
             prefix: if let Some(pfx) = prefix {
@@ -50,9 +52,9 @@ where
             } else {
                 None
             },
-            prefix_meta: prefix.map(|r| {
-                self.get_filtered_records(r, mui, guard)
-            }).unwrap_or_default(),
+            prefix_meta: prefix
+                .map(|r| self.get_filtered_records(r, mui))
+                .unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
             more_specifics: Some(more_specifics_vec.collect()),
@@ -64,16 +66,19 @@ where
         prefix_id: PrefixId<AF>,
         mui: Option<u32>,
         include_withdrawn: bool,
-        guard: &'a Guard,
     ) -> QueryResult<M> {
         let result = self
             .store
-            .non_recursive_retrieve_prefix_with_guard(prefix_id, guard);
+            .non_recursive_retrieve_prefix_with_guard(prefix_id);
 
         let prefix = result.0;
         let less_specifics_vec = result.1.map(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.store.less_specific_prefix_iter(prefix_id, mui, include_withdrawn, guard)
+                self.store.less_specific_prefix_iter(
+                    prefix_id,
+                    mui,
+                    include_withdrawn,
+                )
             },
         );
 
@@ -87,9 +92,9 @@ where
             } else {
                 None
             },
-            prefix_meta: prefix.map(|r| {
-                self.get_filtered_records(r, mui, guard)
-            }).unwrap_or_default(),
+            prefix_meta: prefix
+                .map(|r| self.get_filtered_records(r, mui))
+                .unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| iter.collect()),
             more_specifics: None,
@@ -101,12 +106,15 @@ where
         prefix_id: PrefixId<AF>,
         mui: Option<u32>,
         include_withdrawn: bool,
-        guard: &'a Guard,
     ) -> Result<
         impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_,
         std::io::Error,
     > {
-        Ok(self.store.more_specific_prefix_iter_from(prefix_id, mui, include_withdrawn, guard))
+        Ok(self.store.more_specific_prefix_iter_from(
+            prefix_id,
+            mui,
+            include_withdrawn,
+        ))
     }
 
     pub fn match_prefix_by_store_direct(
@@ -114,36 +122,36 @@ where
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
         mui: Option<u32>,
-        guard: &'a Guard,
     ) -> QueryResult<M> {
         // `non_recursive_retrieve_prefix_with_guard` returns an exact match
         // only, so no longest matching prefix!
         let mut stored_prefix = self
             .store
-            .non_recursive_retrieve_prefix_with_guard(search_pfx, guard)
+            .non_recursive_retrieve_prefix_with_guard(search_pfx)
             .0
-            .map(|pfx| (
-            pfx.prefix, 
+            .map(|pfx| {
+                (
+                    pfx.prefix,
                     if !options.include_withdrawn {
                         // Filter out all the withdrawn records, both with
                         // globally withdrawn muis, and with local statuses
                         // set to Withdrawn.
-                        self.get_filtered_records(pfx, mui, guard).into_iter().collect()
+                        self.get_filtered_records(pfx, mui)
+                            .into_iter()
+                            .collect()
                     } else {
+                        let bmin =
+                            self.store.withdrawn_muis_bmin.lock().unwrap();
                         // Do no filter out any records, but do rewrite the
                         // local statuses of the records with muis that
                         // appear in the specified bitmap index.
                         pfx.record_map.as_records_with_rewritten_status(
-                            unsafe { 
-                                self.store.withdrawn_muis_bmin.load(
-                                    Ordering::Acquire, guard
-                                ).deref() 
-                            },
-                            RouteStatus::Withdrawn
+                            &bmin,
+                            RouteStatus::Withdrawn,
                         )
-                    }
+                    },
                 )
-            );
+            });
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -159,7 +167,11 @@ where
             (MatchType::LongestMatch | MatchType::EmptyMatch, _) => {
                 stored_prefix = self
                     .store
-                    .less_specific_prefix_iter(search_pfx, mui, options.include_withdrawn, guard)
+                    .less_specific_prefix_iter(
+                        search_pfx,
+                        mui,
+                        options.include_withdrawn,
+                    )
                     .max_by(|p0, p1| p0.0.get_len().cmp(&p1.0.get_len()));
                 if stored_prefix.is_some() {
                     MatchType::LongestMatch
@@ -175,7 +187,10 @@ where
 
         QueryResult {
             prefix: stored_prefix.as_ref().map(|p| p.0.into_pub()),
-            prefix_meta: stored_prefix.as_ref().map(|pfx| pfx.1.clone()).unwrap_or_default(),
+            prefix_meta: stored_prefix
+                .as_ref()
+                .map(|pfx| pfx.1.clone())
+                .unwrap_or_default(),
             less_specifics: if options.include_less_specifics {
                 Some(
                     self.store
@@ -187,7 +202,6 @@ where
                             },
                             mui,
                             options.include_withdrawn,
-                            guard,
                         )
                         .collect(),
                 )
@@ -205,14 +219,15 @@ where
                             },
                             mui,
                             options.include_withdrawn,
-                            guard,
                         )
                         // .map(|p| (p.prefix_into_pub(), p))
                         .collect(),
                 )
                 // The user requested more specifics, but there aren't any, so we
                 // need to return an empty vec, not a None.
-            } else { None },
+            } else {
+                None
+            },
             match_type,
         }
     }
@@ -242,7 +257,6 @@ where
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
-        guard: &'a Guard,
     ) -> QueryResult<M> {
         // --- The Default Route Prefix -------------------------------------
 
@@ -267,11 +281,12 @@ where
                 _serial => {
                     let prefix_meta = self
                         .store
-                        .retrieve_prefix_with_guard(
-                            PrefixId::new(AF::zero(), 0),
-                            guard,
-                        )
-                        .map(|sp| sp.0.record_map.as_records()).unwrap_or_default();
+                        .retrieve_prefix_with_guard(PrefixId::new(
+                            AF::zero(),
+                            0,
+                        ))
+                        .map(|sp| sp.0.record_map.as_records())
+                        .unwrap_or_default();
                     return QueryResult {
                         prefix: Prefix::new(
                             search_pfx.get_net().into_ipaddr(),
@@ -291,18 +306,9 @@ where
 
         let root_node_id = self.get_root_node_id();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
-            3 => self
-                .store
-                .retrieve_node_with_guard(root_node_id, guard)
-                .unwrap(),
-            4 => self
-                .store
-                .retrieve_node_with_guard(root_node_id, guard)
-                .unwrap(),
-            _ => self
-                .store
-                .retrieve_node_with_guard(root_node_id, guard)
-                .unwrap(),
+            3 => self.store.retrieve_node_with_guard(root_node_id).unwrap(),
+            4 => self.store.retrieve_node_with_guard(root_node_id).unwrap(),
+            _ => self.store.retrieve_node_with_guard(root_node_id).unwrap(),
         };
 
         let mut nibble;
@@ -409,7 +415,7 @@ where
                             match_prefix_idx = Some(pfx_idx);
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -431,7 +437,7 @@ where
                         (Some(n), None) => {
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -533,7 +539,7 @@ where
                             match_prefix_idx = Some(pfx_idx);
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -555,7 +561,7 @@ where
                         (Some(n), None) => {
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -646,7 +652,7 @@ where
                             match_prefix_idx = Some(pfx_idx);
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -668,7 +674,7 @@ where
                         (Some(n), None) => {
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -745,33 +751,35 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            match_type =
-                match self.store.retrieve_prefix_with_guard(pfx_idx, guard) {
-                    Some(prefix) => {
-                        if prefix.0.prefix.get_len() == search_pfx.get_len() {
-                            MatchType::ExactMatch
-                        } else {
-                            MatchType::LongestMatch
-                        }
+            match_type = match self.store.retrieve_prefix_with_guard(pfx_idx)
+            {
+                Some(prefix) => {
+                    if prefix.0.prefix.get_len() == search_pfx.get_len() {
+                        MatchType::ExactMatch
+                    } else {
+                        MatchType::LongestMatch
                     }
-                    None => MatchType::EmptyMatch,
-                };
+                }
+                None => MatchType::EmptyMatch,
+            };
         };
 
         QueryResult {
             prefix: prefix.map(|pfx: (&StoredPrefix<AF, M>, usize)| {
                 pfx.0.prefix.into_pub()
             }),
-            prefix_meta: prefix.map(|pfx| pfx.0.record_map.as_records()).unwrap_or_default(),
+            prefix_meta: prefix
+                .map(|pfx| pfx.0.record_map.as_records())
+                .unwrap_or_default(),
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec
                     .unwrap()
                     .iter()
                     .filter_map(move |p| {
-                        self.store
-                            .retrieve_prefix_with_guard(*p, guard)
-                            .map(|p| Some((p.0.prefix, p.0.record_map.as_records())))
+                        self.store.retrieve_prefix_with_guard(*p).map(|p| {
+                            Some((p.0.prefix, p.0.record_map.as_records()))
+                        })
                     })
                     .collect()
             } else {
@@ -782,7 +790,7 @@ where
                     vec.into_iter()
                         .map(|p| {
                             self.store
-                                .retrieve_prefix_with_guard(p, guard)
+                                .retrieve_prefix_with_guard(p)
                                 .unwrap_or_else(|| {
                                     panic!(
                                         "more specific {:?} does not exist",
@@ -790,7 +798,8 @@ where
                                     )
                                 })
                                 .0
-                        }).map(|sp| (sp.prefix, sp.record_map.as_records()))
+                        })
+                        .map(|sp| (sp.prefix, sp.record_map.as_records()))
                         .collect()
                 })
             } else {
@@ -801,12 +810,12 @@ where
 
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    fn get_filtered_records(&self, pfx: &StoredPrefix<AF, M>, mui: Option<u32>, guard: &Guard) -> Vec<PublicRecord<M>> {
-        let bmin = unsafe { 
-            self.store.withdrawn_muis_bmin.load(
-                Ordering::Acquire, guard).as_ref()
-            }.unwrap();
-        
-        pfx.record_map.get_filtered_records(mui, bmin)
+    fn get_filtered_records(
+        &self,
+        pfx: &StoredPrefix<AF, M>,
+        mui: Option<u32>,
+    ) -> Vec<PublicRecord<M>> {
+        let bmin = self.store.withdrawn_muis_bmin.lock().unwrap();
+        pfx.record_map.get_filtered_records(mui, &*bmin)
     }
 }

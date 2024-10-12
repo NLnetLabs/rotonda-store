@@ -1,7 +1,7 @@
-use std::fmt::{Binary, Debug};
 use log::trace;
+use std::fmt::{Binary, Debug};
 use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+    fence, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };
 
 use crate::af::Zero;
@@ -46,6 +46,7 @@ pub trait AtomicBitmap {
     fn load(&self) -> Self::InnerType;
     fn to_u64(&self) -> u64;
     fn to_u32(&self) -> u32;
+    fn merge_with(&self, node: Self::InnerType);
 }
 
 impl AtomicBitmap for AtomicStride2 {
@@ -82,6 +83,24 @@ impl AtomicBitmap for AtomicStride2 {
 
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
+    }
+
+    fn merge_with(&self, node: u8) {
+        let current = self.load();
+        let new = current | node;
+        loop {
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(_) => {}
+            }
+        }
     }
 }
 
@@ -131,6 +150,24 @@ impl AtomicBitmap for AtomicStride3 {
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
     }
+
+    fn merge_with(&self, node: u16) {
+        let current = self.load();
+        let new = current | node;
+        loop {
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::Acquire,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(_) => {}
+            }
+        }
+    }
 }
 
 impl Zero for AtomicStride3 {
@@ -177,6 +214,24 @@ impl AtomicBitmap for AtomicStride4 {
 
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
+    }
+
+    fn merge_with(&self, node: u32) {
+        let current = self.load();
+        let new = current | node;
+        loop {
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(_) => {}
+            }
+        }
     }
 }
 
@@ -225,6 +280,24 @@ impl AtomicBitmap for AtomicStride5 {
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
     }
+
+    fn merge_with(&self, node: u64) {
+        let current = self.load();
+        let new = current | node;
+        loop {
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(_) => {}
+            }
+        }
+    }
 }
 
 impl Zero for AtomicStride5 {
@@ -269,13 +342,13 @@ impl AtomicBitmap for AtomicStride6 {
                 ((current << 64) >> 64) as u64,
                 ((new >> 64) << 64) as u64,
                 Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::Acquire,
             ),
             self.0 .1.compare_exchange(
                 ((current << 64) >> 64) as u64,
                 ((new >> 64) << 64) as u64,
                 Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::Acquire,
             ),
         )
             .into()
@@ -295,6 +368,39 @@ impl AtomicBitmap for AtomicStride6 {
 
     fn to_u64(&self) -> u64 {
         unimplemented!()
+    }
+
+    fn merge_with(&self, node: u128) {
+        let current = self.load();
+        let new = current | node;
+
+        loop {
+            fence(Ordering::Acquire);
+
+            loop {
+                match self.0 .0.compare_exchange(
+                    ((current << 64) >> 64) as u64,
+                    ((new >> 64) << 64) as u64,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => break,
+                    Err(_) => {}
+                };
+            }
+
+            loop {
+                match self.0 .1.compare_exchange(
+                    ((current << 64) >> 64) as u64,
+                    ((new >> 64) << 64) as u64,
+                    Ordering::SeqCst,
+                    Ordering::SeqCst,
+                ) {
+                    Ok(_) => return,
+                    Err(_) => {}
+                }
+            }
+        }
     }
 }
 
@@ -437,10 +543,7 @@ where
         len: u8,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
-    fn get_bit_pos_as_u8(
-        nibble: u32,
-        len: u8,
-    ) -> u8;
+    fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8;
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding prefix in
@@ -513,6 +616,8 @@ where
     ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
 
     fn leading_zeros(self) -> u32;
+
+    fn merge_with(&mut self, node: &Self) -> Self;
 }
 
 impl_primitive_atomic_stride![3; 16; u16; AtomicStride3; u8; AtomicStride2];

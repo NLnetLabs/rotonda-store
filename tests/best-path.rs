@@ -158,17 +158,12 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
             include_more_specifics: false,
             mui: None,
         },
-        &rotonda_store::epoch::pin(),
+        // &rotonda_store::epoch::pin(),
     );
 
     println!("{:?}", res.prefix_meta);
-    let best_path = tree_bitmap.best_path(&pfx, &rotonda_store::epoch::pin());
-    println!(
-        "ps outdated? {}",
-        tree_bitmap
-            .is_ps_outdated(&pfx, &rotonda_store::epoch::pin())
-            .unwrap()
-    );
+    let best_path = tree_bitmap.best_path(&pfx);
+    println!("ps outdated? {}", tree_bitmap.is_ps_outdated(&pfx).unwrap());
     println!("{:?}", best_path);
 
     // We didn't calculate the best path yet, but the prefix (and its entries)
@@ -178,19 +173,10 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
         PrefixStoreError::BestPathNotFound
     );
 
-    tree_bitmap.calculate_and_store_best_and_backup_path(
-        &pfx,
-        &(),
-        &rotonda_store::epoch::pin(),
-    )?;
+    tree_bitmap.calculate_and_store_best_and_backup_path(&pfx, &())?;
 
-    let best_path = tree_bitmap.best_path(&pfx, &rotonda_store::epoch::pin());
-    println!(
-        "ps outdated? {}",
-        tree_bitmap
-            .is_ps_outdated(&pfx, &rotonda_store::epoch::pin())
-            .unwrap()
-    );
+    let best_path = tree_bitmap.best_path(&pfx);
+    println!("ps outdated? {}", tree_bitmap.is_ps_outdated(&pfx).unwrap());
     println!("{:?}", best_path);
     assert_eq!(best_path.unwrap().unwrap().multi_uniq_id, 1);
 
