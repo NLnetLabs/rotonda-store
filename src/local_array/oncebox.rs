@@ -7,7 +7,7 @@ pub struct OnceBox<T> {
 }
 
 impl<T> OnceBox<T> {
-    pub fn null() -> Self {
+    pub fn new() -> Self {
         Self {
             ptr: AtomicPtr::new(null_mut()),
         }
@@ -32,8 +32,8 @@ impl<T> OnceBox<T> {
         let res = match self.ptr.compare_exchange(
             null_mut(),
             ptr,
-            Ordering::SeqCst,
             Ordering::Acquire,
+            Ordering::Relaxed,
         ) {
             Ok(current) => {
                 // We set the new value, return it.
@@ -50,16 +50,16 @@ impl<T> OnceBox<T> {
         unsafe { &*res }
     }
 
-    pub fn get_or_create(&self, create: impl FnOnce() -> Box<T>) -> &T {
+    pub fn get_or_init(&self, create: impl FnOnce() -> T) -> &T {
         if let Some(res) = self.get() {
             return res;
         }
-        let ptr = Box::leak(create());
+        let ptr = Box::leak(Box::new(create()));
         let res = match self.ptr.compare_exchange(
             null_mut(),
             ptr,
-            Ordering::SeqCst,
             Ordering::Acquire,
+            Ordering::Relaxed,
         ) {
             Ok(current) => {
                 // We set the new value, return it.

@@ -148,7 +148,8 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
         Self(Some((addr_bits, len)))
     }
 
-    #[inline]
+    // #[inline]
+
     pub fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
         Self(Some((addr_bits.truncate_to_len(len), len)))
     }
@@ -377,8 +378,6 @@ impl<
 {
     pub fn new(
     ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
-        let guard = &epoch::pin();
-
         let root_node =
             match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size()
             {

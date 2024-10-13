@@ -1,4 +1,5 @@
 use log::trace;
+use parking_lot_core::SpinWait;
 use std::fmt::{Binary, Debug};
 use std::sync::atomic::{
     fence, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
@@ -74,11 +75,11 @@ impl AtomicBitmap for AtomicStride2 {
         ))
     }
     fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 
     fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::SeqCst) as u32
+        self.0.load(Ordering::Relaxed) as u32
     }
 
     fn to_u64(&self) -> u64 {
@@ -86,9 +87,11 @@ impl AtomicBitmap for AtomicStride2 {
     }
 
     fn merge_with(&self, node: u8) {
+        let mut spinwait = SpinWait::new();
         let current = self.load();
         let new = current | node;
         loop {
+            fence(Ordering::Acquire);
             match self.0.compare_exchange(
                 current,
                 new,
@@ -100,6 +103,7 @@ impl AtomicBitmap for AtomicStride2 {
                 }
                 Err(_) => {}
             }
+            spinwait.spin_no_yield();
         }
     }
 }
@@ -140,7 +144,7 @@ impl AtomicBitmap for AtomicStride3 {
     }
 
     fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 
     fn to_u32(&self) -> u32 {
@@ -152,20 +156,23 @@ impl AtomicBitmap for AtomicStride3 {
     }
 
     fn merge_with(&self, node: u16) {
+        let mut spinwait = SpinWait::new();
         let current = self.load();
         let new = current | node;
         loop {
+            fence(Ordering::Acquire);
             match self.0.compare_exchange(
                 current,
                 new,
-                Ordering::SeqCst,
                 Ordering::Acquire,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => {
                     return;
                 }
                 Err(_) => {}
             }
+            spinwait.spin_no_yield();
         }
     }
 }
@@ -205,7 +212,7 @@ impl AtomicBitmap for AtomicStride4 {
         ))
     }
     fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 
     fn to_u32(&self) -> u32 {
@@ -217,20 +224,24 @@ impl AtomicBitmap for AtomicStride4 {
     }
 
     fn merge_with(&self, node: u32) {
+        let mut spinwait = SpinWait::new();
         let current = self.load();
         let new = current | node;
         loop {
+            fence(Ordering::Acquire);
             match self.0.compare_exchange(
                 current,
                 new,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::Acquire,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => {
                     return;
                 }
                 Err(_) => {}
-            }
+            };
+
+            spinwait.spin_no_yield();
         }
     }
 }
@@ -270,7 +281,7 @@ impl AtomicBitmap for AtomicStride5 {
         ))
     }
     fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 
     fn to_u32(&self) -> u32 {
@@ -282,20 +293,23 @@ impl AtomicBitmap for AtomicStride5 {
     }
 
     fn merge_with(&self, node: u64) {
+        let mut spinwait = SpinWait::new();
         let current = self.load();
         let new = current | node;
         loop {
+            fence(Ordering::Acquire);
             match self.0.compare_exchange(
                 current,
                 new,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::Acquire,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => {
                     return;
                 }
                 Err(_) => {}
             }
+            spinwait.spin_no_yield();
         }
     }
 }
@@ -341,21 +355,21 @@ impl AtomicBitmap for AtomicStride6 {
             self.0 .0.compare_exchange(
                 ((current << 64) >> 64) as u64,
                 ((new >> 64) << 64) as u64,
-                Ordering::SeqCst,
                 Ordering::Acquire,
+                Ordering::Relaxed,
             ),
             self.0 .1.compare_exchange(
                 ((current << 64) >> 64) as u64,
                 ((new >> 64) << 64) as u64,
-                Ordering::SeqCst,
                 Ordering::Acquire,
+                Ordering::Relaxed,
             ),
         )
             .into()
     }
     fn load(&self) -> Self::InnerType {
-        let hi = self.0 .0.load(Ordering::SeqCst).to_be_bytes();
-        let lo = self.0 .1.load(Ordering::SeqCst).to_be_bytes();
+        let hi = self.0 .0.load(Ordering::Relaxed).to_be_bytes();
+        let lo = self.0 .1.load(Ordering::Relaxed).to_be_bytes();
         u128::from_be_bytes([
             hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
             lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
@@ -371,6 +385,7 @@ impl AtomicBitmap for AtomicStride6 {
     }
 
     fn merge_with(&self, node: u128) {
+        let mut spinwait = SpinWait::new();
         let current = self.load();
         let new = current | node;
 
@@ -381,24 +396,27 @@ impl AtomicBitmap for AtomicStride6 {
                 match self.0 .0.compare_exchange(
                     ((current << 64) >> 64) as u64,
                     ((new >> 64) << 64) as u64,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
                 ) {
                     Ok(_) => break,
                     Err(_) => {}
                 };
+                spinwait.spin_no_yield();
             }
 
+            spinwait.reset();
             loop {
                 match self.0 .1.compare_exchange(
                     ((current << 64) >> 64) as u64,
                     ((new >> 64) << 64) as u64,
-                    Ordering::SeqCst,
-                    Ordering::SeqCst,
+                    Ordering::Acquire,
+                    Ordering::Relaxed,
                 ) {
                     Ok(_) => return,
                     Err(_) => {}
                 }
+                spinwait.spin_no_yield();
             }
         }
     }

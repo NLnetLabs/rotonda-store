@@ -187,7 +187,7 @@ use std::{
     fmt::Debug,
     sync::{
         atomic::{AtomicUsize, Ordering},
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
     },
 };
 
@@ -690,8 +690,7 @@ impl<
                 // .record_map
                 // .upsert_record(record.clone());
 
-                let _p = locked_prefix
-                    .get_or_create(|| Box::new(new_stored_prefix));
+                let _p = locked_prefix.get_or_set(new_stored_prefix);
                 // let back_off = Backoff::new();
 
                 let res = _p.record_map.upsert_record(record);

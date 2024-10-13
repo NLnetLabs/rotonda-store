@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::{Mutex, MutexGuard, OnceLock};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -64,7 +64,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         let mut l = vec![];
 
         for _i in 0..size {
-            l.push(OnceBox::null())
+            l.push(OnceBox::new())
         }
         NodeSet(l.into(), RoaringBitmap::new().into())
     }
@@ -796,7 +796,7 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
         // ]);
         trace!("creating space for {} prefixes in prefix_set", &size);
         for _i in 0..size {
-            l.push(OnceBox::null());
+            l.push(OnceBox::new());
         }
         PrefixSet(l.into_boxed_slice())
     }

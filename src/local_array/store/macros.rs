@@ -254,9 +254,10 @@ macro_rules! store_node_closure {
 
                                 let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
-                                } else {                                    NodeSet(
+                                } else {
+                                    NodeSet(
                                         Box::new(
-                                            [OnceBox::null()]
+                                            [OnceBox::new()]
                                         ),
                                         // Mutex::new(nodes.1.lock().unwrap().clone()) //..load(Ordering::Acquire, $guard).into()
                                         Mutex::new(RoaringBitmap::new())
@@ -290,10 +291,8 @@ macro_rules! store_node_closure {
                                 let cur_pfxbitarr = new_node.pfxbitarr.load();
 
                                 let stored_node = node_ref
-                                    .get_or_create(|| Box::new(
-                                        StoredNode { node_id: $id, node: new_node, node_set}
-                                    )
-                                );
+                                    .get_or_set(StoredNode { node_id: $id, node: new_node, node_set});
+
 
                                 stored_node.node.ptrbitarr.merge_with(cur_ptrbitarr);
                                 stored_node.node.pfxbitarr.merge_with(cur_pfxbitarr);
