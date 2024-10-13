@@ -4,7 +4,7 @@ use crate::prelude::multi::*;
 
 // The default stride sizes for IPv4, IPv6, resp.
 #[create_store((
-    [5, 5, 4, 3, 3, 3, 3, 3, 3, 3], 
+    [4, 4, 4, 4, 4, 4, 4, 4], 
     [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
     4, 4, 4, 4, 4, 4, 4, 4, 4]
 ))]
