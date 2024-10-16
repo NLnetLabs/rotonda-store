@@ -84,21 +84,21 @@ macro_rules! impl_search_level_for_mui {
                     match this_node.is_null() {
                         true => None,
                         false => {
-                            let StoredNode { node_id, node, node_set, .. } = unsafe { 
-                                this_node.deref() 
+                            let StoredNode { node_id, node, node_set, .. } = unsafe {
+                                this_node.deref()
                             };
 
                             // early return if the mui is not in the index
                             // stored in this node, meaning the mui does not
                             // appear anywhere in the sub-tree formed from
                             // this node.
-                            let bmin: &RoaringBitmap = unsafe { 
+                            let bmin: &RoaringBitmap = unsafe {
                                 node_set.1.load(Ordering::Acquire, guard).deref()
                             };
                             if !bmin.contains($mui) {
                                 return None;
                             }
-                            
+
                             if $id == *node_id {
                                 // YES, It's the one we're looking for!
                                 return Some(SizedStrideRef::$stride(&node));
@@ -149,6 +149,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
 
                 // Read the node from the block pointed to by the Atomic
                 // pointer.
+                assert!(unsafe { nodes.0.load(Ordering::SeqCst, guard).deref().get(index).is_some() } );
                 let stored_node = unsafe {
                     &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index].assume_init_ref()
                 };
@@ -220,19 +221,24 @@ macro_rules! store_node_closure {
             multi_uniq_id: u32,
             mut level: u8,
             mut retry_count: u32| {
+                println!("-");
                 let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                 trace!("{:032b}", $id.get_id().0);
                 trace!("id {:?}", $id.get_id());
                 trace!("multi_uniq_id {}", multi_uniq_id);
 
+                std::sync::atomic::fence(Ordering::SeqCst);
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
                 let stored_nodes = nodes.0.load(Ordering::Acquire, $guard);
 
                 match stored_nodes.is_null() {
                     false => {
+                        print!("NODE HERE: ");
+                        assert!(unsafe { stored_nodes.deref().get(index).is_some() });
                         let node_ref =
                             unsafe { stored_nodes.deref()[index].assume_init_ref() };
+                        println!("success");
                         let stored_node = node_ref.load(Ordering::Acquire, $guard);
 
                         match stored_node.is_null() {
@@ -254,7 +260,7 @@ macro_rules! store_node_closure {
 
                                 trace!("multi uniq id {}", multi_uniq_id);
 
-                                let node_set = if next_level > 0 { 
+                                let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
                                 } else { NodeSet(
                                     Atomic::null(), nodes.1.load(Ordering::Acquire, $guard).into()) };
@@ -327,6 +333,8 @@ macro_rules! store_node_closure {
                                 // this node can't be null anymore.
                                 let stored_node = unsafe { stored_node.deref() };
 
+
+                                println!("NODE EXISTS");
                                 if log_enabled!(log::Level::Trace) {
                                     trace!("
                                         {} store: Node here exists {:?}",
@@ -345,6 +353,8 @@ macro_rules! store_node_closure {
                                 // with the multi_uniq_id we've got from the
                                 // caller.
                                 if $id == stored_node.node_id {
+                                    println!("NODE WITH ID EXISTS");
+                                    // panic!("this should not happen in single-threaded context.");
                                     // yes, it exists
                                     trace!("found node {} in {} attempts",
                                         $id,
@@ -353,9 +363,13 @@ macro_rules! store_node_closure {
 
                                     // Same remarks here as the above
                                     // fetch_update.
-                                    stored_node.node_set.update_rbm_index(
-                                        multi_uniq_id, $guard
-                                    )?;
+                                    // stored_node.node_set.update_rbm_index(
+                                        // multi_uniq_id, $guard
+                                    // )?;
+
+
+                                stored_node.node.ptrbitarr.merge_with(new_node.ptrbitarr.load());
+                                stored_node.node.pfxbitarr.merge_with(new_node.pfxbitarr.load());
 
                                     return Ok(($id, retry_count));
                                 } else {
@@ -364,7 +378,7 @@ macro_rules! store_node_closure {
                                     level += 1;
                                     trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
                                         stored_node.node_id, $id, $id.get_id().1, level, index
-                                    );                                        
+                                    );
 
                                     return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                                         // on to the next level!
