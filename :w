@@ -817,22 +817,19 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
+        guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let (stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
-            .or_else(|_| Err(PrefixStoreError::StoreNotReadyError))?;
+        let (atomic_stored_prefix, _level) =
+            self.non_recursive_retrieve_prefix_mut_with_guard(prefix)?;
 
-        // let current =
-        // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
-
-        // let current = unsafe {
-        //     atomic_stored_prefix
-        //         .0
-        //         .load(Ordering::Acquire, guard)
-        //         .as_ref()
-        // }
-        // .unwrap();
-        stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
+        let current = unsafe {
+            atomic_stored_prefix
+                .0
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap();
+        current.record_map.mark_as_withdrawn_for_mui(mui);
 
         Ok(())
     }
@@ -843,22 +840,19 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
+        guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let (stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
-            .or_else(|_| Err(PrefixStoreError::StoreNotReadyError))?;
+        let (atomic_stored_prefix, _level) =
+            self.non_recursive_retrieve_prefix_mut_with_guard(prefix, guard)?;
 
-        // let current =
-        // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
-
-        // let current = unsafe {
-        //     atomic_stored_prefix
-        //         .0
-        //         .load(Ordering::Acquire, guard)
-        //         .as_ref()
-        // }
-        // .unwrap();
-        stored_prefix.record_map.mark_as_active_for_mui(mui);
+        let current = unsafe {
+            atomic_stored_prefix
+                .0
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap();
+        current.record_map.mark_as_active_for_mui(mui);
 
         Ok(())
     }
@@ -1039,6 +1033,7 @@ impl<
     pub fn non_recursive_retrieve_prefix_with_guard(
         &'a self,
         id: PrefixId<AF>,
+        guard: &'a Guard,
     ) -> (
         Option<&StoredPrefix<AF, M>>,
         Option<(
@@ -1062,29 +1057,29 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            // let mut prefixes = prefix_set; //.0.load(Ordering::Acquire, guard);
+            let prefixes = prefix_set.0.load(Ordering::Acquire, guard);
 
-            // if !prefixes.is_none() {
-            // let prefix_ref = prefixes.0[index];
-            if let Some(stored_prefix) = prefix_set.0[index].get()
-            // unsafe { prefix_ref }.get_stored_prefix(guard)
-            {
-                if id == stored_prefix.get_prefix_id() {
-                    trace!("found requested prefix {:?}", id);
-                    parents[level as usize] = Some((prefix_set, index));
-                    return (
-                        Some(stored_prefix),
-                        Some((id, level, prefix_set, parents, index)),
-                    );
-                };
-                // Advance to the next level.
-
-                prefix_set = &stored_prefix.next_bucket;
-                level += 1;
-                backoff.spin();
-                continue;
+            if !prefixes.is_null() {
+                let prefix_ref = unsafe { &prefixes.deref()[index] };
+                if let Some(stored_prefix) =
+                    unsafe { prefix_ref.assume_init_ref() }
+                        .get_stored_prefix(guard)
+                {
+                    if id == stored_prefix.get_prefix_id() {
+                        trace!("found requested prefix {:?}", id);
+                        parents[level as usize] = Some((prefix_set, index));
+                        return (
+                            Some(stored_prefix),
+                            Some((id, level, prefix_set, parents, index)),
+                        );
+                    };
+                    // Advance to the next level.
+                    prefix_set = &stored_prefix.next_bucket;
+                    level += 1;
+                    backoff.spin();
+                    continue;
+                }
             }
-            // }
 
             trace!("no prefix found for {:?}", id);
             parents[level as usize] = Some((prefix_set, index));
@@ -1096,6 +1091,7 @@ impl<
     pub(crate) fn retrieve_prefix_with_guard(
         &'a self,
         prefix_id: PrefixId<AF>,
+        guard: &'a Guard,
     ) -> Option<(&StoredPrefix<AF, M>, usize)> {
         struct SearchLevel<
             's,
@@ -1104,8 +1100,9 @@ impl<
         > {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, M>,
-                &'a PrefixSet<AF, M>,
+                &PrefixSet<AF, M>,
                 u8,
+                &'a Guard,
             )
                 -> Option<(&'a StoredPrefix<AF, M>, usize)>,
         }
@@ -1113,35 +1110,34 @@ impl<
         let search_level = SearchLevel {
             f: &|search_level: &SearchLevel<AF, M>,
                  prefix_set: &PrefixSet<AF, M>,
-                 mut level: u8| {
+                 mut level: u8,
+                 guard: &Guard| {
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-                // let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-                // let tag = prefixes.tag();
-                // let prefix_ref = unsafe { &prefixes.deref()[index] };
+                let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
+                let tag = prefixes.tag();
+                let prefix_ref = unsafe { &prefixes.deref()[index] };
 
                 if let Some(stored_prefix) =
-                    // unsafe { prefix_ref }.get_stored_prefix(guard)
-                    prefix_set.0[index].get()
+                    unsafe { prefix_ref.assume_init_ref() }
+                        .get_stored_prefix(guard)
                 {
                     if prefix_id == stored_prefix.prefix {
                         trace!(
-                            "found requested prefix {:?}",
+                            "found requested prefix {:?} with tag {}",
                             prefix_id,
-                            // tag
+                            tag
                         );
-                        return Some((stored_prefix, 0));
+                        return Some((stored_prefix, tag));
                     };
                     level += 1;
-
-                    // if let next_prefix_set = stored_prefix.next_bucket {
                     (search_level.f)(
                         search_level,
                         &stored_prefix.next_bucket,
                         level,
+                        guard,
                     );
-                    // }
                 }
                 None
             },
@@ -1151,6 +1147,7 @@ impl<
             &search_level,
             self.prefixes.get_root_prefix_set(prefix_id.get_len()),
             0,
+            guard,
         )
     }
 

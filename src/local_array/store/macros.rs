@@ -221,7 +221,7 @@ macro_rules! store_node_closure {
             multi_uniq_id: u32,
             mut level: u8,
             mut retry_count: u32| {
-                println!("-");
+                // println!("-");
                 let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                 trace!("{:032b}", $id.get_id().0);
                 trace!("id {:?}", $id.get_id());
@@ -234,11 +234,11 @@ macro_rules! store_node_closure {
 
                 match stored_nodes.is_null() {
                     false => {
-                        print!("NODE HERE: ");
+                        // print!("NODE HERE: ");
                         assert!(unsafe { stored_nodes.deref().get(index).is_some() });
                         let node_ref =
                             unsafe { stored_nodes.deref()[index].assume_init_ref() };
-                        println!("success");
+                        // println!("success");
                         let stored_node = node_ref.load(Ordering::Acquire, $guard);
 
                         match stored_node.is_null() {
@@ -334,7 +334,7 @@ macro_rules! store_node_closure {
                                 let stored_node = unsafe { stored_node.deref() };
 
 
-                                println!("NODE EXISTS");
+                                // println!("NODE EXISTS");
                                 if log_enabled!(log::Level::Trace) {
                                     trace!("
                                         {} store: Node here exists {:?}",
@@ -353,7 +353,7 @@ macro_rules! store_node_closure {
                                 // with the multi_uniq_id we've got from the
                                 // caller.
                                 if $id == stored_node.node_id {
-                                    println!("NODE WITH ID EXISTS");
+                                    // println!("NODE WITH ID EXISTS");
                                     // panic!("this should not happen in single-threaded context.");
                                     // yes, it exists
                                     trace!("found node {} in {} attempts",

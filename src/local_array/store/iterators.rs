@@ -162,65 +162,70 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             // StoredPrefix. We are doing depth-first iteration, so we check
             // for a child first and descend into that if it exists.
 
-            let s_pfx = self.cur_bucket.get_by_index(self.cursor, self.guard);
+            if let Some(s_pfx) =
+                self.cur_bucket.get_by_index(self.cursor, self.guard)
+            {
+                // DEPTH FIRST ITERATION
+                match s_pfx.get_next_bucket() {
+                    Some(bucket) => {
+                        // DESCEND ONe LEVEL There's a child here, descend into
+                        // it, but... trace!("C. got next bucket {:?}", bucket);
 
-            // DEPTH FIRST ITERATION
-            match s_pfx.get_next_bucket(self.guard) {
-                Some(bucket) => {
-                    // DESCEND ONe LEVEL There's a child here, descend into
-                    // it, but... trace!("C. got next bucket {:?}", bucket);
+                        // save our parent and cursor position first, and then..
+                        self.parents[(self.cur_level + 1) as usize] =
+                            Some((self.cur_bucket, self.cursor));
 
-                    // save our parent and cursor position first, and then..
-                    self.parents[(self.cur_level + 1) as usize] =
-                        Some((self.cur_bucket, self.cursor));
+                        // move to the next bucket,
+                        self.cur_bucket = bucket;
 
-                    // move to the next bucket,
-                    self.cur_bucket = bucket;
+                        // increment the level and reset the cursor.
+                        self.cur_level += 1;
+                        self.cursor = 0;
 
-                    // increment the level and reset the cursor.
-                    self.cur_level += 1;
-                    self.cursor = 0;
-
-                    // If there's a child here there MUST be a prefix here,
-                    // as well.
-                    if let Some(meta) =
-                        s_pfx.get_stored_prefix(self.guard).map(|p| {
-                            if log_enabled!(log::Level::Trace) {
-                                // There's a prefix here, that's the next one
-                                trace!("D. found prefix {:?}", p.prefix);
-                            }
-                            p.record_map.as_records()
-                        })
-                    {
+                        // If there's a child here there MUST be a prefix here,
+                        // as well.
+                        // if let Some(meta) =
+                        //     s_pfx.get_stored_prefix(self.guard).map(|p| {
+                        //         if log_enabled!(log::Level::Trace) {
+                        //             // There's a prefix here, that's the next one
+                        //             trace!("D. found prefix {:?}", p.prefix);
+                        //         }
+                        //         p.record_map.as_records()
+                        //     })
+                        // {
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
-                            meta,
+                            s_pfx.record_map.as_records(),
                         ));
-                    } else {
-                        panic!("No prefix here, but there's a child here?");
+                        // } else {
+                        //     panic!(
+                        //         "No prefix here, but there's a child here?"
+                        //     );
+                        // }
                     }
-                }
-                None => {
-                    // No reference to another PrefixSet, all that's left, is
-                    // checking for a prefix at the current cursor position.
-                    if let Some(meta) =
-                        s_pfx.get_stored_prefix(self.guard).map(|p| {
-                            // There's a prefix here, that's the next one
-                            if log_enabled!(log::Level::Debug) {
-                                debug!("E. found prefix {:?}", p.prefix);
-                            }
-                            p.record_map.as_records()
-                        })
-                    {
+                    None => {
+                        // No reference to another PrefixSet, all that's left, is
+                        // checking for a prefix at the current cursor position.
+                        // if let Some(meta) =
+                        //     s_pfx.get_stored_prefix(self.guard).map(|p| {
+                        //         // There's a prefix here, that's the next one
+                        //         if log_enabled!(log::Level::Debug) {
+                        //             debug!("E. found prefix {:?}", p.prefix);
+                        //         }
+                        //         p.record_map.as_records()
+                        //     })
+                        // {
                         self.cursor += 1;
                         return Some((
                             s_pfx.get_prefix_id().into_pub(),
-                            meta,
+                            s_pfx.record_map.as_records(),
                         ));
+                        // }
                     }
-                }
-            };
-            self.cursor += 1;
+                };
+            } else {
+                self.cursor += 1;
+            }
         }
     }
 }
@@ -340,7 +345,7 @@ impl<
                                 next_pfx
                             )
                             }),
-                            self.guard,
+                            // self.guard,
                         )
                         .0
                     {
@@ -376,7 +381,7 @@ impl<
                                 next_pfx
                             )
                             }),
-                            self.guard,
+                            // self.guard,
                         )
                         .0
                         .map(|p| {
@@ -606,9 +611,12 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             }
 
             // LEVEL DEPTH ITERATION
-            let s_pfx = self.cur_bucket.get_by_index(index, self.guard);
-
-            if let Some(stored_prefix) = s_pfx.get_stored_prefix(self.guard) {
+            if let Some(stored_prefix) =
+                self.cur_bucket.get_by_index(index, self.guard)
+            {
+                // if let Some(stored_prefix) =
+                // s_pfx.get_stored_prefix(self.guard)
+                // {
                 trace!("get_record {:?}", stored_prefix.record_map);
                 let pfx_rec = if let Some(mui) = self.mui {
                     // We don't have to check for the appearance of We may
@@ -668,10 +676,10 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 };
                 // Advance to the next level or the next len.
                 match stored_prefix
-                    .next_bucket
-                    .0
-                    .load(Ordering::SeqCst, self.guard)
-                    .is_null()
+                    .next_bucket.is_empty()
+                    // .0
+                    // .load(Ordering::SeqCst, self.guard)
+                    // .is_null()
                 {
                     // No child here, move one length down.
                     true => {
@@ -694,6 +702,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 self.cur_bucket =
                     self.prefixes.get_root_prefix_set(self.cur_len);
             }
+            // }
         }
     }
 }
