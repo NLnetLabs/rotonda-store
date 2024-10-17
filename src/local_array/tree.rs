@@ -1,6 +1,6 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
-use log::{error, log_enabled, trace, debug};
+use log::{debug, error, log_enabled, trace};
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -454,8 +454,7 @@ impl<
         // let record = MultiMapValue::new(meta, ltime, status);
 
         if pfx.get_len() == 0 {
-            let res = self.update_default_route_prefix_meta(
-                record, guard)?;
+            let res = self.update_default_route_prefix_meta(record, guard)?;
             return Ok(res);
         }
 
@@ -563,20 +562,33 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
 
-        if let Some(root_node) = self.store.retrieve_node_mut_with_guard(self.store.get_root_node_id(), record.multi_uniq_id, guard) {
+        if let Some(root_node) = self.store.retrieve_node_mut_with_guard(
+            self.store.get_root_node_id(),
+            record.multi_uniq_id,
+            guard,
+        ) {
             match root_node {
-                SizedStrideRefMut::Stride3(_) => { 
-                    self.store.buckets.get_store3(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
-                },
-                SizedStrideRefMut::Stride4(_) => {
-                    self.store.buckets.get_store4(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
-                },
-                SizedStrideRefMut::Stride5(_) => {
-                    self.store.buckets.get_store5(self.store.get_root_node_id()).update_rbm_index(record.multi_uniq_id, guard)?;
-                 },
+                SizedStrideRef::Stride3(_) => {
+                    self.store
+                        .buckets
+                        .get_store3(self.store.get_root_node_id())
+                        .update_rbm_index(record.multi_uniq_id, guard)?;
+                }
+                SizedStrideRef::Stride4(_) => {
+                    self.store
+                        .buckets
+                        .get_store4(self.store.get_root_node_id())
+                        .update_rbm_index(record.multi_uniq_id, guard)?;
+                }
+                SizedStrideRef::Stride5(_) => {
+                    self.store
+                        .buckets
+                        .get_store5(self.store.get_root_node_id())
+                        .update_rbm_index(record.multi_uniq_id, guard)?;
+                }
             };
         };
-        
+
         self.store.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
             record,

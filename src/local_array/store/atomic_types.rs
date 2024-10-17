@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -14,6 +14,7 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
+use crate::local_array::store::oncebox::OnceBox;
 use crate::local_array::tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
@@ -38,12 +39,12 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
-    pub Atomic<RoaringBitmap>,
+    pub RwLock<RoaringBitmap>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
@@ -73,31 +74,35 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         S: crate::local_array::atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
-        let mut try_count = 0;
+        let try_count = 0;
+        let mut rbm = self.1.write().unwrap();
+        rbm.insert(multi_uniq_id);
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |mut a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point.
+        // self.1
+        //     .fetch_update(
+        //         std::sync::atomic::Ordering::AcqRel,
+        //         std::sync::atomic::Ordering::Acquire,
+        //         guard,
+        //         |a_rbm_index| {
+        // SAFETY: The rbm_index gets created as an empty
+        // RoaringBitmap at init time of the NodeSet, so it cannot
+        // be a NULL pointer at this point.
 
-                    // Data races that could normally arise as a consequence
-                    // of the .deref_mut() are avoided by the guarantees of
-                    // fetch_update (it does CAS).
-                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
-                    rbm_index.insert(multi_uniq_id);
+        // Data races that could normally arise as a consequence
+        // of the .deref_mut() are avoided by the guarantees of
+        // fetch_update (it does CAS).
+        // let mut rbm_index =
+        //     unsafe { a_rbm_index.deref() }.clone();
+        // rbm_index.insert(multi_uniq_id);
 
-                    try_count += 1;
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+        //         try_count += 1;
+        //         // Some(Owned::new(rbm_index).into_shared(guard))
+        //         Some(a_rbm_index)
+        //     },
+        // )
+        // .map_err(|_| {
+        //     crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+        // })?;
 
         // trace!("Added {} to {:?}", multi_uniq_id, unsafe {
         //     self.1
@@ -116,37 +121,42 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         S: crate::local_array::atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
-        let mut try_count = 0;
+        let try_count = 0;
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |mut a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point.
+        let mut rbm = self.1.write().unwrap();
+        rbm.remove(multi_uniq_id);
 
-                    // Data races that could normally arise as a consequence
-                    // of the .deref_mut() are avoided by the guarantees of
-                    // fetch_update (it does CAS).
-                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
-                    rbm_index.remove(multi_uniq_id);
+        // self.1
+        //     .fetch_update(
+        //         std::sync::atomic::Ordering::AcqRel,
+        //         std::sync::atomic::Ordering::Acquire,
+        //         guard,
+        //         |a_rbm_index| {
+        //             // SAFETY: The rbm_index gets created as an empty
+        //             // RoaringBitmap at init time of the NodeSet, so it cannot
+        //             // be a NULL pointer at this point.
 
-                    try_count += 1;
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+        //             // Data races that could normally arise as a consequence
+        //             // of the .deref_mut() are avoided by the guarantees of
+        //             // fetch_update (it does CAS).
+        //             // let mut rbm_index =
+        //             // unsafe { a_rbm_index.deref() }.clone();
+        //             // rbm_index.remove(multi_uniq_id);
 
-        trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
-            self.1
-                .load(std::sync::atomic::Ordering::SeqCst, guard)
-                .as_ref()
-        });
+        //             try_count += 1;
+        //             // Some(Owned::new(rbm_index).into_shared(guard))
+        //             Some(a_rbm_index)
+        //         },
+        //     )
+        //     .map_err(|_| {
+        //         crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+        //     })?;
+
+        // trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
+        //     self.1
+        //         .load(std::sync::atomic::Ordering::SeqCst, guard)
+        //         .as_ref()
+        // });
         Ok(try_count)
     }
 }
@@ -231,54 +241,54 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         }
     }
 
-    pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
-        pfx_id: PrefixId<AF>,
-        record: PublicRecord<M>,
-        level: u8,
-    ) -> Self {
-        // start calculation size of next set, it's dependent on the level
-        // we're in.
-        // let pfx_id = PrefixId::new(record.net, record.len);
-        let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
-        let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+    // pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
+    //     pfx_id: PrefixId<AF>,
+    //     record: PublicRecord<M>,
+    //     level: u8,
+    // ) -> Self {
+    //     // start calculation size of next set, it's dependent on the level
+    //     // we're in.
+    //     // let pfx_id = PrefixId::new(record.net, record.len);
+    //     let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
+    //     let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
 
-        trace!("this level {} next level {}", this_level, next_level);
-        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-            debug!(
-                "{} store: INSERT with new bucket of size {} at prefix len {}",
-                std::thread::current().name().unwrap(),
-                1 << (next_level - this_level),
-                pfx_id.get_len()
-            );
-            PrefixSet::init((1 << (next_level - this_level)) as usize)
-        } else {
-            debug!(
-                "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
-                std::thread::current().name().unwrap(),
-                pfx_id.get_len()
-            );
-            PrefixSet::empty()
-        };
-        // End of calculation
+    //     trace!("this level {} next level {}", this_level, next_level);
+    //     let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+    //         debug!(
+    //             "{} store: INSERT with new bucket of size {} at prefix len {}",
+    //             std::thread::current().name().unwrap(),
+    //             1 << (next_level - this_level),
+    //             pfx_id.get_len()
+    //         );
+    //         PrefixSet::init((1 << (next_level - this_level)) as usize)
+    //     } else {
+    //         debug!(
+    //             "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
+    //             std::thread::current().name().unwrap(),
+    //             pfx_id.get_len()
+    //         );
+    //         PrefixSet::empty()
+    //     };
+    //     // End of calculation
 
-        let mut rec_map = HashMap::new();
-        let mui = record.multi_uniq_id;
-        rec_map
-            // .pin()
-            .insert(record.multi_uniq_id, MultiMapValue::from(record));
+    //     let mut rec_map = HashMap::new();
+    //     let mui = record.multi_uniq_id;
+    //     rec_map
+    //         // .pin()
+    //         .insert(record.multi_uniq_id, MultiMapValue::from(record));
 
-        StoredPrefix {
-            // serial: 1,
-            prefix: pfx_id,
-            // In a new prefix, the first inserted record will always be the
-            // best path
-            path_selections: Atomic::new(PathSelections {
-                path_selection_muis: (Some(mui), None),
-            }),
-            record_map: MultiMap::new(rec_map),
-            next_bucket,
-        }
-    }
+    //     StoredPrefix {
+    //         // serial: 1,
+    //         prefix: pfx_id,
+    //         // In a new prefix, the first inserted record will always be the
+    //         // best path
+    //         path_selections: Atomic::new(PathSelections {
+    //             path_selection_muis: (Some(mui), None),
+    //         }),
+    //         record_map: MultiMap::new(rec_map),
+    //         next_bucket,
+    //     }
+    // }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
         self.prefix
@@ -353,6 +363,14 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         )?;
 
         Ok(path_selection_muis)
+    }
+
+    pub(crate) fn get_next_bucket(&self) -> Option<&PrefixSet<AF, M>> {
+        if self.next_bucket.is_empty() {
+            return None;
+        } else {
+            return Some(&self.next_bucket);
+        }
     }
 }
 
@@ -615,101 +633,101 @@ impl<M: Meta> Clone for MultiMap<M> {
 // Unlike StoredNode, we don't need an Empty variant, since we're using
 // serial == 0 as the empty value. We're not using an Option here, to
 // avoid going outside our atomic procedure.
-#[allow(clippy::type_complexity)]
-#[derive(Debug)]
-pub struct AtomicStoredPrefix<
-    AF: AddressFamily,
-    M: crate::prefix_record::Meta,
->(pub Atomic<StoredPrefix<AF, M>>);
+// #[allow(clippy::type_complexity)]
+// #[derive(Debug)]
+// pub struct AtomicStoredPrefix<
+//     AF: AddressFamily,
+//     M: crate::prefix_record::Meta,
+// >(pub Atomic<StoredPrefix<AF, M>>);
 
-impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
-    AtomicStoredPrefix<AF, Meta>
-{
-    pub(crate) fn empty() -> Self {
-        AtomicStoredPrefix(Atomic::null())
-    }
+// impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
+//     AtomicStoredPrefix<AF, Meta>
+// {
+//     pub(crate) fn empty() -> Self {
+//         AtomicStoredPrefix(Atomic::null())
+//     }
 
-    // pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
-    //     let pfx = self.0.load(Ordering::SeqCst, guard);
-    //     pfx.is_null()
-    // }
+//     // pub(crate) fn is_empty(&self, guard: &Guard) -> bool {
+//     //     let pfx = self.0.load(Ordering::SeqCst, guard);
+//     //     pfx.is_null()
+//     // }
 
-    pub(crate) fn get_stored_prefix<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let pfx = self.0.load(Ordering::Acquire, guard);
-        match pfx.is_null() {
-            true => None,
-            false => Some(unsafe { pfx.deref() }),
-        }
-    }
+//     pub(crate) fn get_stored_prefix<'a>(
+//         &'a self,
+//         guard: &'a Guard,
+//     ) -> Option<&'a StoredPrefix<AF, Meta>> {
+//         let pfx = self.0.load(Ordering::Acquire, guard);
+//         match pfx.is_null() {
+//             true => None,
+//             false => Some(unsafe { pfx.deref() }),
+//         }
+//     }
 
-    pub(crate) fn _get_stored_prefix_with_tag<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<(&'a StoredPrefix<AF, Meta>, usize)> {
-        let pfx = self.0.load(Ordering::Acquire, guard);
-        match pfx.is_null() {
-            true => None,
-            false => Some((unsafe { pfx.deref() }, pfx.tag())),
-        }
-    }
+//     pub(crate) fn _get_stored_prefix_with_tag<'a>(
+//         &'a self,
+//         guard: &'a Guard,
+//     ) -> Option<(&'a StoredPrefix<AF, Meta>, usize)> {
+//         let pfx = self.0.load(Ordering::Acquire, guard);
+//         match pfx.is_null() {
+//             true => None,
+//             false => Some((unsafe { pfx.deref() }, pfx.tag())),
+//         }
+//     }
 
-    pub(crate) fn get_stored_prefix_mut<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let mut pfx = self.0.load(Ordering::SeqCst, guard);
+//     pub(crate) fn get_stored_prefix_mut<'a>(
+//         &'a self,
+//         guard: &'a Guard,
+//     ) -> Option<&'a StoredPrefix<AF, Meta>> {
+//         let pfx = self.0.load(Ordering::SeqCst, guard);
 
-        match pfx.is_null() {
-            true => None,
-            false => Some(unsafe { pfx.deref_mut() }),
-        }
-    }
+//         match pfx.is_null() {
+//             true => None,
+//             false => Some(unsafe { pfx.deref() }),
+//         }
+//     }
 
-    #[allow(dead_code)]
-    pub(crate) fn get_serial(&self) -> usize {
-        let guard = &epoch::pin();
-        unsafe { self.0.load(Ordering::Acquire, guard).into_owned() }.tag()
-    }
+//     #[allow(dead_code)]
+//     pub(crate) fn get_serial(&self) -> usize {
+//         let guard = &epoch::pin();
+//         unsafe { self.0.load(Ordering::Acquire, guard).into_owned() }.tag()
+//     }
 
-    pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
-        let guard = &epoch::pin();
-        match self.get_stored_prefix(guard) {
-            None => {
-                panic!("AtomicStoredPrefix::get_prefix_id: empty prefix");
-            }
-            Some(pfx) => pfx.prefix,
-        }
-    }
+//     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
+//         let guard = &epoch::pin();
+//         match self.get_stored_prefix(guard) {
+//             None => {
+//                 panic!("AtomicStoredPrefix::get_prefix_id: empty prefix");
+//             }
+//             Some(pfx) => pfx.prefix,
+//         }
+//     }
 
-    // PrefixSet is an Atomic that might be a null pointer, which is
-    // UB! Therefore we keep the prefix record in an Option: If
-    // that Option is None, then the PrefixSet is a null pointer and
-    // we'll return None
-    pub(crate) fn get_next_bucket<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> Option<&PrefixSet<AF, Meta>> {
-        // let guard = &epoch::pin();
-        if let Some(stored_prefix) = self.get_stored_prefix(guard) {
-            // if stored_prefix.super_agg_record.is_some() {
-            if !&stored_prefix
-                .next_bucket
-                .0
-                .load(Ordering::SeqCst, guard)
-                .is_null()
-            {
-                Some(&stored_prefix.next_bucket)
-            } else {
-                None
-            }
-        } else {
-            None
-        }
-    }
-}
+//     // PrefixSet is an Atomic that might be a null pointer, which is
+//     // UB! Therefore we keep the prefix record in an Option: If
+//     // that Option is None, then the PrefixSet is a null pointer and
+//     // we'll return None
+//     pub(crate) fn get_next_bucket<'a>(
+//         &'a self,
+//         guard: &'a Guard,
+//     ) -> Option<&PrefixSet<AF, Meta>> {
+//         // let guard = &epoch::pin();
+//         if let Some(stored_prefix) = self.get_stored_prefix(guard) {
+//             // if stored_prefix.super_agg_record.is_some() {
+//             if !&stored_prefix
+//                 .next_bucket
+//                 .0
+//                 .load(Ordering::SeqCst, guard)
+//                 .is_null()
+//             {
+//                 Some(&stored_prefix.next_bucket)
+//             } else {
+//                 None
+//             }
+//         } else {
+//             None
+//         }
+//     }
+// }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
 //
@@ -751,18 +769,21 @@ where
 #[derive(Debug)]
 #[repr(align(8))]
 pub struct PrefixSet<AF: AddressFamily, M: Meta>(
-    pub Atomic<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>,
+    pub Box<[OnceBox<StoredPrefix<AF, M>>]>,
 );
 
 impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
-        let mut l =
-            Owned::<[MaybeUninit<AtomicStoredPrefix<AF, M>>]>::init(size);
+        let mut l = Vec::with_capacity(size);
+
+        // let l = AtomicStoredPrefix<AF, M>>>::new(vec![
+        // AtomicStoredPrefix::empty(),
+        // ]);
         trace!("creating space for {} prefixes in prefix_set", &size);
-        for i in 0..size {
-            l[i] = MaybeUninit::new(AtomicStoredPrefix::empty());
+        for _i in 0..size {
+            l.push(OnceBox::new());
         }
-        PrefixSet(l.into())
+        PrefixSet(l.into_boxed_slice())
     }
 
     // pub fn get_len_recursive(&self) -> usize {
@@ -794,19 +815,23 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     //     recurse_len(self)
     // }
 
+    pub(crate) fn is_empty(&self) -> bool {
+        if self.0.len() == 1 {
+            true
+        } else {
+            false
+        }
+    }
+
     pub(crate) fn get_by_index<'a>(
         &'a self,
         index: usize,
         guard: &'a Guard,
-    ) -> &'a AtomicStoredPrefix<AF, M> {
-        assert!(!self.0.load(Ordering::SeqCst, guard).is_null());
-        unsafe {
-            self.0.load(Ordering::SeqCst, guard).deref()[index]
-                .assume_init_ref()
-        }
+    ) -> Option<&'a StoredPrefix<AF, M>> {
+        self.0[index].get()
     }
 
     pub(crate) fn empty() -> Self {
-        PrefixSet(Atomic::null())
+        PrefixSet(Box::new([OnceBox::new()]))
     }
 }

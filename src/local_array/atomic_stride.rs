@@ -1,7 +1,8 @@
-use std::fmt::{Binary, Debug};
 use log::trace;
+use parking_lot_core::SpinWait;
+use std::fmt::{Binary, Debug};
 use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+    fence, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };
 
 use crate::af::Zero;
@@ -26,7 +27,10 @@ impl<InnerType> CasResult<InnerType> {
     }
 }
 
-pub trait AtomicBitmap {
+pub trait AtomicBitmap
+where
+    Self: From<Self::InnerType>,
+{
     type InnerType: Binary
         + Copy
         + Debug
@@ -46,6 +50,7 @@ pub trait AtomicBitmap {
     fn load(&self) -> Self::InnerType;
     fn to_u64(&self) -> u64;
     fn to_u32(&self) -> u32;
+    fn merge_with(&self, node: Self::InnerType);
 }
 
 impl AtomicBitmap for AtomicStride2 {
@@ -83,6 +88,29 @@ impl AtomicBitmap for AtomicStride2 {
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
     }
+
+    fn merge_with(&self, node: u8) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
+    }
 }
 
 impl Zero for AtomicStride2 {
@@ -92,6 +120,12 @@ impl Zero for AtomicStride2 {
 
     fn is_zero(&self) -> bool {
         self.0.load(Ordering::SeqCst) == 0
+    }
+}
+
+impl From<u8> for AtomicStride2 {
+    fn from(value: u8) -> Self {
+        Self(AtomicU8::new(value))
     }
 }
 
@@ -131,6 +165,38 @@ impl AtomicBitmap for AtomicStride3 {
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst) as u64
     }
+
+    fn merge_with(&self, node: u16) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+
+        fence(Ordering::Acquire);
+
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
+    }
+}
+
+impl From<u16> for AtomicStride3 {
+    fn from(value: u16) -> Self {
+        Self(AtomicU16::new(value))
+    }
 }
 
 impl Zero for AtomicStride3 {
@@ -163,8 +229,8 @@ impl AtomicBitmap for AtomicStride4 {
         CasResult(self.0.compare_exchange(
             current,
             new,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
+            Ordering::Acquire,
+            Ordering::Relaxed,
         ))
     }
     fn load(&self) -> Self::InnerType {
@@ -172,14 +238,44 @@ impl AtomicBitmap for AtomicStride4 {
     }
 
     fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 
     fn to_u64(&self) -> u64 {
-        self.0.load(Ordering::SeqCst) as u64
+        self.0.load(Ordering::Relaxed) as u64
+    }
+
+    fn merge_with(&self, node: u32) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+
+        fence(Ordering::Acquire);
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::Acquire,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
     }
 }
 
+impl From<u32> for AtomicStride4 {
+    fn from(value: u32) -> Self {
+        Self(AtomicU32::new(value))
+    }
+}
 impl Zero for AtomicStride4 {
     fn zero() -> Self {
         AtomicStride4(AtomicU32::new(0))
@@ -224,6 +320,35 @@ impl AtomicBitmap for AtomicStride5 {
 
     fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
+    }
+
+    fn merge_with(&self, node: u64) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
+    }
+}
+
+impl From<u64> for AtomicStride5 {
+    fn from(value: u64) -> Self {
+        Self(AtomicU64::new(value))
     }
 }
 
@@ -295,6 +420,16 @@ impl AtomicBitmap for AtomicStride6 {
 
     fn to_u64(&self) -> u64 {
         unimplemented!()
+    }
+
+    fn merge_with(&self, node: Self::InnerType) {
+        todo!()
+    }
+}
+
+impl From<u128> for AtomicStride6 {
+    fn from(value: u128) -> Self {
+        Self(AtomicU128::new(value))
     }
 }
 
@@ -437,10 +572,7 @@ where
         len: u8,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
-    fn get_bit_pos_as_u8(
-        nibble: u32,
-        len: u8,
-    ) -> u8;
+    fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8;
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding prefix in
