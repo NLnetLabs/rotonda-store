@@ -39,12 +39,12 @@ where
 }
 
 #[allow(clippy::type_complexity)]
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
-    pub Atomic<RoaringBitmap>,
+    pub Mutex<RoaringBitmap>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
@@ -74,33 +74,35 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         S: crate::local_array::atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
-        let mut try_count = 0;
+        let try_count = 0;
+        let mut rbm = self.1.lock().unwrap();
+        rbm.insert(multi_uniq_id);
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point.
+        // self.1
+        //     .fetch_update(
+        //         std::sync::atomic::Ordering::AcqRel,
+        //         std::sync::atomic::Ordering::Acquire,
+        //         guard,
+        //         |a_rbm_index| {
+        // SAFETY: The rbm_index gets created as an empty
+        // RoaringBitmap at init time of the NodeSet, so it cannot
+        // be a NULL pointer at this point.
 
-                    // Data races that could normally arise as a consequence
-                    // of the .deref_mut() are avoided by the guarantees of
-                    // fetch_update (it does CAS).
-                    // let mut rbm_index =
-                    //     unsafe { a_rbm_index.deref() }.clone();
-                    // rbm_index.insert(multi_uniq_id);
+        // Data races that could normally arise as a consequence
+        // of the .deref_mut() are avoided by the guarantees of
+        // fetch_update (it does CAS).
+        // let mut rbm_index =
+        //     unsafe { a_rbm_index.deref() }.clone();
+        // rbm_index.insert(multi_uniq_id);
 
-                    try_count += 1;
-                    // Some(Owned::new(rbm_index).into_shared(guard))
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+        //         try_count += 1;
+        //         // Some(Owned::new(rbm_index).into_shared(guard))
+        //         Some(a_rbm_index)
+        //     },
+        // )
+        // .map_err(|_| {
+        //     crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+        // })?;
 
         // trace!("Added {} to {:?}", multi_uniq_id, unsafe {
         //     self.1
@@ -119,39 +121,42 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         S: crate::local_array::atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
-        let mut try_count = 0;
+        let try_count = 0;
 
-        self.1
-            .fetch_update(
-                std::sync::atomic::Ordering::AcqRel,
-                std::sync::atomic::Ordering::Acquire,
-                guard,
-                |a_rbm_index| {
-                    // SAFETY: The rbm_index gets created as an empty
-                    // RoaringBitmap at init time of the NodeSet, so it cannot
-                    // be a NULL pointer at this point.
+        let mut rbm = self.1.lock().unwrap();
+        rbm.remove(multi_uniq_id);
 
-                    // Data races that could normally arise as a consequence
-                    // of the .deref_mut() are avoided by the guarantees of
-                    // fetch_update (it does CAS).
-                    // let mut rbm_index =
-                    // unsafe { a_rbm_index.deref() }.clone();
-                    // rbm_index.remove(multi_uniq_id);
+        // self.1
+        //     .fetch_update(
+        //         std::sync::atomic::Ordering::AcqRel,
+        //         std::sync::atomic::Ordering::Acquire,
+        //         guard,
+        //         |a_rbm_index| {
+        //             // SAFETY: The rbm_index gets created as an empty
+        //             // RoaringBitmap at init time of the NodeSet, so it cannot
+        //             // be a NULL pointer at this point.
 
-                    try_count += 1;
-                    // Some(Owned::new(rbm_index).into_shared(guard))
-                    Some(a_rbm_index)
-                },
-            )
-            .map_err(|_| {
-                crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-            })?;
+        //             // Data races that could normally arise as a consequence
+        //             // of the .deref_mut() are avoided by the guarantees of
+        //             // fetch_update (it does CAS).
+        //             // let mut rbm_index =
+        //             // unsafe { a_rbm_index.deref() }.clone();
+        //             // rbm_index.remove(multi_uniq_id);
 
-        trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
-            self.1
-                .load(std::sync::atomic::Ordering::SeqCst, guard)
-                .as_ref()
-        });
+        //             try_count += 1;
+        //             // Some(Owned::new(rbm_index).into_shared(guard))
+        //             Some(a_rbm_index)
+        //         },
+        //     )
+        //     .map_err(|_| {
+        //         crate::prelude::multi::PrefixStoreError::StoreNotReadyError
+        //     })?;
+
+        // trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
+        //     self.1
+        //         .load(std::sync::atomic::Ordering::SeqCst, guard)
+        //         .as_ref()
+        // });
         Ok(try_count)
     }
 }

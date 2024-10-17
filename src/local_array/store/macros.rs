@@ -92,9 +92,7 @@ macro_rules! impl_search_level_for_mui {
                             // stored in this node, meaning the mui does not
                             // appear anywhere in the sub-tree formed from
                             // this node.
-                            let bmin: &RoaringBitmap = unsafe {
-                                node_set.1.load(Ordering::Acquire, guard).deref()
-                            };
+                            let bmin = node_set.1.lock().unwrap(); // load(Ordering::Acquire, guard).deref()
                             if !bmin.contains($mui) {
                                 return None;
                             }
@@ -263,7 +261,7 @@ macro_rules! store_node_closure {
                                 let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
                                 } else { NodeSet(
-                                    Atomic::null(), nodes.1.load(Ordering::Acquire, $guard).into()) };
+                                    Atomic::null(), std::sync::Mutex::new(RoaringBitmap::new() )) }; //.load(Ordering::Acquire, $guard).into()) };
 
                                 // Update the rbm_index in this node with the
                                 // multi_uniq_id that the caller specified. We're
