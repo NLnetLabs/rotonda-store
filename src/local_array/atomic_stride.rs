@@ -169,14 +169,17 @@ impl AtomicBitmap for AtomicStride3 {
     fn merge_with(&self, node: u16) {
         let mut spinwait = SpinWait::new();
         let current = self.load();
+
+        fence(Ordering::Acquire);
+
         let mut new = current | node;
         loop {
             fence(Ordering::Acquire);
             match self.0.compare_exchange(
                 current,
                 new,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::Acquire,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => {
                     return;
@@ -226,8 +229,8 @@ impl AtomicBitmap for AtomicStride4 {
         CasResult(self.0.compare_exchange(
             current,
             new,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
+            Ordering::Acquire,
+            Ordering::Relaxed,
         ))
     }
     fn load(&self) -> Self::InnerType {
@@ -235,24 +238,26 @@ impl AtomicBitmap for AtomicStride4 {
     }
 
     fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::SeqCst)
+        self.0.load(Ordering::Relaxed)
     }
 
     fn to_u64(&self) -> u64 {
-        self.0.load(Ordering::SeqCst) as u64
+        self.0.load(Ordering::Relaxed) as u64
     }
 
     fn merge_with(&self, node: u32) {
         let mut spinwait = SpinWait::new();
         let current = self.load();
+
+        fence(Ordering::Acquire);
         let mut new = current | node;
         loop {
             fence(Ordering::Acquire);
             match self.0.compare_exchange(
                 current,
                 new,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
+                Ordering::Acquire,
+                Ordering::Relaxed,
             ) {
                 Ok(_) => {
                     return;

@@ -92,7 +92,7 @@ macro_rules! impl_search_level_for_mui {
                             // stored in this node, meaning the mui does not
                             // appear anywhere in the sub-tree formed from
                             // this node.
-                            let bmin = node_set.1.lock().unwrap(); // load(Ordering::Acquire, guard).deref()
+                            let bmin = node_set.1.read().unwrap(); // load(Ordering::Acquire, guard).deref()
                             if !bmin.contains($mui) {
                                 return None;
                             }
@@ -225,7 +225,7 @@ macro_rules! store_node_closure {
                 trace!("id {:?}", $id.get_id());
                 trace!("multi_uniq_id {}", multi_uniq_id);
 
-                std::sync::atomic::fence(Ordering::SeqCst);
+                std::sync::atomic::fence(Ordering::Acquire);
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
                 let stored_nodes = nodes.0.load(Ordering::Acquire, $guard);
@@ -261,7 +261,9 @@ macro_rules! store_node_closure {
                                 let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
                                 } else { NodeSet(
-                                    Atomic::null(), std::sync::Mutex::new(RoaringBitmap::new() )) }; //.load(Ordering::Acquire, $guard).into()) };
+                                    Atomic::null(),
+                                    std::sync::RwLock::new(RoaringBitmap::new() ))
+                                }; //.load(Ordering::Acquire, $guard).into()) };
 
                                 // Update the rbm_index in this node with the
                                 // multi_uniq_id that the caller specified. We're
@@ -293,8 +295,8 @@ macro_rules! store_node_closure {
                                         node: new_node,
                                         node_set,
                                     }),
-                                    Ordering::AcqRel,
                                     Ordering::Acquire,
+                                    Ordering::Relaxed,
                                     $guard
                                 ) {
                                     Ok(_pfx) => {
@@ -366,8 +368,8 @@ macro_rules! store_node_closure {
                                     // )?;
 
 
-                                stored_node.node.ptrbitarr.merge_with(new_node.ptrbitarr.load());
-                                stored_node.node.pfxbitarr.merge_with(new_node.pfxbitarr.load());
+                                    stored_node.node.ptrbitarr.merge_with(new_node.ptrbitarr.load());
+                                    stored_node.node.pfxbitarr.merge_with(new_node.pfxbitarr.load());
 
                                     return Ok(($id, retry_count));
                                 } else {

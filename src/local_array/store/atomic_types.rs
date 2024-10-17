@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::{
     fmt::{Debug, Display},
     mem::MaybeUninit,
@@ -44,7 +44,7 @@ pub struct NodeSet<AF: AddressFamily, S: Stride>(
     pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
-    pub Mutex<RoaringBitmap>,
+    pub RwLock<RoaringBitmap>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
@@ -75,7 +75,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         AF: crate::AddressFamily,
     {
         let try_count = 0;
-        let mut rbm = self.1.lock().unwrap();
+        let mut rbm = self.1.write().unwrap();
         rbm.insert(multi_uniq_id);
 
         // self.1
@@ -123,7 +123,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     {
         let try_count = 0;
 
-        let mut rbm = self.1.lock().unwrap();
+        let mut rbm = self.1.write().unwrap();
         rbm.remove(multi_uniq_id);
 
         // self.1
