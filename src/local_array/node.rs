@@ -1,3 +1,4 @@
+use std::marker::PhantomPinned;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
     fmt::Debug,
@@ -71,6 +72,16 @@ where
             self.ptrbitarr.load(),
             self.pfxbitarr.load(),
         )
+    }
+}
+
+impl<AF, S> Clone for TreeBitMapNode<AF, S> where AF: AddressFamily, S: Stride {
+    fn clone(&self) -> Self {
+        Self {
+            ptrbitarr: <S as Stride>::AtomicPtrSize::from(self.ptrbitarr.load()),
+            pfxbitarr: <S as Stride>::AtomicPfxSize::from(self.pfxbitarr.load()),
+            _af: PhantomData
+        }
     }
 }
 
@@ -150,7 +161,7 @@ where
     // and the second element is the number of accumulated retries for the
     // compare_exchange of both ptrbitarr and pfxbitarr.
     pub(crate) fn eval_node_or_prefix_at(
-        &mut self,
+        &self,
         nibble: u32,
         nibble_len: u8,
         // all the bits of the search prefix, but with the length set to

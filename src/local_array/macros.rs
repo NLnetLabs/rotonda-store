@@ -54,7 +54,7 @@ macro_rules! insert_match {
                 if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $record.multi_uniq_id, $guard) {
                     match current_node {
                         $(
-                            SizedStrideRefMut::$variant(current_node) => {
+                            SizedStrideRef::$variant(current_node) => {
                                 // eval_node_or_prefix_at mutates the node to reflect changes
                                 // in the ptrbitarr & pfxbitarr.
                                 match current_node.eval_node_or_prefix_at(
@@ -111,9 +111,9 @@ macro_rules! insert_match {
                                     }
                                     (NewNodeOrIndex::ExistingPrefix, retry_count) => {
                                         return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
-                                            .and_then(|mut r| { 
+                                            .and_then(|mut r| {
                                                 r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
-                                                Ok(r) 
+                                                Ok(r)
                                             })
                                     }
                                 }   // end of eval_node_or_prefix_at
@@ -134,7 +134,7 @@ macro_rules! insert_match {
                     // We're giving up after a number of tries.
                     if local_retry_count >= 8 {
                         if log_enabled!(log::Level::Trace) {
-                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.", 
+                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.",
                                 std::thread::current().name().unwrap(),
                                 $cur_i,
                                 $self.store.get_stride_sizes()[$level as usize],

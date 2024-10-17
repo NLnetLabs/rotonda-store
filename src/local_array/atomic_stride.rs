@@ -27,7 +27,10 @@ impl<InnerType> CasResult<InnerType> {
     }
 }
 
-pub trait AtomicBitmap {
+pub trait AtomicBitmap
+where
+    Self: From<Self::InnerType>,
+{
     type InnerType: Binary
         + Copy
         + Debug
@@ -86,8 +89,27 @@ impl AtomicBitmap for AtomicStride2 {
         self.0.load(Ordering::SeqCst) as u64
     }
 
-    fn merge_with(&self, node: Self::InnerType) {
-        todo!()
+    fn merge_with(&self, node: u8) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
     }
 }
 
@@ -98,6 +120,12 @@ impl Zero for AtomicStride2 {
 
     fn is_zero(&self) -> bool {
         self.0.load(Ordering::SeqCst) == 0
+    }
+}
+
+impl From<u8> for AtomicStride2 {
+    fn from(value: u8) -> Self {
+        Self(AtomicU8::new(value))
     }
 }
 
@@ -162,6 +190,12 @@ impl AtomicBitmap for AtomicStride3 {
     }
 }
 
+impl From<u16> for AtomicStride3 {
+    fn from(value: u16) -> Self {
+        Self(AtomicU16::new(value))
+    }
+}
+
 impl Zero for AtomicStride3 {
     fn zero() -> Self {
         AtomicStride3(AtomicU16::new(0))
@@ -208,11 +242,35 @@ impl AtomicBitmap for AtomicStride4 {
         self.0.load(Ordering::SeqCst) as u64
     }
 
-    fn merge_with(&self, node: Self::InnerType) {
-        todo!()
+    fn merge_with(&self, node: u32) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
     }
 }
 
+impl From<u32> for AtomicStride4 {
+    fn from(value: u32) -> Self {
+        Self(AtomicU32::new(value))
+    }
+}
 impl Zero for AtomicStride4 {
     fn zero() -> Self {
         AtomicStride4(AtomicU32::new(0))
@@ -259,8 +317,33 @@ impl AtomicBitmap for AtomicStride5 {
         self.0.load(Ordering::SeqCst)
     }
 
-    fn merge_with(&self, node: Self::InnerType) {
-        todo!()
+    fn merge_with(&self, node: u64) {
+        let mut spinwait = SpinWait::new();
+        let current = self.load();
+        let mut new = current | node;
+        loop {
+            fence(Ordering::Acquire);
+            match self.0.compare_exchange(
+                current,
+                new,
+                Ordering::SeqCst,
+                Ordering::SeqCst,
+            ) {
+                Ok(_) => {
+                    return;
+                }
+                Err(current) => {
+                    new = current | node;
+                }
+            }
+            spinwait.spin_no_yield();
+        }
+    }
+}
+
+impl From<u64> for AtomicStride5 {
+    fn from(value: u64) -> Self {
+        Self(AtomicU64::new(value))
     }
 }
 
@@ -336,6 +419,12 @@ impl AtomicBitmap for AtomicStride6 {
 
     fn merge_with(&self, node: Self::InnerType) {
         todo!()
+    }
+}
+
+impl From<u128> for AtomicStride6 {
+    fn from(value: u128) -> Self {
+        Self(AtomicU128::new(value))
     }
 }
 

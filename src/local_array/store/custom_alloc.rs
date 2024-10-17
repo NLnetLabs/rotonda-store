@@ -559,7 +559,7 @@ impl<
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
         guard: &'a Guard,
-    ) -> Option<SizedStrideRefMut<'a, AF>> {
+    ) -> Option<SizedStrideRef<AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
@@ -568,7 +568,7 @@ impl<
                 u8,
                 &'a Guard,
             )
-                -> Option<SizedStrideRefMut<'a, AF>>,
+                -> Option<SizedStrideRef<'a, AF>>,
         }
 
         let search_level_3 = retrieve_node_mut_with_guard_closure![Stride3; id; multi_uniq_id;];
@@ -1018,10 +1018,10 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            let mut prefixes = prefix_set.0.load(Ordering::Acquire, guard);
+            let prefixes = prefix_set.0.load(Ordering::Acquire, guard);
 
             if !prefixes.is_null() {
-                let prefix_ref = unsafe { &mut prefixes.deref_mut()[index] };
+                let prefix_ref = unsafe { &prefixes.deref()[index] };
                 if let Some(stored_prefix) =
                     unsafe { prefix_ref.assume_init_ref() }
                         .get_stored_prefix(guard)

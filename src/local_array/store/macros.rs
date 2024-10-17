@@ -151,14 +151,14 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 // pointer.
                 assert!(unsafe { nodes.0.load(Ordering::SeqCst, guard).deref().get(index).is_some() } );
                 let stored_node = unsafe {
-                    &mut nodes.0.load(Ordering::SeqCst, guard).deref_mut()[index].assume_init_ref()
+                    &mut nodes.0.load(Ordering::SeqCst, guard).deref()[index].assume_init_ref()
                 };
-                let mut this_node = stored_node.load(Ordering::Acquire, guard);
+                let this_node = stored_node.load(Ordering::Acquire, guard);
 
                 match this_node.is_null() {
                     true => None,
                     false => {
-                        let StoredNode { node_id, node, node_set } = unsafe { this_node.deref_mut() };
+                        let StoredNode { node_id, node, node_set } = unsafe { this_node.deref() };
                         if $id == *node_id {
                             // YES, It's the one we're looking for!
 
@@ -175,7 +175,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
 
                             trace!("Retry_count rbm index {:?}", retry_count);
                             trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, node);
-                            return Some(SizedStrideRefMut::$stride(node));
+                            return Some(SizedStrideRef::$stride(node));
                         };
                         // Meh, it's not, but we can a go to the next level
                         // and see if it lives there.

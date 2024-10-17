@@ -80,7 +80,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 std::sync::atomic::Ordering::AcqRel,
                 std::sync::atomic::Ordering::Acquire,
                 guard,
-                |mut a_rbm_index| {
+                |a_rbm_index| {
                     // SAFETY: The rbm_index gets created as an empty
                     // RoaringBitmap at init time of the NodeSet, so it cannot
                     // be a NULL pointer at this point.
@@ -88,11 +88,12 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                     // Data races that could normally arise as a consequence
                     // of the .deref_mut() are avoided by the guarantees of
                     // fetch_update (it does CAS).
-                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
+                    let mut rbm_index =
+                        unsafe { a_rbm_index.deref() }.clone();
                     rbm_index.insert(multi_uniq_id);
 
                     try_count += 1;
-                    Some(a_rbm_index)
+                    Some(Owned::new(rbm_index).into_shared(guard))
                 },
             )
             .map_err(|_| {
@@ -123,7 +124,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                 std::sync::atomic::Ordering::AcqRel,
                 std::sync::atomic::Ordering::Acquire,
                 guard,
-                |mut a_rbm_index| {
+                |a_rbm_index| {
                     // SAFETY: The rbm_index gets created as an empty
                     // RoaringBitmap at init time of the NodeSet, so it cannot
                     // be a NULL pointer at this point.
@@ -131,11 +132,12 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
                     // Data races that could normally arise as a consequence
                     // of the .deref_mut() are avoided by the guarantees of
                     // fetch_update (it does CAS).
-                    let rbm_index = unsafe { a_rbm_index.deref_mut() };
+                    let mut rbm_index =
+                        unsafe { a_rbm_index.deref() }.clone();
                     rbm_index.remove(multi_uniq_id);
 
                     try_count += 1;
-                    Some(a_rbm_index)
+                    Some(Owned::new(rbm_index).into_shared(guard))
                 },
             )
             .map_err(|_| {
@@ -660,11 +662,11 @@ impl<AF: AddressFamily, Meta: crate::prefix_record::Meta>
         &'a self,
         guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, Meta>> {
-        let mut pfx = self.0.load(Ordering::SeqCst, guard);
+        let pfx = self.0.load(Ordering::SeqCst, guard);
 
         match pfx.is_null() {
             true => None,
-            false => Some(unsafe { pfx.deref_mut() }),
+            false => Some(unsafe { pfx.deref() }),
         }
     }
 
