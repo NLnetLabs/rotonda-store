@@ -12,21 +12,21 @@ macro_rules! impl_search_level {
             f: &|search_level: &SearchLevel<AF, $stride>,
                 nodes,
                 mut level: u8,
-                guard| {
+            | {
                     // HASHING FUNCTION
                     let index = Self::hash_node_id($id, level);
 
                     // Read the node from the block pointed to by the Atomic
                     // pointer.
-                    let stored_node = unsafe {
-                        &mut nodes.0[index].assume_init_ref()
-                    };
-                    let this_node = stored_node.load(Ordering::Acquire, guard);
+                    // let stored_node = unsafe {
+                    //     &mut nodes.0[index]
+                    // };
+                    // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                    match this_node.is_null() {
-                        true => None,
-                        false => {
-                            let StoredNode { node_id, node, node_set, .. } = unsafe { this_node.deref() };
+                    match nodes.0[index].get() {
+                        None => None,
+                        Some(stored_node) => {
+                            let StoredNode { node_id, node, node_set, .. } = stored_node;
                             if $id == *node_id {
                                 // YES, It's the one we're looking for!
                                 return Some(SizedStrideRef::$stride(&node));
@@ -41,7 +41,7 @@ macro_rules! impl_search_level {
                                         search_level,
                                         &node_set,
                                         level,
-                                        guard,
+                                        // guard,
                                     )
                                 }
                                 // There's no next level, we found nothing.
@@ -69,24 +69,21 @@ macro_rules! impl_search_level_for_mui {
         SearchLevel {
             f: &|search_level: &SearchLevel<AF, $stride>,
                 nodes,
-                mut level: u8,
-                guard| {
+                mut level: u8| {
                     // HASHING FUNCTION
                     let index = Self::hash_node_id($id, level);
 
                     // Read the node from the block pointed to by the Atomic
                     // pointer.
-                    let stored_node = unsafe {
-                        &mut nodes.0[index].assume_init_ref()
-                    };
-                    let this_node = stored_node.load(Ordering::Acquire, guard);
+                    // let stored_node = unsafe {
+                    //     &mut nodes.0[index].assume_init_ref()
+                    // };
+                    // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                    match this_node.is_null() {
-                        true => None,
-                        false => {
-                            let StoredNode { node_id, node, node_set, .. } = unsafe {
-                                this_node.deref()
-                            };
+                    match nodes.0[index].get() {
+                        None => None,
+                        Some(this_node) => {
+                            let StoredNode { node_id, node, node_set, .. } = this_node;
 
                             // early return if the mui is not in the index
                             // stored in this node, meaning the mui does not
@@ -111,7 +108,7 @@ macro_rules! impl_search_level_for_mui {
                                         search_level,
                                         &node_set,
                                         level,
-                                        guard,
+                                        // guard,
                                     )
                                 }
                                 // There's no next level, we found nothing.
@@ -148,15 +145,15 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 // Read the node from the block pointed to by the Atomic
                 // pointer.
                 assert!(nodes.0.get(index).is_some());
-                let stored_node = unsafe {
-                    &mut nodes.0[index].assume_init_ref()
-                };
-                let this_node = stored_node.load(Ordering::Acquire, guard);
+                // let stored_node = unsafe {
+                //     &mut nodes.0[index].assume_init_ref()
+                // };
+                // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                match this_node.is_null() {
-                    true => None,
-                    false => {
-                        let StoredNode { node_id, node, node_set } = unsafe { this_node.deref() };
+                match nodes.0[index].get() {
+                    None => None,
+                    Some(this_node) => {
+                        let StoredNode { node_id, node, node_set } = this_node;
                         if $id == *node_id {
                             // YES, It's the one we're looking for!
 
@@ -231,13 +228,12 @@ macro_rules! store_node_closure {
                 let stored_nodes = &nodes.0; //.load(Ordering::Acquire, $guard);
 
                 assert!(stored_nodes.get(index).is_some());
-                let node_ref =
-                    unsafe { stored_nodes[index].assume_init_ref() };
+                let node_ref = &stored_nodes[index];
                 // println!("success");
-                let stored_node = node_ref.load(Ordering::Acquire, $guard);
+                // let stored_node = node_ref.load(Ordering::Acquire, $guard);
 
-                match stored_node.is_null() {
-                    true => {
+                match node_ref.get() {
+                    None => {
                         // No node exists, so we create one here.
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
 
@@ -287,50 +283,66 @@ macro_rules! store_node_closure {
                         // in-vain searching, but not to data corruption.
                         retry_count += node_set.update_rbm_index(multi_uniq_id, $guard)?;
 
-                        match node_ref.compare_exchange(
-                            Shared::null(),
-                            Owned::new(StoredNode {
-                                node_id: $id,
-                                node: new_node,
-                                node_set,
-                            }),
-                            Ordering::Acquire,
-                            Ordering::Relaxed,
-                            $guard
-                        ) {
-                            Ok(_pfx) => {
+                        let ptrbitarr = new_node.ptrbitarr.load();
+                        let pfxbitarr = new_node.pfxbitarr.load();
 
-                                if log_enabled!(log::Level::Trace) {
-                                    trace!("Created node {}", $id);
-                                }
-                                return Ok(($id, retry_count));
-                            },
-                            Err(crossbeam_epoch::CompareExchangeError { new, .. }) => {
-                                retry_count +=1 ;
+                        let stored_node = node_ref.get_or_set(StoredNode { node_id: $id, node: new_node, node_set });
 
-                                if log_enabled!(log::Level::Trace) {
-                                    trace!("Failed to create node {}. Someone is busy creating it",$id);
-                                }
+                        if stored_node.0.node_id == $id {
+                            stored_node.0.node_set.update_rbm_index(
+                                multi_uniq_id, $guard
+                            )?;
 
-                                let StoredNode { node: cur_node,.. } = *new.into_box();
-                                $back_off.spin();
-                                return (search_level.f)(
-                                    search_level,
-                                    nodes,
-                                    cur_node,
-                                    multi_uniq_id,
-                                    level,
-                                    retry_count
-                                );
-                            }
-                        };
+                            stored_node.0.node.ptrbitarr.merge_with(ptrbitarr);
+                            stored_node.0.node.pfxbitarr.merge_with(pfxbitarr);
+                        }
+
+                        return Ok(($id, retry_count));
+
+                        // match node_ref.compare_exchange(
+                        //     Shared::null(),
+                        //     Owned::new(StoredNode {
+                        //         node_id: $id,
+                        //         node: new_node,
+                        //         node_set,
+                        //     }),
+                        //     Ordering::Acquire,
+                        //     Ordering::Relaxed,
+                        //     $guard
+                        // ) {
+                        //     Ok(_pfx) => {
+
+                        //         if log_enabled!(log::Level::Trace) {
+                        //             trace!("Created node {}", $id);
+                        //         }
+                        //         return Ok(($id, retry_count));
+                        //     },
+                        //     Err(crossbeam_epoch::CompareExchangeError { new, .. }) => {
+                        //         retry_count +=1 ;
+
+                        //         if log_enabled!(log::Level::Trace) {
+                        //             trace!("Failed to create node {}. Someone is busy creating it",$id);
+                        //         }
+
+                        //         let StoredNode { node: cur_node,.. } = *new.into_box();
+                        //         $back_off.spin();
+                        //         return (search_level.f)(
+                        //             search_level,
+                        //             nodes,
+                        //             cur_node,
+                        //             multi_uniq_id,
+                        //             level,
+                        //             retry_count
+                        //         );
+                        //     }
+                        // };
                     }
-                    false => {
+                    Some(stored_node) => {
                         // A node exists, might be ours, might be
                         // another one. SAFETY: We tested for null
                         // above and, since we do not remove nodes,
                         // this node can't be null anymore.
-                        let stored_node = unsafe { stored_node.deref() };
+                        // let stored_node = unsafe { stored_node.get() };
 
                         // println!("NODE EXISTS");
                         if log_enabled!(log::Level::Trace) {

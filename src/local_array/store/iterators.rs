@@ -436,7 +436,7 @@ impl<
                     self.store.retrieve_node_for_mui(
                         next_ptr,
                         self.mui.unwrap(),
-                        self.guard,
+                        // self.guard,
                     )
                 };
 
@@ -760,7 +760,7 @@ impl<
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
             let node = if let Some(mui) = mui {
-                self.retrieve_node_for_mui(start_node_id, mui, guard)
+                self.retrieve_node_for_mui(start_node_id, mui)
             } else {
                 self.retrieve_node_with_guard(start_node_id, guard)
             };

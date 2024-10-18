@@ -456,9 +456,9 @@ impl<
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
-                &NodeSet<AF, S>,
+                &'a NodeSet<AF, S>,
                 u8,
-                &'a Guard,
+                // &'a Guard,
             )
                 -> Option<SizedStrideRef<'a, AF>>,
         }
@@ -481,19 +481,19 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 0,
-                guard,
+                // guard,
             ),
             4 => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 0,
-                guard,
+                // guard,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 0,
-                guard,
+                // guard,
             ),
         }
     }
@@ -506,14 +506,14 @@ impl<
         id: StrideNodeId<AF>,
         // The mui that is tested to be present in the nodes bitmap index
         mui: u32,
-        guard: &'a Guard,
+        // guard: &'a Guard,
     ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
-                &NodeSet<AF, S>,
+                &'a NodeSet<AF, S>,
                 u8,
-                &'a Guard,
+                // &'a Guard,
             )
                 -> Option<SizedStrideRef<'a, AF>>,
         }
@@ -537,19 +537,19 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 0,
-                guard,
+                // guard,
             ),
             4 => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 0,
-                guard,
+                // guard,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 0,
-                guard,
+                // guard,
             ),
         }
     }
@@ -564,7 +564,7 @@ impl<
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
-                &NodeSet<AF, S>,
+                &'a NodeSet<AF, S>,
                 // [u8; 10],
                 u8,
                 &'a Guard,
