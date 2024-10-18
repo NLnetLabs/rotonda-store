@@ -41,7 +41,7 @@ where
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
-    pub Atomic<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
+    pub Box<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
     pub RwLock<RoaringBitmap>,
@@ -57,12 +57,11 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
             );
         }
 
-        let mut l =
-            Owned::<[MaybeUninit<Atomic<StoredNode<AF, S>>>]>::init(size);
-        for i in 0..size {
-            l[i] = MaybeUninit::new(Atomic::null());
+        let mut l = vec![];
+        for _i in 0..size {
+            l.push(MaybeUninit::new(Atomic::null()));
         }
-        NodeSet(l.into(), RoaringBitmap::new().into())
+        NodeSet(l.into_boxed_slice(), RoaringBitmap::new().into())
     }
 
     pub fn update_rbm_index(

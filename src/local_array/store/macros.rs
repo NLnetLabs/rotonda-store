@@ -19,7 +19,7 @@ macro_rules! impl_search_level {
                     // Read the node from the block pointed to by the Atomic
                     // pointer.
                     let stored_node = unsafe {
-                        &mut nodes.0.load(Ordering::SeqCst, guard).deref()[index].assume_init_ref()
+                        &mut nodes.0[index].assume_init_ref()
                     };
                     let this_node = stored_node.load(Ordering::Acquire, guard);
 
@@ -77,7 +77,7 @@ macro_rules! impl_search_level_for_mui {
                     // Read the node from the block pointed to by the Atomic
                     // pointer.
                     let stored_node = unsafe {
-                        &mut nodes.0.load(Ordering::SeqCst, guard).deref()[index].assume_init_ref()
+                        &mut nodes.0[index].assume_init_ref()
                     };
                     let this_node = stored_node.load(Ordering::Acquire, guard);
 
@@ -147,9 +147,9 @@ macro_rules! retrieve_node_mut_with_guard_closure {
 
                 // Read the node from the block pointed to by the Atomic
                 // pointer.
-                assert!(unsafe { nodes.0.load(Ordering::SeqCst, guard).deref().get(index).is_some() } );
+                assert!(nodes.0.get(index).is_some());
                 let stored_node = unsafe {
-                    &mut nodes.0.load(Ordering::SeqCst, guard).deref()[index].assume_init_ref()
+                    &mut nodes.0[index].assume_init_ref()
                 };
                 let this_node = stored_node.load(Ordering::Acquire, guard);
 
@@ -228,14 +228,14 @@ macro_rules! store_node_closure {
                 std::sync::atomic::fence(Ordering::Acquire);
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
-                let stored_nodes = nodes.0.load(Ordering::Acquire, $guard);
+                let stored_nodes = &nodes.0; //.load(Ordering::Acquire, $guard);
 
-                match stored_nodes.is_null() {
-                    false => {
+                // match stored_nodes.is_null() {
+                    // false => {
                         // print!("NODE HERE: ");
-                        assert!(unsafe { stored_nodes.deref().get(index).is_some() });
+                        assert!(stored_nodes.get(index).is_some());
                         let node_ref =
-                            unsafe { stored_nodes.deref()[index].assume_init_ref() };
+                            unsafe { stored_nodes[index].assume_init_ref() };
                         // println!("success");
                         let stored_node = node_ref.load(Ordering::Acquire, $guard);
 
@@ -260,10 +260,12 @@ macro_rules! store_node_closure {
 
                                 let node_set = if next_level > 0 {
                                     NodeSet::init((1 << (next_level - this_level)) as usize )
-                                } else { NodeSet(
-                                    Atomic::null(),
-                                    std::sync::RwLock::new(RoaringBitmap::new() ))
-                                }; //.load(Ordering::Acquire, $guard).into()) };
+                                } else {
+                                    NodeSet(
+                                        Box::new([]),
+                                        std::sync::RwLock::new(RoaringBitmap::new())
+                                    )
+                                };
 
                                 // Update the rbm_index in this node with the
                                 // multi_uniq_id that the caller specified. We're
@@ -398,15 +400,15 @@ macro_rules! store_node_closure {
                                 }
                             }
                         }
-                    }
-                    true => {
-                        trace!("Empty node set for {} in {} attempts. Giving up.",
-                            $id,
-                            retry_count
-                        );
-                        return Err(super::errors::PrefixStoreError::NodeNotFound);
-                    }
-                };
+                    // }
+                    // true => {
+                    //     trace!("Empty node set for {} in {} attempts. Giving up.",
+                    //         $id,
+                    //         retry_count
+                    //     );
+                    //     return Err(super::errors::PrefixStoreError::NodeNotFound);
+                    // }
+                // };
             }
         }
         )*
