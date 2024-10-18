@@ -158,3 +158,16 @@ impl<T> OnceBoxSlice<T> {
     }
 }
 
+impl<T> Drop for OnceBoxSlice<T> {
+    fn drop(&mut self) {
+        let ptr = self.ptr.swap(null_mut(), Ordering::Relaxed);
+        if !ptr.is_null() {
+            let _ = unsafe {
+                Box::from_raw(
+                    slice::from_raw_parts_mut(ptr, self.size)
+                )
+            };
+        }
+    }
+}
+
