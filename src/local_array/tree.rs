@@ -69,13 +69,6 @@ pub enum SizedStrideRef<'a, AF: AddressFamily> {
     Stride5(&'a TreeBitMapNode<AF, Stride5>),
 }
 
-#[derive(Debug)]
-pub enum SizedStrideRefMut<'a, AF: AddressFamily> {
-    Stride3(&'a mut TreeBitMapNode<AF, Stride3>),
-    Stride4(&'a mut TreeBitMapNode<AF, Stride4>),
-    Stride5(&'a mut TreeBitMapNode<AF, Stride5>),
-}
-
 pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     NewNode(SizedStrideNode<AF>),
     ExistingNode(StrideNodeId<AF>),

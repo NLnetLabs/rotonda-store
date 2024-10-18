@@ -1,4 +1,3 @@
-use std::marker::PhantomPinned;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{
     fmt::Debug,

@@ -192,7 +192,7 @@ use log::{debug, info, log_enabled, trace};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
-use epoch::{CompareExchangeError, Guard, Owned, Shared};
+use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
@@ -399,8 +399,6 @@ impl<
             >,
         }
 
-        let back_off = crossbeam_utils::Backoff::new();
-
         let search_level_3 =
             store_node_closure![Stride3; id; guard; back_off;];
         let search_level_4 =
@@ -451,7 +449,7 @@ impl<
     pub(crate) fn retrieve_node_with_guard(
         &'a self,
         id: StrideNodeId<AF>,
-        guard: &'a Guard,
+        _guard: &'a Guard,
     ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(

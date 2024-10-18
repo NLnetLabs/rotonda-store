@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, MutexGuard, RwLock};
 use std::{
     fmt::{Debug, Display},
-    mem::MaybeUninit,
     sync::atomic::Ordering,
 };
 
@@ -67,7 +66,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn update_rbm_index(
         &self,
         multi_uniq_id: u32,
-        guard: &crate::epoch::Guard,
+        _guard: &crate::epoch::Guard,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
         S: crate::local_array::atomic_stride::Stride,
@@ -114,7 +113,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn remove_from_rbm_index(
         &self,
         multi_uniq_id: u32,
-        guard: &crate::epoch::Guard,
+        _guard: &crate::epoch::Guard,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
         S: crate::local_array::atomic_stride::Stride,
@@ -825,7 +824,7 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub(crate) fn get_by_index<'a>(
         &'a self,
         index: usize,
-        guard: &'a Guard,
+        _guard: &'a Guard,
     ) -> Option<&'a StoredPrefix<AF, M>> {
         self.0[index].get()
     }

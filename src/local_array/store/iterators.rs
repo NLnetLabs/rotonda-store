@@ -26,7 +26,7 @@ use crate::{
 
 use crossbeam_epoch::Guard;
 use inetnum::addr::Prefix;
-use log::{debug, log_enabled, trace};
+use log::trace;
 use roaring::RoaringBitmap;
 
 // ----------- PrefixIter ---------------------------------------------------

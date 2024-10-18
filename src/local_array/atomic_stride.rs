@@ -422,7 +422,7 @@ impl AtomicBitmap for AtomicStride6 {
         unimplemented!()
     }
 
-    fn merge_with(&self, node: Self::InnerType) {
+    fn merge_with(&self, _node: Self::InnerType) {
         todo!()
     }
 }
