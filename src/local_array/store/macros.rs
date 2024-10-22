@@ -122,6 +122,19 @@ macro_rules! impl_search_level_for_mui {
     };
 }
 
+// This macro creates a closure that is used in turn in the macro
+// 'insert_match', that is used in the public `insert` method on a TreeBitMap.
+//
+// It retrieves the node specified by $id recursively, creates it if it does
+// not exist. It is responsible for setting/updating the RBMIN, but is does
+// *not* set/update the pfxbitarr or ptrbitarr of the TreeBitMapNode. The
+// `insert_match` takes care of the latter.
+//
+// This closure should not be called repeatedly to create the same node, if it
+// returns `None` that is basically a data race in the store and therefore an
+// error. Also the caller should make sure to stay within the limit of the
+// defined number of levels, although the closure will return at the end of
+// the maximum depth.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! retrieve_node_mut_with_guard_closure {
@@ -142,17 +155,19 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
 
-                // Read the node from the block pointed to by the Atomic
-                // pointer.
                 assert!(nodes.0.get(index).is_some());
-                // let stored_node = unsafe {
-                //     &mut nodes.0[index].assume_init_ref()
-                // };
-                // let this_node = stored_node.load(Ordering::Acquire, guard);
 
                 match nodes.0[index].get() {
+                    // This arm only ever gets called in multi-threaded code
+                    // where our thread (running this code *now*), andgot ahead
+                    // of another thread: After the other thread created the
+                    // TreeBitMapNode first, it was overtaken by our thread
+                    // running this method, so our thread enounters an empty node
+                    // in the store.
                     None => {
-                        // panic!("panic in level {} and index {} for node {}; nodes {:?}", level, index, $id, nodes);
+                        // There is some code duplicaton in these arms, but we
+                        // want to avoid always creating these values and then
+                        // not using them.
                         let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
                         let node_set = if next_level > 0 {
@@ -164,6 +179,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             )
                         };
 
+                        // See if we can create the node
                         let node = nodes.0[index].get_or_set(StoredNode {
                             node_id: $id,
                             node: TreeBitMapNode {
@@ -174,12 +190,18 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             node_set
                         }).0;
 
+                        // We may have lost, and a different node than we
+                        // intended could live here, if so go a level deeper
                         if $id == node.node_id {
+                            // Nope, its ours or at least the node we need.
                             let _retry_count = node.node_set.update_rbm_index(
                                 $multi_uniq_id, guard
                             ).ok();
+
                             return Some(SizedStrideRef::$stride(&node.node));
-                        }
+                        };
+
+                        // It isn't ours move one level deeper.
                         level += 1;
                         match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
                             // on to the next level!

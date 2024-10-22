@@ -198,7 +198,7 @@ use roaring::RoaringBitmap;
 use std::marker::PhantomData;
 
 use crate::{
-    local_array::store::oncebox::OnceBox,
+    local_array::store::oncebox::{OnceBox, OnceBoxSlice},
     local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
     prefix_record::PublicRecord,
 };
