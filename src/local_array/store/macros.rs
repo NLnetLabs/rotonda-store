@@ -149,52 +149,89 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 //     &mut nodes.0[index].assume_init_ref()
                 // };
                 // let this_node = stored_node.load(Ordering::Acquire, guard);
-                let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
-                let (this_node, _its_us) = nodes.0[index].get_or_set(StoredNode {
-                    node_id: $id,
-                    node_set: NodeSet::init(1 << (next_level - this_level)),
-                    node: TreeBitMapNode {
-                        ptrbitarr: <$stride as Stride>::AtomicPtrSize::from(0),
-                        pfxbitarr: <$stride as Stride>::AtomicPfxSize::from(0),
-                        _af: PhantomData
+
+                match nodes.0[index].get() {
+                    None => {
+                        // panic!("panic in level {} and index {} for node {}; nodes {:?}", level, index, $id, nodes);
+                        let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
+                        let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
+                        let node_set = if next_level > 0 {
+                            NodeSet::init((1 << (next_level - this_level)) as usize )
+                        } else {
+                            NodeSet(
+                                Box::new([]),
+                                std::sync::RwLock::new(RoaringBitmap::new())
+                            )
+                        };
+
+                        let node = nodes.0[index].get_or_set(StoredNode {
+                            node_id: $id,
+                            node: TreeBitMapNode {
+                                ptrbitarr: <$stride as Stride>::AtomicPtrSize::from(0),
+                                pfxbitarr: <$stride as Stride>::AtomicPfxSize::from(0),
+                                _af: PhantomData
+                            },
+                            node_set
+                        }).0;
+
+                        if $id == node.node_id {
+                            let _retry_count = node.node_set.update_rbm_index(
+                                $multi_uniq_id, guard
+                            ).ok();
+                            return Some(SizedStrideRef::$stride(&node.node));
+                        }
+                        level += 1;
+                        match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                            // on to the next level!
+                            next_bit_shift if next_bit_shift > 0 => {
+                                (search_level.f)(
+                                    search_level,
+                                    &node.node_set,
+                                    level,
+                                    guard,
+                                )
+                            }
+                            // There's no next level, we found nothing.
+                            _ => None,
+                        }
+                    },
+                    Some(this_node) => {
+                        let StoredNode { node_id, node, node_set } = this_node;
+                        if $id == *node_id {
+                            // YES, It's the one we're looking for!
+
+                            // Update the rbm_index in this node with the
+                            // multi_uniq_id that the caller specified. This
+                            // is the only atomic operation we need to do
+                            // here. The NodeSet that the index is attached
+                            // to, does not need to be written to, it's part
+                            // of a trie, so it just needs to "exist" (and it
+                            // already does).
+                            let retry_count = node_set.update_rbm_index(
+                                $multi_uniq_id, guard
+                            ).ok();
+
+                            trace!("Retry_count rbm index {:?}", retry_count);
+                            trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, node);
+                            return Some(SizedStrideRef::$stride(node));
+                        };
+                        // Meh, it's not, but we can a go to the next level
+                        // and see if it lives there.
+                        level += 1;
+                        match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                            // on to the next level!
+                            next_bit_shift if next_bit_shift > 0 => {
+                                (search_level.f)(
+                                    search_level,
+                                    &node_set,
+                                    level,
+                                    guard,
+                                )
+                            }
+                            // There's no next level, we found nothing.
+                            _ => None,
+                        }
                     }
-                });
-
-                // let StoredNode { node_id, node, node_set } = this_node;
-                if $id == this_node.node_id {
-                    // YES, It's the one we're looking for!
-
-                    // Update the rbm_index in this node with the
-                    // multi_uniq_id that the caller specified. This
-                    // is the only atomic operation we need to do
-                    // here. The NodeSet that the index is attached
-                    // to, does not need to be written to, it's part
-                    // of a trie, so it just needs to "exist" (and it
-                    // already does).
-                    let retry_count = this_node.node_set.update_rbm_index(
-                        $multi_uniq_id, guard
-                    ).ok();
-
-                    trace!("Retry_count rbm index {:?}", retry_count);
-                    trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, this_node.node);
-                    return Some(SizedStrideRef::$stride(&this_node.node));
-                };
-                // Meh, it's not, but we can a go to the next level
-                // and see if it lives there.
-                level += 1;
-                match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                    // on to the next level!
-                    next_bit_shift if next_bit_shift > 0 => {
-                        (search_level.f)(
-                            search_level,
-                            &this_node.node_set,
-                            level,
-                            guard,
-                        )
-                    }
-                    // There's no next level, we found nothing.
-                    _ => None,
                 }
             }
         }

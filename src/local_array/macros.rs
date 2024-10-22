@@ -19,7 +19,7 @@ macro_rules! insert_match {
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
         $level: expr;
-        $back_off: expr;
+        // $back_off: expr;
         $acc_retry_count: expr;
         // $enum: ident;
         // The strides to generate match arms for,
@@ -48,11 +48,10 @@ macro_rules! insert_match {
             // this counts the number of retry_count for this loop only,
             // but ultimately we will return the accumulated count of all
             // retry_count from this macro.
-            let mut local_retry_count = 0;
 
-            std::sync::atomic::fence(Ordering::SeqCst);
 
-            loop {
+            let local_retry_count = 0;
+            // loop {
                 // retrieve_node_mut_with_guard updates the bitmap index if necessary.
                 if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $record.multi_uniq_id, $guard) {
                     match current_node {
@@ -85,12 +84,12 @@ macro_rules! insert_match {
                                         // success.
                                         match $self.store.store_node(new_id, $record.multi_uniq_id, n, $guard) {
                                             Ok((node_id, s_retry_count)) => {
-                                                break Ok((node_id, $acc_retry_count + s_retry_count + retry_count));
+                                                Ok((node_id, $acc_retry_count + s_retry_count + retry_count))
                                             },
                                             Err(err) => {
-                                                break Err(err);
+                                                Err(err)
                                             }
-                                        };
+                                        }
                                     }
                                     (NewNodeOrIndex::ExistingNode(node_id), retry_count) => {
                                         // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
@@ -101,7 +100,7 @@ macro_rules! insert_match {
                                                 )
                                             }
                                         }
-                                        break Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
+                                        Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                     },
                                     (NewNodeOrIndex::NewPrefix, retry_count) => {
                                         return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
@@ -124,32 +123,33 @@ macro_rules! insert_match {
                         )*,
                     }
                 } else {
-                    if log_enabled!(log::Level::Trace) {
-                        debug!("{} contention: Retrying id {} from store l{}. attempt {}",
-                                std::thread::current().name().unwrap(),
-                                $cur_i,
-                                $self.store.get_stride_sizes()[$level as usize],
-                                local_retry_count
-                            );
-                    }
-                    local_retry_count += 1;
-                    // THIS IS A FAIRLY ARBITRARY NUMBER.
-                    // We're giving up after a number of tries.
-                    if local_retry_count >= 8 {
-                        if log_enabled!(log::Level::Trace) {
-                            debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.",
-                                std::thread::current().name().unwrap(),
-                                $cur_i,
-                                $self.store.get_stride_sizes()[$level as usize],
-                                local_retry_count
-                            );
-                        }
-                        return Err(PrefixStoreError::NodeCreationMaxRetryError);
-                    }
-                    $back_off.spin();
+                    // if log_enabled!(log::Level::Trace) {
+                    //     debug!("{} contention: Retrying id {} from store l{}. attempt {}",
+                    //             std::thread::current().name().unwrap(),
+                    //             $cur_i,
+                    //             $self.store.get_stride_sizes()[$level as usize],
+                    //             local_retry_count
+                    //         );
+                    // }
+                    // local_retry_count += 1;
+                    // // THIS IS A FAIRLY ARBITRARY NUMBER.
+                    // // We're giving up after a number of tries.
+                    // if local_retry_count >= 8 {
+                    //     if log_enabled!(log::Level::Trace) {
+                    //         debug!("{} contention: Max. retry count reached. Giving up for id {} from store l{} after {} attempts.",
+                    //             std::thread::current().name().unwrap(),
+                    //             $cur_i,
+                    //             $self.store.get_stride_sizes()[$level as usize],
+                    //             local_retry_count
+                    //         );
+                    //     }
+                    //     return Err(PrefixStoreError::NodeCreationMaxRetryError);
+                    // }
+                    // $back_off.spin();
+                    Err(PrefixStoreError::NodeCreationMaxRetryError)
                 }
             }
-        }
+        // }
     }
 }
 
