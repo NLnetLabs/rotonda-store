@@ -49,6 +49,9 @@ macro_rules! insert_match {
             // but ultimately we will return the accumulated count of all
             // retry_count from this macro.
             let mut local_retry_count = 0;
+
+            std::sync::atomic::fence(Ordering::SeqCst);
+
             loop {
                 // retrieve_node_mut_with_guard updates the bitmap index if necessary.
                 if let Some(current_node) = $self.store.retrieve_node_mut_with_guard($cur_i, $record.multi_uniq_id, $guard) {
