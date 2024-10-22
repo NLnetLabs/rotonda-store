@@ -151,7 +151,50 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 // let this_node = stored_node.load(Ordering::Acquire, guard);
 
                 match nodes.0[index].get() {
-                    None => None,
+                    None => {
+                        // panic!("panic in level {} and index {} for node {}; nodes {:?}", level, index, $id, nodes);
+                        let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
+                        let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
+                        let node_set = if next_level > 0 {
+                            NodeSet::init((1 << (next_level - this_level)) as usize )
+                        } else {
+                            NodeSet(
+                                Box::new([]),
+                                std::sync::RwLock::new(RoaringBitmap::new())
+                            )
+                        };
+
+                        let node = nodes.0[index].get_or_set(StoredNode {
+                            node_id: $id,
+                            node: TreeBitMapNode {
+                                ptrbitarr: <$stride as Stride>::AtomicPtrSize::from(0),
+                                pfxbitarr: <$stride as Stride>::AtomicPfxSize::from(0),
+                                _af: PhantomData
+                            },
+                            node_set
+                        }).0;
+
+                        if $id == node.node_id {
+                            let _retry_count = node.node_set.update_rbm_index(
+                                $multi_uniq_id, guard
+                            ).ok();
+                            return Some(SizedStrideRef::$stride(&node.node));
+                        }
+                        level += 1;
+                        match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
+                            // on to the next level!
+                            next_bit_shift if next_bit_shift > 0 => {
+                                (search_level.f)(
+                                    search_level,
+                                    &node.node_set,
+                                    level,
+                                    guard,
+                                )
+                            }
+                            // There's no next level, we found nothing.
+                            _ => None,
+                        }
+                    },
                     Some(this_node) => {
                         let StoredNode { node_id, node, node_set } = this_node;
                         if $id == *node_id {
