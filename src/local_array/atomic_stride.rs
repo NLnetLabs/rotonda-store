@@ -1,4 +1,3 @@
-use crossbeam_utils::Backoff;
 use log::trace;
 use parking_lot_core::SpinWait;
 use std::fmt::{Binary, Debug};

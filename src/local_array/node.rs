@@ -74,22 +74,20 @@ where
     }
 }
 
-impl<AF, S> Clone for TreeBitMapNode<AF, S> where AF: AddressFamily, S: Stride {
-    fn clone(&self) -> Self {
-        Self {
-            ptrbitarr: <S as Stride>::AtomicPtrSize::from(self.ptrbitarr.load()),
-            pfxbitarr: <S as Stride>::AtomicPfxSize::from(self.pfxbitarr.load()),
-            _af: PhantomData
-        }
-    }
-}
-
 impl<AF, S>
     TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride
 {
+    pub(crate) fn new() -> Self {
+        TreeBitMapNode {
+            ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
+            pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
+            _af: PhantomData
+        }
+    }
+
     // ------- Iterators ----------------------------------------------------
 
     // Iterate over all the child node of this node

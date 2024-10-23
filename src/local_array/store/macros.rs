@@ -172,11 +172,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                         // See if we can create the node
                         let (node, _its_us) = nodes.0.get_or_init(index, || StoredNode {
                             node_id: $id,
-                            node: TreeBitMapNode {
-                                ptrbitarr: <$stride as Stride>::AtomicPtrSize::from(0),
-                                pfxbitarr: <$stride as Stride>::AtomicPfxSize::from(0),
-                                _af: PhantomData
-                            },
+                            node: TreeBitMapNode::new(),
                             node_set
                         });
 
@@ -200,7 +196,6 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                                     search_level,
                                     &node.node_set,
                                     level,
-                                    // guard,
                                 )
                             }
                             // There's no next level, we found nothing.
