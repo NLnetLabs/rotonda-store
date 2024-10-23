@@ -150,12 +150,9 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 search_level: &SearchLevel<AF, $stride>,
                 nodes,
                 mut level: u8,
-                // guard
             | {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
-
-                // assert!(!nodes.0.is_null());
 
                 match nodes.0.get(index) {
                     // This arm only ever gets called in multi-threaded code
@@ -211,7 +208,6 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                         }
                     },
                     Some(this_node) => {
-                        // let StoredNode { node_id, node, node_set } = this_node;
                         if $id == this_node.node_id {
                             // YES, It's the one we're looking for!
 
@@ -281,9 +277,9 @@ macro_rules! store_node_closure {
 
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
-                let stored_nodes = &nodes.0; //.load(Ordering::Acquire, $guard);
+                let stored_nodes = &nodes.0;
 
-                let node_ref = &stored_nodes; // .get(index);
+                let node_ref = &stored_nodes;
 
                 match node_ref.get(index) {
                     None => {
@@ -336,12 +332,8 @@ macro_rules! store_node_closure {
                     }
                     Some(stored_node) => {
                         // A node exists, might be ours, might be
-                        // another one. SAFETY: We tested for null
-                        // above and, since we do not remove nodes,
-                        // this node can't be null anymore.
-                        // let stored_node = unsafe { stored_node.get() };
+                        // another one.
 
-                        // println!("NODE EXISTS");
                         if log_enabled!(log::Level::Trace) {
                             trace!("
                                 {} store: Node here exists {:?}",
@@ -360,9 +352,6 @@ macro_rules! store_node_closure {
                         // with the multi_uniq_id we've got from the
                         // caller.
                         if $id == stored_node.node_id {
-                            // println!("NODE WITH ID EXISTS");
-                            // panic!("this should not happen in single-threaded context.");
-                            // yes, it exists
                             trace!("found node {} in {} attempts",
                                 $id,
                                 retry_count
