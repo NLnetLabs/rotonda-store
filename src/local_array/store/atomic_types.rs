@@ -20,6 +20,7 @@ use crate::prelude::Meta;
 use crate::AddressFamily;
 
 use super::errors::PrefixStoreError;
+use super::oncebox::OnceBoxSlice;
 
 // ----------- Node related structs -----------------------------------------
 
@@ -40,27 +41,27 @@ where
 #[allow(clippy::type_complexity)]
 #[derive(Debug)]
 pub struct NodeSet<AF: AddressFamily, S: Stride>(
-    pub Box<[OnceBox<StoredNode<AF, S>>]>,
+    pub OnceBoxSlice<StoredNode<AF, S>>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
     pub RwLock<RoaringBitmap>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
-    pub fn init(size: usize) -> Self {
+    pub fn init(p2_size: u8) -> Self {
         if log_enabled!(log::Level::Debug) {
             debug!(
                 "{} store: creating space for {} nodes",
                 std::thread::current().name().unwrap(),
-                &size
+                1 << p2_size
             );
         }
 
-        let mut l = vec![];
-        for _i in 0..size {
-            l.push(OnceBox::new());
-        }
-        NodeSet(l.into_boxed_slice(), RoaringBitmap::new().into())
+        // let mut l = vec![];
+        // for _i in 0..1 << p2_size {
+        //     l.push(OnceBox::new());
+        // }
+        NodeSet(OnceBoxSlice::new(p2_size), RoaringBitmap::new().into())
     }
 
     pub fn update_rbm_index(

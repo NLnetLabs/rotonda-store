@@ -23,7 +23,7 @@ macro_rules! impl_search_level {
                     // };
                     // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                    match nodes.0[index].get() {
+                    match nodes.0.get(index) {
                         None => None,
                         Some(stored_node) => {
                             let StoredNode { node_id, node, node_set, .. } = stored_node;
@@ -80,7 +80,7 @@ macro_rules! impl_search_level_for_mui {
                     // };
                     // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                    match nodes.0[index].get() {
+                    match nodes.0.get(index) {
                         None => None,
                         Some(this_node) => {
                             let StoredNode { node_id, node, node_set, .. } = this_node;
@@ -155,9 +155,9 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
 
-                assert!(nodes.0.get(index).is_some());
+                // assert!(!nodes.0.is_null());
 
-                match nodes.0[index].get() {
+                match nodes.0.get(index) {
                     // This arm only ever gets called in multi-threaded code
                     // where our thread (running this code *now*), andgot ahead
                     // of another thread: After the other thread created the
@@ -170,17 +170,16 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                         // not using them.
                         let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
-                        let node_set = if next_level > 0 {
-                            NodeSet::init((1 << (next_level - this_level)) as usize )
-                        } else {
-                            NodeSet(
-                                Box::new([]),
-                                std::sync::RwLock::new(RoaringBitmap::new())
-                            )
-                        };
+                        let node_set = NodeSet::init(next_level - this_level);
+                        // } else {
+                        //     NodeSet(
+                        //         Box::new([]),
+                        //         std::sync::RwLock::new(RoaringBitmap::new())
+                        //     )
+                        // };
 
                         // See if we can create the node
-                        let node = nodes.0[index].get_or_set(StoredNode {
+                        let node = nodes.0.get_or_init(index, || StoredNode {
                             node_id: $id,
                             node: TreeBitMapNode {
                                 ptrbitarr: <$stride as Stride>::AtomicPtrSize::from(0),
@@ -188,7 +187,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                                 _af: PhantomData
                             },
                             node_set
-                        }).0;
+                        });
 
                         // We may have lost, and a different node than we
                         // intended could live here, if so go a level deeper
@@ -292,12 +291,12 @@ macro_rules! store_node_closure {
                 let index = Self::hash_node_id($id, level);
                 let stored_nodes = &nodes.0; //.load(Ordering::Acquire, $guard);
 
-                assert!(stored_nodes.get(index).is_some());
-                let node_ref = &stored_nodes[index];
+                // assert!(!stored_nodes.is_null());
+                let node_ref = &stored_nodes; // .get(index);
                 // println!("success");
                 // let stored_node = node_ref.load(Ordering::Acquire, $guard);
 
-                match node_ref.get() {
+                match node_ref.get(index) {
                     None => {
                         // No node exists, so we create one here.
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
@@ -316,14 +315,14 @@ macro_rules! store_node_closure {
 
                         trace!("multi uniq id {}", multi_uniq_id);
 
-                        let node_set = if next_level > 0 {
-                            NodeSet::init((1 << (next_level - this_level)) as usize )
-                        } else {
-                            NodeSet(
-                                Box::new([]),
-                                std::sync::RwLock::new(RoaringBitmap::new())
-                            )
-                        };
+                        // let node_set = if next_level > 0 {
+                        let node_set = NodeSet::init(next_level - this_level);
+                        // } else {
+                        //     NodeSet(
+                        //         Box::new([]),
+                        //         std::sync::RwLock::new(RoaringBitmap::new())
+                        //     )
+                        // };
 
                         // Update the rbm_index in this node with the
                         // multi_uniq_id that the caller specified. We're
@@ -351,15 +350,22 @@ macro_rules! store_node_closure {
                         let ptrbitarr = new_node.ptrbitarr.load();
                         let pfxbitarr = new_node.pfxbitarr.load();
 
-                        let stored_node = node_ref.get_or_set(StoredNode { node_id: $id, node: new_node, node_set });
+                        let stored_node = node_ref.get_or_init(
+                            index,
+                            || StoredNode {
+                                node_id: $id,
+                                node: new_node,
+                                node_set
+                            }
+                        );
 
                         if stored_node.0.node_id == $id {
                             stored_node.0.node_set.update_rbm_index(
                                 multi_uniq_id, $guard
                             )?;
 
-                            stored_node.0.node.ptrbitarr.merge_with(ptrbitarr);
-                            stored_node.0.node.pfxbitarr.merge_with(pfxbitarr);
+                            stored_node.node.ptrbitarr.merge_with(ptrbitarr);
+                            stored_node.node.pfxbitarr.merge_with(pfxbitarr);
                         }
 
                         return Ok(($id, retry_count));
