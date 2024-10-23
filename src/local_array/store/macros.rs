@@ -359,13 +359,18 @@ macro_rules! store_node_closure {
                             }
                         );
 
-                        if stored_node.node_id == $id {
+                        if stored_node.node_id == $id && !its_us {
                             stored_node.node_set.update_rbm_index(
                                 multi_uniq_id
                             )?;
 
-                            stored_node.node.ptrbitarr.merge_with(ptrbitarr);
-                            stored_node.node.pfxbitarr.merge_with(pfxbitarr);
+                            if !its_us && ptrbitarr != 0 {
+                                stored_node.node.ptrbitarr.merge_with(ptrbitarr);
+                            }
+
+                            if !its_us && pfxbitarr != 0 {
+                                stored_node.node.pfxbitarr.merge_with(pfxbitarr);
+                            }
                         }
 
                         return Ok(($id, retry_count));
@@ -446,8 +451,12 @@ macro_rules! store_node_closure {
                                 multi_uniq_id
                             )?;
 
-                            stored_node.node.ptrbitarr.merge_with(new_node.ptrbitarr.load());
-                            stored_node.node.pfxbitarr.merge_with(new_node.pfxbitarr.load());
+                            if new_node.ptrbitarr.load() != 0 {
+                                stored_node.node.ptrbitarr.merge_with(new_node.ptrbitarr.load());
+                            }
+                            if new_node.pfxbitarr.load() != 0 {
+                                stored_node.node.pfxbitarr.merge_with(new_node.pfxbitarr.load());
+                            }
 
                             return Ok(($id, retry_count));
                         } else {
