@@ -67,7 +67,6 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn update_rbm_index(
         &self,
         multi_uniq_id: u32,
-        _guard: &crate::epoch::Guard,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
         S: crate::local_array::atomic_stride::Stride,

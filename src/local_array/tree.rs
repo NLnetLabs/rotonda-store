@@ -558,26 +558,26 @@ impl<
         if let Some(root_node) = self.store.retrieve_node_mut_with_guard(
             self.store.get_root_node_id(),
             record.multi_uniq_id,
-            guard,
+            // guard,
         ) {
             match root_node {
                 SizedStrideRef::Stride3(_) => {
                     self.store
                         .buckets
                         .get_store3(self.store.get_root_node_id())
-                        .update_rbm_index(record.multi_uniq_id, guard)?;
+                        .update_rbm_index(record.multi_uniq_id)?;
                 }
                 SizedStrideRef::Stride4(_) => {
                     self.store
                         .buckets
                         .get_store4(self.store.get_root_node_id())
-                        .update_rbm_index(record.multi_uniq_id, guard)?;
+                        .update_rbm_index(record.multi_uniq_id)?;
                 }
                 SizedStrideRef::Stride5(_) => {
                     self.store
                         .buckets
                         .get_store5(self.store.get_root_node_id())
-                        .update_rbm_index(record.multi_uniq_id, guard)?;
+                        .update_rbm_index(record.multi_uniq_id)?;
                 }
             };
         };
@@ -603,11 +603,8 @@ impl<
         let guard = &epoch::pin();
 
         trace!("start assembling all more specific prefixes here");
-        trace!(
-            "{:?}",
-            self.store.retrieve_node_with_guard(start_node_id, guard)
-        );
-        match self.store.retrieve_node_with_guard(start_node_id, guard) {
+        trace!("{:?}", self.store.retrieve_node_with_guard(start_node_id));
+        match self.store.retrieve_node_with_guard(start_node_id) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),

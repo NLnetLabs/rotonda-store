@@ -320,18 +320,9 @@ where
 
         let root_node_id = self.get_root_node_id();
         let mut node = match self.store.get_stride_for_id(root_node_id) {
-            3 => self
-                .store
-                .retrieve_node_with_guard(root_node_id, guard)
-                .unwrap(),
-            4 => self
-                .store
-                .retrieve_node_with_guard(root_node_id, guard)
-                .unwrap(),
-            _ => self
-                .store
-                .retrieve_node_with_guard(root_node_id, guard)
-                .unwrap(),
+            3 => self.store.retrieve_node_with_guard(root_node_id).unwrap(),
+            4 => self.store.retrieve_node_with_guard(root_node_id).unwrap(),
+            _ => self.store.retrieve_node_with_guard(root_node_id).unwrap(),
         };
 
         let mut nibble;
@@ -438,7 +429,7 @@ where
                             match_prefix_idx = Some(pfx_idx);
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -460,7 +451,7 @@ where
                         (Some(n), None) => {
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -562,7 +553,7 @@ where
                             match_prefix_idx = Some(pfx_idx);
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -584,7 +575,7 @@ where
                         (Some(n), None) => {
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -675,7 +666,7 @@ where
                             match_prefix_idx = Some(pfx_idx);
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {
@@ -697,7 +688,7 @@ where
                         (Some(n), None) => {
                             node = self
                                 .store
-                                .retrieve_node_with_guard(n, guard)
+                                .retrieve_node_with_guard(n)
                                 .unwrap();
 
                             if last_stride {

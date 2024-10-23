@@ -357,7 +357,7 @@ impl<
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             0_u32,
             root_node,
-            guard,
+            // guard,
         )?;
 
         Ok(store)
@@ -383,7 +383,7 @@ impl<
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
         next_node: SizedStrideNode<AF>,
-        guard: &Guard,
+        // guard: &Guard,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
@@ -449,7 +449,7 @@ impl<
     pub(crate) fn retrieve_node_with_guard(
         &'a self,
         id: StrideNodeId<AF>,
-        _guard: &'a Guard,
+        // _guard: &'a Guard,
     ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
@@ -557,7 +557,7 @@ impl<
         &'a self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
-        guard: &'a Guard,
+        // guard: &'a Guard,
     ) -> Option<SizedStrideRef<AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
@@ -565,7 +565,7 @@ impl<
                 &'a NodeSet<AF, S>,
                 // [u8; 10],
                 u8,
-                &'a Guard,
+                // &'a Guard,
             )
                 -> Option<SizedStrideRef<'a, AF>>,
         }
@@ -588,20 +588,20 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 0,
-                guard,
+                // guard,
             ),
 
             4 => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 0,
-                guard,
+                // guard,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 0,
-                guard,
+                // guard,
             ),
         }
     }

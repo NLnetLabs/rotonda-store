@@ -123,7 +123,7 @@ macro_rules! impl_search_level_for_mui {
 }
 
 // This macro creates a closure that is used in turn in the macro
-// 'insert_match', that is used in the public `insert` method on a TreeBitMap.
+// 'eBox', that is used in the public `insert` method on a TreeBitMap.
 //
 // It retrieves the node specified by $id recursively, creates it if it does
 // not exist. It is responsible for setting/updating the RBMIN, but is does
@@ -150,7 +150,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                 search_level: &SearchLevel<AF, $stride>,
                 nodes,
                 mut level: u8,
-                guard
+                // guard
             | {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
@@ -194,7 +194,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                         if $id == node.node_id {
                             // Nope, its ours or at least the node we need.
                             let _retry_count = node.node_set.update_rbm_index(
-                                $multi_uniq_id, guard
+                                $multi_uniq_id
                             ).ok();
 
                             return Some(SizedStrideRef::$stride(&node.node));
@@ -209,7 +209,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                                     search_level,
                                     &node.node_set,
                                     level,
-                                    guard,
+                                    // guard,
                                 )
                             }
                             // There's no next level, we found nothing.
@@ -229,7 +229,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             // of a trie, so it just needs to "exist" (and it
                             // already does).
                             let retry_count = node_set.update_rbm_index(
-                                $multi_uniq_id, guard
+                                $multi_uniq_id
                             ).ok();
 
                             trace!("Retry_count rbm index {:?}", retry_count);
@@ -246,7 +246,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                                     search_level,
                                     &node_set,
                                     level,
-                                    guard,
+                                    // guard,
                                 )
                             }
                             // There's no next level, we found nothing.
@@ -345,7 +345,7 @@ macro_rules! store_node_closure {
                         // threshold. In that case a false positive is
                         // stored in the index, which leads to more
                         // in-vain searching, but not to data corruption.
-                        retry_count += node_set.update_rbm_index(multi_uniq_id, $guard)?;
+                        // retry_count += node_set.update_rbm_index(multi_uniq_id)?;
 
                         let ptrbitarr = new_node.ptrbitarr.load();
                         let pfxbitarr = new_node.pfxbitarr.load();
@@ -359,9 +359,9 @@ macro_rules! store_node_closure {
                             }
                         );
 
-                        if stored_node.0.node_id == $id {
-                            stored_node.0.node_set.update_rbm_index(
-                                multi_uniq_id, $guard
+                        if stored_node.node_id == $id {
+                            stored_node.node_set.update_rbm_index(
+                                multi_uniq_id
                             )?;
 
                             stored_node.node.ptrbitarr.merge_with(ptrbitarr);
@@ -443,7 +443,7 @@ macro_rules! store_node_closure {
                             );
 
                             stored_node.node_set.update_rbm_index(
-                                multi_uniq_id, $guard
+                                multi_uniq_id
                             )?;
 
                             stored_node.node.ptrbitarr.merge_with(new_node.ptrbitarr.load());
