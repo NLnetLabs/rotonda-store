@@ -250,9 +250,9 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
 
     pub(crate) fn get_next_bucket(&self) -> Option<&PrefixSet<AF, M>> {
         if self.next_bucket.is_empty() {
-            return None;
+            None
         } else {
-            return Some(&self.next_bucket);
+            Some(&self.next_bucket)
         }
     }
 }

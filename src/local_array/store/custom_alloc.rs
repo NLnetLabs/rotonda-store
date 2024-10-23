@@ -718,7 +718,7 @@ impl<
     ) -> Result<(), PrefixStoreError> {
         let (stored_prefix, _level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(prefix)
-            .or_else(|_| Err(PrefixStoreError::StoreNotReadyError))?;
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
 
         // let current =
         // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
@@ -744,7 +744,7 @@ impl<
     ) -> Result<(), PrefixStoreError> {
         let (stored_prefix, _level) = self
             .non_recursive_retrieve_prefix_mut_with_guard(prefix)
-            .or_else(|_| Err(PrefixStoreError::StoreNotReadyError))?;
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
 
         // let current =
         // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
