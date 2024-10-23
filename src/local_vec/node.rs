@@ -42,7 +42,6 @@ where
     S: Stride,
     <S as Stride>::PtrSize: Debug + Binary + Copy,
     NodeId: SortableNodeId + Copy,
-    // <NodeId as SortableNodeId>::Part: Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TreeBitMapNode")
@@ -219,8 +218,11 @@ where
 
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
-            nibble =
-                AddressFamily::get_nibble(search_pfx.get_net(), start_bit, n_l);
+            nibble = AddressFamily::get_nibble(
+                search_pfx.get_net(),
+                start_bit,
+                n_l,
+            );
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix. This is not
@@ -340,8 +342,11 @@ where
 
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
-            nibble =
-                AddressFamily::get_nibble(search_pfx.get_net(), start_bit, n_l);
+            nibble = AddressFamily::get_nibble(
+                search_pfx.get_net(),
+                start_bit,
+                n_l,
+            );
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix. This is not

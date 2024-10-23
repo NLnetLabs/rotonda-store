@@ -2,7 +2,7 @@ use std::ptr::null_mut;
 use std::slice;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct OnceBox<T> {
     ptr: AtomicPtr<T>,
 }
@@ -16,12 +16,12 @@ impl<T> OnceBox<T> {
 
     pub fn is_null(&self) -> bool {
         let ptr = self.ptr.load(Ordering::Relaxed);
-        ptr == null_mut()
+        ptr.is_null()
     }
 
     pub fn get(&self) -> Option<&T> {
         let ptr = self.ptr.load(Ordering::Relaxed);
-        if ptr == null_mut() {
+        if ptr.is_null() {
             None
         } else {
             Some(unsafe { &*ptr })
@@ -91,7 +91,7 @@ impl<T> Drop for OnceBox<T> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct OnceBoxSlice<T> {
     ptr: AtomicPtr<OnceBox<T>>,
     p2_size: u8,
@@ -106,12 +106,12 @@ impl<T> OnceBoxSlice<T> {
     }
 
     pub fn is_null(&self) -> bool {
-        self.ptr.load(Ordering::Relaxed) == null_mut()
+        self.ptr.load(Ordering::Relaxed).is_null()
     }
 
     pub fn get(&self, idx: usize) -> Option<&T> {
         let ptr = self.ptr.load(Ordering::Relaxed);
-        if ptr == null_mut() {
+        if ptr.is_null() {
             None
         } else {
             let slice =
@@ -131,7 +131,7 @@ impl<T> OnceBoxSlice<T> {
 
     fn get_or_make_slice(&self) -> &[OnceBox<T>] {
         let ptr = self.ptr.load(Ordering::Relaxed);
-        if ptr != null_mut() {
+        if !ptr.is_null() {
             return unsafe { slice::from_raw_parts(ptr, 1 << self.p2_size) };
         }
 

@@ -2,9 +2,8 @@
 mod tests {
     use inetnum::addr::Prefix;
     use rotonda_store::{
-        prelude::*, prelude::multi::*, 
-        meta_examples::PrefixAs,
-        meta_examples::NoMeta,
+        meta_examples::NoMeta, meta_examples::PrefixAs, prelude::multi::*,
+        prelude::*,
     };
 
     #[test]
@@ -18,7 +17,11 @@ mod tests {
         )
         .unwrap();
 
-        trie.insert(&a_pfx, Record::new(0, 0, RouteStatus::Active, NoMeta::Empty), None)?;
+        trie.insert(
+            &a_pfx,
+            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )?;
         let expect_pfx = Prefix::new_relaxed(
             ("2001:67c:1bfc::").parse::<std::net::Ipv6Addr>()?.into(),
             48,
@@ -30,7 +33,7 @@ mod tests {
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
             },
             guard,
         );
@@ -54,7 +57,7 @@ mod tests {
         trie.insert(
             &min_pfx,
             Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-            None
+            None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
             ("0::").parse::<std::net::Ipv6Addr>()?.into(),
@@ -69,7 +72,7 @@ mod tests {
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
             },
             guard,
         );
@@ -85,7 +88,11 @@ mod tests {
         );
 
         // drop(locks);
-        trie.insert(&max_pfx?, Record::new(0, 0, RouteStatus::Active, NoMeta::Empty), None)?;
+        trie.insert(
+            &max_pfx?,
+            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )?;
         let expect_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(255, 255, 255, 255, 255, 255, 255, 255)
                 .into(),
@@ -100,7 +107,7 @@ mod tests {
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
             },
             guard,
         );
@@ -252,11 +259,15 @@ mod tests {
         ];
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(&pfx?, Record::new(0, 0, RouteStatus::Active, PrefixAs(666)), None)?;
+            tree_bitmap.insert(
+                &pfx?,
+                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
+                None,
+            )?;
         }
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter(guard) {
+        for pfx in tree_bitmap.prefixes_iter() {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,
@@ -265,7 +276,7 @@ mod tests {
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
-                    mui: None
+                    mui: None,
                 },
                 guard,
             );
@@ -512,7 +523,7 @@ mod tests {
             tree_bitmap.insert(
                 &pfx?,
                 Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
-                None
+                None,
             )?;
         }
 
@@ -523,7 +534,7 @@ mod tests {
         // };
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter(guard) {
+        for pfx in tree_bitmap.prefixes_iter() {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,
@@ -568,18 +579,22 @@ mod tests {
         let less_specifics = res.less_specifics.unwrap();
 
         assert!(less_specifics.iter().any(|r| {
-            r.prefix == Prefix::new(
-                std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0).into(),
-                48,
-            )
-            .unwrap()
+            r.prefix
+                == Prefix::new(
+                    std::net::Ipv6Addr::new(2001, 192, 10, 0, 0, 0, 0, 0)
+                        .into(),
+                    48,
+                )
+                .unwrap()
         }));
         assert!(less_specifics.iter().any(|r| {
-            r.prefix == Prefix::new(
-                std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0).into(),
-                32,
-            )
-            .unwrap()
+            r.prefix
+                == Prefix::new(
+                    std::net::Ipv6Addr::new(2001, 192, 0, 0, 0, 0, 0, 0)
+                        .into(),
+                    32,
+                )
+                .unwrap()
         }));
         Ok(())
     }
@@ -608,7 +623,7 @@ mod tests {
                 tree_bitmap.insert(
                     &pfx,
                     Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-                    None
+                    None,
                 )?;
 
                 let res_pfx = Prefix::new_relaxed(
@@ -631,7 +646,7 @@ mod tests {
                             include_withdrawn: false,
                             include_less_specifics: false,
                             include_more_specifics: false,
-                            mui: None
+                            mui: None,
                         },
                         guard,
                     );

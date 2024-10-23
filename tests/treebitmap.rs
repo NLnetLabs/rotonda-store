@@ -331,7 +331,7 @@ mod tests {
         // };
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter(guard) {
+        for pfx in tree_bitmap.prefixes_iter() {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,
@@ -585,9 +585,9 @@ mod tests {
 
         println!("all records");
 
-        let all_recs = tree_bitmap.prefixes_iter(guard);
+        let all_recs = tree_bitmap.prefixes_iter();
 
-        for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
+        for rec in tree_bitmap.prefixes_iter().collect::<Vec<_>>() {
             println!("{}", rec);
         }
 
@@ -599,14 +599,14 @@ mod tests {
         assert_eq!(wd_2_rec.len(), 1);
         assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
 
-        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
+        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
             r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
         });
         println!("mui_2_recs prefixes_iter");
         for rec in mui_2_recs {
             println!("{} {:#?}", rec.0, rec.1);
         }
-        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
+        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
             r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
         });
 
@@ -837,7 +837,6 @@ mod tests {
         let less_specifics = less_specifics.less_specifics.unwrap();
         // All records for the less specific /16 are withdrawn, so this should be empty.
         assert!(less_specifics.is_empty());
-        
 
         //--------------------
 

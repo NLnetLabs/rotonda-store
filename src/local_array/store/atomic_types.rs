@@ -57,10 +57,6 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
             );
         }
 
-        // let mut l = vec![];
-        // for _i in 0..1 << p2_size {
-        //     l.push(OnceBox::new());
-        // }
         NodeSet(OnceBoxSlice::new(p2_size), RoaringBitmap::new().into())
     }
 
@@ -76,37 +72,6 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         let mut rbm = self.1.write().unwrap();
         rbm.insert(multi_uniq_id);
 
-        // self.1
-        //     .fetch_update(
-        //         std::sync::atomic::Ordering::AcqRel,
-        //         std::sync::atomic::Ordering::Acquire,
-        //         guard,
-        //         |a_rbm_index| {
-        // SAFETY: The rbm_index gets created as an empty
-        // RoaringBitmap at init time of the NodeSet, so it cannot
-        // be a NULL pointer at this point.
-
-        // Data races that could normally arise as a consequence
-        // of the .deref_mut() are avoided by the guarantees of
-        // fetch_update (it does CAS).
-        // let mut rbm_index =
-        //     unsafe { a_rbm_index.deref() }.clone();
-        // rbm_index.insert(multi_uniq_id);
-
-        //         try_count += 1;
-        //         // Some(Owned::new(rbm_index).into_shared(guard))
-        //         Some(a_rbm_index)
-        //     },
-        // )
-        // .map_err(|_| {
-        //     crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-        // })?;
-
-        // trace!("Added {} to {:?}", multi_uniq_id, unsafe {
-        //     self.1
-        //         .load(std::sync::atomic::Ordering::SeqCst, guard)
-        //         .as_ref()
-        // });
         Ok(try_count)
     }
 
@@ -124,37 +89,6 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         let mut rbm = self.1.write().unwrap();
         rbm.remove(multi_uniq_id);
 
-        // self.1
-        //     .fetch_update(
-        //         std::sync::atomic::Ordering::AcqRel,
-        //         std::sync::atomic::Ordering::Acquire,
-        //         guard,
-        //         |a_rbm_index| {
-        //             // SAFETY: The rbm_index gets created as an empty
-        //             // RoaringBitmap at init time of the NodeSet, so it cannot
-        //             // be a NULL pointer at this point.
-
-        //             // Data races that could normally arise as a consequence
-        //             // of the .deref_mut() are avoided by the guarantees of
-        //             // fetch_update (it does CAS).
-        //             // let mut rbm_index =
-        //             // unsafe { a_rbm_index.deref() }.clone();
-        //             // rbm_index.remove(multi_uniq_id);
-
-        //             try_count += 1;
-        //             // Some(Owned::new(rbm_index).into_shared(guard))
-        //             Some(a_rbm_index)
-        //         },
-        //     )
-        //     .map_err(|_| {
-        //         crate::prelude::multi::PrefixStoreError::StoreNotReadyError
-        //     })?;
-
-        // trace!("Removed {} to {:?}", multi_uniq_id, unsafe {
-        //     self.1
-        //         .load(std::sync::atomic::Ordering::SeqCst, guard)
-        //         .as_ref()
-        // });
         Ok(try_count)
     }
 }
@@ -238,55 +172,6 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
             next_bucket,
         }
     }
-
-    // pub(crate) fn _new_with_record<PB: PrefixBuckets<AF, M>>(
-    //     pfx_id: PrefixId<AF>,
-    //     record: PublicRecord<M>,
-    //     level: u8,
-    // ) -> Self {
-    //     // start calculation size of next set, it's dependent on the level
-    //     // we're in.
-    //     // let pfx_id = PrefixId::new(record.net, record.len);
-    //     let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
-    //     let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
-
-    //     trace!("this level {} next level {}", this_level, next_level);
-    //     let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
-    //         debug!(
-    //             "{} store: INSERT with new bucket of size {} at prefix len {}",
-    //             std::thread::current().name().unwrap(),
-    //             1 << (next_level - this_level),
-    //             pfx_id.get_len()
-    //         );
-    //         PrefixSet::init((1 << (next_level - this_level)) as usize)
-    //     } else {
-    //         debug!(
-    //             "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
-    //             std::thread::current().name().unwrap(),
-    //             pfx_id.get_len()
-    //         );
-    //         PrefixSet::empty()
-    //     };
-    //     // End of calculation
-
-    //     let mut rec_map = HashMap::new();
-    //     let mui = record.multi_uniq_id;
-    //     rec_map
-    //         // .pin()
-    //         .insert(record.multi_uniq_id, MultiMapValue::from(record));
-
-    //     StoredPrefix {
-    //         // serial: 1,
-    //         prefix: pfx_id,
-    //         // In a new prefix, the first inserted record will always be the
-    //         // best path
-    //         path_selections: Atomic::new(PathSelections {
-    //             path_selection_muis: (Some(mui), None),
-    //         }),
-    //         record_map: MultiMap::new(rec_map),
-    //         next_bucket,
-    //     }
-    // }
 
     pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
         self.prefix
@@ -517,16 +402,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
-    // pub fn _iter_all_records<'a>(
-    //     &'a self,
-    //     // guard: &'a flurry::Guard<'a>,
-    // ) -> impl Iterator<Item = PublicRecord<M>> + 'a {
-    //     let map = self.guard().unwrap();
-    //     map
-    //         .iter()
-    //         .map(|r| PublicRecord::from((*r.0, r.1.clone())))
-    // }
-
     // return all records regardless of their local status, or any globally
     // set status for the mui of the record. However, the local status for a
     // record whose mui appears in the specified bitmap index, will be
@@ -611,8 +486,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let c_map = self.clone();
         let (mut record_map, retry_count) = c_map.guard_with_retry(0);
 
-        if let Some(_) = record_map
+        if record_map
             .insert(record.multi_uniq_id, MultiMapValue::from(record))
+            .is_some()
         {
             (Some(record_map.len()), retry_count)
         } else {
@@ -774,9 +650,6 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub fn init(size: usize) -> Self {
         let mut l = Vec::with_capacity(size);
 
-        // let l = AtomicStoredPrefix<AF, M>>>::new(vec![
-        // AtomicStoredPrefix::empty(),
-        // ]);
         trace!("creating space for {} prefixes in prefix_set", &size);
         for _i in 0..size {
             l.push(OnceBox::new());
@@ -784,48 +657,14 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
         PrefixSet(l.into_boxed_slice())
     }
 
-    // pub fn get_len_recursive(&self) -> usize {
-    //     fn recurse_len<AF: AddressFamily, M: crate::prefix_record::Meta>(
-    //         start_set: &PrefixSet<AF, M>,
-    //     ) -> usize {
-    //         let mut size: usize = 0;
-    //         let guard = &epoch::pin();
-    //         let start_set = start_set.0.load(Ordering::SeqCst, guard);
-    //         for p in unsafe { start_set.deref() } {
-    //             let pfx = unsafe { p.assume_init_ref() };
-    //             if !pfx.is_empty(guard) {
-    //                 size += 1;
-    //                 trace!(
-    //                     "recurse found pfx {:?} cur size {}",
-    //                     pfx.get_prefix_id(),
-    //                     size
-    //                 );
-    //                 if let Some(next_bucket) = pfx.get_next_bucket(guard) {
-    //                     trace!("found next bucket");
-    //                     size += recurse_len(next_bucket);
-    //                 }
-    //             }
-    //         }
-
-    //         size
-    //     }
-
-    //     recurse_len(self)
-    // }
-
     pub(crate) fn is_empty(&self) -> bool {
-        if self.0.len() == 1 {
-            true
-        } else {
-            false
-        }
+        self.0.len() == 1
     }
 
-    pub(crate) fn get_by_index<'a>(
-        &'a self,
+    pub(crate) fn get_by_index(
+        &self,
         index: usize,
-        _guard: &'a Guard,
-    ) -> Option<&'a StoredPrefix<AF, M>> {
+    ) -> Option<&StoredPrefix<AF, M>> {
         self.0[index].get()
     }
 

@@ -153,6 +153,7 @@ macro_rules! retrieve_node_mut_with_guard_closure {
             | {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
+                let node;
 
                 match nodes.0.get(index) {
                     // This arm only ever gets called in multi-threaded code
@@ -162,15 +163,16 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                     // running this method, so our thread enounters an empty node
                     // in the store.
                     None => {
-                        // There is some code duplicaton in these arms, but we
-                        // want to avoid always creating these values and then
-                        // not using them.
-                        let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
-                        let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
+                        let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            $id.get_id().1, level
+                        );
+                        let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            $id.get_id().1, level + 1
+                        );
                         let node_set = NodeSet::init(next_level - this_level);
 
                         // See if we can create the node
-                        let (node, _its_us) = nodes.0.get_or_init(index, || StoredNode {
+                        (node, _) = nodes.0.get_or_init(index, || StoredNode {
                             node_id: $id,
                             node: TreeBitMapNode::new(),
                             node_set
@@ -186,23 +188,9 @@ macro_rules! retrieve_node_mut_with_guard_closure {
 
                             return Some(SizedStrideRef::$stride(&node.node));
                         };
-
-                        // It isn't ours move one level deeper.
-                        level += 1;
-                        match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                            // on to the next level!
-                            next_bit_shift if next_bit_shift > 0 => {
-                                (search_level.f)(
-                                    search_level,
-                                    &node.node_set,
-                                    level,
-                                )
-                            }
-                            // There's no next level, we found nothing.
-                            _ => None,
-                        }
                     },
                     Some(this_node) => {
+                        node = this_node;
                         if $id == this_node.node_id {
                             // YES, It's the one we're looking for!
 
@@ -218,26 +206,28 @@ macro_rules! retrieve_node_mut_with_guard_closure {
                             ).ok();
 
                             trace!("Retry_count rbm index {:?}", retry_count);
-                            trace!("add multi uniq id to bitmap index {} for node {}", $multi_uniq_id, this_node.node);
+                            trace!("add multi uniq id to bitmap index {} for node {}",
+                                $multi_uniq_id, this_node.node
+                            );
                             return Some(SizedStrideRef::$stride(&this_node.node));
                         };
-                        // Meh, it's not, but we can a go to the next level
-                        // and see if it lives there.
-                        level += 1;
-                        match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                            // on to the next level!
-                            next_bit_shift if next_bit_shift > 0 => {
-                                (search_level.f)(
-                                    search_level,
-                                    &this_node.node_set,
-                                    level,
-                                    // guard,
-                                )
-                            }
-                            // There's no next level, we found nothing.
-                            _ => None,
-                        }
                     }
+                }
+                // It isn't ours. Move one level deeper.
+                level += 1;
+                match <NB as NodeBuckets<AF>>::len_to_store_bits(
+                    $id.get_id().1, level
+                ) {
+                    // on to the next level!
+                    next_bit_shift if next_bit_shift > 0 => {
+                        (search_level.f)(
+                            search_level,
+                            &node.node_set,
+                            level,
+                        )
+                    }
+                    // There's no next level, we found nothing.
+                    _ => None,
                 }
             }
         }
@@ -264,7 +254,7 @@ macro_rules! store_node_closure {
             new_node: TreeBitMapNode<AF, $stride>,
             multi_uniq_id: u32,
             mut level: u8,
-            mut retry_count: u32| {
+            retry_count: u32| {
                 let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                 trace!("{:032b}", $id.get_id().0);
                 trace!("id {:?}", $id.get_id());
@@ -272,11 +262,8 @@ macro_rules! store_node_closure {
 
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
-                let stored_nodes = &nodes.0;
 
-                let node_ref = &stored_nodes;
-
-                match node_ref.get(index) {
+                match nodes.0.get(index) {
                     None => {
                         // No node exists, so we create one here.
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
@@ -300,7 +287,7 @@ macro_rules! store_node_closure {
                         let ptrbitarr = new_node.ptrbitarr.load();
                         let pfxbitarr = new_node.pfxbitarr.load();
 
-                        let (stored_node, its_us) = node_ref.get_or_init(
+                        let (stored_node, its_us) = nodes.0.get_or_init(
                             index,
                             || StoredNode {
                                 node_id: $id,
@@ -347,11 +334,6 @@ macro_rules! store_node_closure {
                         // with the multi_uniq_id we've got from the
                         // caller.
                         if $id == stored_node.node_id {
-                            trace!("found node {} in {} attempts",
-                                $id,
-                                retry_count
-                            );
-
                             stored_node.node_set.update_rbm_index(
                                 multi_uniq_id
                             )?;

@@ -4,8 +4,8 @@ use std::{
     marker::PhantomData,
 };
 
-use crossbeam_utils::Backoff;
 use log::trace;
+use parking_lot_core::SpinWait;
 
 // pub use super::atomic_stride::*;
 use super::bit_span::BitSpan;
@@ -198,7 +198,8 @@ where
 
             // We are not at the last stride
             // Check it the ptr bit is already set in this position
-            if (S::into_stride_size(ptrbitarr) & bit_pos) == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType>::zero() {
+            if (S::into_stride_size(ptrbitarr) & bit_pos) == 
+                <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType>::zero() {
                 // Nope, set it and create a child node
 
                 match next_stride.unwrap() {
@@ -231,8 +232,6 @@ where
                     }
                 };
 
-
-
                 // THE CRITICAL SECTION
                 //
                 // UPDATING pfxbitarr
@@ -243,7 +242,7 @@ where
                     S::into_ptrbitarr_size(
                     bit_pos | S::into_stride_size(ptrbitarr),
                 ));
-                let backoff = Backoff::new();
+                let mut spinwait = SpinWait::new();
                 loop {
                     match a_ptrbitarr {
                         CasResult(Ok(_)) => {
@@ -259,7 +258,7 @@ where
                             ));
                         }
                     };
-                    backoff.spin();
+                    spinwait.spin_no_yield();
                 }
 
                 return (NewNodeOrIndex::NewNode(
@@ -283,7 +282,7 @@ where
                 self.pfxbitarr.compare_exchange(
                     pfxbitarr, bit_pos | pfxbitarr
                 );
-                let backoff = Backoff::new();
+                let mut spinwait = SpinWait::new();
 
                 loop {
                     match a_pfxbitarr {
@@ -299,7 +298,7 @@ where
                             );
                         }
                     };
-                    backoff.spin();
+                    spinwait.spin_no_yield();
                 }
 
                 return (NewNodeOrIndex::NewPrefix, retry_count);

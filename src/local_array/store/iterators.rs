@@ -49,7 +49,6 @@ pub(crate) struct PrefixIter<
     // which is the max number of of both IPv4 and IPv6.
     parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
     cursor: usize,
-    guard: &'a Guard,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -162,9 +161,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             // StoredPrefix. We are doing depth-first iteration, so we check
             // for a child first and descend into that if it exists.
 
-            if let Some(s_pfx) =
-                self.cur_bucket.get_by_index(self.cursor, self.guard)
-            {
+            if let Some(s_pfx) = self.cur_bucket.get_by_index(self.cursor) {
                 // DEPTH FIRST ITERATION
                 match s_pfx.get_next_bucket() {
                     Some(bucket) => {
@@ -307,7 +304,6 @@ pub(crate) struct MoreSpecificPrefixIter<
     global_withdrawn_bmin: &'a RoaringBitmap,
     // Whether we should filter out the withdrawn records in the search result
     include_withdrawn: bool,
-    guard: &'a Guard,
 }
 
 impl<
@@ -545,7 +541,6 @@ pub(crate) struct LessSpecificPrefixIter<
     // This is the tree-wide index of withdrawn muis, used to filter out the
     // records for those.
     global_withdrawn_bmin: &'a RoaringBitmap,
-    guard: &'a Guard,
 }
 
 impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
@@ -611,9 +606,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             }
 
             // LEVEL DEPTH ITERATION
-            if let Some(stored_prefix) =
-                self.cur_bucket.get_by_index(index, self.guard)
-            {
+            if let Some(stored_prefix) = self.cur_bucket.get_by_index(index) {
                 // if let Some(stored_prefix) =
                 // s_pfx.get_stored_prefix(self.guard)
                 // {
@@ -822,7 +815,6 @@ impl<
 
                 Some(MoreSpecificPrefixIter {
                     store: self,
-                    guard,
                     cur_pfx_iter,
                     cur_ptr_iter,
                     start_bit_span,
@@ -877,7 +869,6 @@ impl<
                 mui,
                 global_withdrawn_bmin,
                 include_withdrawn,
-                guard,
             })
         }
         .into_iter()
@@ -887,7 +878,6 @@ impl<
     // Iterator over all the prefixes in the storage.
     pub fn prefixes_iter(
         &'a self,
-        guard: &'a Guard,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PrefixIter {
             prefixes: &self.prefixes,
@@ -896,7 +886,6 @@ impl<
             cur_level: 0,
             cursor: 0,
             parents: [None; 26],
-            guard,
         }
     }
 }

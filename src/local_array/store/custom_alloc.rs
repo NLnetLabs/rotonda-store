@@ -198,7 +198,7 @@ use roaring::RoaringBitmap;
 use std::marker::PhantomData;
 
 use crate::{
-    local_array::store::oncebox::{OnceBox, OnceBoxSlice},
+    local_array::store::oncebox::OnceBox,
     local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
     prefix_record::PublicRecord,
 };
@@ -339,7 +339,6 @@ impl<
         // to a bitmap index on each node that has children where the unique
         // id appears on a Record.
         // multi_uniq_id: u32,
-        guard: &'a Guard,
     ) -> Result<Self, Box<dyn std::error::Error>> {
         info!("store: initialize store {}", AF::BITS);
 
@@ -357,7 +356,6 @@ impl<
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             0_u32,
             root_node,
-            // guard,
         )?;
 
         Ok(store)
@@ -383,7 +381,6 @@ impl<
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
         next_node: SizedStrideNode<AF>,
-        // guard: &Guard,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn Fn(
@@ -449,14 +446,12 @@ impl<
     pub(crate) fn retrieve_node_with_guard(
         &'a self,
         id: StrideNodeId<AF>,
-        // _guard: &'a Guard,
     ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
                 &'a NodeSet<AF, S>,
                 u8,
-                // &'a Guard,
             )
                 -> Option<SizedStrideRef<'a, AF>>,
         }
@@ -479,19 +474,16 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 0,
-                // guard,
             ),
             4 => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 0,
-                // guard,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 0,
-                // guard,
             ),
         }
     }
@@ -504,14 +496,12 @@ impl<
         id: StrideNodeId<AF>,
         // The mui that is tested to be present in the nodes bitmap index
         mui: u32,
-        // guard: &'a Guard,
     ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
                 &'a NodeSet<AF, S>,
                 u8,
-                // &'a Guard,
             )
                 -> Option<SizedStrideRef<'a, AF>>,
         }
@@ -535,19 +525,16 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 0,
-                // guard,
             ),
             4 => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 0,
-                // guard,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 0,
-                // guard,
             ),
         }
     }
@@ -557,15 +544,12 @@ impl<
         &'a self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
-        // guard: &'a Guard,
     ) -> Option<SizedStrideRef<AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
                 &'a NodeSet<AF, S>,
-                // [u8; 10],
                 u8,
-                // &'a Guard,
             )
                 -> Option<SizedStrideRef<'a, AF>>,
         }
@@ -588,20 +572,17 @@ impl<
                 &search_level_3,
                 self.buckets.get_store3(id),
                 0,
-                // guard,
             ),
 
             4 => (search_level_4.f)(
                 &search_level_4,
                 self.buckets.get_store4(id),
                 0,
-                // guard,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
                 self.buckets.get_store5(id),
                 0,
-                // guard,
             ),
         }
     }
@@ -663,143 +644,62 @@ impl<
         let retry_count = 0;
         let mut prefix_new = true;
 
-        // let (stored_prefix, level) = self
-        //     .non_recursive_retrieve_prefix_mut_with_guard(
-        //         // PrefixId::new(prefix.get_net(), prefix.get_len()),
-        //         prefix,
-        //     );
-
-        // let inner_stored_prefix = atomic_stored_prefix; //.0.load(Ordering::Acquire, guard);
-
-        let (mui_new, insert_retry_count) =
-            match self.non_recursive_retrieve_prefix_mut_with_guard(prefix) {
-                // There's no StoredPrefix at this location yet. Create a new
-                // PrefixRecord and try to store it in the empty slot.
-                Err((locked_prefix, level)) => {
-                    // let mut res;
-                    if log_enabled!(log::Level::Debug) {
-                        debug!(
-                            "{} store: Create new prefix record",
-                            std::thread::current().name().unwrap()
-                        );
-                    }
-
-                    // We're creating a StoredPrefix without our record first,
-                    // to avoid having to clone it on retry.
-
-                    let new_stored_prefix = StoredPrefix::new::<PB>(
-                        PrefixId::new(prefix.get_net(), prefix.get_len()),
-                        level,
+        let (mui_new, insert_retry_count) = match self
+            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
+        {
+            // There's no StoredPrefix at this location yet. Create a new
+            // PrefixRecord and try to store it in the empty slot.
+            Err((locked_prefix, level)) => {
+                // let mut res;
+                if log_enabled!(log::Level::Debug) {
+                    debug!(
+                        "{} store: Create new prefix record",
+                        std::thread::current().name().unwrap()
                     );
-                    // res = new_stored_prefix;
-                    // .record_map
-                    // .upsert_record(record.clone());
-
-                    let (_p, _) = locked_prefix.get_or_set(new_stored_prefix);
-                    // let back_off = Backoff::new();
-
-                    let res = _p.record_map.upsert_record(record);
-
-                    // loop {
-                    //     if let Ok(()) = set_res {
-                    //         break;
-                    //     } else {
-                    //         if let Some(stored_record) = locked_prefix.get() {
-                    //             res = stored_record
-                    //                 .record_map
-                    //                 .upsert_record(record.clone());
-                    //             // locked_prefix.set(*stored_record);
-                    //         };
-                    //     }
-                    //     back_off.snooze();
-                    // }
-
-                    // We're expecting an empty slot.
-                    // match atomic_stored_prefix.0.compare_exchange(
-                    //     Shared::null(),
-                    //     // tag with value 1, means the path selection is set to
-                    //     // outdated.
-                    //     Owned::new(new_stored_prefix).with_tag(1),
-                    //     Ordering::AcqRel,
-                    //     Ordering::Acquire,
-                    //     guard,
-                    // ) {
-                    //     // ...and we got an empty slot, the newly created
-                    //     // StoredPrefix is stored into it.
-                    //     Ok(spfx) => {
-                    //         if log_enabled!(log::Level::Info) {
-                    //             let StoredPrefix {
-                    //                 prefix,
-                    //                 record_map: stored_record,
-                    //                 ..
-                    //             } = unsafe { spfx.deref() };
-                    //             if log_enabled!(log::Level::Info) {
-                    //                 info!(
-                    //                         "{} store: Inserted new prefix record {}/{} with {:?}",
-                    //                         std::thread::current().name().unwrap(),
-                    //                         prefix.get_net().into_ipaddr(), prefix.get_len(),
-                    //                         stored_record
-                    //                     );
-                    //             }
-                    //         }
-
-                    self.counters.inc_prefixes_count(prefix.get_len());
-
-                    //         // ..and update the record_map with the actual record
-                    //         // we got from the user.
-                    //         unsafe { spfx.deref() }
-                    //             .record_map
-                    //             .upsert_record(record)
-                    //     }
-                    //     // ...somebody beat us to it, the slot's not empty
-                    //     // anymore, we'll have to do it again.
-                    //     Err(CompareExchangeError { current, new: _ }) => {
-                    //         if log_enabled!(log::Level::Debug) {
-                    //             debug!(
-                    //                     "{} store: Prefix can't be inserted as new {:?}",
-                    //                     std::thread::current().name().unwrap(),
-                    //                     current
-                    //                 );
-                    //         }
-                    //         retry_count += 1;
-                    //         let stored_prefix = unsafe { current.deref() };
-
-                    //         // update the record_map from the winning thread
-                    //         // with our caller's record.
-                    //         stored_prefix.set_ps_outdated(guard)?;
-                    //         stored_prefix.record_map.upsert_record(record)
-                    //     }
-                    // }
-                    res
                 }
-                // There already is a StoredPrefix with a record at this
-                // location.
-                Ok((stored_prefix, _)) => {
-                    if log_enabled!(log::Level::Debug) {
-                        debug!(
+
+                // We're creating a StoredPrefix without our record first,
+                // to avoid having to clone it on retry.
+                let res = locked_prefix
+                    .get_or_init(|| {
+                        StoredPrefix::new::<PB>(
+                            PrefixId::new(prefix.get_net(), prefix.get_len()),
+                            level,
+                        )
+                    })
+                    .0
+                    .record_map
+                    .upsert_record(record);
+
+                self.counters.inc_prefixes_count(prefix.get_len());
+                res
+            }
+            // There already is a StoredPrefix with a record at this
+            // location.
+            Ok((stored_prefix, _)) => {
+                if log_enabled!(log::Level::Debug) {
+                    debug!(
                         "{} store: Found existing prefix record for {}/{}",
                         std::thread::current().name().unwrap(),
                         prefix.get_net(),
                         prefix.get_len()
                     );
-                    }
-                    prefix_new = false;
-
-                    // Update the already existing record_map with our caller's
-                    // record.
-                    // debug!("tag {}", inner_stored_prefix.tag());
-                    // let stored_prefix = unsafe { inner_stored_prefix.deref() };
-                    stored_prefix.set_ps_outdated(guard)?;
-                    let res = stored_prefix.record_map.upsert_record(record);
-
-                    if let Some(tbi) = update_path_selections {
-                        stored_prefix
-                            .calculate_and_store_best_backup(&tbi, guard)?;
-                    }
-
-                    res
                 }
-            };
+                prefix_new = false;
+
+                // Update the already existing record_map with our caller's
+                // record.
+                stored_prefix.set_ps_outdated(guard)?;
+                let res = stored_prefix.record_map.upsert_record(record);
+
+                if let Some(tbi) = update_path_selections {
+                    stored_prefix
+                        .calculate_and_store_best_backup(&tbi, guard)?;
+                }
+
+                res
+            }
+        };
 
         Ok(UpsertReport {
             prefix_new,

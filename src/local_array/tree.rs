@@ -1,6 +1,6 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crossbeam_epoch::{self as epoch};
-use log::{debug, error, log_enabled, trace};
+use log::{error, log_enabled, trace};
 
 use std::hash::Hash;
 use std::sync::atomic::{
@@ -370,8 +370,6 @@ impl<
 {
     pub fn new(
     ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
-        let guard = &epoch::pin();
-
         let root_node =
             match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size()
             {
@@ -399,9 +397,7 @@ impl<
             };
 
         Ok(TreeBitMap {
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(
-                root_node, guard,
-            )?,
+            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node)?,
         })
     }
 
@@ -490,7 +486,6 @@ impl<
                 stride;
                 cur_i;
                 level;
-                // back_off;
                 acc_retry_count;
                 // Strides to create match arm for; stats level
                 Stride3; 0,
@@ -600,9 +595,6 @@ impl<
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        let guard = &epoch::pin();
-
-        trace!("start assembling all more specific prefixes here");
         trace!("{:?}", self.store.retrieve_node_with_guard(start_node_id));
         match self.store.retrieve_node_with_guard(start_node_id) {
             Some(SizedStrideRef::Stride3(n)) => {

@@ -270,7 +270,7 @@ where
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
-        guard: &'a Guard,
+        // guard: &'a Guard,
     ) -> QueryResult<M> {
         // --- The Default Route Prefix -------------------------------------
 
