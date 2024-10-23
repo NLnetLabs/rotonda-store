@@ -34,8 +34,8 @@ impl<T> OnceBox<T> {
         let res = match self.ptr.compare_exchange(
             null_mut(),
             ptr,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
+            Ordering::Acquire,
+            Ordering::Relaxed,
         ) {
             Ok(current) => {
                 // We set the new value, return it.
@@ -53,9 +53,10 @@ impl<T> OnceBox<T> {
         (unsafe { &*res }, its_us)
     }
 
-    pub fn get_or_init(&self, create: impl FnOnce() -> T) -> &T {
+    pub fn get_or_init(&self, create: impl FnOnce() -> T) -> (&T, bool) {
+        let mut its_us = false;
         if let Some(res) = self.get() {
-            return res;
+            return (res, its_us);
         }
         let ptr = Box::leak(Box::new(create()));
         let res = match self.ptr.compare_exchange(
@@ -67,6 +68,7 @@ impl<T> OnceBox<T> {
             Ok(current) => {
                 // We set the new value, return it.
                 assert!(current.is_null());
+                its_us = true;
                 ptr as *const _
             }
             Err(current) => {
@@ -76,7 +78,7 @@ impl<T> OnceBox<T> {
                 current as *const _
             }
         };
-        unsafe { &*res }
+        (unsafe { &*res }, its_us)
     }
 }
 
@@ -118,7 +120,11 @@ impl<T> OnceBoxSlice<T> {
         }
     }
 
-    pub fn get_or_init(&self, idx: usize, create: impl FnOnce() -> T) -> &T {
+    pub fn get_or_init(
+        &self,
+        idx: usize,
+        create: impl FnOnce() -> T,
+    ) -> (&T, bool) {
         let slice = self.get_or_make_slice();
         slice[idx].get_or_init(create)
     }
