@@ -205,8 +205,8 @@ use crate::{
 use crate::{local_array::tree::*, stats::CreatedNodes};
 
 use crate::{
-    impl_search_level, impl_search_level_for_mui,
-    retrieve_node_mut_with_guard_closure, store_node_closure,
+    impl_search_level, impl_search_level_for_mui, retrieve_node_mut_closure,
+    store_node_closure,
 };
 
 use super::atomic_types::*;
@@ -553,9 +553,12 @@ impl<
                 -> Option<SizedStrideRef<'a, AF>>,
         }
 
-        let search_level_3 = retrieve_node_mut_with_guard_closure![Stride3; id; multi_uniq_id;];
-        let search_level_4 = retrieve_node_mut_with_guard_closure![Stride4; id; multi_uniq_id;];
-        let search_level_5 = retrieve_node_mut_with_guard_closure![Stride5; id; multi_uniq_id;];
+        let search_level_3 =
+            retrieve_node_mut_closure![Stride3; id; multi_uniq_id;];
+        let search_level_4 =
+            retrieve_node_mut_closure![Stride4; id; multi_uniq_id;];
+        let search_level_5 =
+            retrieve_node_mut_closure![Stride5; id; multi_uniq_id;];
 
         if log_enabled!(log::Level::Trace) {
             trace!(

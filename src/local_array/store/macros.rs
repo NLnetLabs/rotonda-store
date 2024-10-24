@@ -137,7 +137,7 @@ macro_rules! impl_search_level_for_mui {
 // the maximum depth.
 #[macro_export]
 #[doc(hidden)]
-macro_rules! retrieve_node_mut_with_guard_closure {
+macro_rules! retrieve_node_mut_closure {
     (
         $(
             $stride: ident;
