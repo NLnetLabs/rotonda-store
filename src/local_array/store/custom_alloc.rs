@@ -204,7 +204,6 @@ use crate::{
 };
 use crate::{local_array::tree::*, stats::CreatedNodes};
 
-// use crate::prefix_record::InternalPrefixRecord;
 use crate::{
     impl_search_level, impl_search_level_for_mui,
     retrieve_node_mut_with_guard_closure, store_node_closure,
@@ -443,7 +442,7 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn retrieve_node_with_guard(
+    pub(crate) fn retrieve_node(
         &'a self,
         id: StrideNodeId<AF>,
     ) -> Option<SizedStrideRef<'a, AF>> {
@@ -540,7 +539,7 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn retrieve_node_mut_with_guard(
+    pub(crate) fn retrieve_node_mut(
         &'a self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
@@ -641,16 +640,14 @@ impl<
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
-        let retry_count = 0;
         let mut prefix_new = true;
 
         let (mui_new, insert_retry_count) = match self
-            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
+            .non_recursive_retrieve_prefix_mut(prefix)
         {
             // There's no StoredPrefix at this location yet. Create a new
             // PrefixRecord and try to store it in the empty slot.
             Err((locked_prefix, level)) => {
-                // let mut res;
                 if log_enabled!(log::Level::Debug) {
                     debug!(
                         "{} store: Create new prefix record",
@@ -703,7 +700,7 @@ impl<
 
         Ok(UpsertReport {
             prefix_new,
-            cas_count: retry_count + insert_retry_count,
+            cas_count: insert_retry_count,
             mui_new: mui_new.is_none(),
             mui_count: mui_new.unwrap_or(1),
         })
@@ -717,19 +714,9 @@ impl<
         mui: u32,
     ) -> Result<(), PrefixStoreError> {
         let (stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
+            .non_recursive_retrieve_prefix_mut(prefix)
             .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
 
-        // let current =
-        // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
-
-        // let current = unsafe {
-        //     atomic_stored_prefix
-        //         .0
-        //         .load(Ordering::Acquire, guard)
-        //         .as_ref()
-        // }
-        // .unwrap();
         stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
 
         Ok(())
@@ -743,19 +730,9 @@ impl<
         mui: u32,
     ) -> Result<(), PrefixStoreError> {
         let (stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut_with_guard(prefix)
+            .non_recursive_retrieve_prefix_mut(prefix)
             .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
 
-        // let current =
-        // stored_prefix.ok_or(PrefixStoreError::StoreNotReadyError)?;
-
-        // let current = unsafe {
-        //     atomic_stored_prefix
-        //         .0
-        //         .load(Ordering::Acquire, guard)
-        //         .as_ref()
-        // }
-        // .unwrap();
         stored_prefix.record_map.mark_as_active_for_mui(mui);
 
         Ok(())
@@ -856,7 +833,7 @@ impl<
     // The error condition really shouldn't happen, because that basically
     // means the root node for that particular prefix length doesn't exist.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn non_recursive_retrieve_prefix_mut_with_guard(
+    pub(crate) fn non_recursive_retrieve_prefix_mut(
         &'a self,
         search_prefix_id: PrefixId<AF>,
     ) -> Result<
@@ -868,73 +845,43 @@ impl<
             .prefixes
             .get_root_prefix_set(search_prefix_id.get_len());
         let mut level: u8 = 0;
-        // let mut stored_prefix: Option<&StoredPrefix<AF, M>> = None;
 
         trace!("root prefix_set {:?}", prefix_set);
         loop {
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(search_prefix_id, level);
 
-            // let prefixes = prefix_set;
-            // trace!("prefixes at level {}? {:?}", level, !prefixes.is_null());
-
             // probe the slot with the index that's the result of the hashing.
-            // stored_prefix = Some(prefix_set.0[index]);
-            // let prefix_probe = if !prefixes.is_null() {
             trace!("prefix set found.");
             let locked_prefix = prefix_set.0.get(index).unwrap();
             let stored_prefix = match locked_prefix.get() {
-                // None => {
-                // panic!("index for PrefixSet out of bounds. search_prefix_id {:?}, level {}", search_prefix_id, level);
-                // }
                 Some(p) => p,
                 None => {
                     // We're at the end of the chain and haven't found our
                     // search_prefix_id anywhere. Return the end-of-the-chain
                     // StoredPrefix, so the caller can attach a new one.
-                    // trace!("no prefix set.");
                     trace!("no record. returning last found record.");
                     return Err((locked_prefix, level));
-                    // .map(|sp| (sp, level)
-                    // .ok_or(locked_prefix)
                 }
             };
 
-            // stored_prefix = Some(unsafe { prefix_probe });
-
-            // if let StoredPrefix {
-            //     prefix,
-            //     next_bucket,
-            //     ..
-            // } = stored_prefix
-            //.get_stored_prefix_mut(guard)
-            // {
             if search_prefix_id == stored_prefix.prefix {
                 // GOTCHA!
                 // Our search-prefix is stored here, so we're returning
                 // it, so its PrefixRecord can be updated by the caller.
                 trace!("found requested prefix {:?}", search_prefix_id);
                 return Ok((stored_prefix, level));
-                // .map(|sp| (sp, level))
-                // .ok_or(stored_prefix);
             } else {
                 // A Collision. Follow the chain.
                 level += 1;
                 prefix_set = &stored_prefix.next_bucket;
                 continue;
             }
-            // }
-
-            // No record at the deepest level, still we're returning a reference to it,
-            // so the caller can insert a new record here.
-            // return Ok((stored_prefix, level));
-            // .map(|sp| (Some(sp), level))
-            // .ok_or(PrefixStoreError::StoreNotReadyError);
         }
     }
 
     #[allow(clippy::type_complexity)]
-    pub fn non_recursive_retrieve_prefix_with_guard(
+    pub fn non_recursive_retrieve_prefix(
         &'a self,
         id: PrefixId<AF>,
     ) -> (
@@ -960,13 +907,7 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            // let mut prefixes = prefix_set; //.0.load(Ordering::Acquire, guard);
-
-            // if !prefixes.is_none() {
-            // let prefix_ref = prefixes.0[index];
-            if let Some(stored_prefix) = prefix_set.0[index].get()
-            // unsafe { prefix_ref }.get_stored_prefix(guard)
-            {
+            if let Some(stored_prefix) = prefix_set.0[index].get() {
                 if id == stored_prefix.get_prefix_id() {
                     trace!("found requested prefix {:?}", id);
                     parents[level as usize] = Some((prefix_set, index));
@@ -982,7 +923,6 @@ impl<
                 backoff.spin();
                 continue;
             }
-            // }
 
             trace!("no prefix found for {:?}", id);
             parents[level as usize] = Some((prefix_set, index));
@@ -991,7 +931,7 @@ impl<
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn retrieve_prefix_with_guard(
+    pub(crate) fn retrieve_prefix(
         &'a self,
         prefix_id: PrefixId<AF>,
     ) -> Option<(&StoredPrefix<AF, M>, usize)> {
@@ -1015,31 +955,18 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-                // let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-                // let tag = prefixes.tag();
-                // let prefix_ref = unsafe { &prefixes.deref()[index] };
-
-                if let Some(stored_prefix) =
-                    // unsafe { prefix_ref }.get_stored_prefix(guard)
-                    prefix_set.0[index].get()
-                {
+                if let Some(stored_prefix) = prefix_set.0[index].get() {
                     if prefix_id == stored_prefix.prefix {
-                        trace!(
-                            "found requested prefix {:?}",
-                            prefix_id,
-                            // tag
-                        );
+                        trace!("found requested prefix {:?}", prefix_id,);
                         return Some((stored_prefix, 0));
                     };
                     level += 1;
 
-                    // if let next_prefix_set = stored_prefix.next_bucket {
                     (search_level.f)(
                         search_level,
                         &stored_prefix.next_bucket,
                         level,
                     );
-                    // }
                 }
                 None
             },

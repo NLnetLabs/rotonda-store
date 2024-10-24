@@ -33,9 +33,7 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        let result = self
-            .store
-            .non_recursive_retrieve_prefix_with_guard(prefix_id);
+        let result = self.store.non_recursive_retrieve_prefix(prefix_id);
         let prefix = result.0;
         let more_specifics_vec = self.store.more_specific_prefix_iter_from(
             prefix_id,
@@ -70,9 +68,7 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        let result = self
-            .store
-            .non_recursive_retrieve_prefix_with_guard(prefix_id);
+        let result = self.store.non_recursive_retrieve_prefix(prefix_id);
 
         let prefix = result.0;
         let less_specifics_vec = result.1.map(
@@ -130,38 +126,37 @@ where
         mui: Option<u32>,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        // `non_recursive_retrieve_prefix_with_guard` returns an exact match
+        // `non_recursive_retrieve_prefix` returns an exact match
         // only, so no longest matching prefix!
-        let mut stored_prefix = self
-            .store
-            .non_recursive_retrieve_prefix_with_guard(search_pfx)
-            .0
-            .map(|pfx| {
-                (
-                    pfx.prefix,
-                    if !options.include_withdrawn {
-                        // Filter out all the withdrawn records, both with
-                        // globally withdrawn muis, and with local statuses
-                        // set to Withdrawn.
-                        self.get_filtered_records(pfx, mui, guard)
-                            .into_iter()
-                            .collect()
-                    } else {
-                        // Do no filter out any records, but do rewrite the
-                        // local statuses of the records with muis that
-                        // appear in the specified bitmap index.
-                        pfx.record_map.as_records_with_rewritten_status(
-                            unsafe {
-                                self.store
-                                    .withdrawn_muis_bmin
-                                    .load(Ordering::Acquire, guard)
-                                    .deref()
-                            },
-                            RouteStatus::Withdrawn,
-                        )
-                    },
-                )
-            });
+        let mut stored_prefix =
+            self.store.non_recursive_retrieve_prefix(search_pfx).0.map(
+                |pfx| {
+                    (
+                        pfx.prefix,
+                        if !options.include_withdrawn {
+                            // Filter out all the withdrawn records, both with
+                            // globally withdrawn muis, and with local statuses
+                            // set to Withdrawn.
+                            self.get_filtered_records(pfx, mui, guard)
+                                .into_iter()
+                                .collect()
+                        } else {
+                            // Do no filter out any records, but do rewrite the
+                            // local statuses of the records with muis that
+                            // appear in the specified bitmap index.
+                            pfx.record_map.as_records_with_rewritten_status(
+                                unsafe {
+                                    self.store
+                                        .withdrawn_muis_bmin
+                                        .load(Ordering::Acquire, guard)
+                                        .deref()
+                                },
+                                RouteStatus::Withdrawn,
+                            )
+                        },
+                    )
+                },
+            );
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -295,10 +290,7 @@ where
                 _serial => {
                     let prefix_meta = self
                         .store
-                        .retrieve_prefix_with_guard(PrefixId::new(
-                            AF::zero(),
-                            0,
-                        ))
+                        .retrieve_prefix(PrefixId::new(AF::zero(), 0))
                         .map(|sp| sp.0.record_map.as_records())
                         .unwrap_or_default();
                     return QueryResult {
@@ -765,8 +757,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            match_type = match self.store.retrieve_prefix_with_guard(pfx_idx)
-            {
+            match_type = match self.store.retrieve_prefix(pfx_idx) {
                 Some(prefix) => {
                     if prefix.0.prefix.get_len() == search_pfx.get_len() {
                         MatchType::ExactMatch
@@ -791,7 +782,7 @@ where
                     .unwrap()
                     .iter()
                     .filter_map(move |p| {
-                        self.store.retrieve_prefix_with_guard(*p).map(|p| {
+                        self.store.retrieve_prefix(*p).map(|p| {
                             Some((p.0.prefix, p.0.record_map.as_records()))
                         })
                     })
@@ -804,7 +795,7 @@ where
                     vec.into_iter()
                         .map(|p| {
                             self.store
-                                .retrieve_prefix_with_guard(p)
+                                .retrieve_prefix(p)
                                 .unwrap_or_else(|| {
                                     panic!(
                                         "more specific {:?} does not exist",

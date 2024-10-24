@@ -333,7 +333,7 @@ impl<
                 if let Some(mui) = self.mui {
                     if let Some(p) = self
                         .store
-                        .non_recursive_retrieve_prefix_with_guard(
+                        .non_recursive_retrieve_prefix(
                             next_pfx.unwrap_or_else(|| {
                                 panic!(
                                 "BOOM! More-specific prefix {:?} disappeared \
@@ -369,7 +369,7 @@ impl<
                 } else {
                     return self
                         .store
-                        .non_recursive_retrieve_prefix_with_guard(
+                        .non_recursive_retrieve_prefix(
                             next_pfx.unwrap_or_else(|| {
                                 panic!(
                                 "BOOM! More-specific prefix {:?} disappeared \
