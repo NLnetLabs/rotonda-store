@@ -427,7 +427,7 @@ impl<
 
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
-                    self.store.retrieve_node_with_guard(next_ptr)
+                    self.store.retrieve_node(next_ptr)
                 } else {
                     self.store.retrieve_node_for_mui(
                         next_ptr,
@@ -755,7 +755,7 @@ impl<
             let node = if let Some(mui) = mui {
                 self.retrieve_node_for_mui(start_node_id, mui)
             } else {
-                self.retrieve_node_with_guard(start_node_id)
+                self.retrieve_node(start_node_id)
             };
 
             if let Some(node) = node {

@@ -550,7 +550,7 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
 
-        if let Some(root_node) = self.store.retrieve_node_mut_with_guard(
+        if let Some(root_node) = self.store.retrieve_node_mut(
             self.store.get_root_node_id(),
             record.multi_uniq_id,
             // guard,
@@ -595,8 +595,8 @@ impl<
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        trace!("{:?}", self.store.retrieve_node_with_guard(start_node_id));
-        match self.store.retrieve_node_with_guard(start_node_id) {
+        trace!("{:?}", self.store.retrieve_node(start_node_id));
+        match self.store.retrieve_node(start_node_id) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
