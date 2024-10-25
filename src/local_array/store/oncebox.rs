@@ -14,11 +14,6 @@ impl<T> OnceBox<T> {
         }
     }
 
-    pub fn is_null(&self) -> bool {
-        let ptr = self.ptr.load(Ordering::Relaxed);
-        ptr.is_null()
-    }
-
     pub fn get(&self) -> Option<&T> {
         let ptr = self.ptr.load(Ordering::Relaxed);
         if ptr.is_null() {
@@ -26,31 +21,6 @@ impl<T> OnceBox<T> {
         } else {
             Some(unsafe { &*ptr })
         }
-    }
-
-    pub fn get_or_set(&self, value: T) -> (&T, bool) {
-        let mut its_us = false;
-        let ptr = Box::leak(Box::new(value));
-        let res = match self.ptr.compare_exchange(
-            null_mut(),
-            ptr,
-            Ordering::Acquire,
-            Ordering::Relaxed,
-        ) {
-            Ok(current) => {
-                // We set the new value, return it.
-                assert!(current.is_null());
-                its_us = true;
-                ptr as *const _
-            }
-            Err(current) => {
-                // `current` is the real value we need to drop our value.
-                assert!(!current.is_null());
-                let _ = unsafe { Box::from_raw(ptr) };
-                current as *const _
-            }
-        };
-        (unsafe { &*res }, its_us)
     }
 
     pub fn get_or_init(&self, create: impl FnOnce() -> T) -> (&T, bool) {
@@ -125,6 +95,7 @@ impl<T> OnceBoxSlice<T> {
         idx: usize,
         create: impl FnOnce() -> T,
     ) -> (&T, bool) {
+        // assert!(idx < (1 << self.p2_size));
         let slice = self.get_or_make_slice();
         slice[idx].get_or_init(create)
     }

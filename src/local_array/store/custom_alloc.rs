@@ -197,12 +197,11 @@ use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
 
+use crate::{local_array::tree::*, stats::CreatedNodes};
 use crate::{
-    local_array::store::oncebox::OnceBox,
     local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
     prefix_record::PublicRecord,
 };
-use crate::{local_array::tree::*, stats::CreatedNodes};
 
 use crate::{
     impl_search_level, impl_search_level_for_mui, retrieve_node_mut_closure,
@@ -645,61 +644,60 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut prefix_new = true;
 
-        let (mui_new, insert_retry_count) = match self
-            .non_recursive_retrieve_prefix_mut(prefix)
-        {
-            // There's no StoredPrefix at this location yet. Create a new
-            // PrefixRecord and try to store it in the empty slot.
-            Err((locked_prefix, level)) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
-                        "{} store: Create new prefix record",
-                        std::thread::current().name().unwrap()
-                    );
+        let (mui_new, insert_retry_count) =
+            match self.non_recursive_retrieve_prefix_mut(prefix) {
+                // There's no StoredPrefix at this location yet. Create a new
+                // PrefixRecord and try to store it in the empty slot.
+                (locked_prefix, false) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
+                            "{} store: Create new prefix record",
+                            std::thread::current().name().unwrap()
+                        );
+                    }
+
+                    // We're creating a StoredPrefix without our record first,
+                    // to avoid having to clone it on retry.
+                    let res = locked_prefix
+                        // .get_or_init(|| {
+                        //     StoredPrefix::new::<PB>(
+                        //         PrefixId::new(prefix.get_net(), prefix.get_len()),
+                        //         level,
+                        //     )
+                        // })
+                        // .0
+                        .record_map
+                        .upsert_record(record);
+
+                    self.counters.inc_prefixes_count(prefix.get_len());
+                    res
                 }
-
-                // We're creating a StoredPrefix without our record first,
-                // to avoid having to clone it on retry.
-                let res = locked_prefix
-                    .get_or_init(|| {
-                        StoredPrefix::new::<PB>(
-                            PrefixId::new(prefix.get_net(), prefix.get_len()),
-                            level,
-                        )
-                    })
-                    .0
-                    .record_map
-                    .upsert_record(record);
-
-                self.counters.inc_prefixes_count(prefix.get_len());
-                res
-            }
-            // There already is a StoredPrefix with a record at this
-            // location.
-            Ok((stored_prefix, _)) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
+                // There already is a StoredPrefix with a record at this
+                // location.
+                (stored_prefix, true) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
                         "{} store: Found existing prefix record for {}/{}",
                         std::thread::current().name().unwrap(),
                         prefix.get_net(),
                         prefix.get_len()
                     );
+                    }
+                    prefix_new = false;
+
+                    // Update the already existing record_map with our caller's
+                    // record.
+                    stored_prefix.set_ps_outdated(guard)?;
+                    let res = stored_prefix.record_map.upsert_record(record);
+
+                    if let Some(tbi) = update_path_selections {
+                        stored_prefix
+                            .calculate_and_store_best_backup(&tbi, guard)?;
+                    }
+
+                    res
                 }
-                prefix_new = false;
-
-                // Update the already existing record_map with our caller's
-                // record.
-                stored_prefix.set_ps_outdated(guard)?;
-                let res = stored_prefix.record_map.upsert_record(record);
-
-                if let Some(tbi) = update_path_selections {
-                    stored_prefix
-                        .calculate_and_store_best_backup(&tbi, guard)?;
-                }
-
-                res
-            }
-        };
+            };
 
         Ok(UpsertReport {
             prefix_new,
@@ -716,9 +714,12 @@ impl<
         prefix: PrefixId<AF>,
         mui: u32,
     ) -> Result<(), PrefixStoreError> {
-        let (stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut(prefix)
-            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
+        let (stored_prefix, exists) =
+            self.non_recursive_retrieve_prefix_mut(prefix);
+
+        if !exists {
+            return Err(PrefixStoreError::StoreNotReadyError);
+        }
 
         stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
 
@@ -732,9 +733,12 @@ impl<
         prefix: PrefixId<AF>,
         mui: u32,
     ) -> Result<(), PrefixStoreError> {
-        let (stored_prefix, _level) = self
-            .non_recursive_retrieve_prefix_mut(prefix)
-            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
+        let (stored_prefix, exists) =
+            self.non_recursive_retrieve_prefix_mut(prefix);
+
+        if !exists {
+            return Err(PrefixStoreError::StoreNotReadyError);
+        }
 
         stored_prefix.record_map.mark_as_active_for_mui(mui);
 
@@ -839,10 +843,7 @@ impl<
     pub(crate) fn non_recursive_retrieve_prefix_mut(
         &'a self,
         search_prefix_id: PrefixId<AF>,
-    ) -> Result<
-        (&'a StoredPrefix<AF, M>, u8),
-        (&'a OnceBox<StoredPrefix<AF, M>>, u8),
-    > {
+    ) -> (&'a StoredPrefix<AF, M>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
         let mut prefix_set = self
             .prefixes
@@ -855,29 +856,51 @@ impl<
             let index = Self::hash_prefix_id(search_prefix_id, level);
 
             // probe the slot with the index that's the result of the hashing.
-            trace!("prefix set found.");
-            let locked_prefix = prefix_set.0.get(index).unwrap();
-            let stored_prefix = match locked_prefix.get() {
-                Some(p) => p,
+            // let locked_prefix = prefix_set.0.get(index);
+            let stored_prefix = match prefix_set.0.get(index) {
+                Some(p) => {
+                    trace!("prefix set found.");
+                    (p, true)
+                }
                 None => {
                     // We're at the end of the chain and haven't found our
                     // search_prefix_id anywhere. Return the end-of-the-chain
                     // StoredPrefix, so the caller can attach a new one.
-                    trace!("no record. returning last found record.");
-                    return Err((locked_prefix, level));
+                    trace!(
+                        "no record. returning last found record in level {}, with index {}.",
+                        level,
+                        index
+                    );
+                    let index = Self::hash_prefix_id(search_prefix_id, level);
+                    trace!("calculate next index {}", index);
+                    (
+                        prefix_set
+                            .0
+                            .get_or_init(index, || {
+                                StoredPrefix::new::<PB>(
+                                    PrefixId::new(
+                                        search_prefix_id.get_net(),
+                                        search_prefix_id.get_len(),
+                                    ),
+                                    level,
+                                )
+                            })
+                            .0,
+                        false,
+                    )
                 }
             };
 
-            if search_prefix_id == stored_prefix.prefix {
+            if search_prefix_id == stored_prefix.0.prefix {
                 // GOTCHA!
                 // Our search-prefix is stored here, so we're returning
                 // it, so its PrefixRecord can be updated by the caller.
                 trace!("found requested prefix {:?}", search_prefix_id);
-                return Ok((stored_prefix, level));
+                return stored_prefix;
             } else {
                 // A Collision. Follow the chain.
                 level += 1;
-                prefix_set = &stored_prefix.next_bucket;
+                prefix_set = &stored_prefix.0.next_bucket;
                 continue;
             }
         }
@@ -893,12 +916,12 @@ impl<
             PrefixId<AF>,
             u8,
             &'a PrefixSet<AF, M>,
-            [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
+            [Option<(&'a PrefixSet<AF, M>, usize)>; 32],
             usize,
         )>,
     ) {
         let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
-        let mut parents = [None; 26];
+        let mut parents = [None; 32];
         let mut level: u8 = 0;
         let backoff = Backoff::new();
 
@@ -910,7 +933,7 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-            if let Some(stored_prefix) = prefix_set.0[index].get() {
+            if let Some(stored_prefix) = prefix_set.0.get(index) {
                 if id == stored_prefix.get_prefix_id() {
                     trace!("found requested prefix {:?}", id);
                     parents[level as usize] = Some((prefix_set, index));
@@ -958,7 +981,7 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-                if let Some(stored_prefix) = prefix_set.0[index].get() {
+                if let Some(stored_prefix) = prefix_set.0.get(index) {
                     if prefix_id == stored_prefix.prefix {
                         trace!("found requested prefix {:?}", prefix_id,);
                         return Some((stored_prefix, 0));
@@ -1129,7 +1152,11 @@ impl<
             0
         };
         let this_level = <PB>::get_bits_for_len(id.get_len(), level);
-        trace!("bits division {}", this_level);
+        trace!(
+            "bits division {}; no of bits {}",
+            this_level,
+            this_level - last_level
+        );
         trace!(
             "calculated index ({} << {}) >> {}",
             id.get_net(),

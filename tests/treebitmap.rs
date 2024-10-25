@@ -91,6 +91,8 @@ mod tests {
 
     #[test]
     fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+
         let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),

@@ -1,3 +1,14 @@
+mod common {
+    use std::io::Write;
+
+    pub fn init() {
+        let _ = env_logger::builder()
+            .format(|buf, record| writeln!(buf, "{}", record.args()))
+            .is_test(true)
+            .try_init();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use inetnum::addr::Prefix;
@@ -122,6 +133,8 @@ mod tests {
     // the end of a prefix-length array).
     #[test]
     fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+
         let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
         let pfxs = vec![
             // 0-7

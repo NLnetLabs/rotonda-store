@@ -13,7 +13,6 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
-use crate::local_array::store::oncebox::OnceBox;
 use crate::local_array::tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
@@ -149,14 +148,14 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
-            PrefixSet::init((1 << (next_level - this_level)) as usize)
+            PrefixSet::init(next_level - this_level)
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 std::thread::current().name().unwrap(),
                 pfx_id.get_len()
             );
-            PrefixSet::empty()
+            PrefixSet::init(next_level - this_level)
         };
         // End of calculation
 
@@ -643,32 +642,22 @@ where
 #[derive(Debug)]
 #[repr(align(8))]
 pub struct PrefixSet<AF: AddressFamily, M: Meta>(
-    pub Box<[OnceBox<StoredPrefix<AF, M>>]>,
+    pub OnceBoxSlice<StoredPrefix<AF, M>>,
 );
 
 impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
-    pub fn init(size: usize) -> Self {
-        let mut l = Vec::with_capacity(size);
-
-        trace!("creating space for {} prefixes in prefix_set", &size);
-        for _i in 0..size {
-            l.push(OnceBox::new());
-        }
-        PrefixSet(l.into_boxed_slice())
+    pub fn init(p2_size: u8) -> Self {
+        PrefixSet(OnceBoxSlice::new(p2_size))
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-        self.0.len() == 1
+        self.0.is_null()
     }
 
     pub(crate) fn get_by_index(
         &self,
         index: usize,
     ) -> Option<&StoredPrefix<AF, M>> {
-        self.0[index].get()
-    }
-
-    pub(crate) fn empty() -> Self {
-        PrefixSet(Box::new([OnceBox::new()]))
+        self.0.get(index)
     }
 }

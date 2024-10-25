@@ -45,9 +45,9 @@ pub(crate) struct PrefixIter<
     cur_bucket: &'a PrefixSet<AF, M>,
     cur_level: u8,
     // level depth of IPv4 as defined in rotonda-macros/maps.rs Option(parent,
-    // cursor position at the parent) 26 is the max number of levels in IPv6,
+    // cursor position at the parent) 32 is the max number of levels in IPv6,
     // which is the max number of of both IPv4 and IPv6.
-    parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 26],
+    parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 32],
     cursor: usize,
 }
 
@@ -82,7 +82,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 // but also empty all the parents
                 self.cur_level = 0;
                 self.cursor = 0;
-                self.parents = [None; 26];
+                self.parents = [None; 32];
 
                 // let's continue, get the prefixes for the next length
                 self.cur_bucket =
@@ -112,7 +112,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // cursor, but also empty all the parents
                     self.cur_level = 0;
                     self.cursor = 0;
-                    self.parents = [None; 26];
+                    self.parents = [None; 32];
 
                     if self.cur_len > AF::BITS {
                         // This is the end, my friend
@@ -885,7 +885,7 @@ impl<
             cur_len: 0,
             cur_level: 0,
             cursor: 0,
-            parents: [None; 26],
+            parents: [None; 32],
         }
     }
 }
