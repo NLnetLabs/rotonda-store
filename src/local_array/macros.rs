@@ -90,7 +90,7 @@ macro_rules! insert_match {
                                     if log_enabled!(log::Level::Trace) {
                                         if local_retry_count > 0 {
                                             trace!("{} contention: Node already exists {}",
-                                            std::thread::current().name().unwrap(), node_id
+                                            std::thread::current().name().unwrap_or("unnamed-thread"), node_id
                                             )
                                         }
                                     }

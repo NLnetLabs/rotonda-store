@@ -319,7 +319,7 @@ macro_rules! store_node_closure {
                         if log_enabled!(log::Level::Trace) {
                             trace!("
                                 {} store: Node here exists {:?}",
-                                    std::thread::current().name().unwrap(),
+                                    std::thread::current().name().unwrap_or("unnamed-thread"),
                                     stored_node.node_id
                             );
                             trace!("node_id {:?}", stored_node.node_id.get_id());
