@@ -296,7 +296,7 @@ macro_rules! store_node_closure {
                             }
                         );
 
-                        if stored_node.node_id == $id && !its_us {
+                        if stored_node.node_id == $id {
                             stored_node.node_set.update_rbm_index(
                                 multi_uniq_id
                             )?;
