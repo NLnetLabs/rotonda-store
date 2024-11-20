@@ -5,7 +5,6 @@ documentation = "https://docs.rs/rotonda/"
 homepage = "https://nlnetlabs.nl/projects/routing/rotonda/"
 keywords = ["routing", "bgp"]
 name = "rotonda-store"
-# version = "0.4.0-rc1"
 repository = "https://github.com/NLnetLabs/rotonda-store/"
 version.workspace = true
 edition.workspace = true
@@ -17,7 +16,7 @@ license.workspace = true
 members   = ["proc_macros"]
 
 [workspace.package]
-version = "0.4.0-rc1"
+version = "0.4.0"
 edition = "2021"
 authors = ["NLnet Labs <routing-team@nlnetlabs.nl>"]
 license = "BSD-3-Clause"
@@ -27,11 +26,11 @@ rust-version = "1.80"
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
 
-inetnum   = "0.1.0"
+inetnum   = "0.1"
 log       = "^0.4"
 roaring 	= "0.10.3"
-rotonda-macros  = { path = "proc_macros", version = "0.4.0-rc1" }
-routecore       = { version = "0.5.0-rc1", features = ["bgp", "bmp", "fsm", "serde"] }
+rotonda-macros = { path = "proc_macros", version = "0.4.0" }
+routecore       = { version = "0.5", features = ["bgp", "bmp", "fsm", "serde"] }
 
 ansi_term   = { version = "0.12", optional = true }
 csv         = { version = "1", optional = true }
