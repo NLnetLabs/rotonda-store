@@ -51,7 +51,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         if log_enabled!(log::Level::Debug) {
             debug!(
                 "{} store: creating space for {} nodes",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 1 << p2_size
             );
         }
@@ -144,7 +144,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
             debug!(
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
@@ -152,7 +152,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 pfx_id.get_len()
             );
             PrefixSet::init(next_level - this_level)

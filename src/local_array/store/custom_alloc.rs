@@ -404,7 +404,7 @@ impl<
         if log_enabled!(log::Level::Trace) {
             debug!(
                 "{} store: Store node {}: {:?} mui {}",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 id,
                 next_node,
                 multi_uniq_id
@@ -461,7 +461,7 @@ impl<
         if log_enabled!(log::Level::Trace) {
             trace!(
                 "{} store: Retrieve node {} from l{}",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 id,
                 id.get_id().1
             );
@@ -511,7 +511,7 @@ impl<
         if log_enabled!(log::Level::Trace) {
             trace!(
                 "{} store: Retrieve node {} from l{} for mui {}",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 id,
                 id.get_id().1,
                 mui
@@ -562,7 +562,7 @@ impl<
         if log_enabled!(log::Level::Trace) {
             trace!(
                 "{} store: Retrieve node mut {} from l{}",
-                std::thread::current().name().unwrap(),
+                std::thread::current().name().unwrap_or("unnamed-thread"),
                 id,
                 id.get_id().1
             );
@@ -652,7 +652,7 @@ impl<
                     if log_enabled!(log::Level::Debug) {
                         debug!(
                             "{} store: Create new prefix record",
-                            std::thread::current().name().unwrap()
+                            std::thread::current().name().unwrap_or("unnamed-thread")
                         );
                     }
 
@@ -678,7 +678,7 @@ impl<
                     if log_enabled!(log::Level::Debug) {
                         debug!(
                         "{} store: Found existing prefix record for {}/{}",
-                        std::thread::current().name().unwrap(),
+                        std::thread::current().name().unwrap_or("unnamed-thread"),
                         prefix.get_net(),
                         prefix.get_len()
                     );
