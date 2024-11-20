@@ -1,8 +1,8 @@
 # Change Log
 
-## 0.4.0-rc0
+## 0.4.0
 
-Released 2024-06-12.
+Released 2024-11-20.
 
 Breaking changes
 
