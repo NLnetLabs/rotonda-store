@@ -1,5 +1,15 @@
 # Change Log
 
+## Unreleased new version
+
+Release yyyy-mm-yy.
+
+Breaking changes
+
+New
+
+Bug fixes
+
 ## 0.4.0
 
 Released 2024-11-20.
