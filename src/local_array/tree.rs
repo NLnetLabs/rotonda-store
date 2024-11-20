@@ -502,12 +502,12 @@ impl<
                 Err(err) => {
                     if log_enabled!(log::Level::Error) {
                         error!("{} failing to store (intermediate) node {}. Giving up this node. This shouldn't happen!",
-                            std::thread::current().name().unwrap(),
+                            std::thread::current().name().unwrap_or("unnamed-thread"),
                             cur_i,
                         );
                         error!(
                             "{} {}",
-                            std::thread::current().name().unwrap(),
+                            std::thread::current().name().unwrap_or("unnamed-thread"),
                             err
                         );
                     }
