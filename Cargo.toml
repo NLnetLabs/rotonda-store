@@ -29,7 +29,7 @@ crossbeam-utils = "^0.8"
 inetnum   = "0.1"
 log       = "^0.4"
 roaring 	= "0.10.3"
-rotonda-macros = { path = "proc_macros", version = "0.4.0" }
+rotonda-macros = { path = "proc_macros" }
 routecore       = { version = "0.5", features = ["bgp", "bmp", "fsm", "serde"] }
 
 ansi_term   = { version = "0.12", optional = true }
