@@ -644,42 +644,32 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut prefix_new = true;
 
-        let (mui_new, insert_retry_count) = match self
-            .non_recursive_retrieve_prefix_mut(prefix)
-        {
-            // There's no StoredPrefix at this location yet. Create a new
-            // PrefixRecord and try to store it in the empty slot.
-            (locked_prefix, false) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
-                        "{} store: Create new prefix record",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread")
-                    );
+        let (mui_new, insert_retry_count) =
+            match self.non_recursive_retrieve_prefix_mut(prefix) {
+                // There's no StoredPrefix at this location yet. Create a new
+                // PrefixRecord and try to store it in the empty slot.
+                (locked_prefix, false) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
+                            "{} store: Create new prefix record",
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread")
+                        );
+                    }
+
+                    // We're creating a StoredPrefix without our record first,
+                    // to avoid having to clone it on retry.
+                    let res = locked_prefix.record_map.upsert_record(record);
+
+                    self.counters.inc_prefixes_count(prefix.get_len());
+                    res
                 }
-
-                // We're creating a StoredPrefix without our record first,
-                // to avoid having to clone it on retry.
-                let res = locked_prefix
-                    // .get_or_init(|| {
-                    //     StoredPrefix::new::<PB>(
-                    //         PrefixId::new(prefix.get_net(), prefix.get_len()),
-                    //         level,
-                    //     )
-                    // })
-                    // .0
-                    .record_map
-                    .upsert_record(record);
-
-                self.counters.inc_prefixes_count(prefix.get_len());
-                res
-            }
-            // There already is a StoredPrefix with a record at this
-            // location.
-            (stored_prefix, true) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
+                // There already is a StoredPrefix with a record at this
+                // location.
+                (stored_prefix, true) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
                         "{} store: Found existing prefix record for {}/{}",
                         std::thread::current()
                             .name()
@@ -687,22 +677,22 @@ impl<
                         prefix.get_net(),
                         prefix.get_len()
                     );
+                    }
+                    prefix_new = false;
+
+                    // Update the already existing record_map with our caller's
+                    // record.
+                    stored_prefix.set_ps_outdated(guard)?;
+                    let res = stored_prefix.record_map.upsert_record(record);
+
+                    if let Some(tbi) = update_path_selections {
+                        stored_prefix
+                            .calculate_and_store_best_backup(&tbi, guard)?;
+                    }
+
+                    res
                 }
-                prefix_new = false;
-
-                // Update the already existing record_map with our
-                // caller's record.
-                stored_prefix.set_ps_outdated(guard)?;
-                let res = stored_prefix.record_map.upsert_record(record);
-
-                if let Some(tbi) = update_path_selections {
-                    stored_prefix
-                        .calculate_and_store_best_backup(&tbi, guard)?;
-                }
-
-                res
-            }
-        };
+            };
 
         Ok(UpsertReport {
             prefix_new,

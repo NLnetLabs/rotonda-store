@@ -460,7 +460,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let mut record_map = c_map.lock().unwrap();
         if let Some(rec) = record_map.get_mut(&mui) {
             rec.status = RouteStatus::Withdrawn;
-            // record_map.insert(mui, rec);
         }
     }
 
@@ -470,7 +469,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let mut r_map = record_map.lock().unwrap();
         if let Some(rec) = r_map.get_mut(&mui) {
             rec.status = RouteStatus::Active;
-            // r_map.insert(mui, rec);
         }
     }
 
