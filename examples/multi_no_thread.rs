@@ -1,8 +1,8 @@
 use log::trace;
 
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
 use rotonda_store::meta_examples::PrefixAs;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
@@ -22,14 +22,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
         x += 1;
         // print!("{}-", i);
-        match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, PrefixAs(x % 1000)), None) {
+        match tree_bitmap.insert(
+            &pfx.unwrap(),
+            Record::new(
+                0,
+                0,
+                RouteStatus::Active,
+                PrefixAs::new((x % 1000).into()),
+            ),
+            None,
+        ) {
             Ok(_) => {}
             Err(e) => {
                 println!("{}", e);
             }
         };
-        if (x % 1_000_000) == 0 { println!("inserts: {}", x); }
-        if x == 100_000_000 { break; }
+        if (x % 1_000_000) == 0 {
+            println!("inserts: {}", x);
+        }
+        if x == 100_000_000 {
+            break;
+        }
     }
     println!("--thread {} done.", 1);
 
@@ -44,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
-            mui: None
+            mui: None,
         },
         guard,
     );

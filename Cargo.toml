@@ -40,6 +40,7 @@ clap        = { version = "4.4", optional = true, features = ["derive"] }
 rayon = { version = "1.10", optional = true }
 memmap2 = { version = "0.9", optional = true }
 rand = { version = "^0.8", optional = true }
+lsm-tree = { version = "2.4.0", optional = true }
 
 [dev-dependencies]
 csv         = { version = "1" }
@@ -49,6 +50,7 @@ rand        = "^0.8"
 [features]
 cli = ["ansi_term", "rustyline", "csv"]
 mrt = ["clap", "rayon"]
+persist = ["lsm-tree"]
 default = []
 
 [[bin]]
@@ -57,4 +59,4 @@ required-features = ["cli"]
 
 [[bin]]
 name = "load_mrt"
-required-features = ["mrt"]
+required-features = ["mrt","persist"]

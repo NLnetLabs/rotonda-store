@@ -1,13 +1,17 @@
 use std::{str::FromStr, sync::atomic::Ordering};
 
+use common::SimpleAsn;
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
     prelude::multi::{Record, RouteStatus},
-    MatchOptions, MultiThreadedStore,
+    MatchOptions, Meta, MultiThreadedStore,
 };
 
 mod common {
     use std::io::Write;
+
+    use inetnum::asn::Asn;
+    use rotonda_store::Meta;
 
     pub fn init() {
         let _ = env_logger::builder()
@@ -15,11 +19,48 @@ mod common {
             .is_test(true)
             .try_init();
     }
+
+    #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
+    pub struct SimpleAsn([u8; 4]);
+
+    impl std::fmt::Display for SimpleAsn {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", u32::from_le_bytes(self.0))
+        }
+    }
+
+    impl Meta for SimpleAsn {
+        type Orderable<'a> = SimpleAsn;
+        type TBI = ();
+
+        fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_> {
+            todo!()
+        }
+    }
+
+    impl From<Asn> for SimpleAsn {
+        fn from(value: Asn) -> Self {
+            Self(u32::from_be_bytes(value.to_raw()).to_le_bytes())
+        }
+    }
+
+    impl From<u32> for SimpleAsn {
+        fn from(value: u32) -> Self {
+            Self(value.to_le_bytes())
+        }
+    }
+
+    impl AsRef<[u8]> for SimpleAsn {
+        fn as_ref(&self) -> &[u8] {
+            &self.0
+        }
+    }
 }
 
 #[test]
 fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
+    use crate::common::SimpleAsn;
 
     let pfx_vec_1 = vec![
         Prefix::from_str("185.34.0.0/16")?,
@@ -48,7 +89,8 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         pfxs: Vec<Prefix>,
     }
 
-    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<Asn>::new()?);
+    let tree_bitmap =
+        std::sync::Arc::new(MultiThreadedStore::<SimpleAsn>::new()?);
 
     let mui_data_1 = MuiData {
         mui: 1,
@@ -89,7 +131,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
                                 data.mui,
                                 cur_ltime.load(Ordering::Acquire),
                                 RouteStatus::Active,
-                                data.asn,
+                                data.asn.into(),
                             ),
                             None,
                         ) {
@@ -373,19 +415,10 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         Prefix::from_str("188.0.0.0/8")?,
     ];
 
-    #[derive(Debug)]
-    struct MuiData {
-        asn: u32,
-    }
+    let tree_bitmap =
+        std::sync::Arc::new(MultiThreadedStore::<common::SimpleAsn>::new()?);
 
-    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<Asn>::new()?);
-
-    const MUI_DATA: [MuiData; 4] = [
-        MuiData { asn: 65501 },
-        MuiData { asn: 65502 },
-        MuiData { asn: 65503 },
-        MuiData { asn: 65504 },
-    ];
+    const MUI_DATA: [u32; 4] = [65501, 65502, 65503, 65504];
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
 
@@ -410,7 +443,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
                                     i as u32 + 1,
                                     cur_ltime.load(Ordering::Acquire),
                                     RouteStatus::Active,
-                                    MUI_DATA[i].asn.into(),
+                                    Asn::from(MUI_DATA[i]).into(),
                                 ),
                                 None,
                             ) {
@@ -500,7 +533,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     );
     assert_eq!(
         all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65503)
+        Asn::from_u32(65503).into()
     );
 
     let pfx = Prefix::from_str("187.0.0.0/8").unwrap();
@@ -515,7 +548,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     );
     assert_eq!(
         all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65504)
+        Asn::from_u32(65504).into()
     );
 
     let pfx = Prefix::from_str("185.35.0.0/16").unwrap();
@@ -530,7 +563,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     );
     assert_eq!(
         all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65501)
+        Asn::from_u32(65501).into()
     );
 
     let pfx = Prefix::from_str("185.34.15.0/24").unwrap();
@@ -570,7 +603,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     );
     assert_eq!(
         all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65504)
+        Asn::from_u32(65504).into()
     );
 
     // Create Withdrawals

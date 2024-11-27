@@ -45,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let pfx = Prefix::new_relaxed(pfx_int.clone().load(std::sync::atomic::Ordering::Relaxed).into_ipaddr(), 32).unwrap();
                         let guard = &crossbeam_epoch::pin();
                         while x < 100 {
-                            let asn = PrefixAs(rng.gen());
+                            let asn = PrefixAs::new_from_u32(rng.gen());
                             match tree_bitmap.insert(
                                 &pfx,
                                 Record::new(0, 0, RouteStatus::Active, asn),

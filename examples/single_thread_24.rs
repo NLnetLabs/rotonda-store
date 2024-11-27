@@ -1,11 +1,11 @@
 use log::trace;
-use std::time::Duration;
 use std::thread;
+use std::time::Duration;
 
 use rand::Rng;
 
-use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 use rotonda_store::meta_examples::PrefixAs;
 
@@ -28,7 +28,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name(1_u8.to_string())
         .spawn(move || -> Result<(), Box<dyn std::error::Error + Send>> {
             // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
-            let mut rng= rand::thread_rng();
+            let mut rng = rand::thread_rng();
 
             println!("park thread {}", 1);
             thread::park();
@@ -38,17 +38,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // let mut x = 0;
             while pfx_int <= 24 {
                 pfx_int += 1;
-                let pfx = Prefix::new_relaxed(
-                    pfx_int.into_ipaddr(),
-                    32,
-                );
+                let pfx = Prefix::new_relaxed(pfx_int.into_ipaddr(), 32);
                 // x += 1;
                 // print!("{}-", i);
                 let asn: u32 = rng.gen();
                 match tree_bitmap.insert(
                     &pfx.unwrap(),
-                    Record::new(0, 0, RouteStatus::Active, PrefixAs(asn)),
-                    None
+                    Record::new(
+                        0,
+                        0,
+                        RouteStatus::Active,
+                        PrefixAs::new_from_u32(asn),
+                    ),
+                    None,
                 ) {
                     Ok(_) => {}
                     Err(e) => {

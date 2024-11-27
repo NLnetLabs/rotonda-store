@@ -19,7 +19,8 @@ use super::store::atomic_types::{RouteStatus, StoredPrefix};
 
 //------------ Prefix Matching ----------------------------------------------
 
-impl<'a, AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
+impl<'a, AF, M, NB, PB, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
+    TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 where
     AF: AddressFamily,
     M: Meta,

@@ -2,8 +2,8 @@ use log::trace;
 use std::time::Duration;
 use std::{sync::Arc, thread};
 
-use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 use rotonda_store::meta_examples::PrefixAs;
 
@@ -32,13 +32,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     thread::park();
                 }
 
-                match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, PrefixAs(i as u32)), None) {
+                match tree_bitmap.insert(
+                    &pfx.unwrap(),
+                    Record::new(
+                        0,
+                        0,
+                        RouteStatus::Active,
+                        PrefixAs::new((i as u32).into()),
+                    ),
+                    None,
+                ) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
                     }
                 };
-
             })
             .unwrap()
     });
@@ -61,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
-            mui: None
+            mui: None,
         },
         guard,
     );

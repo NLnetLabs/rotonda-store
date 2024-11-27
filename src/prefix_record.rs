@@ -225,7 +225,6 @@ impl<M: Meta> From<(Prefix, M)> for PublicPrefixSingleRecord<M> {
     }
 }
 
-
 //------------ PublicRecord -------------------------------------------
 
 #[derive(Clone, Debug)]
@@ -237,18 +236,27 @@ pub struct PublicRecord<M> {
 }
 
 impl<M> PublicRecord<M> {
-    pub fn new(multi_uniq_id: u32, ltime: u64, status: RouteStatus, meta: M) -> Self {
-        Self { meta, multi_uniq_id, ltime, status }
+    pub fn new(
+        multi_uniq_id: u32,
+        ltime: u64,
+        status: RouteStatus,
+        meta: M,
+    ) -> Self {
+        Self {
+            meta,
+            multi_uniq_id,
+            ltime,
+            status,
+        }
     }
 }
 
 impl<M: std::fmt::Display> std::fmt::Display for PublicRecord<M> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{{ mui: {}, ltime: {}, status: {}, meta: {} }}",
-            self.multi_uniq_id,
-            self.ltime,
-            self.status,
-            self.meta
+        write!(
+            f,
+            "{{ mui: {}, ltime: {}, status: {}, meta: {} }}",
+            self.multi_uniq_id, self.ltime, self.status, self.meta
         )
     }
 }
@@ -263,7 +271,6 @@ impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
         }
     }
 }
-
 
 //------------ PublicPrefixRecord -------------------------------------------
 
@@ -283,7 +290,8 @@ impl<M: Meta> PublicPrefixRecord<M> {
     }
 }
 
-impl<AF, M> From<(PrefixId<AF>, Vec<PublicRecord<M>>)> for PublicPrefixRecord<M>
+impl<AF, M> From<(PrefixId<AF>, Vec<PublicRecord<M>>)>
+    for PublicPrefixRecord<M>
 where
     AF: AddressFamily,
     M: Meta,
@@ -296,7 +304,9 @@ where
     }
 }
 
-impl<M: Meta + std::fmt::Display> std::fmt::Display for PublicPrefixRecord<M> {
+impl<M: Meta + std::fmt::Display> std::fmt::Display
+    for PublicPrefixRecord<M>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: [", self.prefix)?;
         for rec in &self.meta {
@@ -311,7 +321,6 @@ impl<M: Meta> From<(Prefix, Vec<PublicRecord<M>>)> for PublicPrefixRecord<M> {
         Self { prefix, meta }
     }
 }
-
 
 //------------ RecordSingleSet -----------------------------------------------
 
@@ -333,7 +342,8 @@ impl<M: Meta> RecordSingleSet<M> {
         match prefix.addr() {
             std::net::IpAddr::V4(_) => &mut self.v4,
             std::net::IpAddr::V6(_) => &mut self.v6,
-        }.push(PublicPrefixSingleRecord::new(prefix, meta));
+        }
+        .push(PublicPrefixSingleRecord::new(prefix, meta));
     }
 
     pub fn is_empty(&self) -> bool {
@@ -385,17 +395,23 @@ impl<M: Meta> fmt::Display for RecordSingleSet<M> {
 }
 
 impl<M: Meta>
-    From<(Vec<PublicPrefixSingleRecord<M>>, Vec<PublicPrefixSingleRecord<M>>)>
-    for RecordSingleSet<M>
+    From<(
+        Vec<PublicPrefixSingleRecord<M>>,
+        Vec<PublicPrefixSingleRecord<M>>,
+    )> for RecordSingleSet<M>
 {
     fn from(
-        (v4, v6): (Vec<PublicPrefixSingleRecord<M>>, Vec<PublicPrefixSingleRecord<M>>),
+        (v4, v6): (
+            Vec<PublicPrefixSingleRecord<M>>,
+            Vec<PublicPrefixSingleRecord<M>>,
+        ),
     ) -> Self {
         Self { v4, v6 }
     }
 }
 
-impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
+impl<'a, M: Meta + 'a>
+    std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
     for RecordSingleSet<M>
 {
     fn from_iter<I: IntoIterator<Item = Arc<PublicPrefixSingleRecord<M>>>>(
@@ -407,10 +423,16 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
             let u_pfx = pfx.prefix;
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                    v4.push(PublicPrefixSingleRecord::new(
+                        u_pfx,
+                        pfx.meta.clone(),
+                    ));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                    v6.push(PublicPrefixSingleRecord::new(
+                        u_pfx,
+                        pfx.meta.clone(),
+                    ));
                 }
             }
         }
@@ -419,8 +441,7 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
 }
 
 impl<'a, AF: AddressFamily, M: Meta + 'a>
-    std::iter::FromIterator<(PrefixId<AF>, Arc<M>)>
-    for RecordSingleSet<M>
+    std::iter::FromIterator<(PrefixId<AF>, Arc<M>)> for RecordSingleSet<M>
 {
     fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Arc<M>)>>(
         iter: I,
@@ -431,10 +452,16 @@ impl<'a, AF: AddressFamily, M: Meta + 'a>
             let u_pfx = pfx.0.into_pub();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixSingleRecord::new(u_pfx, (*pfx.1).clone()));
+                    v4.push(PublicPrefixSingleRecord::new(
+                        u_pfx,
+                        (*pfx.1).clone(),
+                    ));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixSingleRecord::new(u_pfx, (*pfx.1).clone()));
+                    v6.push(PublicPrefixSingleRecord::new(
+                        u_pfx,
+                        (*pfx.1).clone(),
+                    ));
                 }
             }
         }
@@ -455,10 +482,16 @@ impl<'a, AF: AddressFamily, M: Meta + 'a>
             let u_pfx = (*pfx).prefix_into_pub();
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
-                    v4.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                    v4.push(PublicPrefixSingleRecord::new(
+                        u_pfx,
+                        pfx.meta.clone(),
+                    ));
                 }
                 std::net::IpAddr::V6(_) => {
-                    v6.push(PublicPrefixSingleRecord::new(u_pfx, pfx.meta.clone()));
+                    v6.push(PublicPrefixSingleRecord::new(
+                        u_pfx,
+                        pfx.meta.clone(),
+                    ));
                 }
             }
         }
@@ -498,7 +531,8 @@ impl<M: Meta> RecordSet<M> {
         match prefix.addr() {
             std::net::IpAddr::V4(_) => &mut self.v4,
             std::net::IpAddr::V6(_) => &mut self.v6,
-        }.push(PublicPrefixRecord::new(prefix, meta));
+        }
+        .push(PublicPrefixRecord::new(prefix, meta));
     }
 
     pub fn is_empty(&self) -> bool {
@@ -549,8 +583,7 @@ impl<M: Meta> fmt::Display for RecordSet<M> {
     }
 }
 
-impl<M: Meta>
-    From<(Vec<PublicPrefixRecord<M>>, Vec<PublicPrefixRecord<M>>)>
+impl<M: Meta> From<(Vec<PublicPrefixRecord<M>>, Vec<PublicPrefixRecord<M>>)>
     for RecordSet<M>
 {
     fn from(
@@ -560,8 +593,7 @@ impl<M: Meta>
     }
 }
 
-impl<'a, M: Meta + 'a>
-    std::iter::FromIterator<PublicPrefixRecord<M>>
+impl<'a, M: Meta + 'a> std::iter::FromIterator<PublicPrefixRecord<M>>
     for RecordSet<M>
 {
     fn from_iter<I: IntoIterator<Item = PublicPrefixRecord<M>>>(
@@ -588,7 +620,9 @@ impl<'a, AF: AddressFamily, M: Meta + 'a>
     std::iter::FromIterator<(PrefixId<AF>, Vec<PublicRecord<M>>)>
     for RecordSet<M>
 {
-    fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)>>(
+    fn from_iter<
+        I: IntoIterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)>,
+    >(
         iter: I,
     ) -> Self {
         let mut v4 = vec![];
@@ -608,8 +642,7 @@ impl<'a, AF: AddressFamily, M: Meta + 'a>
     }
 }
 
-impl<'a, M: Meta + 'a>
-    std::iter::FromIterator<&'a PublicPrefixRecord<M>>
+impl<'a, M: Meta + 'a> std::iter::FromIterator<&'a PublicPrefixRecord<M>>
     for RecordSet<M>
 {
     fn from_iter<I: IntoIterator<Item = &'a PublicPrefixRecord<M>>>(
@@ -643,7 +676,6 @@ impl<M: Meta> std::ops::Index<usize> for RecordSet<M> {
         }
     }
 }
-
 
 //------------ RecordSetSingleIter -------------------------------------------
 
@@ -693,7 +725,6 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
     }
 }
 
-
 //----------------------- meta-data traits/types-----------------------------
 
 /// Trait that describes how an existing record gets merged
@@ -740,18 +771,22 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// Trait for types that can be used as metadata of a record
 pub trait Meta
 where
-    Self: fmt::Debug + fmt::Display + Clone + Sized + Send + Sync {
-        type Orderable<'a>: Ord where Self: 'a;
-        type TBI: Copy;
+    Self:
+        fmt::Debug + fmt::Display + Clone + Sized + Send + Sync + AsRef<[u8]>,
+{
+    type Orderable<'a>: Ord
+    where
+        Self: 'a;
+    type TBI: Copy;
 
-        fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_>;
-    }
-
-impl Meta for inetnum::asn::Asn {
-    type Orderable<'a> = inetnum::asn::Asn;
-    type TBI = ();
-
-    fn as_orderable(&self, _tbi: Self::TBI) -> inetnum::asn::Asn {
-        *self
-    }
+    fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_>;
 }
+
+// impl Meta for inetnum::asn::Asn {
+//     type Orderable<'a> = inetnum::asn::Asn;
+//     type TBI = ();
+
+//     fn as_orderable(&self, _tbi: Self::TBI) -> inetnum::asn::Asn {
+//         *self
+//     }
+// }

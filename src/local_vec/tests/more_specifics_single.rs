@@ -2,11 +2,7 @@
 mod tests {
     use inetnum::addr::Prefix;
 
-    use crate::{ 
-        prelude::*,
-        meta_examples::PrefixAs,
-        SingleThreadedStore
-    };
+    use crate::{meta_examples::PrefixAs, prelude::*, SingleThreadedStore};
 
     use std::error::Error;
 
@@ -15,7 +11,8 @@ mod tests {
     ) -> Result<(), Box<dyn Error>> {
         let v4_strides = vec![8];
         let v6_strides = vec![8];
-        let mut tree_bitmap = SingleThreadedStore::<PrefixAs>::new(v4_strides, v6_strides);
+        let mut tree_bitmap =
+            SingleThreadedStore::<PrefixAs>::new(v4_strides, v6_strides);
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18)?, // 0
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24)?, // 1
@@ -34,7 +31,7 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(pfx, PrefixAs(666))?;
+            tree_bitmap.insert(pfx, PrefixAs::new_from_u32(666))?;
         }
         println!("------ end of inserts\n");
 
@@ -59,7 +56,7 @@ mod tests {
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: true,
-                    mui: None
+                    mui: None,
                 },
             );
             println!("em/m-s: {:#?}", found_result);
@@ -86,7 +83,8 @@ mod tests {
     {
         let v4_strides = vec![8];
         let v6_strides = vec![8];
-        let mut tree_bitmap = SingleThreadedStore::<PrefixAs>::new(v4_strides, v6_strides);
+        let mut tree_bitmap =
+            SingleThreadedStore::<PrefixAs>::new(v4_strides, v6_strides);
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18), // 0
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24), // 1
@@ -105,10 +103,10 @@ mod tests {
         ];
 
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(&pfx.unwrap(), PrefixAs(666))?;
+            tree_bitmap.insert(&pfx.unwrap(), PrefixAs::new_from_u32(666))?;
         }
         println!("------ end of inserts\n");
-        
+
         for spfx in &[
             (
                 &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
@@ -135,7 +133,7 @@ mod tests {
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: true,
-                    mui: None
+                    mui: None,
                 },
             );
             println!("em/m-s: {}", found_result);

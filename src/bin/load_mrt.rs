@@ -20,9 +20,16 @@ use rand::seq::SliceRandom;
 #[derive(Clone, Debug)]
 //struct MyPaMap(PaMap);
 struct MyPaMap(Vec<u8>);
+
 impl std::fmt::Display for MyPaMap {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.0)
+    }
+}
+
+impl AsRef<[u8]> for MyPaMap {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
@@ -254,6 +261,9 @@ fn main() {
 
         routes_total += num_routes;
     }
+
+    store.flush_to_disk();
+
     eprintln!(
         "Processed {} routes in {} files in {:.2}s",
         routes_total,

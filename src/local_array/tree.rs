@@ -113,6 +113,13 @@ impl<AF: AddressFamily> PrefixId<AF> {
     pub fn inc_len(self) -> Self {
         Self(self.0.map(|(net, len)| (net, len + 1)))
     }
+
+    pub fn as_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
+        match self.0 {
+            Some(r) => r.0.as_prefix_bytes(r.1),
+            _ => [255; PREFIX_SIZE],
+        }
+    }
 }
 
 impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
@@ -124,6 +131,22 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
 impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     fn from(value: inetnum::addr::Prefix) -> Self {
         Self(Some((AF::from_ipaddr(value.addr()), value.len())))
+    }
+}
+
+impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<PrefixId<AF>>
+    for [u8; PREFIX_SIZE]
+{
+    fn from(value: PrefixId<AF>) -> Self {
+        value.as_bytes::<PREFIX_SIZE>()
+    }
+}
+
+impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<[u8; PREFIX_SIZE]>
+    for PrefixId<AF>
+{
+    fn from(value: [u8; PREFIX_SIZE]) -> Self {
+        PrefixId(Some(AF::from_prefix_bytes(value)))
     }
 }
 
@@ -356,8 +379,10 @@ pub struct TreeBitMap<
     M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
+    const PREFIX_SIZE: usize,
+    const KEY_SIZE: usize,
 > {
-    pub store: CustomAllocStorage<AF, M, NB, PB>,
+    pub store: CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
 }
 
 impl<
@@ -366,39 +391,58 @@ impl<
         M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > TreeBitMap<AF, M, NB, PB>
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
-    pub fn new(
-    ) -> Result<TreeBitMap<AF, M, NB, PB>, Box<dyn std::error::Error>> {
-        let root_node =
-            match CustomAllocStorage::<AF, M, NB, PB>::get_first_stride_size()
-            {
-                3 => SizedStrideNode::Stride3(TreeBitMapNode {
-                    ptrbitarr: AtomicStride2(AtomicU8::new(0)),
-                    pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-                    _af: PhantomData,
-                }),
-                4 => SizedStrideNode::Stride4(TreeBitMapNode {
-                    ptrbitarr: AtomicStride3(AtomicU16::new(0)),
-                    pfxbitarr: AtomicStride4(AtomicU32::new(0)),
-                    _af: PhantomData,
-                }),
-                5 => SizedStrideNode::Stride5(TreeBitMapNode {
-                    ptrbitarr: AtomicStride4(AtomicU32::new(0)),
-                    pfxbitarr: AtomicStride5(AtomicU64::new(0)),
-                    _af: PhantomData,
-                }),
-                unknown_stride_size => {
-                    panic!(
-                        "unknown stride size {} encountered in STRIDES array",
-                        unknown_stride_size
-                    );
-                }
-            };
+    pub fn new() -> Result<
+        TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
+        Box<dyn std::error::Error>,
+    > {
+        let root_node = match CustomAllocStorage::<
+            AF,
+            M,
+            NB,
+            PB,
+            PREFIX_SIZE,
+            KEY_SIZE,
+        >::get_first_stride_size()
+        {
+            3 => SizedStrideNode::Stride3(TreeBitMapNode {
+                ptrbitarr: AtomicStride2(AtomicU8::new(0)),
+                pfxbitarr: AtomicStride3(AtomicU16::new(0)),
+                _af: PhantomData,
+            }),
+            4 => SizedStrideNode::Stride4(TreeBitMapNode {
+                ptrbitarr: AtomicStride3(AtomicU16::new(0)),
+                pfxbitarr: AtomicStride4(AtomicU32::new(0)),
+                _af: PhantomData,
+            }),
+            5 => SizedStrideNode::Stride5(TreeBitMapNode {
+                ptrbitarr: AtomicStride4(AtomicU32::new(0)),
+                pfxbitarr: AtomicStride5(AtomicU64::new(0)),
+                _af: PhantomData,
+            }),
+            unknown_stride_size => {
+                panic!(
+                    "unknown stride size {} encountered in STRIDES array",
+                    unknown_stride_size
+                );
+            }
+        };
 
-        Ok(TreeBitMap {
-            store: CustomAllocStorage::<AF, M, NB, PB>::init(root_node)?,
-        })
+        Ok(
+            TreeBitMap {
+                store: CustomAllocStorage::<
+                    AF,
+                    M,
+                    NB,
+                    PB,
+                    PREFIX_SIZE,
+                    KEY_SIZE,
+                >::init(root_node)?,
+            },
+        )
     }
 
     // Partition for stride 4
@@ -507,7 +551,9 @@ impl<
                         );
                         error!(
                             "{} {}",
-                            std::thread::current().name().unwrap_or("unnamed-thread"),
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread"),
                             err
                         );
                     }
@@ -668,7 +714,9 @@ impl<
         M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > Default for TreeBitMap<AF, M, NB, PB>
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > Default for TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     fn default() -> Self {
         Self::new().unwrap()
@@ -682,7 +730,9 @@ impl<
         M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > std::fmt::Display for TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(_f, "{} prefixes created", self.store.get_prefixes_count())?;

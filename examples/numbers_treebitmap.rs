@@ -1,18 +1,18 @@
 use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
-use std::sync::atomic::Ordering;
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
 use std::fs::File;
 use std::net::{IpAddr, Ipv4Addr};
 use std::process;
+use std::sync::atomic::Ordering;
 
 #[create_store((
-    [4, 4, 4, 4, 4, 4, 4, 4],
-    [3, 4, 5, 4]
+    ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
+    ([3, 4, 5, 4], 16, 29)
 ))]
 struct MyStore<PrefixAs>;
 
@@ -44,7 +44,12 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::<PrefixAs>::new(
             Prefix::new(net, len)?,
-            vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
+            vec![Record::new(
+                0,
+                0,
+                RouteStatus::Active,
+                PrefixAs::new_from_u32(asn),
+            )],
         );
         pfxs.push(pfx);
         // trie.insert(&pfx);
@@ -66,11 +71,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
 
         for pfx in pfxs.into_iter() {
-            tree_bitmap.insert(
-                &pfx.prefix, pfx.meta[0].clone(), None
-            )?;
+            tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone(), None)?;
         }
-        
+
         #[cfg(feature = "cli")]
         println!("{:?}", tree_bitmap.print_funky_stats());
     }

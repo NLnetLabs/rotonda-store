@@ -1,15 +1,15 @@
 // extern crate self as roto;
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
 use rotonda_store::meta_examples::PrefixAs;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 use std::error::Error;
 use std::fs::File;
 use std::process;
 
 #[create_store((
-    [4, 4, 4, 4, 4, 4, 4, 4],
-    [3,4,5,4]
+    ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
+    ([3, 4, 5, 4], 17, 29)
 ))]
 struct MyStore;
 
@@ -32,7 +32,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let asn: u32 = record[2].parse().unwrap();
             let pfx = PrefixRecord::<PrefixAs>::new(
                 Prefix::new(net.into(), len)?,
-                vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
+                vec![Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new(asn.into()),
+                )],
             );
             pfxs.push(pfx);
         }
@@ -85,9 +90,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     include_withdrawn: false,
                                     include_less_specifics: false,
                                     include_more_specifics: false,
-                                    mui: None
+                                    mui: None,
                                 },
-                                guard
+                                guard,
                             );
                         }
                     }

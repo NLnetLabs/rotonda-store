@@ -40,7 +40,12 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new(
             Prefix::new(ip, len)?,
-            vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
+            vec![Record::new(
+                0,
+                0,
+                RouteStatus::Active,
+                PrefixAs::new_from_u32(asn),
+            )],
         );
 
         // let ip: Vec<_> = record[0]

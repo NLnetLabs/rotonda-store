@@ -27,6 +27,7 @@ pub trait AddressFamily:
     const BITMASK: Self;
     /// The number of bits in the byte representation of the family.
     const BITS: u8;
+
     fn fmt_net(net: Self) -> String;
     // returns the specified nibble from `start_bit` to (and including)
     // `start_bit + len` and shifted to the right.
@@ -52,6 +53,15 @@ pub trait AddressFamily:
     // in debug mode. A failed check will simply retutrn zero. Used in
     // finding node_ids (always zero for 0/0).
     fn checked_shr_or_zero(self, rhs: u32) -> Self;
+
+    fn as_prefix_bytes<const PREFIX_SIZE: usize>(
+        &self,
+        pfx_len: u8,
+    ) -> [u8; PREFIX_SIZE];
+
+    fn from_prefix_bytes<const PREFIX_SIZE: usize>(
+        value: [u8; PREFIX_SIZE],
+    ) -> (Self, u8);
 }
 
 //-------------- Ipv4 Type --------------------------------------------------
@@ -116,8 +126,7 @@ impl AddressFamily for IPv4 {
     /// let (new_prefix, new_len) = prefix.add_nibble(30, nibble, 7);
     /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (u32, u8) {
-        let res =
-            self | (nibble << (32 - len - nibble_len) as usize);
+        let res = self | (nibble << (32 - len - nibble_len) as usize);
         (res, len + nibble_len)
     }
 
@@ -150,6 +159,25 @@ impl AddressFamily for IPv4 {
     fn checked_shr_or_zero(self, rhs: u32) -> Self {
         self.checked_shr(rhs).unwrap_or(0)
     }
+
+    fn as_prefix_bytes<const PREFIX_SIZE: usize>(
+        &self,
+        pfx_len: u8,
+    ) -> [u8; PREFIX_SIZE] {
+        let bytes = &mut [0_u8; PREFIX_SIZE];
+        *bytes.first_chunk_mut::<4>().unwrap() = self.to_le_bytes();
+        bytes[PREFIX_SIZE - 1] = pfx_len;
+        *bytes
+    }
+
+    fn from_prefix_bytes<const PREFIX_SIZE: usize>(
+        value: [u8; PREFIX_SIZE],
+    ) -> (Self, u8) {
+        (
+            u32::from_le_bytes(*value.first_chunk::<4>().unwrap()),
+            value[PREFIX_SIZE - 1],
+        )
+    }
 }
 
 //-------------- Ipv6 Type --------------------------------------------------
@@ -160,6 +188,7 @@ pub type IPv6 = u128;
 impl AddressFamily for IPv6 {
     const BITMASK: u128 = 0x1u128.rotate_right(1);
     const BITS: u8 = 128;
+
     fn fmt_net(net: Self) -> String {
         std::net::Ipv6Addr::from(net).to_string()
     }
@@ -190,7 +219,7 @@ impl AddressFamily for IPv6 {
     /// # Panics only in debug mode!
     ///
     /// In release mode this will be UB (Undefined Behaviour)!
-    /// 
+    ///
     /// Will panic if there is insufficient space to add the given nibble,
     /// i.e. if `len + nibble_len >= 128`.
     ///
@@ -202,8 +231,8 @@ impl AddressFamily for IPv6 {
     /// let (new_prefix, new_len) = prefix.add_nibble(112, nibble, 32);
     /// ```
     fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8) {
-        let res = self
-            | ((nibble as u128) << (128 - len - nibble_len) as usize);
+        let res =
+            self | ((nibble as u128) << (128 - len - nibble_len) as usize);
         (res, len + nibble_len)
     }
 
@@ -265,6 +294,25 @@ impl AddressFamily for IPv6 {
 
     fn checked_shr_or_zero(self, rhs: u32) -> Self {
         self.checked_shr(rhs).unwrap_or(0)
+    }
+
+    fn as_prefix_bytes<const PREFIX_SIZE: usize>(
+        &self,
+        pfx_len: u8,
+    ) -> [u8; PREFIX_SIZE] {
+        let res = &mut [0_u8; PREFIX_SIZE];
+        *res.first_chunk_mut::<16>().unwrap() = self.to_le_bytes();
+        res[PREFIX_SIZE - 1] = pfx_len;
+        *res
+    }
+
+    fn from_prefix_bytes<const PREFIX_SIZE: usize>(
+        value: [u8; PREFIX_SIZE],
+    ) -> (Self, u8) {
+        (
+            u128::from_le_bytes(*value.first_chunk::<16>().unwrap()),
+            value[PREFIX_SIZE - 1],
+        )
     }
 }
 

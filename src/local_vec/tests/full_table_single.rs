@@ -1,13 +1,10 @@
-
 #![cfg(test)]
-    
-mod full_table {    
+
+mod full_table {
     use inetnum::addr::Prefix;
     use inetnum::asn::Asn;
 
-    use crate::{
-        prelude::*, PublicPrefixSingleRecord, SingleThreadedStore
-    };
+    use crate::{prelude::*, PublicPrefixSingleRecord, SingleThreadedStore};
 
     use std::error::Error;
     use std::fs::File;
@@ -43,11 +40,17 @@ mod full_table {
     //     }
     // }
 
+    impl AsRef<[u8]> for ComplexPrefixAs {
+        fn as_ref(&self) -> &[u8] {
+            todo!()
+        }
+    }
+
     impl Meta for ComplexPrefixAs {
         type Orderable<'a> = Asn;
         type TBI = ();
 
-        fn as_orderable(&self, _tbi: Self::TBI) -> Asn { 
+        fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
             self.0[0].into()
         }
     }
@@ -55,7 +58,7 @@ mod full_table {
     // impl Orderable<u32, Rfc4271> for ComplexPrefixAs {
     //     fn get_id(&self) -> &Self {
     //         &self.0
-    //     }   
+    //     }
     // }
 
     impl std::fmt::Display for ComplexPrefixAs {
@@ -105,10 +108,13 @@ mod full_table {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PublicPrefixSingleRecord<ComplexPrefixAs>> = vec![];
+            let mut pfxs: Vec<PublicPrefixSingleRecord<ComplexPrefixAs>> =
+                vec![];
             let v4_strides = vec![8];
             let v6_strides = vec![8];
-            let mut tree_bitmap = SingleThreadedStore::<ComplexPrefixAs>::new(v4_strides, v6_strides);
+            let mut tree_bitmap = SingleThreadedStore::<ComplexPrefixAs>::new(
+                v4_strides, v6_strides,
+            );
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -125,24 +131,25 @@ mod full_table {
                     }
                 };
 
-                let query = tree_bitmap.match_prefix(&pfx.prefix,
-                        &MatchOptions {
+                let query = tree_bitmap.match_prefix(
+                    &pfx.prefix,
+                    &MatchOptions {
                         match_type: MatchType::LongestMatch,
                         include_withdrawn: false,
                         include_less_specifics: false,
                         include_more_specifics: false,
-                        mui: None
+                        mui: None,
                     },
                 );
 
-                if query.prefix.is_none() { panic!("STOPSTOPSTOPST"); }
-                else { 
+                if query.prefix.is_none() {
+                    panic!("STOPSTOPSTOPST");
+                } else {
                     assert_eq!(query.prefix.unwrap(), pfx.prefix);
                 }
             }
 
             println!("done inserting {} prefixes", inserts_num);
-
 
             let inet_max = 255;
             let len_max = 32;
@@ -154,7 +161,6 @@ mod full_table {
             (0..inet_max).for_each(|i_net| {
                 len_count = 0;
                 (0..len_max).for_each(|s_len| {
-
                     (0..inet_max).for_each(|ii_net| {
                         let pfx = Prefix::new_relaxed(
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
@@ -169,7 +175,7 @@ mod full_table {
                                 include_withdrawn: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
-                                mui: None
+                                mui: None,
                             },
                         );
                         if let Some(_pfx) = res.prefix {

@@ -1,10 +1,8 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 mod tests {
     use inetnum::addr::Prefix;
-    use rotonda_store::{ 
-        meta_examples::PrefixAs,
-        prelude::*,
-        prelude::multi::*,
+    use rotonda_store::{
+        meta_examples::PrefixAs, prelude::multi::*, prelude::*,
     };
 
     use std::error::Error;
@@ -32,7 +30,14 @@ mod tests {
 
         for pfx in pfxs.iter() {
             tree_bitmap.insert(
-                pfx, Record::new(0, 0, RouteStatus::Active, PrefixAs(666)), None
+                pfx,
+                Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new_from_u32(666),
+                ),
+                None,
             )?;
         }
         println!("------ end of inserts\n");
@@ -61,7 +66,7 @@ mod tests {
                     include_more_specifics: true,
                     mui: None,
                 },
-                guard
+                guard,
             );
             println!("em/m-s: {:#?}", found_result);
 
@@ -106,11 +111,15 @@ mod tests {
         let ltime = 0;
         let status = RouteStatus::Active;
         for pfx in pfxs.iter() {
-            tree_bitmap.insert(&pfx.unwrap(), Record::new(0, ltime, status, PrefixAs(666)), None)?;
+            tree_bitmap.insert(
+                &pfx.unwrap(),
+                Record::new(0, ltime, status, PrefixAs::new_from_u32(666)),
+                None,
+            )?;
         }
         println!("------ end of inserts\n");
         let guard = &epoch::pin();
-        
+
         for spfx in &[
             (
                 &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
@@ -137,9 +146,9 @@ mod tests {
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: true,
-                    mui: None
+                    mui: None,
                 },
-                guard
+                guard,
             );
             println!("em/m-s: {}", found_result);
 

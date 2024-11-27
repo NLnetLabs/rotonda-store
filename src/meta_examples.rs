@@ -5,7 +5,21 @@ use inetnum::asn::Asn;
 use crate::Meta;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct PrefixAs(pub u32);
+pub struct PrefixAs([u8; 4]);
+
+impl PrefixAs {
+    pub fn new(asn: Asn) -> Self {
+        PrefixAs(u32::from_be_bytes(asn.to_raw()).to_le_bytes())
+    }
+
+    pub fn new_from_u32(value: u32) -> Self {
+        PrefixAs(value.to_le_bytes())
+    }
+
+    pub fn asn(&self) -> Asn {
+        Asn::from_u32(u32::from_le_bytes(self.0))
+    }
+}
 
 // impl MergeUpdate for PrefixAs {
 //     type UserDataIn = ();
@@ -36,13 +50,19 @@ impl Meta for PrefixAs {
     type Orderable<'a> = Asn;
     type TBI = ();
     fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
-        self.0.into()
+        u32::from_le_bytes(self.0).into()
+    }
+}
+
+impl AsRef<[u8]> for PrefixAs {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
 impl std::fmt::Display for PrefixAs {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "AS{}", self.0)
+        write!(f, "AS{}", u32::from_le_bytes(self.0))
     }
 }
 
@@ -82,6 +102,11 @@ impl Meta for NoMeta {
     fn as_orderable(&self, _tbi: Self::TBI) {}
 }
 
+impl AsRef<[u8]> for NoMeta {
+    fn as_ref(&self) -> &[u8] {
+        &[]
+    }
+}
 
 // impl MergeUpdate for NoMeta {
 //     type UserDataIn = ();

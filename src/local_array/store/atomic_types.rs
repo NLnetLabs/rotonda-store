@@ -8,7 +8,7 @@ use std::{
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use crossbeam_utils::Backoff;
-use log::{debug, log_enabled, trace};
+use log::{debug, info, log_enabled, trace};
 
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
@@ -280,7 +280,7 @@ pub(crate) struct MultiMapValue<M> {
     pub status: RouteStatus,
 }
 
-impl<M: Clone> MultiMapValue<M> {
+impl<M: Clone + AsRef<[u8]>> MultiMapValue<M> {
     pub(crate) fn _new(meta: M, ltime: u64, status: RouteStatus) -> Self {
         Self {
             meta,
@@ -290,19 +290,27 @@ impl<M: Clone> MultiMapValue<M> {
     }
 }
 
-impl<M: crate::prefix_record::Meta> std::fmt::Display for MultiMapValue<M> {
+impl<M: crate::prefix_record::Meta + AsRef<[u8]>> std::fmt::Display
+    for MultiMapValue<M>
+{
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.meta, self.ltime, self.status)
     }
 }
 
-impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
+impl<M: Meta + AsRef<[u8]>> From<PublicRecord<M>> for MultiMapValue<M> {
     fn from(value: PublicRecord<M>) -> Self {
         Self {
             meta: value.meta,
             ltime: value.ltime,
             status: value.status,
         }
+    }
+}
+
+impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValue<M> {
+    fn as_ref(&self) -> &[u8] {
+        self.meta.as_ref()
     }
 }
 
@@ -476,20 +484,20 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it, if it's more than 1. Returns None if this is the
     // first entry.
-    pub fn upsert_record(
+    pub(crate) fn upsert_record(
         &self,
         record: PublicRecord<M>,
-    ) -> (Option<usize>, usize) {
-        let c_map = self.clone();
-        let (mut record_map, retry_count) = c_map.guard_with_retry(0);
+    ) -> (Option<(MultiMapValue<M>, usize)>, usize) {
+        // let c_map = self.clone();
+        let (mut record_map, retry_count) = self.guard_with_retry(0);
 
-        if record_map
+        match record_map
             .insert(record.multi_uniq_id, MultiMapValue::from(record))
-            .is_some()
         {
-            (Some(record_map.len()), retry_count)
-        } else {
-            (None, retry_count)
+            Some(exist_rec) => {
+                (Some((exist_rec, record_map.len())), retry_count)
+            }
+            _ => (None, retry_count),
         }
     }
 }

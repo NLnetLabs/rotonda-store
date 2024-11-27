@@ -183,16 +183,14 @@
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
-use std::{
-    fmt::Debug,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use log::{debug, info, log_enabled, trace};
 
 use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{Guard, Owned};
+use lsm_tree::AbstractTree;
 use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
@@ -298,6 +296,57 @@ pub struct UpsertReport {
     pub mui_count: usize,
 }
 
+pub struct PersistTree<
+    AF: AddressFamily,
+    // The size in bytes of the prefix in the peristed storage (disk), this
+    // amounnts to the bytes for the addres (4 for IPv4, 16 for IPv6) and 1
+    // bytefor the prefix length.
+    const PREFIX_SIZE: usize,
+    // The size in bytes of the complete key in the persisted storage, this
+    // is PREFIX_SIZE bytes (4; 16) + mui size (4) + ltime (8)
+    const KEY_SIZE: usize, (lsm_tree::Tree, PhantomData<AF>);
+
+impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
+    PersistTree<AF, PREFIX_SIZE, KEY_SIZE>
+{
+    pub fn insert(&self, key: [u8; KEY_SIZE], value: &[u8]) -> (u32, u32) {
+        self.0.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
+    }
+
+    pub fn flush_to_disk(&self) {
+        self.0.flush_active_memtable(0).unwrap();
+    }
+
+    pub fn persistence_key(
+        // PREFIX_SIZE bytes
+        prefix_id: PrefixId<AF>,
+        // 4 bytes
+        mui: u32,
+        // 8 bytes
+        ltime: u64,
+    ) -> [u8; KEY_SIZE] {
+        eprintln!("prefix_size {} key_size {}", PREFIX_SIZE, KEY_SIZE);
+        assert!(KEY_SIZE > PREFIX_SIZE);
+        let key = &mut [0_u8; KEY_SIZE];
+        *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
+        *key[PREFIX_SIZE..PREFIX_SIZE + 4]
+            .first_chunk_mut::<4>()
+            .unwrap() = mui.to_le_bytes();
+        *key[PREFIX_SIZE + 4..].first_chunk_mut::<8>().unwrap() =
+            ltime.to_le_bytes();
+
+        *key
+    }
+}
+
+impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
+    std::fmt::Debug for PersistTree<AF, PREFIX_SIZE, KEY_SIZE>
+{
+    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        todo!()
+    }
+}
+
 // ----------- CustomAllocStorage -------------------------------------------
 //
 // CustomAllocStorage is a storage backend that uses a custom allocator, that
@@ -308,9 +357,13 @@ pub struct CustomAllocStorage<
     M: crate::prefix_record::Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
+    const PREFIX_SIZE: usize,
+    const KEY_SIZE: usize,
 > {
     pub(crate) buckets: NB,
     pub prefixes: PB,
+    #[cfg(feature = "persist")]
+    pub persistence: PersistTree<AF, PREFIX_SIZE, KEY_SIZE>,
     pub default_route_prefix_serial: AtomicUsize,
     // Global Roaring Bitmap INdex that stores MUIs.
     pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
@@ -325,7 +378,9 @@ impl<
         M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > CustomAllocStorage<AF, M, NB, PB>
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     pub(crate) fn init(
         root_node: SizedStrideNode<AF>,
@@ -343,6 +398,10 @@ impl<
         let store = CustomAllocStorage {
             buckets: NodeBuckets::<AF>::init(),
             prefixes: PrefixBuckets::<AF, M>::init(),
+            persistence: PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>(
+                lsm_tree::Config::new("/tmp/rotonda/").open()?,
+                PhantomData,
+            ),
             default_route_prefix_serial: AtomicUsize::new(0),
             withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
@@ -644,7 +703,7 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut prefix_new = true;
 
-        let (mui_new, insert_retry_count) =
+        let (mui_is_new, insert_retry_count) =
             match self.non_recursive_retrieve_prefix_mut(prefix) {
                 // There's no StoredPrefix at this location yet. Create a new
                 // PrefixRecord and try to store it in the empty slot.
@@ -658,12 +717,19 @@ impl<
                         );
                     }
 
-                    // We're creating a StoredPrefix without our record first,
-                    // to avoid having to clone it on retry.
+                    let mui = record.multi_uniq_id;
                     let res = locked_prefix.record_map.upsert_record(record);
+                    let mut mui_is_new = None;
+                    let retry_count = res.1;
+
+                    #[cfg(feature = "persist")]
+                    if let Some((p_rec, min)) = res.0 {
+                        self.persist_record(prefix, mui, p_rec);
+                        mui_is_new = Some(min);
+                    }
 
                     self.counters.inc_prefixes_count(prefix.get_len());
-                    res
+                    (mui_is_new, retry_count)
                 }
                 // There already is a StoredPrefix with a record at this
                 // location.
@@ -680,25 +746,35 @@ impl<
                     }
                     prefix_new = false;
 
-                    // Update the already existing record_map with our caller's
-                    // record.
+                    // Update the already existing record_map with our
+                    // caller's record.
                     stored_prefix.set_ps_outdated(guard)?;
+
+                    let mui = record.multi_uniq_id;
                     let res = stored_prefix.record_map.upsert_record(record);
+                    let retry_count = res.1;
+                    let mut mui_is_new = None;
+
+                    #[cfg(feature = "persist")]
+                    if let Some((p_rec, min)) = res.0 {
+                        self.persist_record(prefix, mui, p_rec);
+                        mui_is_new = Some(min);
+                    }
 
                     if let Some(tbi) = update_path_selections {
                         stored_prefix
                             .calculate_and_store_best_backup(&tbi, guard)?;
                     }
 
-                    res
+                    (mui_is_new, retry_count)
                 }
             };
 
         Ok(UpsertReport {
             prefix_new,
             cas_count: insert_retry_count,
-            mui_new: mui_new.is_none(),
-            mui_count: mui_new.unwrap_or(1),
+            mui_new: mui_is_new.is_none(),
+            mui_count: mui_is_new.unwrap_or(1),
         })
     }
 
@@ -1162,6 +1238,25 @@ impl<
         ((id.get_net() << last_level)
             >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
             .dangerously_truncate_to_u32() as usize
+    }
+
+    // persistance features
+
+    #[cfg(feature = "persist")]
+    fn persist_record(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: u32,
+        record: MultiMapValue<M>,
+    ) {
+        self.persistence.insert(
+            PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::persistence_key(
+                prefix,
+                mui,
+                record.ltime,
+            ),
+            record.as_ref(),
+        );
     }
 }
 

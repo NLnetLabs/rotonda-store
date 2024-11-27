@@ -2,8 +2,8 @@ use log::trace;
 use std::time::Duration;
 use std::{sync::Arc, thread};
 
-use rotonda_store::prelude::*;
 use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 use rotonda_store::meta_examples::PrefixAs;
 
@@ -20,45 +20,60 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         32,
     );
 
-    let threads =
-        (0..16).enumerate().map(|(i, _)| {
-            let tree_bitmap = tree_bitmap.clone();
-            // let start_flag = Arc::clone(&f);
+    let threads = (0..16).enumerate().map(|(i, _)| {
+        let tree_bitmap = tree_bitmap.clone();
+        // let start_flag = Arc::clone(&f);
 
-            std::thread::Builder::new().name(i.to_string()).spawn(
-            move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
+        std::thread::Builder::new()
+            .name(i.to_string())
+            .spawn(
+                move || -> Result<(), Box<dyn std::error::Error + Send>> {
+                    // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
                     println!("park thread {}", i);
                     thread::park();
-                // }
+                    // }
 
-                print!("\nstart {} ---", i);
-                let mut x = 0;
-                loop {
-                    x += 1;
-                    // print!("{}-", i);
-                    match tree_bitmap
-                        .insert(
+                    print!("\nstart {} ---", i);
+                    let mut x = 0;
+                    loop {
+                        x += 1;
+                        // print!("{}-", i);
+                        match tree_bitmap.insert(
                             &pfx.unwrap(),
-                            Record::new(0,0, RouteStatus::Active, PrefixAs(i as u32)),
-                            None
-                        )
-                    {
-                        Ok(metrics) => {
-                            if metrics.cas_count > 0  {
-                                println!("{} {:?} {:?} retry count {},", std::thread::current().name().unwrap(), metrics, pfx, metrics.cas_count);
+                            Record::new(
+                                0,
+                                0,
+                                RouteStatus::Active,
+                                PrefixAs::new((i as u32).into()),
+                            ),
+                            None,
+                        ) {
+                            Ok(metrics) => {
+                                if metrics.cas_count > 0 {
+                                    println!(
+                                        "{} {:?} {:?} retry count {},",
+                                        std::thread::current()
+                                            .name()
+                                            .unwrap(),
+                                        metrics,
+                                        pfx,
+                                        metrics.cas_count
+                                    );
+                                }
                             }
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        };
+                        if x % 1_000_000 == 0 {
+                            println!("{}", x);
                         }
-                        Err(e) => {
-                            println!("{}", e);
-                        }
-                    };
-                    if x % 1_000_000 == 0 { println!("{}", x); }
-                }
-                // println!("--thread {} done.", i);
-            },
-        ).unwrap()
-        });
+                    }
+                    // println!("--thread {} done.", i);
+                },
+            )
+            .unwrap()
+    });
 
     // thread::sleep(Duration::from_secs(60));
 
@@ -80,14 +95,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
-            mui: None
+            mui: None,
         },
         guard,
     );
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());
-   
+
     println!("-----------");
 
     Ok(())

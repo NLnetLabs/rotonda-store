@@ -290,8 +290,10 @@ pub(crate) struct MoreSpecificPrefixIter<
     M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
+    const PREFIX_SIZE: usize,
+    const KEY_SIZE: usize,
 > {
-    store: &'a CustomAllocStorage<AF, M, NB, PB>,
+    store: &'a CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
     cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
     start_bit_span: BitSpan,
@@ -312,7 +314,10 @@ impl<
         M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > Iterator
+    for MoreSpecificPrefixIter<'a, AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
 
@@ -711,7 +716,9 @@ impl<
         M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-    > CustomAllocStorage<AF, M, NB, PB>
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.

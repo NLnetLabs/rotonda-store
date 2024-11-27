@@ -8,18 +8,42 @@ use std::iter::Iterator;
 use syn::parse_macro_input;
 
 #[proc_macro_attribute]
-pub fn stride_sizes(attr: TokenStream, input: TokenStream) -> TokenStream {
+pub fn stride_sizes(
+    attr: TokenStream,
+    struct_def: TokenStream,
+) -> TokenStream {
     // The arguments for the macro invocation
     let attrs = parse_macro_input!(attr as syn::ExprTuple);
 
     let attrs = attrs.elems.iter().collect::<Vec<_>>();
 
-    let input = parse_macro_input!(input as syn::ItemStruct);
-    let type_name = &input.ident;
-    let ip_af = match attrs[0] {
+    let struct_def = parse_macro_input!(struct_def as syn::ItemStruct);
+    let type_name = &struct_def.ident;
+
+    let ip_af = match attrs
+        .first()
+        .unwrap_or_else(|| panic!("Missing Address Family"))
+    {
         syn::Expr::Path(t) => t,
-        _ => panic!("Expected Family Type"),
+        _ => panic!("Expected Adress Family Type"),
     };
+
+    let prefix_size = match attrs
+        .get(2)
+        .unwrap_or_else(|| panic!("Missing Prefix Size for Address Family"))
+    {
+        syn::Expr::Lit(l) => l,
+        l => panic!("Expected Prefix Size for Address Family, got {:?}", l),
+    };
+
+    let key_size = match attrs
+        .get(3)
+        .unwrap_or_else(|| panic!("Missing Key Size for Address Family"))
+    {
+        syn::Expr::Lit(l) => l,
+        l => panic!("Expected Key Size for Address Family, got {:?}", l),
+    };
+
     let prefixes_all_len;
     let all_len;
     let prefixes_buckets_name: syn::Ident;
@@ -304,7 +328,7 @@ pub fn stride_sizes(attr: TokenStream, input: TokenStream) -> TokenStream {
     };
 
     let type_alias = quote! {
-        type #type_name<M> = TreeBitMap<#ip_af, M, #buckets_name<#ip_af>, #prefixes_buckets_name<#ip_af, M>>;
+        type #type_name<M> = TreeBitMap<#ip_af, M, #buckets_name<#ip_af>, #prefixes_buckets_name<#ip_af, M>, #prefix_size, #key_size>;
     };
 
     let result = quote! {
@@ -323,7 +347,9 @@ pub fn stride_sizes(attr: TokenStream, input: TokenStream) -> TokenStream {
 // PrefixStore. Therefore all methods defined in here should be public.
 
 /// Creates a new, user-named struct with user-defined specified stride sizes
-/// that can used as a store type.
+/// that can used as a store type. The size of the prefix and the total key in
+/// the persisted storage should als be included, although these should
+/// probably not be changed from their defaults.
 ///
 /// # Usage
 /// ```ignore
@@ -331,21 +357,29 @@ pub fn stride_sizes(attr: TokenStream, input: TokenStream) -> TokenStream {
 /// use rotonda_store::prelude::multi::*;
 /// use rotonda_store::meta_examples::PrefixAs;
 ///
-/// const IP4_STRIDE_ARRAY = [4; 8];
-/// const IP6_STRIDE_ARRAY = [4; 32];
+/// const IP4_STRIDE_ARRAY: [u32; 8] = [4; 8];
+/// const IP6_STRIDE_ARRAY: [u32; 32] = [4; 32];
 ///
-/// #[create_store((IPV4_STRIDE_ARRAY, IPV6_STRIDE_ARRAY))]
+/// #[create_store(((IPV4_STRIDE_ARRAY, 5, 17), (IPV6_STRIDE_ARRAY, 17, 29)))]
 /// struct NuStorage;
 /// ```
 ///
 /// This will create a `NuStorage` struct, that can be used as a regular
 /// store.
 ///
-/// The stride-sizes can be any of \[3,4,5\], and they should add up
-/// to the total number of bits in the address family (32 for IPv4 and
-/// 128 for IPv6). Stride sizes in the array will be repeated if the sum
-/// of them falls short of the total number of bits for the address
-/// family.
+/// The stride-sizes can be any of \[3,4,5\], and they should add up to the
+/// total number of bits in the address family (32 for IPv4 and 128 for IPv6).
+/// Stride sizes in the array will be repeated if the sum of them falls short
+/// of the total number of bits for the address family.i
+///
+/// The numbers 5, 17 after the first array for IPv4, and the numbers 17,
+/// 29 after the second array, represent the number of bytes a prefix in the
+/// key of a record in the persisted storage (disk), and the total number of
+/// bytes of the key of a record in the persisted storage. An IPv4 prefix is
+/// therefore 5 bytes (address part + prefix length), and 17 bytes for IPv6.
+/// The total number of bytes of the key is calculated thus: prefix (5 or 17)
+/// + multi_unique_id (4 bytes) + logical time of reception of the PDU into
+/// Rotonda (8 bytes).
 ///
 /// # Example
 /// ```ignore
@@ -355,23 +389,68 @@ pub fn stride_sizes(attr: TokenStream, input: TokenStream) -> TokenStream {
 ///
 /// // The default stride sizes for IPv4, IPv6, resp.
 /// #[create_store((
-///     [5, 5, 4, 3, 3, 3, 3, 3, 3, 3],
-///     [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
-///     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4]
+///     ([5, 5, 4, 3, 3, 3, 3, 3, 3, 3], 5, 17),
+///     ([4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4,
+///     4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], 17, 29)
 /// ))]
 /// struct NuStore;
 ///
 /// let store = Arc::new(NuStore::<PrefixAs>::new().unwrap());
 /// ```
 #[proc_macro_attribute]
-pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(item as syn::ItemStruct);
-    let store_name = &input.ident;
+pub fn create_store(
+    attr: TokenStream,
+    struct_def: TokenStream,
+) -> TokenStream {
+    let struct_def = parse_macro_input!(struct_def as syn::ItemStruct);
+    let store_name = &struct_def.ident;
 
     let attr = parse_macro_input!(attr as syn::ExprTuple);
     let attrs = attr.elems.iter().collect::<Vec<_>>();
-    let strides4 = attrs[0].clone();
-    let strides6 = attrs[1].clone();
+
+    let tuple_4 = attrs
+        .first()
+        .unwrap_or_else(|| panic!("No tuple ([u8], usize) for IPv4 defined"));
+    let tuple_4 = match tuple_4 {
+        syn::Expr::Tuple(t) => t,
+        t => panic!("Expected tuple ([u8], usize), got {:?}", t),
+    };
+
+    let tuple_6 = attrs
+        .get(1)
+        .unwrap_or_else(|| panic!("No tuple ([u8], usize) for IPv6 defined"));
+    let tuple_6 = match tuple_6 {
+        syn::Expr::Tuple(t) => t,
+        t => panic!("Expected tuple ([u8], usize), got {:?}", t),
+    };
+
+    let strides4 = tuple_4.elems.first().unwrap_or_else(|| {
+        panic!(
+            "Expected stride sizes array for IPv4, got {:?}",
+            tuple_4.attrs
+        )
+    });
+    let strides6 = tuple_6.elems.first().unwrap_or_else(|| {
+        panic!(
+            "Expected stride sizes array for IPv6, got {:?}",
+            tuple_6.attrs
+        )
+    });
+
+    let key_size4 = tuple_4.elems.get(1).unwrap_or_else(|| {
+        panic!("Expected Key Size for IPv4, got {:?}", tuple_4.elems)
+    });
+    let key_size6 = tuple_6.elems.get(1).unwrap_or_else(|| {
+        panic!("Expected Key Size for IPv6, got {:?}", tuple_6.attrs)
+    });
+
+    let prefix_size4 = tuple_4.elems.get(2).unwrap_or_else(|| {
+        panic!("Expected Prefix Size for IPv4, got {:?}", tuple_4.elems)
+    });
+    let prefix_size6 = tuple_6.elems.get(2).unwrap_or_else(|| {
+        panic!("Expected Prefix Size for IPv6, got {:?}", tuple_6.attrs)
+    });
+
     let strides4_name = format_ident!("{}IPv4", store_name);
     let strides6_name = format_ident!("{}IPv6", store_name);
 
@@ -379,10 +458,10 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
         use ::std::marker::PhantomData;
         use ::inetnum::addr::Prefix;
 
-        #[stride_sizes((IPv4, #strides4))]
+        #[stride_sizes((IPv4, #strides4, #key_size4, #prefix_size4))]
         struct #strides4_name;
 
-        #[stride_sizes((IPv6, #strides6))]
+        #[stride_sizes((IPv6, #strides6, #key_size6, #prefix_size6))]
         struct #strides6_name;
     };
 
@@ -560,7 +639,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             ///
             /// store.insert(
             ///     &Prefix::new(pfx_addr, 22).unwrap(),
-            ///     Record::new(0, 0, RouteStatus::Active, PrefixAs(211321)),
+            ///     Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(211321)),
             ///     None
             /// );
             ///
@@ -576,7 +655,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             ///     guard
             /// );
             ///
-            /// assert_eq!(res.prefix_meta[0].meta.0, 211321);
+            /// assert_eq!(res.prefix_meta[0].meta.asn(), 211321.into());
             ///
             /// let res = store.match_prefix(
             ///     &Prefix::new(pfx_addr, 24).unwrap(),
@@ -874,7 +953,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             ///
             /// store.insert(
             ///     &Prefix::new(pfx_addr, 22).unwrap(),
-            ///     Record::new(0, 0, RouteStatus::Active, PrefixAs(211321)),
+            ///     Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(211321)),
             ///     None
             /// );
             ///
@@ -884,7 +963,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             ///     false,
             ///     &guard
             /// ) {
-            ///    assert_eq!(prefix_record.meta[0].meta.0, 211321);
+            ///    assert_eq!(prefix_record.meta[0].meta.asn(), 211321.into());
             /// }
             /// ```
             pub fn less_specifics_iter_from(&'a self,
@@ -962,7 +1041,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             ///
             /// store.insert(
             ///     &Prefix::new(pfx_addr, 24).unwrap(),
-            ///     Record::new(0, 0, RouteStatus::Active, PrefixAs(211321)),
+            ///     Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(211321)),
             ///     None
             /// );
             ///
@@ -972,7 +1051,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             ///     false,
             ///     &guard
             /// ) {
-            ///    assert_eq!(prefix_record.meta[0].meta.0, 211321);
+            ///    assert_eq!(prefix_record.meta[0].meta.asn(), 211321.into());
             /// }
             /// ```
             pub fn more_specifics_iter_from(&'a self,
@@ -1157,7 +1236,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             /// let pfx_addr = "185.49.140.0".parse::<Ipv4Addr>()
             ///         .unwrap()
             ///         .into();
-            /// let our_asn = Record::new(0, 0, RouteStatus::Active, PrefixAs(211321));
+            /// let our_asn = Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(211321));
             ///
             /// store.insert(&Prefix::new(pfx_addr, 22).unwrap(), our_asn.clone(), None);
             /// store.insert(&Prefix::new(pfx_addr, 23).unwrap(), our_asn.clone(), None);
@@ -1208,7 +1287,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             /// let pfx_addr = "185.49.140.0".parse::<Ipv4Addr>()
             ///         .unwrap()
             ///         .into();
-            /// let our_asn = Record::new(0, 0, RouteStatus::Active, PrefixAs(211321));
+            /// let our_asn = Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(211321));
             ///
             /// store.insert(&Prefix::new(pfx_addr, 22).unwrap(), our_asn.clone(), None);
             /// store.insert(&Prefix::new(pfx_addr, 23).unwrap(), our_asn.clone(), None);
@@ -1255,7 +1334,7 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
             /// let pfx_addr = "2a04:b900::".parse::<Ipv6Addr>()
             ///         .unwrap()
             ///         .into();
-            /// let our_asn = Record::new(0, 0, RouteStatus::Active, PrefixAs(211321));
+            /// let our_asn = Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(211321));
             ///
             /// store.insert(&Prefix::new(pfx_addr, 29).unwrap(), our_asn.clone(), None);
             /// store.insert(&Prefix::new(pfx_addr, 48).unwrap(), our_asn.clone(), None);
@@ -1545,6 +1624,12 @@ pub fn create_store(attr: TokenStream, item: TokenStream) -> TokenStream {
                     v4: self.v4.store.counters.get_prefix_stats(),
                     v6: self.v6.store.counters.get_prefix_stats(),
                 }
+            }
+
+            /// Persist to disk
+            pub fn flush_to_disk(&self) {
+                self.v4.store.persistence.flush_to_disk();
+                self.v6.store.persistence.flush_to_disk();
             }
         }
     };

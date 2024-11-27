@@ -2,9 +2,7 @@
 mod tests {
     use inetnum::addr::Prefix;
     use rotonda_store::meta_examples::PrefixAs;
-    use rotonda_store::{
-        prelude::*, prelude::multi::*
-    };
+    use rotonda_store::{prelude::multi::*, prelude::*};
 
     use std::error::Error;
 
@@ -96,8 +94,13 @@ mod tests {
         for pfx in pfxs.iter().flatten() {
             tree_bitmap.insert(
                 pfx,
-                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
-                None
+                Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new_from_u32(666),
+                ),
+                None,
             )?;
         }
         println!("------ end of inserts\n");
@@ -168,10 +171,7 @@ mod tests {
                 vec![12, 13, 24, 25, 26, 27],
             ),
             (
-                &Prefix::new(
-                    std::net::Ipv4Addr::new(0,0,0,0).into(),
-                    0,
-                ),
+                &Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 0),
                 None,
                 // These are the indexes to pfxs.2 vec.
                 // These are all supposed to show up in the result.
@@ -189,9 +189,9 @@ mod tests {
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: true,
-                    mui: None
+                    mui: None,
                 },
-                guard
+                guard,
             );
             println!("em/m-s: {:#?}", found_result);
 

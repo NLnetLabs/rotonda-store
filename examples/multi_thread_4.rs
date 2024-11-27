@@ -50,6 +50,13 @@ impl std::fmt::Display for ComplexPrefixAs {
         write!(f, "AS{:?}", self.0)
     }
 }
+
+impl AsRef<[u8]> for ComplexPrefixAs {
+    fn as_ref(&self) -> &[u8] {
+        todo!()
+    }
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();

@@ -321,7 +321,12 @@ mod tests {
         for pfx in pfxs.into_iter() {
             tree_bitmap.insert(
                 &pfx?,
-                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
+                Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new_from_u32(666),
+                ),
                 None,
             )?;
         }

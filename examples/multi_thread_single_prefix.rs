@@ -7,9 +7,9 @@ use std::time::Duration;
 
 use rand::Rng;
 
+use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::*;
 use rotonda_store::MultiThreadedStore;
-use rotonda_store::meta_examples::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
@@ -41,11 +41,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     loop {
                         let guard = &crossbeam_epoch::pin();
                         while x < 10_000 {
-                            let asn = PrefixAs(rng.gen());
+                            let asn = PrefixAs::new_from_u32(rng.gen());
                             match tree_bitmap.insert(
                                 &pfx.unwrap(),
                                 Record::new(0, 0, RouteStatus::Active, asn),
-                                None
+                                None,
                             ) {
                                 Ok(metrics) => {
                                     if metrics.prefix_new {
@@ -78,9 +78,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         guard.flush();
                         thread::sleep(Duration::from_secs(3));
                         println!("wake thread {}", i);
-                        println!("prefix count {:?}", tree_bitmap.prefixes_count());
+                        println!(
+                            "prefix count {:?}",
+                            tree_bitmap.prefixes_count()
+                        );
                         x = 0;
-
                     }
                 },
             )
