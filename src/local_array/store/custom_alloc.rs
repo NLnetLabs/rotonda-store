@@ -318,6 +318,10 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         self.0.flush_active_memtable(0).unwrap();
     }
 
+    pub fn approximate_len(&self) -> usize {
+        self.0.approximate_len()
+    }
+
     #[cfg(feature = "persist")]
     pub fn persistence_key(
         // PREFIX_SIZE bytes
@@ -327,7 +331,6 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         // 8 bytes
         ltime: u64,
     ) -> [u8; KEY_SIZE] {
-        eprintln!("prefix_size {} key_size {}", PREFIX_SIZE, KEY_SIZE);
         assert!(KEY_SIZE > PREFIX_SIZE);
         let key = &mut [0_u8; KEY_SIZE];
         *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
@@ -703,7 +706,7 @@ impl<
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
-        let mut prefix_new = true;
+        let mut prefix_is_new = true;
 
         let (mui_is_new, insert_retry_count) =
             match self.non_recursive_retrieve_prefix_mut(prefix) {
@@ -746,7 +749,7 @@ impl<
                         prefix.get_len()
                     );
                     }
-                    prefix_new = false;
+                    prefix_is_new = false;
 
                     // Update the already existing record_map with our
                     // caller's record.
@@ -773,7 +776,7 @@ impl<
             };
 
         Ok(UpsertReport {
-            prefix_new,
+            prefix_new: prefix_is_new,
             cas_count: insert_retry_count,
             mui_new: mui_is_new.is_none(),
             mui_count: mui_is_new.unwrap_or(1),

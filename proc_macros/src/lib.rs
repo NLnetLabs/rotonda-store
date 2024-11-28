@@ -1625,10 +1625,20 @@ pub fn create_store(
                 }
             }
 
-            /// Persist to disk
+            /// Persist all the non-unique (prefix, mui, ltime) tuples
+            /// with their values to disk
             pub fn flush_to_disk(&self) {
                 self.v4.store.persistence.flush_to_disk();
                 self.v6.store.persistence.flush_to_disk();
+            }
+
+            /// Return the approximate number of items that are persisted
+            /// to disk, for IPv4 and IPv6 respectively.
+            pub fn approx_persisted_items(&self) -> (usize, usize) {
+                (
+                    self.v4.store.persistence.approximate_len(),
+                    self.v6.store.persistence.approximate_len()
+                )
             }
         }
     };
