@@ -47,7 +47,6 @@ pub fn stride_sizes(
     let prefixes_all_len;
     let all_len;
     let prefixes_buckets_name: syn::Ident;
-    // let prefix_store_bits;
     let get_root_prefix_set;
 
     // The name of the Struct that we're going to generate

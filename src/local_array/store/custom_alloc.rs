@@ -304,7 +304,8 @@ pub struct PersistTree<
     const PREFIX_SIZE: usize,
     // The size in bytes of the complete key in the persisted storage, this
     // is PREFIX_SIZE bytes (4; 16) + mui size (4) + ltime (8)
-    const KEY_SIZE: usize, (lsm_tree::Tree, PhantomData<AF>);
+    const KEY_SIZE: usize,
+>(lsm_tree::Tree, PhantomData<AF>);
 
 impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     PersistTree<AF, PREFIX_SIZE, KEY_SIZE>
@@ -317,6 +318,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         self.0.flush_active_memtable(0).unwrap();
     }
 
+    #[cfg(feature = "persist")]
     pub fn persistence_key(
         // PREFIX_SIZE bytes
         prefix_id: PrefixId<AF>,
