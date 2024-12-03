@@ -707,8 +707,10 @@ impl<
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let mut prefix_is_new = true;
+        let mut mui_is_new = true;
+        let mut mui_count = 0;
 
-        let (mui_is_new, insert_retry_count) =
+        let insert_retry_count =
             match self.non_recursive_retrieve_prefix_mut(prefix) {
                 // There's no StoredPrefix at this location yet. Create a new
                 // PrefixRecord and try to store it in the empty slot.
@@ -724,17 +726,22 @@ impl<
 
                     let mui = record.multi_uniq_id;
                     let res = locked_prefix.record_map.upsert_record(record);
-                    let mut mui_is_new = None;
+
+                    if res.0.is_some() {
+                        mui_is_new = false;
+                        prefix_is_new = false;
+                    }
+
                     let retry_count = res.1;
 
                     #[cfg(feature = "persist")]
                     if let Some((p_rec, min)) = res.0 {
+                        mui_count = min;
                         self.persist_record(prefix, mui, p_rec);
-                        mui_is_new = Some(min);
                     }
 
                     self.counters.inc_prefixes_count(prefix.get_len());
-                    (mui_is_new, retry_count)
+                    retry_count
                 }
                 // There already is a StoredPrefix with a record at this
                 // location.
@@ -757,13 +764,13 @@ impl<
 
                     let mui = record.multi_uniq_id;
                     let res = stored_prefix.record_map.upsert_record(record);
+                    mui_is_new = res.0.is_none();
                     let retry_count = res.1;
-                    let mut mui_is_new = None;
 
                     #[cfg(feature = "persist")]
                     if let Some((p_rec, min)) = res.0 {
                         self.persist_record(prefix, mui, p_rec);
-                        mui_is_new = Some(min);
+                        mui_count = min;
                     }
 
                     if let Some(tbi) = update_path_selections {
@@ -771,15 +778,15 @@ impl<
                             .calculate_and_store_best_backup(&tbi, guard)?;
                     }
 
-                    (mui_is_new, retry_count)
+                    retry_count
                 }
             };
 
         Ok(UpsertReport {
             prefix_new: prefix_is_new,
             cas_count: insert_retry_count,
-            mui_new: mui_is_new.is_none(),
-            mui_count: mui_is_new.unwrap_or(1),
+            mui_new: mui_is_new,
+            mui_count,
         })
     }
 

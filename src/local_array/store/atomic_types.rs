@@ -8,7 +8,7 @@ use std::{
 use crossbeam_epoch::{self as epoch, Atomic};
 
 use crossbeam_utils::Backoff;
-use log::{debug, info, log_enabled, trace};
+use log::{debug, log_enabled, trace};
 
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;

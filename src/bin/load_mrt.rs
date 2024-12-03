@@ -16,30 +16,101 @@ use rotonda_store::PublicRecord;
 use routecore::mrt::MrtFile;
 
 use rand::seq::SliceRandom;
+use routecore::mrt::RibEntryIterator;
+use routecore::mrt::TableDumpIterator;
 
 #[derive(Clone, Debug)]
 //struct MyPaMap(PaMap);
-struct MyPaMap(Vec<u8>);
+struct PaBytes(Vec<u8>);
 
-impl std::fmt::Display for MyPaMap {
+impl std::fmt::Display for PaBytes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self.0)
     }
 }
 
-impl AsRef<[u8]> for MyPaMap {
+impl AsRef<[u8]> for PaBytes {
     fn as_ref(&self) -> &[u8] {
         self.0.as_ref()
     }
 }
 
-impl rotonda_store::Meta for MyPaMap {
+impl rotonda_store::Meta for PaBytes {
     type Orderable<'a> = u32;
 
     type TBI = u32;
 
     fn as_orderable(&self, _tbi: Self::TBI) -> Self::Orderable<'_> {
         todo!()
+    }
+}
+
+#[derive(Copy, Clone, Default)]
+struct UpsertCounters {
+    unique_prefixes: usize,
+    unique_routes: usize,
+    total_routes: usize,
+}
+
+impl std::ops::AddAssign for UpsertCounters {
+    fn add_assign(&mut self, rhs: Self) {
+        self.unique_prefixes += rhs.unique_prefixes;
+        self.unique_routes += rhs.unique_routes;
+        self.total_routes += rhs.total_routes;
+    }
+}
+
+impl std::ops::Add for UpsertCounters {
+    type Output = UpsertCounters;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            unique_prefixes: self.unique_prefixes + rhs.unique_prefixes,
+            unique_routes: self.unique_routes + rhs.unique_routes,
+            total_routes: self.total_routes + rhs.total_routes,
+        }
+    }
+}
+
+impl std::fmt::Display for UpsertCounters {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(f, "inserted unique prefixes:\t{}", self.unique_prefixes)?;
+        writeln!(f, "inserted unique routes:\t\t{}", self.unique_routes)?;
+        writeln!(f, "total routes:\t\t\t{}", self.total_routes)?;
+        writeln!(
+            f,
+            "overwritten routes:\t\t{}",
+            self.total_routes - self.unique_routes
+        )
+    }
+}
+
+fn counter_update(
+    counters: &mut UpsertCounters,
+) -> impl FnMut(UpsertReport) -> UpsertCounters + '_ {
+    move |r| match (r.prefix_new, r.mui_new) {
+        // new prefix, new mui
+        (true, true) => {
+            counters.unique_prefixes += 1;
+            counters.unique_routes += 1;
+            counters.total_routes += 1;
+            *counters
+        }
+        // old prefix, new mui
+        (false, true) => {
+            counters.unique_routes += 1;
+            counters.total_routes += 1;
+            *counters
+        }
+        // old prefix, old mui
+        (false, false) => {
+            counters.total_routes += 1;
+            *counters
+        }
+        // new prefix, old mui
+        (true, false) => {
+            panic!("THIS DOESN'T MEAN ANYTHING!");
+        }
     }
 }
 
@@ -89,191 +160,301 @@ fn insert<T: rotonda_store::Meta>(
         .inspect_err(|e| eprintln!("Error in test_store: {e}"))
 }
 
-fn main() {
-    let args = Cli::parse();
+fn par_load_prefixes(
+    mrt_file: &MrtFile,
+    shuffle: bool,
+) -> Vec<(Prefix, u16)> {
+    let t0 = std::time::Instant::now();
+    let mut prefixes = mrt_file
+        .tables()
+        .unwrap()
+        .par_bridge()
+        .map(|(_fam, reh)| {
+            let iter = routecore::mrt::SingleEntryIterator::new(reh);
+            iter.map(|(prefix, peer_idx, _)| (prefix, peer_idx))
+        })
+        .flatten_iter()
+        .collect::<Vec<_>>();
 
-    let mut store = MultiThreadedStore::<MyPaMap>::new().unwrap();
-    let t_total = Instant::now();
-    let mut routes_total: usize = 0;
-    let mut mib_total: usize = 0;
-    for mrtfile in &args.mrt_files {
-        if !args.single_store {
-            store = MultiThreadedStore::<MyPaMap>::new().unwrap();
-        }
+    eprintln!(
+        "loaded file with {} prefixes in {}ms",
+        prefixes.len(),
+        t0.elapsed().as_millis()
+    );
 
-        let file = File::open(mrtfile).unwrap();
-        let mmap = unsafe { Mmap::map(&file).unwrap() };
-        println!("{}: {}MiB", mrtfile.to_string_lossy(), mmap.len() >> 20);
-        mib_total += mmap.len() >> 20;
+    if shuffle {
+        let t_s = Instant::now();
+        eprint!("shuffling prefixes... ");
+        prefixes.shuffle(&mut rand::thread_rng());
+        eprintln!("done! took {}ms", t_s.elapsed().as_millis());
+    }
 
-        let t_0 = Instant::now();
-        let t_prev = t_0;
+    prefixes
+}
 
-        let mrt_file = MrtFile::new(&mmap[..]);
-        let tables = mrt_file.tables().unwrap();
-
-        if !args.parse_only && (args.shuffle || args.prime || args.mt_prime) {
-            let mut prefixes = mrt_file
-                .tables()
-                .unwrap()
-                .par_bridge()
-                .map(|(_fam, reh)| {
-                    let iter = routecore::mrt::SingleEntryIterator::new(reh);
-                    iter.map(|(prefix, _, _)| prefix)
-                })
-                .flatten_iter()
-                .collect::<Vec<_>>();
-
-            eprintln!(
-                "collected {} prefixes to prime store, took {}ms",
-                prefixes.len(),
-                t_prev.elapsed().as_millis(),
-            );
-
-            if args.shuffle {
-                let t_s = Instant::now();
-                eprint!("shuffling before priming... ");
-                prefixes.shuffle(&mut rand::thread_rng());
-                eprintln!("done! took {}ms", t_s.elapsed().as_millis());
-            }
-
-            let t_prev = Instant::now();
-
-            if args.mt_prime {
-                if prefixes
-                    .par_iter()
-                    .try_for_each(|p| {
-                        insert(
-                            &store,
-                            p,
-                            0,
-                            0,
-                            RouteStatus::InActive,
-                            MyPaMap(vec![]),
-                        )
-                        .map(|_| ())
-                    })
-                    .is_err()
-                {
-                    return;
-                }
-            } else {
-                for p in &prefixes {
-                    if insert(
-                        &store,
-                        p,
-                        0,
-                        0,
-                        RouteStatus::InActive,
-                        MyPaMap(vec![]),
-                    )
-                    .is_err()
-                    {
-                        return;
-                    }
-                }
-            }
-            eprintln!(
-                "primed store with {} prefixes, took {}ms",
-                prefixes.len(),
-                t_prev.elapsed().as_millis(),
-            );
-        }
-
-        let t_prev = Instant::now();
-
-        let mut num_routes = 0;
-        if args.mt {
-            // TODO turn into a try_fold or something, allowing to return
-            // on the first error
-            num_routes = tables
-                .par_bridge()
-                .map(|(_fam, reh)| {
-                    let iter = routecore::mrt::SingleEntryIterator::new(reh);
-
-                    let mut cnt = 0;
-                    for e in iter {
-                        cnt += 1;
-                        let (prefix, peer_idx, pamap) = e;
-                        let mui = peer_idx.into();
-                        let ltime = 0;
-                        let val = MyPaMap(pamap);
-
-                        if !args.parse_only {
-                            let _ = insert(
-                                &store,
-                                &prefix,
-                                mui,
-                                ltime,
-                                RouteStatus::Active,
-                                val,
-                            );
-                        }
-                    }
-                    cnt
-                })
-                .fold(|| 0, |sum, e| sum + e)
-                .sum::<usize>();
-        } else {
-            // single threaded
-            let rib_entries = mrt_file.rib_entries().unwrap();
-
-            for e in rib_entries {
-                num_routes += 1;
-                let (_, peer_idx, _, prefix, pamap) = e;
+fn mt_parse_and_insert_table(
+    tables: TableDumpIterator<&[u8]>,
+    store: Option<&MultiThreadedStore<PaBytes>>,
+) -> UpsertCounters {
+    let counters = tables
+        .par_bridge()
+        .map(|(_fam, reh)| {
+            let mut local_counters = UpsertCounters::default();
+            let iter = routecore::mrt::SingleEntryIterator::new(reh);
+            // let mut cnt = 0;
+            for (prefix, peer_idx, pa_bytes) in iter {
+                // cnt += 1;
+                // let (prefix, peer_idx, pa_bytes) = e;
                 let mui = peer_idx.into();
                 let ltime = 0;
-                let val = MyPaMap(pamap);
+                let val = PaBytes(pa_bytes);
 
-                if !args.parse_only {
-                    let _ = insert(
-                        &store,
+                if let Some(store) = store {
+                    let counters = insert(
+                        store,
                         &prefix,
                         mui,
                         ltime,
                         RouteStatus::Active,
                         val,
-                    );
+                    )
+                    .map(move |r| match (r.prefix_new, r.mui_new) {
+                        // new prefix, new mui
+                        (true, true) => UpsertCounters {
+                            unique_prefixes: 1,
+                            unique_routes: 1,
+                            total_routes: 1,
+                        },
+                        // old prefix, new mui
+                        (false, true) => UpsertCounters {
+                            unique_prefixes: 0,
+                            unique_routes: 1,
+                            total_routes: 1,
+                        },
+                        // old prefix, old mui
+                        (false, false) => UpsertCounters {
+                            unique_prefixes: 0,
+                            unique_routes: 0,
+                            total_routes: 1,
+                        },
+                        // new prefix, old mui
+                        (true, false) => {
+                            panic!("THIS DOESN'T MEAN ANYTHING!");
+                        }
+                    })
+                    .unwrap();
+
+                    local_counters += counters;
                 }
             }
-        }
-        if !args.parse_only {
-            let threading = if args.mt {
-                " (multi-threaded)"
-            } else {
-                " (single-threaded)"
-            };
-            eprintln!(
-                "inserted {} routes{}, took {}ms, total for this file {}ms",
-                num_routes,
-                threading,
-                t_prev.elapsed().as_millis(),
-                t_0.elapsed().as_millis(),
-            );
-        } else {
-            eprintln!(
-                "parsed {}, no insertions,  total for this file {}ms",
-                num_routes,
-                t_0.elapsed().as_millis(),
-            );
-        }
-        eprintln!("--------");
+            local_counters
+        })
+        .fold(UpsertCounters::default, |acc, c| acc + c)
+        .reduce(UpsertCounters::default, |acc, c| acc + c);
 
-        routes_total += num_routes;
+    println!("{}", counters);
+
+    counters
+}
+
+fn st_parse_and_insert_table(
+    entries: RibEntryIterator<&[u8]>,
+    store: Option<&MultiThreadedStore<PaBytes>>,
+) -> UpsertCounters {
+    let mut counters = UpsertCounters::default();
+    let mut cnt = 0;
+    let t0 = std::time::Instant::now();
+
+    for (_, peer_idx, _, prefix, pamap) in entries {
+        cnt += 1;
+        let mui = peer_idx.into();
+        let ltime = 0;
+        let val = PaBytes(pamap);
+
+        if let Some(store) = store {
+            insert(store, &prefix, mui, ltime, RouteStatus::Active, val)
+                .map(counter_update(&mut counters))
+                .unwrap();
+        }
     }
 
-    store.flush_to_disk();
+    println!("primed {} prefixes in {}ms", cnt, t0.elapsed().as_millis());
+    println!("{}", counters);
 
-    eprintln!(
-        "Processed {} routes in {} files in {:.2}s",
-        routes_total,
-        args.mrt_files.len(),
-        t_total.elapsed().as_millis() as f64 / 1000.0
+    counters
+}
+
+fn mt_prime_store(
+    prefixes: &Vec<(Prefix, u16)>,
+    store: &MultiThreadedStore<PaBytes>,
+) -> UpsertCounters {
+    let t0 = std::time::Instant::now();
+
+    let counters = prefixes
+        .par_iter()
+        .fold(UpsertCounters::default, |mut acc, p| {
+            insert(
+                store,
+                &p.0,
+                p.1 as u32,
+                0,
+                RouteStatus::InActive,
+                PaBytes(vec![]),
+            )
+            .map(counter_update(&mut acc))
+            .unwrap()
+        })
+        .reduce(UpsertCounters::default, |c1, c2| c1 + c2);
+
+    println!(
+        "primed {} prefixes in {}ms",
+        prefixes.len(),
+        t0.elapsed().as_millis()
     );
+
+    // println!("{}", counters);
+
+    counters
+}
+
+fn st_prime_store(
+    prefixes: &Vec<(Prefix, u16)>,
+    store: &MultiThreadedStore<PaBytes>,
+) -> UpsertCounters {
+    let mut counters = UpsertCounters::default();
+
+    for p in prefixes {
+        insert(
+            store,
+            &p.0,
+            p.1 as u32,
+            0,
+            RouteStatus::InActive,
+            PaBytes(vec![]),
+        )
+        .map(counter_update(&mut counters))
+        .unwrap();
+    }
+
+    counters
+}
+
+fn main() {
+    let args = Cli::parse();
+
+    let t_total = Instant::now();
+
+    let mut global_counters = UpsertCounters::default();
+    let mut mib_total: usize = 0;
+    let mut inner_stores = vec![];
+
+    // Create all the stores necessary, and if at least one is created, create
+    // a reference to the first one.
+    let mut store = match &args {
+        a if a.single_store && a.parse_only => {
+            eprintln!(
+                "Can't combine --parse-only and --single-store. 
+                Make up your mind."
+            );
+            return;
+        }
+        a if a.single_store => {
+            inner_stores.push(MultiThreadedStore::<PaBytes>::default());
+            println!("Created a single-store");
+            Some(&inner_stores[0])
+        }
+        a if a.parse_only => {
+            println!("No store created (parse only)");
+            None
+        }
+        _ => {
+            for _ in &args.mrt_files {
+                inner_stores.push(MultiThreadedStore::<PaBytes>::default());
+            }
+            println!("Number of created stores: {}", inner_stores.len());
+            Some(&inner_stores[0])
+        }
+    };
+
+    // Loop over all the mrt-files specified as arguments
+    for (f_index, mrtfile) in args.mrt_files.iter().enumerate() {
+        print!("file #{} ", f_index);
+
+        let file = File::open(mrtfile).unwrap();
+        let mmap = unsafe { Mmap::map(&file).unwrap() };
+        println!("{} ({}MiB)", mrtfile.to_string_lossy(), mmap.len() >> 20);
+        mib_total += mmap.len() >> 20;
+
+        let mrt_file = MrtFile::new(&mmap[..]);
+
+        if !args.single_store && !args.parse_only {
+            println!("use store #{}", f_index);
+            store = Some(&inner_stores[f_index]);
+        }
+        // Load the mrt file, maybe shuffle, and maybe prime the store
+        match &args {
+            a if a.mt_prime && a.prime => {
+                eprintln!(
+                    "--prime and --mt-prime can't be combined.
+                    Make up your mind."
+                );
+                return;
+            }
+            a if a.prime => {
+                let prefixes = par_load_prefixes(&mrt_file, a.shuffle);
+                st_prime_store(&prefixes, store.unwrap());
+            }
+            a if a.mt_prime => {
+                let prefixes = par_load_prefixes(&mrt_file, a.shuffle);
+                mt_prime_store(&prefixes, store.unwrap());
+            }
+            _ => {}
+        };
+
+        // Parse the prefixes in the file, and maybe insert them into the
+        // Store
+        global_counters += match &args {
+            a if a.mt => {
+                let tables = mrt_file.tables().unwrap();
+                mt_parse_and_insert_table(tables, store)
+            }
+            _ => {
+                let entries = mrt_file.rib_entries().unwrap();
+                st_parse_and_insert_table(entries, store)
+            }
+        };
+    }
+
+    if let Some(store) = store {
+        store.flush_to_disk()
+    }
+
+    // eprintln!(
+    //     "processed {} routes in {} files in {:.2}s",
+    //     routes_count,
+    //     args.mrt_files.len(),
+    //     t_total.elapsed().as_millis() as f64 / 1000.0
+    // );
+
+    eprintln!("upsert counters");
+    eprintln!("---------------");
+    eprintln!("{}", global_counters);
+
+    if let Some(store) = store {
+        eprintln!(
+            "Approximate number of items persisted {} + {} = {}",
+            store.approx_persisted_items().0,
+            store.approx_persisted_items().1,
+            store.approx_persisted_items().0
+                + store.approx_persisted_items().1
+        );
+    }
+
     eprintln!(
         "{:.0} routes per second\n\
             {:.0} MiB per second",
-        routes_total as f64 / t_total.elapsed().as_secs() as f64,
+        global_counters.total_routes as f64
+            / t_total.elapsed().as_secs() as f64,
         mib_total as f64 / t_total.elapsed().as_secs() as f64
     );
 }
