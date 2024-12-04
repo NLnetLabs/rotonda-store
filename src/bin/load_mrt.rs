@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::File;
 use std::path::PathBuf;
@@ -144,6 +145,10 @@ struct Cli {
     /// Don't insert in store, only parse MRT_FILES
     #[arg(long, default_value_t = false)]
     parse_only: bool,
+
+    /// Verify the persisted entries
+    #[arg(long, default_value_t = false)]
+    verify: bool,
 }
 
 fn insert<T: rotonda_store::Meta>(
@@ -195,18 +200,19 @@ fn par_load_prefixes(
 fn mt_parse_and_insert_table(
     tables: TableDumpIterator<&[u8]>,
     store: Option<&MultiThreadedStore<PaBytes>>,
-) -> UpsertCounters {
+    ltime: u64,
+) -> (UpsertCounters, Vec<Prefix>) {
     let counters = tables
         .par_bridge()
         .map(|(_fam, reh)| {
             let mut local_counters = UpsertCounters::default();
             let iter = routecore::mrt::SingleEntryIterator::new(reh);
+            let overwritten_prefixes = &mut vec![];
             // let mut cnt = 0;
             for (prefix, peer_idx, pa_bytes) in iter {
                 // cnt += 1;
                 // let (prefix, peer_idx, pa_bytes) = e;
                 let mui = peer_idx.into();
-                let ltime = 0;
                 let val = PaBytes(pa_bytes);
 
                 if let Some(store) = store {
@@ -218,7 +224,7 @@ fn mt_parse_and_insert_table(
                         RouteStatus::Active,
                         val,
                     )
-                    .map(move |r| match (r.prefix_new, r.mui_new) {
+                    .map(|r| match (r.prefix_new, r.mui_new) {
                         // new prefix, new mui
                         (true, true) => UpsertCounters {
                             unique_prefixes: 1,
@@ -232,11 +238,14 @@ fn mt_parse_and_insert_table(
                             total_routes: 1,
                         },
                         // old prefix, old mui
-                        (false, false) => UpsertCounters {
-                            unique_prefixes: 0,
-                            unique_routes: 0,
-                            total_routes: 1,
-                        },
+                        (false, false) => {
+                            overwritten_prefixes.push(prefix);
+                            UpsertCounters {
+                                unique_prefixes: 0,
+                                unique_routes: 0,
+                                total_routes: 1,
+                            }
+                        }
                         // new prefix, old mui
                         (true, false) => {
                             panic!("THIS DOESN'T MEAN ANYTHING!");
@@ -247,12 +256,24 @@ fn mt_parse_and_insert_table(
                     local_counters += counters;
                 }
             }
-            local_counters
+            (local_counters, overwritten_prefixes.clone())
         })
-        .fold(UpsertCounters::default, |acc, c| acc + c)
-        .reduce(UpsertCounters::default, |acc, c| acc + c);
+        .fold(
+            || (UpsertCounters::default(), vec![]),
+            |mut acc, c| {
+                acc.1.extend(c.1);
+                (acc.0 + c.0, acc.1)
+            },
+        )
+        .reduce(
+            || (UpsertCounters::default(), vec![]),
+            |mut acc, c| {
+                acc.1.extend(c.1);
+                (acc.0 + c.0, acc.1)
+            },
+        );
 
-    println!("{}", counters);
+    println!("{}", counters.0);
 
     counters
 }
@@ -260,6 +281,7 @@ fn mt_parse_and_insert_table(
 fn st_parse_and_insert_table(
     entries: RibEntryIterator<&[u8]>,
     store: Option<&MultiThreadedStore<PaBytes>>,
+    ltime: u64,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
     let mut cnt = 0;
@@ -268,7 +290,6 @@ fn st_parse_and_insert_table(
     for (_, peer_idx, _, prefix, pamap) in entries {
         cnt += 1;
         let mui = peer_idx.into();
-        let ltime = 0;
         let val = PaBytes(pamap);
 
         if let Some(store) = store {
@@ -278,7 +299,11 @@ fn st_parse_and_insert_table(
         }
     }
 
-    println!("primed {} prefixes in {}ms", cnt, t0.elapsed().as_millis());
+    println!(
+        "parsed & inserted {} prefixes in {}ms",
+        cnt,
+        t0.elapsed().as_millis()
+    );
     println!("{}", counters);
 
     counters
@@ -347,6 +372,7 @@ fn main() {
     let mut global_counters = UpsertCounters::default();
     let mut mib_total: usize = 0;
     let mut inner_stores = vec![];
+    let mut overwritten_prefixes = BTreeSet::new();
 
     // Create all the stores necessary, and if at least one is created, create
     // a reference to the first one.
@@ -359,8 +385,8 @@ fn main() {
             return;
         }
         a if a.single_store => {
-            inner_stores.push(MultiThreadedStore::<PaBytes>::default());
-            println!("Created a single-store");
+            inner_stores.push(MultiThreadedStore::<PaBytes>::new().unwrap());
+            println!("created a single-store\n");
             Some(&inner_stores[0])
         }
         a if a.parse_only => {
@@ -369,7 +395,8 @@ fn main() {
         }
         _ => {
             for _ in &args.mrt_files {
-                inner_stores.push(MultiThreadedStore::<PaBytes>::default());
+                inner_stores
+                    .push(MultiThreadedStore::<PaBytes>::new().unwrap());
             }
             println!("Number of created stores: {}", inner_stores.len());
             Some(&inner_stores[0])
@@ -416,17 +443,25 @@ fn main() {
         global_counters += match &args {
             a if a.mt => {
                 let tables = mrt_file.tables().unwrap();
-                mt_parse_and_insert_table(tables, store)
+                let (counters, ow_pfxs) =
+                    mt_parse_and_insert_table(tables, store, f_index as u64);
+                if args.verify {
+                    overwritten_prefixes.extend(&ow_pfxs)
+                }
+                counters
             }
             _ => {
                 let entries = mrt_file.rib_entries().unwrap();
-                st_parse_and_insert_table(entries, store)
+                st_parse_and_insert_table(entries, store, f_index as u64)
             }
         };
     }
 
     if let Some(store) = store {
-        store.flush_to_disk()
+        let res = store.flush_to_disk();
+        if res.is_err() {
+            eprintln!("Persistence Error: {:?}", res);
+        }
     }
 
     // eprintln!(
@@ -436,25 +471,61 @@ fn main() {
     //     t_total.elapsed().as_millis() as f64 / 1000.0
     // );
 
-    eprintln!("upsert counters");
-    eprintln!("---------------");
-    eprintln!("{}", global_counters);
+    println!("upsert counters");
+    println!("---------------");
+    println!("{}", global_counters);
 
     if let Some(store) = store {
-        eprintln!(
-            "Approximate number of items persisted {} + {} = {}",
+        println!("store in-memory counters");
+        println!("------------------------");
+        println!("prefixes:\t\t\t{:?}\n", store.prefixes_count());
+
+        println!("store persistence counters");
+        println!("--------------------------");
+        println!(
+            "approx. prefixes:\t\t{} + {} = {}",
             store.approx_persisted_items().0,
             store.approx_persisted_items().1,
             store.approx_persisted_items().0
                 + store.approx_persisted_items().1
         );
+        println!(
+            "disk size of persisted store:\t{}MiB\n",
+            store.disk_space() / (1024 * 1024)
+        );
     }
 
-    eprintln!(
+    println!(
         "{:.0} routes per second\n\
             {:.0} MiB per second",
         global_counters.total_routes as f64
             / t_total.elapsed().as_secs() as f64,
         mib_total as f64 / t_total.elapsed().as_secs() as f64
     );
+
+    if args.verify {
+        println!("\nverifying disk persistence...");
+        let mut max_len = 0;
+        for pfx in overwritten_prefixes {
+            let values = store.unwrap().get_values_for_prefix(&pfx);
+            if values.is_empty() {
+                eprintln!("Found empty prefix on disk");
+                eprintln!("prefix: {}", pfx);
+                return;
+            }
+            if values.len() > max_len {
+                max_len = values.len();
+                println!(
+                    "len {}: {} -> {:?}",
+                    max_len,
+                    pfx,
+                    store.unwrap().get_values_for_prefix(&pfx)
+                );
+            }
+            values
+                .iter()
+                .filter(|v| v.3.is_empty())
+                .for_each(|v| println!("withdraw for {}, mui {}", pfx, v.0))
+        }
+    }
 }

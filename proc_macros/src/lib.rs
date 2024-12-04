@@ -1625,11 +1625,37 @@ pub fn create_store(
                 }
             }
 
+            // Disk Persistence
+
+            pub fn get_values_for_prefix(&self, prefix: &Prefix) ->
+                Vec<(u32, u64, u8, Vec<u8>)> {
+                match prefix.is_v4() {
+                    true => self.v4.store.persistence
+                        .get_values_for_prefix(
+                            PrefixId::<IPv4>::from(*prefix)
+                        ),
+                    false => self.v6.store.persistence
+                        .get_values_for_prefix(
+                            PrefixId::<IPv6>::from(*prefix)
+                        )
+                }
+            }
+
             /// Persist all the non-unique (prefix, mui, ltime) tuples
             /// with their values to disk
-            pub fn flush_to_disk(&self) {
-                self.v4.store.persistence.flush_to_disk();
-                self.v6.store.persistence.flush_to_disk();
+            pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
+                if let Some(segment) =
+                    self.v4.store.persistence.flush_to_disk()? {
+                    self.v4.store.persistence.register_segments(&[segment])?
+                }
+
+                if let Some(segment) =
+                    self.v6.store.persistence.flush_to_disk()?
+                {
+                    self.v6.store.persistence.register_segments(&[segment])?
+                }
+
+                Ok(())
             }
 
             /// Return the approximate number of items that are persisted
@@ -1639,6 +1665,13 @@ pub fn create_store(
                     self.v4.store.persistence.approximate_len(),
                     self.v6.store.persistence.approximate_len()
                 )
+            }
+
+            /// Return an estimation of the disk space currently used by the
+            /// store in bytes.
+            pub fn disk_space(&self) -> u64 {
+                self.v4.store.persistence.disk_space() +
+                self.v6.store.persistence.disk_space()
             }
         }
     };

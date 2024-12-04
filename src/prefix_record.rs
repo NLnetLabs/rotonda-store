@@ -261,16 +261,16 @@ impl<M: std::fmt::Display> std::fmt::Display for PublicRecord<M> {
     }
 }
 
-impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
-    fn from(value: (u32, MultiMapValue<M>)) -> Self {
-        Self {
-            multi_uniq_id: value.0,
-            meta: value.1.meta,
-            ltime: value.1.ltime,
-            status: value.1.status,
-        }
-    }
-}
+// impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
+//     fn from(value: (u32, MultiMapValue<M>)) -> Self {
+//         Self {
+//             multi_uniq_id: value.0,
+//             meta: value.1.meta,
+//             ltime: value.1.ltime,
+//             status: value.1.status,
+//         }
+//     }
+// }
 
 //------------ PublicPrefixRecord -------------------------------------------
 

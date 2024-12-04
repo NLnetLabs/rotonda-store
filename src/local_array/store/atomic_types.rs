@@ -273,20 +273,34 @@ impl std::fmt::Display for RouteStatus {
     }
 }
 
+impl From<RouteStatus> for u8 {
+    fn from(value: RouteStatus) -> Self {
+        match value {
+            RouteStatus::Active => 1,
+            RouteStatus::InActive => 2,
+            RouteStatus::Withdrawn => 3,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct MultiMapValue<M> {
-    pub meta: M,
-    pub ltime: u64,
-    pub status: RouteStatus,
+    meta: M,
+    ltime: u64,
+    status: RouteStatus,
 }
 
 impl<M: Clone + AsRef<[u8]>> MultiMapValue<M> {
-    pub(crate) fn _new(meta: M, ltime: u64, status: RouteStatus) -> Self {
-        Self {
-            meta,
-            ltime,
-            status,
-        }
+    pub(crate) fn logical_time(&self) -> u64 {
+        self.ltime
+    }
+
+    pub(crate) fn meta(&self) -> &M {
+        &self.meta
+    }
+
+    pub(crate) fn status(&self) -> RouteStatus {
+        self.status
     }
 }
 
@@ -298,6 +312,12 @@ impl<M: crate::prefix_record::Meta + AsRef<[u8]>> std::fmt::Display
     }
 }
 
+// impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValue<M> {
+//     fn as_ref(&self) -> &[u8] {
+//         self.meta.as_ref()
+//     }
+// }
+
 impl<M: Meta + AsRef<[u8]>> From<PublicRecord<M>> for MultiMapValue<M> {
     fn from(value: PublicRecord<M>) -> Self {
         Self {
@@ -308,11 +328,39 @@ impl<M: Meta + AsRef<[u8]>> From<PublicRecord<M>> for MultiMapValue<M> {
     }
 }
 
-impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValue<M> {
-    fn as_ref(&self) -> &[u8] {
-        self.meta.as_ref()
+impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
+    fn from(value: (u32, MultiMapValue<M>)) -> Self {
+        Self {
+            multi_uniq_id: value.0,
+            meta: value.1.meta,
+            ltime: value.1.ltime,
+            status: value.1.status,
+        }
     }
 }
+
+// #[derive(Clone, Debug)]
+// pub(crate) enum MultiMapValueSwip<M> {
+//     Swizzled(MultiMapValue<M>),
+//     Unswizzled(u64),
+// }
+
+// impl<M: Clone + AsRef<[u8]>> MultiMapValueSwip<M> {
+//     pub(crate) fn logical_time(&self) -> u64 {
+//         match self {
+//             Self::Swizzled(v) => v.ltime,
+//             Self::Unswizzled(ltime) => *ltime,
+//         }
+//     }
+// }
+
+// impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValueSwip<M> {
+//     fn as_ref(&self) -> &[u8] {
+//         match self {
+//             Swizzled(v) => v.meta.as_ref(),
+//             Self::Unswizzled(_) =>
+//     }
+// }
 
 // ----------- MultiMap ------------------------------------------------------
 // This is the record that holds the aggregates at the top-level for a given
@@ -320,7 +368,7 @@ impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValue<M> {
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
-    pub(crate) Arc<Mutex<std::collections::HashMap<u32, MultiMapValue<M>>>>,
+    Arc<Mutex<std::collections::HashMap<u32, MultiMapValue<M>>>>,
 );
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {

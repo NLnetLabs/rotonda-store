@@ -190,7 +190,7 @@ use log::{debug, info, log_enabled, trace};
 use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{Guard, Owned};
-use lsm_tree::AbstractTree;
+use lsm_tree::{AbstractTree, Segment};
 use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
@@ -314,12 +314,38 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         self.0.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
     }
 
-    pub fn flush_to_disk(&self) {
-        self.0.flush_active_memtable(0).unwrap();
+    pub fn get_values_for_prefix(
+        &self,
+        prefix: PrefixId<AF>,
+    ) -> Vec<(u32, u64, u8, Vec<u8>)> {
+        let prefix_b = &prefix.as_bytes::<PREFIX_SIZE>();
+        (*self.0.prefix(prefix_b))
+            .into_iter()
+            .map(|kv| {
+                let kv = kv.unwrap();
+                let (_, mui, ltime, status) = Self::parse_key(kv.0.as_ref());
+                (mui, ltime, status, kv.1.as_ref().to_vec())
+            })
+            .collect::<Vec<_>>()
+    }
+
+    pub fn flush_to_disk(&self) -> Result<Option<Segment>, lsm_tree::Error> {
+        self.0.flush_active_memtable(0)
     }
 
     pub fn approximate_len(&self) -> usize {
         self.0.approximate_len()
+    }
+
+    pub fn disk_space(&self) -> u64 {
+        self.0.disk_space()
+    }
+
+    pub fn register_segments(
+        &self,
+        segments: &[lsm_tree::Segment],
+    ) -> Result<(), lsm_tree::Error> {
+        self.0.register_segments(segments)
     }
 
     #[cfg(feature = "persist")]
@@ -330,17 +356,56 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         mui: u32,
         // 8 bytes
         ltime: u64,
+        // 1 byte
+        status: RouteStatus,
     ) -> [u8; KEY_SIZE] {
         assert!(KEY_SIZE > PREFIX_SIZE);
         let key = &mut [0_u8; KEY_SIZE];
+
+        // prefix 5 or 17 bytes
         *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
+
+        // mui 4 bytes
         *key[PREFIX_SIZE..PREFIX_SIZE + 4]
             .first_chunk_mut::<4>()
             .unwrap() = mui.to_le_bytes();
-        *key[PREFIX_SIZE + 4..].first_chunk_mut::<8>().unwrap() =
-            ltime.to_le_bytes();
+
+        // ltime 8 bytes
+        *key[PREFIX_SIZE + 4..PREFIX_SIZE + 12]
+            .first_chunk_mut::<8>()
+            .unwrap() = ltime.to_le_bytes();
+
+        // status 1 byte
+        key[PREFIX_SIZE + 12] = status.into();
 
         *key
+    }
+
+    #[cfg(feature = "persist")]
+    pub fn parse_key(bytes: &[u8]) -> ([u8; PREFIX_SIZE], u32, u64, u8) {
+        (
+            // prefix 5 or 17 bytes
+            *bytes.first_chunk::<PREFIX_SIZE>().unwrap(),
+            // mui 4 bytes
+            u32::from_le_bytes(
+                *bytes[PREFIX_SIZE..PREFIX_SIZE + 4]
+                    .first_chunk::<4>()
+                    .unwrap(),
+            ),
+            // ltime 8 bytes
+            u64::from_le_bytes(
+                *bytes[PREFIX_SIZE + 4..PREFIX_SIZE + 12]
+                    .first_chunk::<8>()
+                    .unwrap(),
+            ),
+            // status 1 byte
+            bytes[PREFIX_SIZE + 12],
+        )
+    }
+
+    #[cfg(feature = "persist")]
+    pub fn parse_prefix(bytes: &[u8]) -> [u8; PREFIX_SIZE] {
+        *bytes.first_chunk::<PREFIX_SIZE>().unwrap()
     }
 }
 
@@ -370,7 +435,7 @@ pub struct CustomAllocStorage<
     #[cfg(feature = "persist")]
     pub persistence: PersistTree<AF, PREFIX_SIZE, KEY_SIZE>,
     pub default_route_prefix_serial: AtomicUsize,
-    // Global Roaring Bitmap INdex that stores MUIs.
+    // Global Roaring BitMap INdex that stores MUIs.
     pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
     _m: PhantomData<M>,
@@ -727,9 +792,13 @@ impl<
                     let mui = record.multi_uniq_id;
                     let res = locked_prefix.record_map.upsert_record(record);
 
+                    // See if someone beat us to creating the record.
                     if res.0.is_some() {
                         mui_is_new = false;
                         prefix_is_new = false;
+                    } else {
+                        // No, we were the first, we created a new prefix
+                        self.counters.inc_prefixes_count(prefix.get_len());
                     }
 
                     let retry_count = res.1;
@@ -740,7 +809,6 @@ impl<
                         self.persist_record(prefix, mui, p_rec);
                     }
 
-                    self.counters.inc_prefixes_count(prefix.get_len());
                     retry_count
                 }
                 // There already is a StoredPrefix with a record at this
@@ -749,12 +817,12 @@ impl<
                     if log_enabled!(log::Level::Debug) {
                         debug!(
                         "{} store: Found existing prefix record for {}/{}",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread"),
-                        prefix.get_net(),
-                        prefix.get_len()
-                    );
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread"),
+                            prefix.get_net(),
+                            prefix.get_len()
+                        );
                     }
                     prefix_is_new = false;
 
@@ -950,7 +1018,8 @@ impl<
                     // search_prefix_id anywhere. Return the end-of-the-chain
                     // StoredPrefix, so the caller can attach a new one.
                     trace!(
-                        "no record. returning last found record in level {}, with index {}.",
+                        "no record. returning last found record in level
+                        {}, with index {}.",
                         level,
                         index
                     );
@@ -1265,11 +1334,20 @@ impl<
             PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::persistence_key(
                 prefix,
                 mui,
-                record.ltime,
+                record.logical_time(),
+                record.status(),
             ),
-            record.as_ref(),
+            record.meta().as_ref(),
         );
     }
+
+    // #[cfg(feature = "persist")]
+    // fn get_prefix(
+    //     &self,
+    //     prefix: PrefixId<AF>,
+    // ) -> Vec<(([u8; PREFIX_SIZE], u32, u64), Vec<u8>)> {
+    //     self.persistence.prefix(prefix)
+    // }
 }
 
 //------------ Upsert -------------------------------------------------------
