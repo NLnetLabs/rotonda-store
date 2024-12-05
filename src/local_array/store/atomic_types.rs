@@ -284,23 +284,31 @@ impl From<RouteStatus> for u8 {
 }
 
 #[derive(Clone, Debug)]
-pub(crate) struct MultiMapValue<M> {
-    meta: M,
-    ltime: u64,
-    status: RouteStatus,
-}
+pub(crate) struct MultiMapValue<M>(Swip<RouteStatus, M>);
 
-impl<M: Clone + AsRef<[u8]>> MultiMapValue<M> {
+impl<M: Clone + AsRef<[u8]> + Debug> MultiMapValue<M> {
     pub(crate) fn logical_time(&self) -> u64 {
-        self.ltime
+        self.0.logical_time()
     }
 
-    pub(crate) fn meta(&self) -> &M {
-        &self.meta
+    pub(crate) fn meta(&self) -> Result<&M, PrefixStoreError> {
+        if let Swip::InMemory(_, _, meta) = &self.0 {
+            Ok(meta)
+        } else {
+            Err(PrefixStoreError::RecordNotInMemory)
+        }
     }
 
     pub(crate) fn status(&self) -> RouteStatus {
-        self.status
+        self.0.status()
+    }
+
+    pub(crate) fn set_status(&mut self, status: RouteStatus) {
+        self.0.set_status(status);
+    }
+
+    pub(crate) fn unswizzle(&mut self) {
+        self.0.unswizzle();
     }
 }
 
@@ -308,59 +316,96 @@ impl<M: crate::prefix_record::Meta + AsRef<[u8]>> std::fmt::Display
     for MultiMapValue<M>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} {} {}", self.meta, self.ltime, self.status)
+        write!(
+            f,
+            "{} {}",
+            // self.meta(),
+            self.0.logical_time(),
+            self.0.status()
+        )
     }
 }
-
-// impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValue<M> {
-//     fn as_ref(&self) -> &[u8] {
-//         self.meta.as_ref()
-//     }
-// }
 
 impl<M: Meta + AsRef<[u8]>> From<PublicRecord<M>> for MultiMapValue<M> {
     fn from(value: PublicRecord<M>) -> Self {
-        Self {
-            meta: value.meta,
-            ltime: value.ltime,
-            status: value.status,
+        Self(Swip::InMemory(value.ltime, value.status, value.meta))
+    }
+}
+
+impl<M: Clone + AsRef<[u8]> + Debug> TryFrom<(u32, &MultiMapValue<M>)>
+    for PublicRecord<M>
+{
+    type Error = PrefixStoreError;
+
+    fn try_from(
+        value: (u32, &MultiMapValue<M>),
+    ) -> Result<Self, Self::Error> {
+        match value.1 .0 {
+            Swip::InMemory(ltime, status, _) => Ok(Self {
+                multi_uniq_id: value.0,
+                meta: value.1.meta()?.clone(),
+                ltime,
+                status,
+            }),
+            Swip::HistoricalOnDisk(ltime, status) => Ok(Self {
+                multi_uniq_id: value.0,
+                meta: value.1.meta()?.clone(),
+                ltime,
+                status,
+            }),
+            Swip::OnDisk(_ltime, _status) => {
+                Err(PrefixStoreError::RecordNotInMemory)
+            }
         }
     }
 }
 
-impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
-    fn from(value: (u32, MultiMapValue<M>)) -> Self {
-        Self {
-            multi_uniq_id: value.0,
-            meta: value.1.meta,
-            ltime: value.1.ltime,
-            status: value.1.status,
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Swip<T, M> {
+    // There's one ((prefix, mui), value) pair in the store and it only lives
+    // in memory
+    InMemory(u64, T, M),
+    // There are multiple ((prefix, mui), value) pairs, and the current one
+    // lives in memory, but there is/are more on disk
+    HistoricalOnDisk(u64, T),
+    // There is at least one ((prefix, mui), value) pair, it/they live(s)
+    // on disk only
+    OnDisk(u64, T),
+}
+
+impl<M: Debug> Swip<RouteStatus, M> {
+    fn logical_time(&self) -> u64 {
+        match self {
+            Swip::InMemory(ltime, _, _) => *ltime,
+            Swip::HistoricalOnDisk(ltime, _) => *ltime,
+            Swip::OnDisk(ltime, _) => *ltime,
+        }
+    }
+
+    fn status(&self) -> RouteStatus {
+        match self {
+            Swip::InMemory(_, status, _) => *status,
+            Swip::HistoricalOnDisk(_, status) => *status,
+            Swip::OnDisk(_, status) => *status,
+        }
+    }
+
+    fn set_status(&mut self, status: RouteStatus) {
+        match self {
+            Swip::InMemory(_, s, _) => {
+                *s = status;
+            }
+            Swip::HistoricalOnDisk(_, s) => *s = status,
+            Swip::OnDisk(_, s) => *s = status,
+        };
+    }
+
+    fn unswizzle(&mut self) {
+        if let Swip::InMemory(l, s, _) = self {
+            *self = Self::HistoricalOnDisk(*l, *s);
         }
     }
 }
-
-// #[derive(Clone, Debug)]
-// pub(crate) enum MultiMapValueSwip<M> {
-//     Swizzled(MultiMapValue<M>),
-//     Unswizzled(u64),
-// }
-
-// impl<M: Clone + AsRef<[u8]>> MultiMapValueSwip<M> {
-//     pub(crate) fn logical_time(&self) -> u64 {
-//         match self {
-//             Self::Swizzled(v) => v.ltime,
-//             Self::Unswizzled(ltime) => *ltime,
-//         }
-//     }
-// }
-
-// impl<M: Clone + AsRef<[u8]>> AsRef<[u8]> for MultiMapValueSwip<M> {
-//     fn as_ref(&self) -> &[u8] {
-//         match self {
-//             Swizzled(v) => v.meta.as_ref(),
-//             Self::Unswizzled(_) =>
-//     }
-// }
 
 // ----------- MultiMap ------------------------------------------------------
 // This is the record that holds the aggregates at the top-level for a given
@@ -406,8 +451,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let record_map = c_map.lock().unwrap();
 
         record_map.get(&mui).and_then(|r| {
-            if r.status == RouteStatus::Active {
-                Some(PublicRecord::from((mui, r.clone())))
+            if r.status() == RouteStatus::Active {
+                Some(PublicRecord::try_from((mui, r)).unwrap())
             } else {
                 None
             }
@@ -417,11 +462,12 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
-        let ord_routes =
-            record_map.iter().map(|r| (r.1.meta.as_orderable(tbi), r.0));
+        let ord_routes = record_map
+            .iter()
+            .map(|r| (r.1.meta().unwrap().as_orderable(tbi), *r.0));
         let (best, bckup) =
             routecore::bgp::path_selection::best_backup_generic(ord_routes);
-        (best.map(|b| *b.1), bckup.map(|b| *b.1))
+        (best.map(|b| b.1), bckup.map(|b| b.1))
     }
 
     pub(crate) fn get_record_for_mui_with_rewritten_status(
@@ -437,9 +483,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             // untouched.
             let mut r = r.clone();
             if bmin.contains(mui) {
-                r.status = rewrite_status;
+                r.set_status(rewrite_status);
             }
-            PublicRecord::from((mui, r))
+            PublicRecord::try_from((mui, &r)).unwrap()
         })
     }
 
@@ -473,9 +519,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             .map(move |r| {
                 let mut rec = r.1.clone();
                 if bmin.contains(*r.0) {
-                    rec.status = rewrite_status;
+                    rec.set_status(rewrite_status);
                 }
-                PublicRecord::from((*r.0, rec))
+                PublicRecord::try_from((*r.0, &rec)).unwrap()
             })
             .collect::<Vec<_>>()
     }
@@ -485,7 +531,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let record_map = c_map.lock().unwrap();
         record_map
             .iter()
-            .map(|r| PublicRecord::from((*r.0, r.1.clone())))
+            .map(|r| PublicRecord::try_from((*r.0, r.1)).unwrap())
             .collect::<Vec<_>>()
     }
 
@@ -501,8 +547,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         record_map
             .iter()
             .filter_map(|r| {
-                if r.1.status == RouteStatus::Active && !bmin.contains(*r.0) {
-                    Some(PublicRecord::from((*r.0, r.1.clone())))
+                if r.1.status() == RouteStatus::Active && !bmin.contains(*r.0)
+                {
+                    Some(PublicRecord::try_from((*r.0, r.1)).unwrap())
                 } else {
                     None
                 }
@@ -515,7 +562,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let c_map = Arc::clone(&self.0);
         let mut record_map = c_map.lock().unwrap();
         if let Some(rec) = record_map.get_mut(&mui) {
-            rec.status = RouteStatus::Withdrawn;
+            rec.set_status(RouteStatus::Withdrawn);
         }
     }
 
@@ -524,7 +571,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let record_map = Arc::clone(&self.0);
         let mut r_map = record_map.lock().unwrap();
         if let Some(rec) = r_map.get_mut(&mui) {
-            rec.status = RouteStatus::Active;
+            rec.set_status(RouteStatus::Active);
         }
     }
 
@@ -538,11 +585,14 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     ) -> (Option<(MultiMapValue<M>, usize)>, usize) {
         // let c_map = self.clone();
         let (mut record_map, retry_count) = self.guard_with_retry(0);
+        let key = record.multi_uniq_id;
 
         match record_map
             .insert(record.multi_uniq_id, MultiMapValue::from(record))
         {
             Some(exist_rec) => {
+                record_map.get_mut(&key).unwrap().unswizzle();
+                println!("{:?}", record_map.get(&key));
                 (Some((exist_rec, record_map.len())), retry_count)
             }
             _ => (None, retry_count),

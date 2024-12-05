@@ -7,7 +7,8 @@ pub enum PrefixStoreError {
     StoreNotReadyError,
     PathSelectionOutdated,
     PrefixNotFound,
-    BestPathNotFound
+    BestPathNotFound,
+    RecordNotInMemory,
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -32,7 +33,17 @@ impl fmt::Display for PrefixStoreError {
                 write!(f, "Error: The Prefix cannot be found.")
             }
             PrefixStoreError::BestPathNotFound => {
-                write!(f, "Error: The Prefix does not have a stored best path.")
+                write!(
+                    f,
+                    "Error: The Prefix does not have a stored best path."
+                )
+            }
+            PrefixStoreError::RecordNotInMemory => {
+                write!(
+                    f,
+                    "Error: The Record for this (prefix, mui) is not in \
+                    memory."
+                )
             }
         }
     }

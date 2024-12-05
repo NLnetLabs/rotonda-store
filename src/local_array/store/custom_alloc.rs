@@ -1337,7 +1337,7 @@ impl<
                 record.logical_time(),
                 record.status(),
             ),
-            record.meta().as_ref(),
+            record.meta().unwrap().as_ref(),
         );
     }
 
