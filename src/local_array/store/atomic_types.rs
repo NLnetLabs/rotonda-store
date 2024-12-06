@@ -13,6 +13,7 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
+use crate::custom_alloc::{PersistStrategy, PersistTree};
 use crate::local_array::tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
@@ -286,7 +287,7 @@ impl From<RouteStatus> for u8 {
 #[derive(Clone, Debug)]
 pub(crate) struct MultiMapValue<M>(Swip<RouteStatus, M>);
 
-impl<M: Clone + AsRef<[u8]> + Debug> MultiMapValue<M> {
+impl<M: Meta> MultiMapValue<M> {
     pub(crate) fn logical_time(&self) -> u64 {
         self.0.logical_time()
     }
@@ -310,11 +311,25 @@ impl<M: Clone + AsRef<[u8]> + Debug> MultiMapValue<M> {
     pub(crate) fn unswizzle(&mut self) {
         self.0.unswizzle();
     }
+
+    pub(crate) fn in_memory_record(value: PublicRecord<M>) -> Self {
+        Self(Swip::InMemory(value.ltime, value.status, value.meta))
+    }
+
+    pub(crate) fn partially_persisted_record(value: PublicRecord<M>) -> Self {
+        Self(Swip::PartiallyPersisted(
+            value.ltime,
+            value.status,
+            value.meta,
+        ))
+    }
+
+    pub(crate) fn persisted_record(value: PublicRecord<M>) -> Self {
+        Self(Swip::Persisted(value.ltime, value.status))
+    }
 }
 
-impl<M: crate::prefix_record::Meta + AsRef<[u8]>> std::fmt::Display
-    for MultiMapValue<M>
-{
+impl<M: Meta> std::fmt::Display for MultiMapValue<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -326,15 +341,13 @@ impl<M: crate::prefix_record::Meta + AsRef<[u8]>> std::fmt::Display
     }
 }
 
-impl<M: Meta + AsRef<[u8]>> From<PublicRecord<M>> for MultiMapValue<M> {
-    fn from(value: PublicRecord<M>) -> Self {
-        Self(Swip::InMemory(value.ltime, value.status, value.meta))
-    }
-}
+// impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
+//     fn from(value: PublicRecord<M>) -> Self {
+//         Self(Swip::InMemory(value.ltime, value.status, value.meta))
+//     }
+// }
 
-impl<M: Clone + AsRef<[u8]> + Debug> TryFrom<(u32, &MultiMapValue<M>)>
-    for PublicRecord<M>
-{
+impl<M: Meta> TryFrom<(u32, &MultiMapValue<M>)> for PublicRecord<M> {
     type Error = PrefixStoreError;
 
     fn try_from(
@@ -347,13 +360,13 @@ impl<M: Clone + AsRef<[u8]> + Debug> TryFrom<(u32, &MultiMapValue<M>)>
                 ltime,
                 status,
             }),
-            Swip::HistoricalOnDisk(ltime, status) => Ok(Self {
+            Swip::PartiallyPersisted(ltime, status, _) => Ok(Self {
                 multi_uniq_id: value.0,
                 meta: value.1.meta()?.clone(),
                 ltime,
                 status,
             }),
-            Swip::OnDisk(_ltime, _status) => {
+            Swip::Persisted(_ltime, _status) => {
                 Err(PrefixStoreError::RecordNotInMemory)
             }
         }
@@ -366,27 +379,26 @@ pub(crate) enum Swip<T, M> {
     // in memory
     InMemory(u64, T, M),
     // There are multiple ((prefix, mui), value) pairs, and the current one
-    // lives in memory, but there is/are more on disk
-    HistoricalOnDisk(u64, T),
-    // There is at least one ((prefix, mui), value) pair, it/they live(s)
-    // on disk only
-    OnDisk(u64, T),
+    // lives in memory, but there is/are older persisted ones
+    PartiallyPersisted(u64, T, M),
+    // There is at least one persisted ((prefix, mui), value) pair
+    Persisted(u64, T),
 }
 
-impl<M: Debug> Swip<RouteStatus, M> {
+impl<M: Meta> Swip<RouteStatus, M> {
     fn logical_time(&self) -> u64 {
         match self {
             Swip::InMemory(ltime, _, _) => *ltime,
-            Swip::HistoricalOnDisk(ltime, _) => *ltime,
-            Swip::OnDisk(ltime, _) => *ltime,
+            Swip::PartiallyPersisted(ltime, _, _) => *ltime,
+            Swip::Persisted(ltime, _) => *ltime,
         }
     }
 
     fn status(&self) -> RouteStatus {
         match self {
             Swip::InMemory(_, status, _) => *status,
-            Swip::HistoricalOnDisk(_, status) => *status,
-            Swip::OnDisk(_, status) => *status,
+            Swip::PartiallyPersisted(_, status, _) => *status,
+            Swip::Persisted(_, status) => *status,
         }
     }
 
@@ -395,14 +407,14 @@ impl<M: Debug> Swip<RouteStatus, M> {
             Swip::InMemory(_, s, _) => {
                 *s = status;
             }
-            Swip::HistoricalOnDisk(_, s) => *s = status,
-            Swip::OnDisk(_, s) => *s = status,
+            Swip::PartiallyPersisted(_, s, _) => *s = status,
+            Swip::Persisted(_, s) => *s = status,
         };
     }
 
     fn unswizzle(&mut self) {
-        if let Swip::InMemory(l, s, _) = self {
-            *self = Self::HistoricalOnDisk(*l, *s);
+        if let Swip::InMemory(l, s, m) = self {
+            *self = Self::PartiallyPersisted(*l, *s, m.clone());
         }
     }
 }
@@ -579,23 +591,64 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it, if it's more than 1. Returns None if this is the
     // first entry.
-    pub(crate) fn upsert_record(
+    pub(crate) fn upsert_record<
+        AF: AddressFamily,
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    >(
         &self,
+        prefix: PrefixId<AF>,
         record: PublicRecord<M>,
-    ) -> (Option<(MultiMapValue<M>, usize)>, usize) {
-        // let c_map = self.clone();
+        persistence: &PersistTree<AF, PREFIX_SIZE, KEY_SIZE>,
+        strategy: PersistStrategy,
+    ) -> (Option<usize>, usize) {
         let (mut record_map, retry_count) = self.guard_with_retry(0);
         let key = record.multi_uniq_id;
 
-        match record_map
-            .insert(record.multi_uniq_id, MultiMapValue::from(record))
-        {
-            Some(exist_rec) => {
-                record_map.get_mut(&key).unwrap().unswizzle();
-                println!("{:?}", record_map.get(&key));
-                (Some((exist_rec, record_map.len())), retry_count)
+        match (strategy, record_map.get_mut(&key)) {
+            (PersistStrategy::Historical, Some(exist_rec)) => {
+                persistence.persist_record(prefix, key, exist_rec);
+                *exist_rec =
+                    MultiMapValue::partially_persisted_record(record);
+
+                (Some(record_map.len()), retry_count)
             }
-            _ => (None, retry_count),
+            (
+                PersistStrategy::Historical | PersistStrategy::NoPersist,
+                None,
+            ) => {
+                record_map
+                    .insert(key, MultiMapValue::in_memory_record(record));
+
+                (None, retry_count)
+            }
+            (
+                PersistStrategy::WriteAhead | PersistStrategy::NoPersist,
+                Some(_),
+            ) => {
+                panic!("Encountered illegally stored record");
+            }
+            (PersistStrategy::WriteAhead, None) => {
+                let mmv =
+                    &mut MultiMapValue::in_memory_record(record.clone());
+                persistence.persist_record(prefix, key, mmv);
+                record_map
+                    .insert(key, MultiMapValue::in_memory_record(record));
+
+                (None, retry_count)
+            }
+            (PersistStrategy::NoMemory, None) => {
+                persistence.persist_record(
+                    prefix,
+                    key,
+                    &mut MultiMapValue::persisted_record(record),
+                );
+
+                (None, retry_count)
+            }
+            (PersistStrategy::NoMemory, Some(_)) => {
+                panic!("Encountered illegally stored record");
+            }
         }
     }
 }

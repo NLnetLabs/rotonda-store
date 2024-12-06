@@ -225,7 +225,7 @@ impl<M: Meta> From<(Prefix, M)> for PublicPrefixSingleRecord<M> {
     }
 }
 
-//------------ PublicRecord -------------------------------------------
+//------------ PublicRecord --------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct PublicRecord<M> {
@@ -261,18 +261,7 @@ impl<M: std::fmt::Display> std::fmt::Display for PublicRecord<M> {
     }
 }
 
-// impl<M: Clone> From<(u32, MultiMapValue<M>)> for PublicRecord<M> {
-//     fn from(value: (u32, MultiMapValue<M>)) -> Self {
-//         Self {
-//             multi_uniq_id: value.0,
-//             meta: value.1.meta,
-//             ltime: value.1.ltime,
-//             status: value.1.status,
-//         }
-//     }
-// }
-
-//------------ PublicPrefixRecord -------------------------------------------
+//------------ PublicPrefixRecord --------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct PublicPrefixRecord<M: Meta> {
@@ -511,7 +500,7 @@ impl<M: Meta> std::ops::Index<usize> for RecordSingleSet<M> {
     }
 }
 
-//------------ RecordSet ----------------------------------------------------
+//------------ RecordSet -----------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct RecordSet<M: Meta> {
@@ -701,7 +690,7 @@ impl<'a, M: Meta> Iterator for RecordSetSingleIter<'a, M> {
     }
 }
 
-//------------ RecordSetIter -------------------------------------------
+//------------ RecordSetIter -------------------------------------------------
 
 #[derive(Clone, Debug)]
 pub struct RecordSetIter<'a, M: Meta> {

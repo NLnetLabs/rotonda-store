@@ -9,7 +9,7 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, UpsertReport};
+use crate::custom_alloc::{CustomAllocStorage, StoreConfig, UpsertReport};
 use crate::insert_match;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 
@@ -440,7 +440,9 @@ impl<
                     PB,
                     PREFIX_SIZE,
                     KEY_SIZE,
-                >::init(root_node)?,
+                >::init(
+                    root_node, StoreConfig::default()
+                )?,
             },
         )
     }
