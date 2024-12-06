@@ -716,47 +716,6 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 
 //----------------------- meta-data traits/types-----------------------------
 
-/// Trait that describes how an existing record gets merged
-///
-/// MergeUpdate must be implemented by a type that implements Meta if it
-/// wants to be able to be stored. It should describe how the metadata for an
-/// existing record should be merged with newly arriving records for the same
-/// key.
-// pub trait MergeUpdate: Send + Sync {
-//     /// User-defined data to be passed in to the merge implementation.
-//     type UserDataIn: Debug + Sync + Send;
-
-//     /// User-defined data returned by the users implementation of the merge
-//     /// operations. Set to () if not needed.
-//     /// TODO: Define () as the default when the 'associated_type_defaults'
-//     /// Rust feature is stabilized. See:
-//     ///   https://github.com/rust-lang/rust/issues/29661
-//     type UserDataOut;
-
-//     fn merge_update(
-//         &mut self,
-//         update_meta: Self,
-//         user_data: Option<&Self::UserDataIn>,
-//     ) -> Result<Self::UserDataOut, Box<dyn std::error::Error>>;
-
-//     // This is part of the Read-Copy-Update pattern for updating a record
-//     // concurrently. The Read part should be done by the caller and then
-//     // the result should be passed in into this function together with
-//     // the new meta-data that updates it. This function will then create
-//     // a copy (in the pattern lingo, but in Rust that would be a Clone,
-//     // since we're not requiring Copy for Meta) and update that with a
-//     // copy of the new meta-data. It then returns the result of that merge.
-//     // The caller should then proceed to insert that as a new entry
-//     // in the global store.
-//     fn clone_merge_update(
-//         &self,
-//         update_meta: &Self,
-//         user_data: Option<&Self::UserDataIn>,
-//     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-//     where
-//         Self: std::marker::Sized;
-// }
-
 /// Trait for types that can be used as metadata of a record
 pub trait Meta
 where
@@ -770,12 +729,3 @@ where
 
     fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_>;
 }
-
-// impl Meta for inetnum::asn::Asn {
-//     type Orderable<'a> = inetnum::asn::Asn;
-//     type TBI = ();
-
-//     fn as_orderable(&self, _tbi: Self::TBI) -> inetnum::asn::Asn {
-//         *self
-//     }
-// }

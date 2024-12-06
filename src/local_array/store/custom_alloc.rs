@@ -482,7 +482,6 @@ pub struct CustomAllocStorage<
     pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
     _m: PhantomData<M>,
-    _af: PhantomData<AF>,
 }
 
 impl<
