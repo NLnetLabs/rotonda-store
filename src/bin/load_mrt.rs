@@ -11,7 +11,6 @@ use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 use rotonda_store::custom_alloc::PersistStrategy;
-use rotonda_store::custom_alloc::PersistTree;
 use rotonda_store::custom_alloc::UpsertReport;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::{MultiThreadedStore, RouteStatus};
@@ -66,6 +65,7 @@ impl std::ops::AddAssign for UpsertCounters {
     fn add_assign(&mut self, rhs: Self) {
         self.unique_prefixes += rhs.unique_prefixes;
         self.unique_routes += rhs.unique_routes;
+        self.persisted_routes += rhs.persisted_routes;
         self.total_routes += rhs.total_routes;
     }
 }
@@ -87,10 +87,11 @@ impl std::fmt::Display for UpsertCounters {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "inserted unique prefixes:\t{}", self.unique_prefixes)?;
         writeln!(f, "inserted unique routes:\t\t{}", self.unique_routes)?;
+        writeln!(f, "persisted routes:\t\t{}", self.persisted_routes)?;
         writeln!(f, "total routes:\t\t\t{}", self.total_routes)?;
         writeln!(
             f,
-            "persisted routes:\t\t{}",
+            "calculated persisted routes:\t{}",
             self.total_routes - self.unique_routes
         )
     }
@@ -226,6 +227,7 @@ fn mt_parse_and_insert_table(
                 // let (prefix, peer_idx, pa_bytes) = e;
                 let mui = peer_idx.into();
                 let val = PaBytes(pa_bytes);
+                let mut persisted_routes = 0;
 
                 if let Some(store) = store {
                     let counters = insert(
@@ -243,12 +245,14 @@ fn mt_parse_and_insert_table(
                                 PersistStrategy::WriteAhead
                                 | PersistStrategy::PersistOnly => {
                                     persisted_prefixes.push(prefix);
+                                    persisted_routes = 1;
                                 }
                                 _ => {}
                             };
                             UpsertCounters {
                                 unique_prefixes: 1,
                                 unique_routes: 1,
+                                persisted_routes,
                                 total_routes: 1,
                             }
                         }
@@ -258,6 +262,7 @@ fn mt_parse_and_insert_table(
                                 PersistStrategy::WriteAhead
                                 | PersistStrategy::PersistOnly => {
                                     persisted_prefixes.push(prefix);
+                                    persisted_routes = 1;
                                 }
                                 _ => {}
                             };
@@ -265,18 +270,21 @@ fn mt_parse_and_insert_table(
                             UpsertCounters {
                                 unique_prefixes: 0,
                                 unique_routes: 1,
+                                persisted_routes,
                                 total_routes: 1,
                             }
                         }
                         // old prefix, old mui
                         (false, false) => {
-                            if persist_strategy == PersistStrategy::MemoryOnly
+                            if persist_strategy != PersistStrategy::MemoryOnly
                             {
                                 persisted_prefixes.push(prefix);
+                                persisted_routes = 1;
                             }
                             UpsertCounters {
                                 unique_prefixes: 0,
                                 unique_routes: 0,
+                                persisted_routes,
                                 total_routes: 1,
                             }
                         }
