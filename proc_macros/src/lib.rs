@@ -498,14 +498,18 @@ pub fn create_store(
             v6: #strides6_name<M>,
         }
 
-        impl<
-                M: Meta
-            > Default for #store_name<M>
-        {
-            fn default() -> Self {
-                Self::new().expect("failed to create store")
-            }
-        }
+        // impl<
+        //         M: Meta
+        //     > Default for #store_name<M>
+        // {
+        //     fn default() -> Self {
+        //         let config = StoreConfig {
+        //             persist_strategy: PersistStrategy::PersistHistory,
+        //             persist_path: #persist_path.to_string()
+        //         };
+        //         Self::new_with_config(config).expect("failed to create store")
+        //     }
+        // }
 
         impl<
                 M: Meta
@@ -561,10 +565,22 @@ pub fn create_store(
             ///          })
             ///      }).map(|t| t.join()).collect();
             /// ```
-            pub fn new() -> Result<Self, Box<dyn std::error::Error>> {
+            pub fn new_with_config(
+                    mut config: StoreConfig
+                ) -> Result<Self, Box<dyn std::error::Error>> {
+
+                let uuid = Uuid::new_v4();
+                let mut config_v4 = config.clone();
+
+                config_v4.persist_path = format!(
+                    "{}/{}/ipv4/", config_v4.persist_path, uuid);
+
+                config.persist_path = format!(
+                    "{}/{}/ipv6/", config.persist_path, uuid);
+
                 Ok(Self {
-                    v4: #strides4_name::new()?,
-                    v6: #strides6_name::new()?,
+                    v4: #strides4_name::new(config_v4)?,
+                    v6: #strides6_name::new(config)?,
                 })
             }
         }
@@ -680,25 +696,37 @@ pub fn create_store(
 
                 match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => {
-                        self.v4.match_prefix_by_store_direct(
-                            PrefixId::<IPv4>::new(
+                        match self.v4.store.config.persist_strategy() {
+                            PersistStrategy::PersistOnly =>
+                                self.v4.match_prefix_in_persisted_store(
+                                    PrefixId::<IPv4>::new(
+                                        addr.into(),
+                                        search_pfx.len(),
+                                    ),
+                                    options.mui,
+                                ),
+                            _ => self.v4.match_prefix_by_store_direct(
+                                    PrefixId::<IPv4>::new(
+                                        addr.into(),
+                                        search_pfx.len(),
+                                    ),
+                                    options,
+                                    // options.mui,
+                                    guard
+                                )
+                        }
+                    },
+
+                    std::net::IpAddr::V6(addr) =>
+                        self.v6.match_prefix_by_store_direct(
+                            PrefixId::<IPv6>::new(
                                 addr.into(),
                                 search_pfx.len(),
                             ),
                             options,
-                            options.mui,
+                            // options.mui,
                             guard
-                        )
-                    },
-                    std::net::IpAddr::V6(addr) => self.v6.match_prefix_by_store_direct(
-                        PrefixId::<IPv6>::new(
-                            addr.into(),
-                            search_pfx.len(),
                         ),
-                        options,
-                        options.mui,
-                        guard
-                    ),
                 }
             }
 
@@ -1627,32 +1655,37 @@ pub fn create_store(
 
             // Disk Persistence
 
+            pub fn persist_strategy(&self) -> PersistStrategy {
+                self.v4.store.config.persist_strategy()
+            }
+
             pub fn get_values_for_prefix(&self, prefix: &Prefix) ->
                 Vec<(u32, u64, u8, Vec<u8>)> {
                 match prefix.is_v4() {
-                    true => self.v4.store.persistence
-                        .get_values_for_prefix(
+                    true => self.v4.store.persistence.as_ref().map_or(vec![],
+                        |p| p.get_values_for_prefix(
                             PrefixId::<IPv4>::from(*prefix)
-                        ),
-                    false => self.v6.store.persistence
-                        .get_values_for_prefix(
+                        )),
+                    false => self.v6.store.persistence.as_ref().map_or(vec![],
+                        |p| p.get_values_for_prefix(
                             PrefixId::<IPv6>::from(*prefix)
-                        )
+                        ))
                 }
             }
 
             /// Persist all the non-unique (prefix, mui, ltime) tuples
             /// with their values to disk
             pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
-                if let Some(segment) =
-                    self.v4.store.persistence.flush_to_disk()? {
-                    self.v4.store.persistence.register_segments(&[segment])?
+                if let Some(persistence) = self.v4.store.persistence.as_ref() {
+                    if let Some(segment) = persistence.flush_to_disk()? {
+                        persistence.register_segments(&[segment])?;
+                    }
                 }
 
-                if let Some(segment) =
-                    self.v6.store.persistence.flush_to_disk()?
-                {
-                    self.v6.store.persistence.register_segments(&[segment])?
+                if let Some(persistence) = self.v6.store.persistence.as_ref() {
+                    if let Some(segment) = persistence.flush_to_disk()? {
+                        persistence.register_segments(&[segment])?;
+                    }
                 }
 
                 Ok(())
@@ -1662,16 +1695,16 @@ pub fn create_store(
             /// to disk, for IPv4 and IPv6 respectively.
             pub fn approx_persisted_items(&self) -> (usize, usize) {
                 (
-                    self.v4.store.persistence.approximate_len(),
-                    self.v6.store.persistence.approximate_len()
+                    self.v4.store.persistence.as_ref().map_or(0, |p| p.approximate_len()),
+                    self.v6.store.persistence.as_ref().map_or(0, |p| p.approximate_len())
                 )
             }
 
             /// Return an estimation of the disk space currently used by the
             /// store in bytes.
             pub fn disk_space(&self) -> u64 {
-                self.v4.store.persistence.disk_space() +
-                self.v6.store.persistence.disk_space()
+                self.v4.store.persistence.as_ref().map_or(0, |p| p.disk_space()) +
+                self.v6.store.persistence.as_ref().map_or(0, |p| p.disk_space())
             }
         }
     };

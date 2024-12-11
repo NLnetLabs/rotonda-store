@@ -1,12 +1,12 @@
 use inetnum::addr::Prefix;
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
 use rotonda_store::meta_examples::NoMeta;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 type Prefix4<'a> = Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = MultiThreadedStore::new()?;
+    let tree_bitmap = MultiThreadedStore::try_default()?;
     let pfxs = vec![
         Prefix::new(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -185,9 +185,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
         tree_bitmap.insert(
-            &pfx.unwrap(), 
+            &pfx.unwrap(),
             Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-            None
+            None,
         )?;
     }
     println!("------ end of inserts\n");
@@ -297,9 +297,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
             },
-            guard
+            guard,
         );
         println!("lmp: {:?}", s_spfx);
         println!("-----------");

@@ -330,6 +330,30 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
+    pub fn get_records_for_key<M: Meta + From<Vec<u8>>>(
+        &self,
+        key: &[u8],
+    ) -> Vec<(inetnum::addr::Prefix, PublicRecord<M>)> {
+        (*self.0.prefix(key))
+            .into_iter()
+            .map(|kv| {
+                let kv = kv.unwrap();
+                let (pfx, mui, ltime, status) =
+                    Self::parse_key(kv.0.as_ref());
+
+                (
+                    PrefixId::<AF>::from(pfx).into_pub(),
+                    PublicRecord::new(
+                        mui,
+                        ltime,
+                        status.try_into().unwrap(),
+                        kv.1.as_ref().to_vec().into(),
+                    ),
+                )
+            })
+            .collect::<Vec<_>>()
+    }
+
     pub fn flush_to_disk(&self) -> Result<Option<Segment>, lsm_tree::Error> {
         self.0.flush_active_memtable(0)
     }
@@ -383,6 +407,23 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     }
 
     #[cfg(feature = "persist")]
+    pub fn prefix_mui_persistence_key(
+        prefix_id: PrefixId<AF>,
+        mui: u32,
+    ) -> Vec<u8> {
+        let mut key = vec![];
+        // prefix 5 or 17 bytes
+        *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
+
+        // mui 4 bytes
+        *key[PREFIX_SIZE..PREFIX_SIZE + 4]
+            .first_chunk_mut::<4>()
+            .unwrap() = mui.to_le_bytes();
+
+        key
+    }
+
+    #[cfg(feature = "persist")]
     pub fn parse_key(bytes: &[u8]) -> ([u8; PREFIX_SIZE], u32, u64, u8) {
         (
             // prefix 5 or 17 bytes
@@ -414,16 +455,16 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
-        record: &mut MultiMapValue<M>,
+        record: &PublicRecord<M>,
     ) {
         self.insert(
             PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::persistence_key(
                 prefix,
                 mui,
-                record.logical_time(),
-                record.status(),
+                record.ltime,
+                record.status,
             ),
-            record.meta().unwrap().as_ref(),
+            record.meta.as_ref(),
         );
     }
 }
@@ -436,26 +477,23 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PersistStrategy {
     WriteAhead,
-    Historical,
-    NoPersist,
-    NoMemory,
+    PersistHistory,
+    MemoryOnly,
+    PersistOnly,
 }
 
 #[derive(Debug, Clone)]
 pub struct StoreConfig {
-    persist_strategy: PersistStrategy,
-    persist_path: String,
+    pub(crate) persist_strategy: PersistStrategy,
+    pub(crate) persist_path: String,
 }
 
-impl Default for StoreConfig {
-    fn default() -> Self {
-        StoreConfig {
-            persist_strategy: PersistStrategy::Historical,
-            persist_path: "/tmp/rotonda/".into(),
-        }
+impl StoreConfig {
+    pub(crate) fn persist_strategy(&self) -> PersistStrategy {
+        self.persist_strategy
     }
 }
 
@@ -472,11 +510,11 @@ pub struct CustomAllocStorage<
     const PREFIX_SIZE: usize,
     const KEY_SIZE: usize,
 > {
-    config: StoreConfig,
+    pub(crate) config: StoreConfig,
     pub(crate) buckets: NB,
     pub prefixes: PB,
     #[cfg(feature = "persist")]
-    pub persistence: PersistTree<AF, PREFIX_SIZE, KEY_SIZE>,
+    pub persistence: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
     pub default_route_prefix_serial: AtomicUsize,
     // Global Roaring BitMap INdex that stores MUIs.
     pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
@@ -500,11 +538,16 @@ impl<
     ) -> Result<Self, Box<dyn std::error::Error>> {
         info!("store: initialize store {}", AF::BITS);
 
-        let persist_path = Path::new(&config.persist_path);
-        let persistence = PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>(
-            lsm_tree::Config::new(persist_path).open()?,
-            PhantomData,
-        );
+        let persistence = match config.persist_strategy {
+            PersistStrategy::MemoryOnly => None,
+            _ => {
+                let persist_path = Path::new(&config.persist_path);
+                Some(PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>(
+                    lsm_tree::Config::new(persist_path).open()?,
+                    PhantomData,
+                ))
+            }
+        };
 
         let store = CustomAllocStorage {
             config,
@@ -709,7 +752,7 @@ impl<
         &'a self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
-    ) -> Option<SizedStrideRef<AF>> {
+    ) -> Option<SizedStrideRef<'a, AF>> {
         struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
             f: &'s dyn for<'a> Fn(
                 &SearchLevel<AF, S>,
@@ -831,8 +874,8 @@ impl<
                             prefix,
                             record,
                             &self.persistence,
-                            PersistStrategy::Historical,
-                        );
+                            self.config.persist_strategy,
+                        )?;
 
                     // See if someone beat us to creating the record.
                     if mui_count.is_some() {
@@ -869,8 +912,8 @@ impl<
                             prefix,
                             record,
                             &self.persistence,
-                            PersistStrategy::Historical,
-                        );
+                            self.config.persist_strategy,
+                        )?;
                     mui_is_new = mui_count.is_none();
 
                     if let Some(tbi) = update_path_selections {
@@ -1090,12 +1133,14 @@ impl<
         }
     }
 
+    // This function is used by the match_prefix, and [more|less]_specifics
+    // public methods on the TreeBitMap (indirectly).
     #[allow(clippy::type_complexity)]
     pub fn non_recursive_retrieve_prefix(
         &'a self,
         id: PrefixId<AF>,
     ) -> (
-        Option<&StoredPrefix<AF, M>>,
+        Option<&'a StoredPrefix<AF, M>>,
         Option<(
             PrefixId<AF>,
             u8,
@@ -1144,7 +1189,7 @@ impl<
     pub(crate) fn retrieve_prefix(
         &'a self,
         prefix_id: PrefixId<AF>,
-    ) -> Option<(&StoredPrefix<AF, M>, usize)> {
+    ) -> Option<(&'a StoredPrefix<AF, M>, usize)> {
         struct SearchLevel<
             's,
             AF: AddressFamily,
@@ -1351,20 +1396,5 @@ impl<
         ((id.get_net() << last_level)
             >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
             .dangerously_truncate_to_u32() as usize
-    }
-}
-
-//------------ Upsert -------------------------------------------------------
-pub enum Upsert<T> {
-    Insert,
-    Update(T),
-}
-
-impl<T> std::fmt::Display for Upsert<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Upsert::Insert => write!(f, "Insert"),
-            Upsert::Update(_) => write!(f, "Update"),
-        }
     }
 }

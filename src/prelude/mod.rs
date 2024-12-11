@@ -1,4 +1,5 @@
 pub use crate::{AddressFamily, IPv4, IPv6};
+pub use uuid::Uuid;
 
 pub use crate::prefix_record::{Meta, PublicPrefixRecord as PrefixRecord};
 pub use crate::stride::{Stride3, Stride4, Stride5};
@@ -24,7 +25,7 @@ pub mod multi {
 
     pub use crate::custom_alloc::CustomAllocStorage;
     pub use crate::custom_alloc::{
-        Counters, StoreStats, Upsert, UpsertReport,
+        Counters, PersistStrategy, StoreConfig, StoreStats, UpsertReport,
     };
 
     pub use routecore::bgp::path_selection::TiebreakerInfo;

@@ -719,8 +719,14 @@ impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
 /// Trait for types that can be used as metadata of a record
 pub trait Meta
 where
-    Self:
-        fmt::Debug + fmt::Display + Clone + Sized + Send + Sync + AsRef<[u8]>,
+    Self: fmt::Debug
+        + fmt::Display
+        + Clone
+        + Sized
+        + Send
+        + Sync
+        + AsRef<[u8]>
+        + From<Vec<u8>>,
 {
     type Orderable<'a>: Ord
     where

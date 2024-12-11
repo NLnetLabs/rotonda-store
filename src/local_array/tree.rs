@@ -395,7 +395,9 @@ impl<
         const KEY_SIZE: usize,
     > TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
-    pub fn new() -> Result<
+    pub fn new(
+        config: StoreConfig,
+    ) -> Result<
         TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
         Box<dyn std::error::Error>,
     > {
@@ -440,9 +442,7 @@ impl<
                     PB,
                     PREFIX_SIZE,
                     KEY_SIZE,
-                >::init(
-                    root_node, StoreConfig::default()
-                )?,
+                >::init(root_node, config)?,
             },
         )
     }
@@ -711,19 +711,19 @@ impl<
     }
 }
 
-impl<
-        AF: AddressFamily,
-        M: Meta,
-        NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, M>,
-        const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    > Default for TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
-{
-    fn default() -> Self {
-        Self::new().unwrap()
-    }
-}
+// impl<
+//         AF: AddressFamily,
+//         M: Meta,
+//         NB: NodeBuckets<AF>,
+//         PB: PrefixBuckets<AF, M>,
+//         const PREFIX_SIZE: usize,
+//         const KEY_SIZE: usize,
+//     > Default for TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+// {
+//     fn default() -> Self {
+//         Self::new().unwrap()
+//     }
+// }
 
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]

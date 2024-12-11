@@ -4,6 +4,7 @@ use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 
 use crate::af::AddressFamily;
+use crate::custom_alloc::PersistTree;
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::prefix_record::{Meta, PublicRecord};
 use inetnum::addr::Prefix;
@@ -109,7 +110,7 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> Result<
-        impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_,
+        impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a,
         std::io::Error,
     > {
         Ok(self.store.more_specific_prefix_iter_from(
@@ -124,27 +125,28 @@ where
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
-        mui: Option<u32>,
+        // mui: Option<u32>,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        // `non_recursive_retrieve_prefix` returns an exact match
-        // only, so no longest matching prefix!
+        // `non_recursive_retrieve_prefix` returns an exact match only, so no
+        // longest matching prefix!
         let mut stored_prefix =
             self.store.non_recursive_retrieve_prefix(search_pfx).0.map(
                 |pfx| {
                     (
                         pfx.prefix,
                         if !options.include_withdrawn {
-                            // Filter out all the withdrawn records, both with
-                            // globally withdrawn muis, and with local statuses
+                            // Filter out all the withdrawn records, both
+                            // with globally withdrawn muis, and with local
+                            // statuses
                             // set to Withdrawn.
-                            self.get_filtered_records(pfx, mui, guard)
+                            self.get_filtered_records(pfx, options.mui, guard)
                                 .into_iter()
                                 .collect()
                         } else {
-                            // Do no filter out any records, but do rewrite the
-                            // local statuses of the records with muis that
-                            // appear in the specified bitmap index.
+                            // Do no filter out any records, but do rewrite
+                            // the local statuses of the records with muis
+                            // that appear in the specified bitmap index.
                             pfx.record_map.as_records_with_rewritten_status(
                                 unsafe {
                                     self.store
@@ -175,7 +177,7 @@ where
                     .store
                     .less_specific_prefix_iter(
                         search_pfx,
-                        mui,
+                        options.mui,
                         options.include_withdrawn,
                         guard,
                     )
@@ -207,7 +209,7 @@ where
                             } else {
                                 search_pfx
                             },
-                            mui,
+                            options.mui,
                             options.include_withdrawn,
                             guard,
                         )
@@ -225,19 +227,53 @@ where
                             } else {
                                 search_pfx
                             },
-                            mui,
+                            options.mui,
                             options.include_withdrawn,
                             guard,
                         )
-                        // .map(|p| (p.prefix_into_pub(), p))
                         .collect(),
                 )
-                // The user requested more specifics, but there aren't any, so we
-                // need to return an empty vec, not a None.
+                // The user requested more specifics, but there aren't any, so
+                // we need to return an empty vec, not a None.
             } else {
                 None
             },
             match_type,
+        }
+    }
+
+    pub fn match_prefix_in_persisted_store(
+        &'a self,
+        search_pfx: PrefixId<AF>,
+        mui: Option<u32>,
+    ) -> QueryResult<M> {
+        let key: Vec<u8> = if let Some(mui) = mui {
+            PersistTree::<AF,
+        PREFIX_SIZE, KEY_SIZE>::prefix_mui_persistence_key(search_pfx, mui)
+        } else {
+            search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
+        };
+
+        if let Some(persist) = &self.store.persistence {
+            QueryResult {
+                prefix: Some(search_pfx.into_pub()),
+                match_type: MatchType::ExactMatch,
+                prefix_meta: persist
+                    .get_records_for_key(&key)
+                    .into_iter()
+                    .map(|(_, rec)| rec)
+                    .collect::<Vec<_>>(),
+                less_specifics: None,
+                more_specifics: None,
+            }
+        } else {
+            QueryResult {
+                prefix: None,
+                match_type: MatchType::EmptyMatch,
+                prefix_meta: vec![],
+                less_specifics: None,
+                more_specifics: None,
+            }
         }
     }
 

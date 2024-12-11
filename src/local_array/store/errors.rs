@@ -9,6 +9,7 @@ pub enum PrefixStoreError {
     PrefixNotFound,
     BestPathNotFound,
     RecordNotInMemory,
+    PersistFailed,
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -43,6 +44,13 @@ impl fmt::Display for PrefixStoreError {
                     f,
                     "Error: The Record for this (prefix, mui) is not in \
                     memory."
+                )
+            }
+            PrefixStoreError::PersistFailed => {
+                write!(
+                    f,
+                    "Error: The record for this (prefix, mui) cannot be \
+                    persisted."
                 )
             }
         }

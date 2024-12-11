@@ -2,70 +2,13 @@
 
 mod full_table {
     use inetnum::addr::Prefix;
-    use inetnum::asn::Asn;
 
+    use crate::test_types::BeBytesAsn;
     use crate::{prelude::*, PublicPrefixSingleRecord, SingleThreadedStore};
 
     use std::error::Error;
     use std::fs::File;
     use std::process;
-
-    #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
-    pub struct ComplexPrefixAs(pub Vec<u32>);
-
-    // impl MergeUpdate for ComplexPrefixAs {
-    //     type UserDataIn = ();
-    //     type UserDataOut = ();
-
-    //     fn merge_update(
-    //         &mut self,
-    //         update_record: ComplexPrefixAs,
-    //         _: Option<&Self::UserDataIn>,
-    //     ) -> Result<(), Box<dyn std::error::Error>> {
-    //         self.0 = update_record.0;
-    //         Ok(())
-    //     }
-
-    //     fn clone_merge_update(
-    //         &self,
-    //         update_meta: &Self,
-    //         _: Option<&Self::UserDataIn>,
-    //     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-    //     where
-    //         Self: std::marker::Sized,
-    //     {
-    //         let mut new_meta = update_meta.0.clone();
-    //         new_meta.push(self.0[0]);
-    //         Ok((ComplexPrefixAs(new_meta), ()))
-    //     }
-    // }
-
-    impl AsRef<[u8]> for ComplexPrefixAs {
-        fn as_ref(&self) -> &[u8] {
-            todo!()
-        }
-    }
-
-    impl Meta for ComplexPrefixAs {
-        type Orderable<'a> = Asn;
-        type TBI = ();
-
-        fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
-            self.0[0].into()
-        }
-    }
-
-    // impl Orderable<u32, Rfc4271> for ComplexPrefixAs {
-    //     fn get_id(&self) -> &Self {
-    //         &self.0
-    //     }
-    // }
-
-    impl std::fmt::Display for ComplexPrefixAs {
-        fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            write!(f, "AS{:?}", self.0)
-        }
-    }
 
     #[test]
     fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
@@ -78,7 +21,7 @@ mod full_table {
         const FOUND_PREFIXES: u32 = 1322993;
 
         fn load_prefixes(
-            pfxs: &mut Vec<PublicPrefixSingleRecord<ComplexPrefixAs>>,
+            pfxs: &mut Vec<PublicPrefixSingleRecord<BeBytesAsn>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -94,7 +37,7 @@ mod full_table {
                 let asn: u32 = record[2].parse().unwrap();
                 let pfx = PublicPrefixSingleRecord::new(
                     Prefix::new(net.into(), len)?,
-                    ComplexPrefixAs(vec![asn]),
+                    BeBytesAsn(asn.to_be_bytes()),
                 );
                 pfxs.push(pfx);
             }
@@ -108,11 +51,10 @@ mod full_table {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PublicPrefixSingleRecord<ComplexPrefixAs>> =
-                vec![];
+            let mut pfxs: Vec<PublicPrefixSingleRecord<BeBytesAsn>> = vec![];
             let v4_strides = vec![8];
             let v6_strides = vec![8];
-            let mut tree_bitmap = SingleThreadedStore::<ComplexPrefixAs>::new(
+            let mut tree_bitmap = SingleThreadedStore::<BeBytesAsn>::new(
                 v4_strides, v6_strides,
             );
 

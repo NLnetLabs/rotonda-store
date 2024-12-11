@@ -66,7 +66,7 @@ fn load_prefixes(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);

@@ -10,6 +10,8 @@ use memmap2::Mmap;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
+use rotonda_store::custom_alloc::PersistStrategy;
+use rotonda_store::custom_alloc::PersistTree;
 use rotonda_store::custom_alloc::UpsertReport;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::{MultiThreadedStore, RouteStatus};
@@ -36,6 +38,12 @@ impl AsRef<[u8]> for PaBytes {
     }
 }
 
+impl From<Vec<u8>> for PaBytes {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value)
+    }
+}
+
 impl rotonda_store::Meta for PaBytes {
     type Orderable<'a> = u32;
 
@@ -50,6 +58,7 @@ impl rotonda_store::Meta for PaBytes {
 struct UpsertCounters {
     unique_prefixes: usize,
     unique_routes: usize,
+    persisted_routes: usize,
     total_routes: usize,
 }
 
@@ -68,6 +77,7 @@ impl std::ops::Add for UpsertCounters {
         Self {
             unique_prefixes: self.unique_prefixes + rhs.unique_prefixes,
             unique_routes: self.unique_routes + rhs.unique_routes,
+            persisted_routes: self.persisted_routes + rhs.persisted_routes,
             total_routes: self.total_routes + rhs.total_routes,
         }
     }
@@ -80,7 +90,7 @@ impl std::fmt::Display for UpsertCounters {
         writeln!(f, "total routes:\t\t\t{}", self.total_routes)?;
         writeln!(
             f,
-            "overwritten routes:\t\t{}",
+            "persisted routes:\t\t{}",
             self.total_routes - self.unique_routes
         )
     }
@@ -202,12 +212,14 @@ fn mt_parse_and_insert_table(
     store: Option<&MultiThreadedStore<PaBytes>>,
     ltime: u64,
 ) -> (UpsertCounters, Vec<Prefix>) {
+    let persist_strategy =
+        store.map_or(PersistStrategy::MemoryOnly, |p| p.persist_strategy());
     let counters = tables
         .par_bridge()
         .map(|(_fam, reh)| {
             let mut local_counters = UpsertCounters::default();
             let iter = routecore::mrt::SingleEntryIterator::new(reh);
-            let overwritten_prefixes = &mut vec![];
+            let persisted_prefixes = &mut vec![];
             // let mut cnt = 0;
             for (prefix, peer_idx, pa_bytes) in iter {
                 // cnt += 1;
@@ -226,20 +238,42 @@ fn mt_parse_and_insert_table(
                     )
                     .map(|r| match (r.prefix_new, r.mui_new) {
                         // new prefix, new mui
-                        (true, true) => UpsertCounters {
-                            unique_prefixes: 1,
-                            unique_routes: 1,
-                            total_routes: 1,
-                        },
+                        (true, true) => {
+                            match persist_strategy {
+                                PersistStrategy::WriteAhead
+                                | PersistStrategy::PersistOnly => {
+                                    persisted_prefixes.push(prefix);
+                                }
+                                _ => {}
+                            };
+                            UpsertCounters {
+                                unique_prefixes: 1,
+                                unique_routes: 1,
+                                total_routes: 1,
+                            }
+                        }
                         // old prefix, new mui
-                        (false, true) => UpsertCounters {
-                            unique_prefixes: 0,
-                            unique_routes: 1,
-                            total_routes: 1,
-                        },
+                        (false, true) => {
+                            match persist_strategy {
+                                PersistStrategy::WriteAhead
+                                | PersistStrategy::PersistOnly => {
+                                    persisted_prefixes.push(prefix);
+                                }
+                                _ => {}
+                            };
+
+                            UpsertCounters {
+                                unique_prefixes: 0,
+                                unique_routes: 1,
+                                total_routes: 1,
+                            }
+                        }
                         // old prefix, old mui
                         (false, false) => {
-                            overwritten_prefixes.push(prefix);
+                            if persist_strategy == PersistStrategy::MemoryOnly
+                            {
+                                persisted_prefixes.push(prefix);
+                            }
                             UpsertCounters {
                                 unique_prefixes: 0,
                                 unique_routes: 0,
@@ -256,7 +290,7 @@ fn mt_parse_and_insert_table(
                     local_counters += counters;
                 }
             }
-            (local_counters, overwritten_prefixes.clone())
+            (local_counters, persisted_prefixes.clone())
         })
         .fold(
             || (UpsertCounters::default(), vec![]),
@@ -372,7 +406,7 @@ fn main() {
     let mut global_counters = UpsertCounters::default();
     let mut mib_total: usize = 0;
     let mut inner_stores = vec![];
-    let mut overwritten_prefixes = BTreeSet::new();
+    let mut persisted_prefixes = BTreeSet::new();
 
     // Create all the stores necessary, and if at least one is created, create
     // a reference to the first one.
@@ -385,7 +419,8 @@ fn main() {
             return;
         }
         a if a.single_store => {
-            inner_stores.push(MultiThreadedStore::<PaBytes>::new().unwrap());
+            inner_stores
+                .push(MultiThreadedStore::<PaBytes>::try_default().unwrap());
             println!("created a single-store\n");
             Some(&inner_stores[0])
         }
@@ -395,8 +430,9 @@ fn main() {
         }
         _ => {
             for _ in &args.mrt_files {
-                inner_stores
-                    .push(MultiThreadedStore::<PaBytes>::new().unwrap());
+                inner_stores.push(
+                    MultiThreadedStore::<PaBytes>::try_default().unwrap(),
+                );
             }
             println!("Number of created stores: {}", inner_stores.len());
             Some(&inner_stores[0])
@@ -443,10 +479,10 @@ fn main() {
         global_counters += match &args {
             a if a.mt => {
                 let tables = mrt_file.tables().unwrap();
-                let (counters, ow_pfxs) =
+                let (counters, per_pfxs) =
                     mt_parse_and_insert_table(tables, store, f_index as u64);
                 if args.verify {
-                    overwritten_prefixes.extend(&ow_pfxs)
+                    persisted_prefixes.extend(&per_pfxs)
                 }
                 counters
             }
@@ -506,7 +542,7 @@ fn main() {
     if args.verify {
         println!("\nverifying disk persistence...");
         let mut max_len = 0;
-        for pfx in overwritten_prefixes {
+        for pfx in persisted_prefixes {
             let values = store.unwrap().get_values_for_prefix(&pfx);
             if values.is_empty() {
                 eprintln!("Found empty prefix on disk");

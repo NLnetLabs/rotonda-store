@@ -43,6 +43,12 @@ impl AsRef<[u8]> for Ipv4Route {
     }
 }
 
+impl From<Vec<u8>> for Ipv4Route {
+    fn from(value: Vec<u8>) -> Self {
+        todo!()
+    }
+}
+
 mod common {
     use std::io::Write;
 
@@ -61,7 +67,7 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
     let tree_bitmap =
         std::sync::Arc::new(std::sync::Arc::new(MultiThreadedStore::<
             Ipv4Route,
-        >::new()?));
+        >::try_default()?));
 
     let pfx = Prefix::from_str("185.34.0.0/16")?;
     let mut asns = [

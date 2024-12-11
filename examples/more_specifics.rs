@@ -7,7 +7,7 @@ use rotonda_store::AddressFamily;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

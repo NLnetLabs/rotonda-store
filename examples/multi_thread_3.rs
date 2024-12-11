@@ -12,7 +12,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = Arc::new(MultiThreadedStore::<PrefixAs>::new()?);
+    let tree_bitmap =
+        Arc::new(MultiThreadedStore::<PrefixAs>::try_default()?);
     let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let pfx = Prefix::new_relaxed(

@@ -10,40 +10,45 @@ mod tests {
     use std::process;
 
     #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
-    pub struct ComplexPrefixAs(Vec<u8>);
+    pub struct AsnList(Vec<u8>);
 
     // pub struct ComplexPrefixAs(pub Vec<u32>);
 
-    impl std::fmt::Display for ComplexPrefixAs {
+    impl std::fmt::Display for AsnList {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write!(f, "AS{:?}", self.0)
         }
     }
 
-    impl Meta for ComplexPrefixAs {
+    impl Meta for AsnList {
         type Orderable<'a> = Asn;
         type TBI = ();
 
         fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
-            Asn::from(u32::from_le_bytes(*self.0.first_chunk::<4>().unwrap()))
+            Asn::from(u32::from_be_bytes(*self.0.first_chunk::<4>().unwrap()))
         }
     }
 
-    impl AsRef<[u8]> for ComplexPrefixAs {
+    impl AsRef<[u8]> for AsnList {
         fn as_ref(&self) -> &[u8] {
             &self.0
         }
     }
 
-    impl From<Vec<u32>> for ComplexPrefixAs {
+    impl From<Vec<u32>> for AsnList {
         fn from(value: Vec<u32>) -> Self {
-            ComplexPrefixAs(
+            AsnList(
                 value
                     .into_iter()
-                    .map(|v| v.to_le_bytes())
-                    .flatten()
+                    .flat_map(|v| v.to_le_bytes())
                     .collect::<Vec<u8>>(),
             )
+        }
+    }
+
+    impl From<Vec<u8>> for AsnList {
+        fn from(value: Vec<u8>) -> Self {
+            Self(value)
         }
     }
 
@@ -61,7 +66,7 @@ mod tests {
         let guard = &epoch::pin();
 
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<ComplexPrefixAs>>,
+            pfxs: &mut Vec<PrefixRecord<AsnList>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -96,8 +101,8 @@ mod tests {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?;
+            let mut pfxs: Vec<PrefixRecord<AsnList>> = vec![];
+            let tree_bitmap = MultiThreadedStore::<AsnList>::try_default()?;
             // .with_user_data("Testing".to_string());
 
             if let Err(err) = load_prefixes(&mut pfxs) {

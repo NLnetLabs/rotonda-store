@@ -10,7 +10,7 @@ mod tests {
     #[test]
     fn test_more_specifics_without_less_specifics(
     ) -> Result<(), Box<dyn Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18)?, // 0
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24)?, // 1
@@ -90,7 +90,7 @@ mod tests {
     #[test]
     fn test_more_specifics_with_less_specifics() -> Result<(), Box<dyn Error>>
     {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18), // 0
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24), // 1

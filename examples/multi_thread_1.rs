@@ -1,35 +1,42 @@
 use std::{sync::Arc, thread};
 
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
 use rotonda_store::meta_examples::NoMeta;
+use rotonda_store::prelude::multi::*;
+use rotonda_store::prelude::*;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new()?);
+    let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::try_default()?);
 
     let _: Vec<_> = (0..16)
         .map(|i: i32| {
             let tree_bitmap = tree_bitmap.clone();
 
-            thread::Builder::new().name(i.to_string()).spawn(move || {
-                let pfxs = get_pfx();
+            thread::Builder::new()
+                .name(i.to_string())
+                .spawn(move || {
+                    let pfxs = get_pfx();
 
-                for pfx in pfxs.into_iter() {
-                    println!("insert {}", pfx.unwrap());
+                    for pfx in pfxs.into_iter() {
+                        println!("insert {}", pfx.unwrap());
 
-                    match tree_bitmap
-                        .insert(
-                            &pfx.unwrap(), 
-                            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-                            None
-                    ) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("{}", e);
-                        }
-                    };
-                }
-            }).unwrap()
+                        match tree_bitmap.insert(
+                            &pfx.unwrap(),
+                            Record::new(
+                                0,
+                                0,
+                                RouteStatus::Active,
+                                NoMeta::Empty,
+                            ),
+                            None,
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        };
+                    }
+                })
+                .unwrap()
         })
         .map(|t| t.join())
         .collect();
@@ -47,7 +54,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: true,
-                mui: None
+                mui: None,
             },
             guard,
         );

@@ -18,6 +18,8 @@ mod prefix_record;
 mod stride;
 mod synth_int;
 
+pub mod test_types;
+
 #[macro_use]
 mod macros;
 
@@ -36,7 +38,7 @@ pub mod meta_examples;
 pub use crate::rotonda_store::*;
 
 // re-exports
-pub use inetnum::addr;
 pub use crossbeam_epoch::{self as epoch, Guard};
+pub use inetnum::addr;
 
 pub use prefix_record::{PublicRecord, RecordSet};

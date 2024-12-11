@@ -10,6 +10,18 @@ use std::fmt;
 ))]
 struct DefaultStore;
 
+/// Try some
+impl<M: Meta> DefaultStore<M> {
+    pub fn try_default() -> Result<Self, PrefixStoreError> {
+        let config = StoreConfig {
+            persist_strategy: PersistStrategy::PersistOnly,
+            persist_path: "/tmp/rotonda/".to_string(),
+        };
+        Self::new_with_config(config)
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)
+    }
+}
+
 impl<
         M: Meta,
         NB: NodeBuckets<IPv4>,

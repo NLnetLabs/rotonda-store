@@ -22,7 +22,7 @@ mod tests {
 
     #[test]
     fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
+        let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -93,7 +93,7 @@ mod tests {
     fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -401,7 +401,7 @@ mod tests {
     #[test]
     fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+            let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -459,7 +459,7 @@ mod tests {
     fn test_multi_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+        let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 

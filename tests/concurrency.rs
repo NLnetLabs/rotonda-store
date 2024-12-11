@@ -1,17 +1,13 @@
 use std::{str::FromStr, sync::atomic::Ordering};
 
-use common::SimpleAsn;
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    prelude::multi::{Record, RouteStatus},
-    MatchOptions, Meta, MultiThreadedStore,
+    prelude::multi::RouteStatus, test_types::BeBytesAsn, MatchOptions,
+    MultiThreadedStore, PublicRecord as Record,
 };
 
 mod common {
     use std::io::Write;
-
-    use inetnum::asn::Asn;
-    use rotonda_store::Meta;
 
     pub fn init() {
         let _ = env_logger::builder()
@@ -19,48 +15,11 @@ mod common {
             .is_test(true)
             .try_init();
     }
-
-    #[derive(Debug, Ord, PartialOrd, Eq, PartialEq, Clone)]
-    pub struct SimpleAsn([u8; 4]);
-
-    impl std::fmt::Display for SimpleAsn {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}", u32::from_le_bytes(self.0))
-        }
-    }
-
-    impl Meta for SimpleAsn {
-        type Orderable<'a> = SimpleAsn;
-        type TBI = ();
-
-        fn as_orderable(&self, tbi: Self::TBI) -> Self::Orderable<'_> {
-            todo!()
-        }
-    }
-
-    impl From<Asn> for SimpleAsn {
-        fn from(value: Asn) -> Self {
-            Self(u32::from_be_bytes(value.to_raw()).to_le_bytes())
-        }
-    }
-
-    impl From<u32> for SimpleAsn {
-        fn from(value: u32) -> Self {
-            Self(value.to_le_bytes())
-        }
-    }
-
-    impl AsRef<[u8]> for SimpleAsn {
-        fn as_ref(&self) -> &[u8] {
-            &self.0
-        }
-    }
 }
 
 #[test]
 fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
-    use crate::common::SimpleAsn;
 
     let pfx_vec_1 = vec![
         Prefix::from_str("185.34.0.0/16")?,
@@ -90,7 +49,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let tree_bitmap =
-        std::sync::Arc::new(MultiThreadedStore::<SimpleAsn>::new()?);
+        std::sync::Arc::new(MultiThreadedStore::<BeBytesAsn>::try_default()?);
 
     let mui_data_1 = MuiData {
         mui: 1,
@@ -416,7 +375,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     ];
 
     let tree_bitmap =
-        std::sync::Arc::new(MultiThreadedStore::<common::SimpleAsn>::new()?);
+        std::sync::Arc::new(MultiThreadedStore::<BeBytesAsn>::try_default()?);
 
     const MUI_DATA: [u32; 4] = [65501, 65502, 65503, 65504];
 

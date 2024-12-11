@@ -60,6 +60,12 @@ impl AsRef<[u8]> for PrefixAs {
     }
 }
 
+impl From<Vec<u8>> for PrefixAs {
+    fn from(value: Vec<u8>) -> Self {
+        Self(*value.first_chunk::<4>().unwrap())
+    }
+}
+
 impl std::fmt::Display for PrefixAs {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "AS{}", u32::from_le_bytes(self.0))
@@ -105,6 +111,12 @@ impl Meta for NoMeta {
 impl AsRef<[u8]> for NoMeta {
     fn as_ref(&self) -> &[u8] {
         &[]
+    }
+}
+
+impl From<Vec<u8>> for NoMeta {
+    fn from(_value: Vec<u8>) -> Self {
+        Self::Empty
     }
 }
 
