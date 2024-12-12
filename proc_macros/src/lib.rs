@@ -496,6 +496,7 @@ pub fn create_store(
         > {
             v4: #strides4_name<M>,
             v6: #strides6_name<M>,
+            config: StoreConfig
         }
 
         // impl<
@@ -571,16 +572,18 @@ pub fn create_store(
 
                 let uuid = Uuid::new_v4();
                 let mut config_v4 = config.clone();
+                let mut config_v6 = config.clone();
 
                 config_v4.persist_path = format!(
                     "{}/{}/ipv4/", config_v4.persist_path, uuid);
 
-                config.persist_path = format!(
+                config_v6.persist_path = format!(
                     "{}/{}/ipv6/", config.persist_path, uuid);
 
                 Ok(Self {
                     v4: #strides4_name::new(config_v4)?,
-                    v6: #strides6_name::new(config)?,
+                    v6: #strides6_name::new(config_v6)?,
+                    config
                 })
             }
         }
@@ -696,7 +699,7 @@ pub fn create_store(
 
                 match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => {
-                        match self.v4.store.config.persist_strategy() {
+                        match self.config.persist_strategy() {
                             PersistStrategy::PersistOnly =>
                                 self.v4.match_prefix_in_persisted_store(
                                     PrefixId::<IPv4>::new(
