@@ -297,6 +297,8 @@ pub struct UpsertReport {
     pub mui_count: usize,
 }
 
+//------------ PersistTree ---------------------------------------------------
+
 pub struct PersistTree<
     AF: AddressFamily,
     // The size in bytes of the prefix in the peristed storage (disk), this

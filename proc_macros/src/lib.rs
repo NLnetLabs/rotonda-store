@@ -588,14 +588,13 @@ pub fn create_store(
         impl<'a, M: Meta,
             > #store_name<M>
         {
-            /// Search for and return one or more prefixes that match the given
-            /// `search_pfx` argument.
-            ///
-            /// The search will return a [QueryResult] with the matching prefix,
-            /// if any, the type of match for the found prefix and the more and
-            /// less specifics for the requested prefix. The inclusion of more-
-            /// or less-specifics and the requested `match_type` is configurable
-            /// through the [MatchOptions] argument.
+            /// Search for and return one or more prefixes that match the
+            ///given  `search_pfx` argument.   The search will return a
+            ///[QueryResult] with the matching prefix,  if any, the type of
+            ///match for the found prefix and the more and  less specifics for
+            ///the requested prefix. The inclusion of more-  or less-specifics
+            ///and the requested `match_type` is configurable  through the
+            ///[MatchOptions] argument.
             ///
             /// The `match_type` in the `MatchOptions` indicates what match
             /// types can appear in the [QueryResult] result.
@@ -605,23 +604,24 @@ pub fn create_store(
             /// prefix, it will return an `EmptyMatch`.
             ///
             /// `LongestMatch` is less strict, and either an exactly matching
-            /// prefix or - in case there is no exact match - a longest matching
-            /// prefix will be allowed in the result. Failing both an EmptyMatch
-            /// will be returned.
+            /// prefix or - in case there is no exact match - a longest
+            /// matching prefix will be allowed in the result. Failing both an
+            /// EmptyMatch will be returned.
             ///
             /// For both `ExactMatch` and `LongestMatch` the
-            /// `include_less_specifics` and `include_more_specifics` options
-            /// will be respected and the result will contain the more and less
-            /// specifics according to the options for the requested prefix,
-            /// even if the result returns a `match_type` of `EmptyMatch`.
+            /// `include_less_specifics` and `include_more_specifics`
+            /// options will be respected and the result will contain the
+            /// more and less specifics according to the options for the
+            /// requested prefix, even if the result returns a `match_type`
+            /// of `EmptyMatch`.
             ///
-            /// `EmptyMatch` is the least strict, and will *always* return the
-            /// requested prefix, be it exactly matching, longest matching or not
-            /// matching at all (empty match), again, together with its less|more
-            /// specifics (if requested). Note that the last option, the empty
-            /// match in the result will never return less-specifics, but can
-            /// return more-specifics for a prefix that itself is not present
-            /// in the store.
+            /// `EmptyMatch` is the least strict, and will *always* return
+            /// the requested prefix, be it exactly matching, longest matching
+            /// or not matching at all (empty match), again, together with
+            /// its less|more specifics (if requested). Note that the last
+            /// option, the empty match in the result will never return
+            /// less-specifics, but can return more-specifics for a prefix
+            /// that itself is not present in the store.
             ///
             ///
             /// This table sums it up:

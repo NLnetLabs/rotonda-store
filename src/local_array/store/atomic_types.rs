@@ -97,7 +97,6 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct PathSelections {
-    // serial: usize,
     pub(crate) path_selection_muis: (Option<u32>, Option<u32>),
 }
 
