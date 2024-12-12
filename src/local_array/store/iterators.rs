@@ -728,7 +728,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
@@ -848,7 +848,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + '_ {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
         trace!("less specifics for {:?}", start_prefix_id);
         trace!("level {}, len {}", 0, start_prefix_id.get_len());
 

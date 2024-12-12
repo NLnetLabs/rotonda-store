@@ -2,7 +2,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::{cmp::Ordering, sync::Arc};
 
-use crate::local_array::store::atomic_types::{MultiMapValue, RouteStatus};
+use crate::local_array::store::atomic_types::RouteStatus;
 use crate::{af::AddressFamily, local_array::node::PrefixId};
 use inetnum::addr::Prefix;
 

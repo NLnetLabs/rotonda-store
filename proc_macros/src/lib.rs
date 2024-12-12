@@ -714,7 +714,6 @@ pub fn create_store(
                                         search_pfx.len(),
                                     ),
                                     options,
-                                    // options.mui,
                                     guard
                                 )
                         }
@@ -727,7 +726,6 @@ pub fn create_store(
                                 search_pfx.len(),
                             ),
                             options,
-                            // options.mui,
                             guard
                         ),
                 }

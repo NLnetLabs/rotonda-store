@@ -1,8 +1,8 @@
+use super::query::QuerySingleResult;
 use crate::local_vec::storage_backend::{InMemStorage, StorageBackend};
 use crate::local_vec::TreeBitMap;
 use crate::node_id::InMemNodeId;
 use crate::prefix_record::InternalPrefixRecord;
-use super::query::QuerySingleResult;
 use crate::{MatchOptions, Stats, Strides};
 
 use crate::af::{IPv4, IPv6};
@@ -29,9 +29,9 @@ impl<M: crate::prefix_record::Meta> Store<M> {
     }
 }
 
-impl<'a, M: crate::prefix_record::Meta> Store<M> {
+impl<M: crate::prefix_record::Meta> Store<M> {
     pub fn match_prefix(
-        &'a self,
+        &self,
         search_pfx: &Prefix,
         options: &MatchOptions,
     ) -> QuerySingleResult<M> {
@@ -71,28 +71,26 @@ impl<'a, M: crate::prefix_record::Meta> Store<M> {
         }
     }
 
-    pub fn prefixes_iter(&'a self) -> crate::PrefixSingleRecordIter<'a, M> {
+    pub fn prefixes_iter(&self) -> crate::PrefixSingleRecordIter<M> {
         let rs4: std::slice::Iter<InternalPrefixRecord<IPv4, M>> =
             self.v4.store.prefixes[..].iter();
         let rs6 = self.v6.store.prefixes[..].iter();
 
-        crate::PrefixSingleRecordIter::<'a, M> {
+        crate::PrefixSingleRecordIter::<M> {
             v4: Some(rs4),
             v6: rs6,
         }
     }
 
     pub fn nodes_v4_iter(
-        &'a self,
-    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv4, InMemNodeId>> + 'a
-    {
+        &self,
+    ) -> impl Iterator<Item = &SizedStrideNode<IPv4, InMemNodeId>> + '_ {
         self.v4.store.nodes.iter()
     }
 
     pub fn nodes_v6_iter(
-        &'a self,
-    ) -> impl Iterator<Item = &'a SizedStrideNode<IPv6, InMemNodeId>> + 'a
-    {
+        &self,
+    ) -> impl Iterator<Item = &SizedStrideNode<IPv6, InMemNodeId>> {
         self.v6.store.nodes.iter()
     }
 
@@ -135,7 +133,7 @@ impl<'a, M: crate::prefix_record::Meta> Store<M> {
         }
     }
 
-    pub fn strides(&'a self) -> Strides {
+    pub fn strides(&self) -> Strides {
         Strides {
             v4: &self.v4.strides,
             v6: &self.v6.strides,
