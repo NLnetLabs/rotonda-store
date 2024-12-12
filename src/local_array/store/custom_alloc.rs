@@ -489,8 +489,8 @@ pub enum PersistStrategy {
 
 #[derive(Debug, Clone)]
 pub struct StoreConfig {
-    pub(crate) persist_strategy: PersistStrategy,
-    pub(crate) persist_path: String,
+    pub persist_strategy: PersistStrategy,
+    pub persist_path: String,
 }
 
 impl StoreConfig {

@@ -14,7 +14,7 @@ struct DefaultStore;
 impl<M: Meta> DefaultStore<M> {
     pub fn try_default() -> Result<Self, PrefixStoreError> {
         let config = StoreConfig {
-            persist_strategy: PersistStrategy::PersistOnly,
+            persist_strategy: PersistStrategy::MemoryOnly,
             persist_path: "/tmp/rotonda/".to_string(),
         };
         Self::new_with_config(config)

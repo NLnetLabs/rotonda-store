@@ -3,9 +3,7 @@ use crossbeam_epoch::{self as epoch};
 use log::{error, log_enabled, trace};
 
 use std::hash::Hash;
-use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, AtomicUsize, Ordering,
-};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::af::AddressFamily;
@@ -234,115 +232,8 @@ impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
         PrefixId::new(addr_bits, len)
     }
 }
-#[derive(Debug)]
-pub struct AtomicStrideNodeId<AF: AddressFamily> {
-    stride_type: StrideType,
-    index: AtomicU32,
-    serial: AtomicUsize,
-    _af: PhantomData<AF>,
-}
-
-impl<AF: AddressFamily> AtomicStrideNodeId<AF> {
-    pub fn new(stride_type: StrideType, index: u32) -> Self {
-        Self {
-            stride_type,
-            index: AtomicU32::new(index),
-            serial: AtomicUsize::new(1),
-            _af: PhantomData,
-        }
-    }
-
-    pub fn empty() -> Self {
-        Self {
-            stride_type: StrideType::Stride4,
-            index: AtomicU32::new(0),
-            serial: AtomicUsize::new(0),
-            _af: PhantomData,
-        }
-    }
-
-    // get_serial() and update_serial() are intimately linked in the
-    // critical section of updating a node.
-    //
-    // The layout of the critical section is as follows:
-    // 1. get_serial() to retrieve the serial number of the node
-    // 2. do work in the critical section
-    // 3. store work result in the node
-    // 4. update_serial() to update the serial number of the node if
-    //    and only if the serial is the same as the one retrieved in step 1.
-    // 5. check the result of update_serial(). When successful, we're done,
-    //    otherwise, rollback the work result & repeat from step 1.
-    pub fn get_serial(&self) -> usize {
-        let serial = self.serial.load(Ordering::SeqCst);
-        std::sync::atomic::fence(Ordering::SeqCst);
-        serial
-    }
-
-    pub fn update_serial(
-        &self,
-        current_serial: usize,
-    ) -> Result<usize, usize> {
-        std::sync::atomic::fence(Ordering::Release);
-        self.serial.compare_exchange(
-            current_serial,
-            current_serial + 1,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        )
-    }
-
-    // The idea is that we can only set the index once. An uninitialized
-    // index has a value of 0, so if we encounter a non-zero value that
-    // means somebody else already set it. We'll return an Err(index) with
-    // the index that was set.
-    pub fn set_id(&self, index: u32) -> Result<u32, u32> {
-        self.index.compare_exchange(
-            0,
-            index,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        )
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.serial.load(Ordering::SeqCst) == 0
-    }
-
-    pub fn into_inner(self) -> (StrideType, Option<u32>) {
-        match self.serial.load(Ordering::SeqCst) {
-            0 => (self.stride_type, None),
-            _ => (self.stride_type, Some(self.index.load(Ordering::SeqCst))),
-        }
-    }
-
-    pub fn from_stridenodeid(
-        stride_type: StrideType,
-        id: StrideNodeId<AF>,
-    ) -> Self {
-        let index: AF = id.0.map_or(AF::zero(), |i| i.0);
-        Self {
-            stride_type,
-            index: AtomicU32::new(index.dangerously_truncate_to_u32()),
-            serial: AtomicUsize::new(usize::from(index != AF::zero())),
-            _af: PhantomData,
-        }
-    }
-}
-
-impl<AF: AddressFamily> std::convert::From<AtomicStrideNodeId<AF>> for usize {
-    fn from(id: AtomicStrideNodeId<AF>) -> Self {
-        id.index.load(Ordering::SeqCst) as usize
-    }
-}
 
 //------------------------- Node Collections --------------------------------
-
-// pub trait NodeCollection<AF: AddressFamily> {
-//     fn insert(&mut self, index: u16, insert_node: StrideNodeId<AF>);
-//     fn to_vec(&self) -> Vec<StrideNodeId<AF>>;
-//     fn as_slice(&self) -> &[AtomicStrideNodeId<AF>];
-//     fn empty() -> Self;
-// }
 
 #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
 pub enum StrideType {
@@ -386,7 +277,6 @@ pub struct TreeBitMap<
 }
 
 impl<
-        'a,
         AF: AddressFamily,
         M: Meta,
         NB: NodeBuckets<AF>,
@@ -692,7 +582,7 @@ impl<
     // then adds all prefixes of these children recursively into a vec and
     // returns that.
     pub(crate) fn get_all_more_specifics_from_nibble<S: Stride>(
-        &'a self,
+        &self,
         current_node: &TreeBitMapNode<AF, S>,
         nibble: u32,
         nibble_len: u8,
@@ -710,20 +600,6 @@ impl<
         Some(msvec)
     }
 }
-
-// impl<
-//         AF: AddressFamily,
-//         M: Meta,
-//         NB: NodeBuckets<AF>,
-//         PB: PrefixBuckets<AF, M>,
-//         const PREFIX_SIZE: usize,
-//         const KEY_SIZE: usize,
-//     > Default for TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
-// {
-//     fn default() -> Self {
-//         Self::new().unwrap()
-//     }
-// }
 
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
