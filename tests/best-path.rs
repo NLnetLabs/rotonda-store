@@ -1,5 +1,7 @@
 use inetnum::addr::Prefix;
 use inetnum::asn::Asn;
+use rotonda_store::custom_alloc::PersistStrategy;
+use rotonda_store::custom_alloc::StoreConfig;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::Record;
 use rotonda_store::prelude::multi::RouteStatus;
@@ -64,10 +66,17 @@ mod common {
 fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
+    let store_config = StoreConfig {
+        persist_strategy: PersistStrategy::MemoryOnly,
+        persist_path: "/tmp/rotonda/".into(),
+    };
+
     let tree_bitmap =
         std::sync::Arc::new(std::sync::Arc::new(MultiThreadedStore::<
             Ipv4Route,
-        >::try_default()?));
+        >::new_with_config(
+            store_config
+        )?));
 
     let pfx = Prefix::from_str("185.34.0.0/16")?;
     let mut asns = [
