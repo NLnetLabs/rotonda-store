@@ -11,6 +11,7 @@ use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 use rotonda_store::custom_alloc::PersistStrategy;
+use rotonda_store::custom_alloc::StoreConfig;
 use rotonda_store::custom_alloc::UpsertReport;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::{MultiThreadedStore, RouteStatus};
@@ -22,7 +23,6 @@ use routecore::mrt::RibEntryIterator;
 use routecore::mrt::TableDumpIterator;
 
 #[derive(Clone, Debug)]
-//struct MyPaMap(PaMap);
 struct PaBytes(Vec<u8>);
 
 impl std::fmt::Display for PaBytes {
@@ -407,6 +407,11 @@ fn st_prime_store(
 }
 
 fn main() {
+    let store_config = StoreConfig {
+        persist_strategy: PersistStrategy::PersistOnly,
+        persist_path: "/tmp/rotonda/".into(),
+    };
+
     let args = Cli::parse();
 
     let t_total = Instant::now();
@@ -427,8 +432,10 @@ fn main() {
             return;
         }
         a if a.single_store => {
-            inner_stores
-                .push(MultiThreadedStore::<PaBytes>::try_default().unwrap());
+            inner_stores.push(
+                MultiThreadedStore::<PaBytes>::new_with_config(store_config)
+                    .unwrap(),
+            );
             println!("created a single-store\n");
             Some(&inner_stores[0])
         }
@@ -551,7 +558,7 @@ fn main() {
         println!("\nverifying disk persistence...");
         let mut max_len = 0;
         for pfx in persisted_prefixes {
-            let values = store.unwrap().get_values_for_prefix(&pfx);
+            let values = store.unwrap().get_records_for_prefix(&pfx);
             if values.is_empty() {
                 eprintln!("Found empty prefix on disk");
                 eprintln!("prefix: {}", pfx);
@@ -563,13 +570,12 @@ fn main() {
                     "len {}: {} -> {:?}",
                     max_len,
                     pfx,
-                    store.unwrap().get_values_for_prefix(&pfx)
+                    store.unwrap().get_records_for_prefix(&pfx)
                 );
             }
-            values
-                .iter()
-                .filter(|v| v.3.is_empty())
-                .for_each(|v| println!("withdraw for {}, mui {}", pfx, v.0))
+            values.iter().filter(|v| v.meta.0.is_empty()).for_each(|v| {
+                println!("withdraw for {}, mui {}", pfx, v.multi_uniq_id)
+            })
         }
     }
 }

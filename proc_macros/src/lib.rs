@@ -1660,15 +1660,15 @@ pub fn create_store(
                 self.v4.store.config.persist_strategy()
             }
 
-            pub fn get_values_for_prefix(&self, prefix: &Prefix) ->
-                Vec<(u32, u64, u8, Vec<u8>)> {
+            pub fn get_records_for_prefix(&self, prefix: &Prefix) ->
+                Vec<Record<M>> {
                 match prefix.is_v4() {
                     true => self.v4.store.persistence.as_ref().map_or(vec![],
-                        |p| p.get_values_for_prefix(
+                        |p| p.get_records_for_prefix(
                             PrefixId::<IPv4>::from(*prefix)
                         )),
                     false => self.v6.store.persistence.as_ref().map_or(vec![],
-                        |p| p.get_values_for_prefix(
+                        |p| p.get_records_for_prefix(
                             PrefixId::<IPv6>::from(*prefix)
                         ))
                 }

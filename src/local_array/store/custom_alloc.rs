@@ -317,17 +317,22 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         self.0.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
     }
 
-    pub fn get_values_for_prefix(
+    pub fn get_records_for_prefix<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
-    ) -> Vec<(u32, u64, u8, Vec<u8>)> {
+    ) -> Vec<PublicRecord<M>> {
         let prefix_b = &prefix.as_bytes::<PREFIX_SIZE>();
         (*self.0.prefix(prefix_b))
             .into_iter()
             .map(|kv| {
                 let kv = kv.unwrap();
                 let (_, mui, ltime, status) = Self::parse_key(kv.0.as_ref());
-                (mui, ltime, status, kv.1.as_ref().to_vec())
+                PublicRecord::new(
+                    mui,
+                    ltime,
+                    status.try_into().unwrap(),
+                    kv.1.as_ref().to_vec().into(),
+                )
             })
             .collect::<Vec<_>>()
     }
