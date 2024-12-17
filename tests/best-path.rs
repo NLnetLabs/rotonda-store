@@ -1,10 +1,10 @@
 use inetnum::addr::Prefix;
 use inetnum::asn::Asn;
-use rotonda_store::custom_alloc::PersistStrategy;
-use rotonda_store::custom_alloc::StoreConfig;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::Record;
 use rotonda_store::prelude::multi::RouteStatus;
+use rotonda_store::rib::PersistStrategy;
+use rotonda_store::rib::StoreConfig;
 use rotonda_store::MatchOptions;
 use rotonda_store::Meta;
 use rotonda_store::MultiThreadedStore;

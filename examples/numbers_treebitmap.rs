@@ -63,8 +63,9 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for _strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
+        let config = StoreConfig::default();
         let tree_bitmap: MyStore<PrefixAs> =
-            MyStore::<PrefixAs>::try_default()?;
+            MyStore::<PrefixAs>::new_with_config(config)?;
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

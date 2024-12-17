@@ -51,7 +51,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("[");
         for n in 1..6 {
             let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let tree_bitmap = MyStore::<PrefixAs>::try_default()?;
+            let config = StoreConfig::default();
+            let tree_bitmap = MyStore::<PrefixAs>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);
@@ -110,7 +111,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "\"strides v4 \": {:?},",
                 &tree_bitmap
                     .v4
-                    .store
                     .get_stride_sizes()
                     .iter()
                     .map_while(|s| if s > &0 { Some(*s) } else { None })
@@ -120,7 +120,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "\"strides v6 \": {:?},",
                 &tree_bitmap
                     .v6
-                    .store
                     .get_stride_sizes()
                     .iter()
                     .map_while(|s| if s > &0 { Some(*s) } else { None })

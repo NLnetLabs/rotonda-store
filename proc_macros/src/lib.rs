@@ -327,7 +327,7 @@ pub fn stride_sizes(
     };
 
     let type_alias = quote! {
-        type #type_name<M> = TreeBitMap<#ip_af, M, #buckets_name<#ip_af>, #prefixes_buckets_name<#ip_af, M>, #prefix_size, #key_size>;
+        type #type_name<M> = Rib<#ip_af, M, #buckets_name<#ip_af>, #prefixes_buckets_name<#ip_af, M>, #prefix_size, #key_size>;
     };
 
     let result = quote! {
@@ -529,7 +529,7 @@ pub fn create_store(
             ///
             /// let _: Vec<_> = (0..16)
             ///      .map(|_| {
-            ///         let tree_bitmap = tree_bitmap.clone();
+            ///         let tree_bitmap = in_memory_tree.clone();
             ///
             ///         thread::spawn(move || {
             ///              let pfxs = [
@@ -545,7 +545,7 @@ pub fn create_store(
             ///
             ///              for pfx in pfxs.into_iter() {
             ///                  println!("insert {}", pfx.unwrap());
-            ///                  tree_bitmap.insert(
+            ///                  in_memory_tree.insert(
             ///                      &pfx.unwrap(),
             ///                      Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
             ///                      None
@@ -957,7 +957,7 @@ pub fn create_store(
                     let (left, right) = match search_pfx.addr() {
                         std::net::IpAddr::V4(addr) => {
                             (
-                                Some(self.v4.store.less_specific_prefix_iter(
+                                Some(self.v4.less_specific_prefix_iter(
                                         PrefixId::<IPv4>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -974,7 +974,7 @@ pub fn create_store(
                         std::net::IpAddr::V6(addr) => {
                             (
                                 None,
-                                Some(self.v6.store.less_specific_prefix_iter(
+                                Some(self.v6.less_specific_prefix_iter(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1045,41 +1045,37 @@ pub fn create_store(
 
                 let (left, right) = match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => {
-                        let bmin = unsafe {
-                            self.v4.store.withdrawn_muis_bmin.load(
-                                Ordering::Acquire, guard
-                            ).deref()
-                        };
+
+                        let bmin = self.v6.in_memory_tree
+                            .withdrawn_muis_bmin(guard);
+
                         if mui.is_some() && bmin.contains(mui.unwrap()) {
-                                (None, None)
-                            } else {
-                                (
-                                    Some(self.v4.store.more_specific_prefix_iter_from(
-                                            PrefixId::<IPv4>::new(
-                                                addr.into(),
-                                                search_pfx.len(),
-                                            ),
-                                            mui,
-                                            include_withdrawn,
-                                            guard
-                                        ).map(|p| PrefixRecord::from(p))
-                                    ),
-                                    None
-                                )
+                          (None, None)
+                         } else {
+                                (Some(self.v4.more_specific_prefix_iter_from(
+                                        PrefixId::<IPv4>::new(
+                                            addr.into(),
+                                            search_pfx.len(),
+                                        ),
+                                        mui,
+                                        include_withdrawn,
+                                        guard
+                                    ).map(|p| PrefixRecord::from(p))
+                                ),
+                                None)
                             }
                         }
                     std::net::IpAddr::V6(addr) => {
-                        let bmin = unsafe {
-                            self.v6.store.withdrawn_muis_bmin.load(
-                                Ordering::Acquire, guard
-                            ).deref()
-                        };
+
+                        let bmin = self.v6.in_memory_tree
+                            .withdrawn_muis_bmin(guard);
+
                         if mui.is_some() && bmin.contains(mui.unwrap()) {
-                            (None, None)
+                         (None, None)
                         } else {
                             (
                                 None,
-                                Some(self.v6.store.more_specific_prefix_iter_from(
+                                Some(self.v6.more_specific_prefix_iter_from(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1103,17 +1099,14 @@ pub fn create_store(
                 guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> +'a {
 
-                let bmin = unsafe {
-                    self.v4.store.withdrawn_muis_bmin.load(
-                        Ordering::Acquire, guard
-                    ).deref()
-                };
+                let bmin =
+                    self.v4.in_memory_tree.withdrawn_muis_bmin(guard);
 
                 if bmin.contains(mui) && !include_withdrawn {
                     None
                 } else {
                     Some(
-                        self.v4.store.more_specific_prefix_iter_from(
+                        self.v4.more_specific_prefix_iter_from(
                                 PrefixId::<IPv4>::new(
                                     0,
                                     0,
@@ -1122,8 +1115,8 @@ pub fn create_store(
                                 include_withdrawn,
                                 guard
                             ).map(|p| PrefixRecord::from(p))
-                    )
-                }.into_iter().flatten()
+                    )}
+                .into_iter().flatten()
             }
 
             pub fn iter_records_for_mui_v6(
@@ -1133,17 +1126,13 @@ pub fn create_store(
                 guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> +'a {
 
-                let bmin = unsafe {
-                    self.v4.store.withdrawn_muis_bmin.load(
-                        Ordering::Acquire, guard
-                    ).deref()
-                };
+                let bmin = self.v6.in_memory_tree.withdrawn_muis_bmin(guard);
 
                 if bmin.contains(mui) && !include_withdrawn {
                     None
                 } else {
                     Some(
-                        self.v6.store.more_specific_prefix_iter_from(
+                        self.v6.more_specific_prefix_iter_from(
                                 PrefixId::<IPv6>::new(
                                     0,
                                     0,
@@ -1152,8 +1141,8 @@ pub fn create_store(
                                 include_withdrawn,
                                 guard
                             ).map(|p| PrefixRecord::from(p))
-                    )
-                }.into_iter().flatten()
+                    )}
+                .into_iter().flatten()
             }
 
             /// Insert or replace a Record into the Store
@@ -1239,10 +1228,10 @@ pub fn create_store(
             pub fn prefixes_iter(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.store.prefixes_iter()
+                self.v4.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
                     .chain(
-                        self.v6.store.prefixes_iter()
+                        self.v6.prefixes_iter()
                         .map(|p| PrefixRecord::from(p))
                     )
             }
@@ -1290,7 +1279,7 @@ pub fn create_store(
             pub fn prefixes_iter_v4(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.store.prefixes_iter()
+                self.v4.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1337,7 +1326,7 @@ pub fn create_store(
             pub fn prefixes_iter_v6(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v6.store.prefixes_iter()
+                self.v6.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1353,17 +1342,15 @@ pub fn create_store(
                 let guard = &epoch::pin();
                 match prefix.addr() {
                     std::net::IpAddr::V4(addr) => {
-                        self.v4.store.mark_mui_as_withdrawn_for_prefix(
+                        self.v4.mark_mui_as_withdrawn_for_prefix(
                             PrefixId::<IPv4>::from(*prefix),
                             mui,
-                            // &guard
                         )
                     }
                     std::net::IpAddr::V6(addr) => {
-                        self.v6.store.mark_mui_as_withdrawn_for_prefix(
+                        self.v6.mark_mui_as_withdrawn_for_prefix(
                             PrefixId::<IPv6>::from(*prefix),
                             mui,
-                            // &guard
                         )
                     }
                 }
@@ -1381,13 +1368,13 @@ pub fn create_store(
                 let guard = &epoch::pin();
                 match prefix.addr() {
                     std::net::IpAddr::V4(addr) => {
-                        self.v4.store.mark_mui_as_active_for_prefix(
+                        self.v4.mark_mui_as_active_for_prefix(
                             PrefixId::<IPv4>::from(*prefix),
                             mui,
                         )
                     }
                     std::net::IpAddr::V6(addr) => {
-                        self.v6.store.mark_mui_as_active_for_prefix(
+                        self.v6.mark_mui_as_active_for_prefix(
                             PrefixId::<IPv6>::from(*prefix),
                             mui,
                         )
@@ -1405,7 +1392,7 @@ pub fn create_store(
             ) -> Result<(), PrefixStoreError> {
                 let guard = &epoch::pin();
 
-                self.v4.store.mark_mui_as_active(
+                self.v4.in_memory_tree.mark_mui_as_active(
                     mui,
                     &guard
                 )
@@ -1423,7 +1410,7 @@ pub fn create_store(
             ) -> Result<(), PrefixStoreError> {
                 let guard = &epoch::pin();
 
-                self.v4.store.mark_mui_as_withdrawn(
+                self.v4.in_memory_tree.mark_mui_as_withdrawn(
                     mui,
                     &guard
                 )
@@ -1439,7 +1426,7 @@ pub fn create_store(
             ) -> Result<(), PrefixStoreError> {
                 let guard = &epoch::pin();
 
-                self.v6.store.mark_mui_as_active(
+                self.v6.in_memory_tree.mark_mui_as_active(
                     mui,
                     &guard
                 )
@@ -1457,7 +1444,7 @@ pub fn create_store(
             ) -> Result<(), PrefixStoreError> {
                 let guard = &epoch::pin();
 
-                self.v6.store.mark_mui_as_withdrawn(
+                self.v6.in_memory_tree.mark_mui_as_withdrawn(
                     mui,
                     &guard
                 )
@@ -1477,11 +1464,11 @@ pub fn create_store(
             ) -> Result<(), PrefixStoreError> {
                 let guard = &epoch::pin();
 
-                let res_v4 = self.v4.store.mark_mui_as_withdrawn(
+                let res_v4 = self.v4.in_memory_tree.mark_mui_as_withdrawn(
                     mui,
                     &guard
                 );
-                let res_v6 = self.v6.store.mark_mui_as_withdrawn(
+                let res_v6 = self.v6.in_memory_tree.mark_mui_as_withdrawn(
                     mui,
                     &guard
                 );
@@ -1499,7 +1486,7 @@ pub fn create_store(
             ) -> bool {
                 let guard = &epoch::pin();
 
-                self.v4.store.mui_is_withdrawn(mui, guard)
+                self.v4.in_memory_tree.mui_is_withdrawn(mui, guard)
             }
 
             // Whether the global status for IPv6 prefixes and the specified
@@ -1510,7 +1497,7 @@ pub fn create_store(
             ) -> bool {
                 let guard = &epoch::pin();
 
-                self.v6.store.mui_is_withdrawn(mui, guard)
+                self.v6.in_memory_tree.mui_is_withdrawn(mui, guard)
             }
 
             /// Returns the number of all prefixes in the store.
@@ -1518,8 +1505,8 @@ pub fn create_store(
             /// Note that this method will actually traverse the complete
             /// tree.
             pub fn prefixes_count(&self) -> usize {
-                self.v4.store.get_prefixes_count()
-                + self.v6.store.get_prefixes_count()
+                self.v4.get_prefixes_count()
+                + self.v6.get_prefixes_count()
             }
 
             /// Returns the number of all IPv4 prefixes in the store.
@@ -1528,7 +1515,7 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn prefixes_v4_count(&self) -> usize {
-                self.v4.store.get_prefixes_count()
+                self.v4.get_prefixes_count()
             }
 
             /// Returns the number of all IPv4 prefixes with the
@@ -1538,7 +1525,7 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn prefixes_v4_count_for_len(&self, len: u8) -> usize {
-                self.v4.store.get_prefixes_count_for_len(len)
+                self.v4.get_prefixes_count_for_len(len)
             }
 
             /// Returns the number of all IPv6 prefixes in the store.
@@ -1547,7 +1534,7 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn prefixes_v6_count(&self) -> usize {
-                self.v6.store.get_prefixes_count()
+                self.v6.get_prefixes_count()
             }
 
             /// Returns the number of all IPv6 prefixes with the
@@ -1557,7 +1544,7 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn prefixes_v6_count_for_len(&self, len: u8) -> usize {
-                self.v6.store.get_prefixes_count_for_len(len)
+                self.v6.get_prefixes_count_for_len(len)
             }
 
             /// Returns the number of nodes in the store.
@@ -1566,8 +1553,8 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn nodes_count(&self) -> usize {
-                self.v4.store.get_nodes_count()
-                + self.v6.store.get_nodes_count()
+                self.v4.get_nodes_count()
+                + self.v6.get_nodes_count()
             }
 
             /// Returns the number of IPv4 nodes in the store.
@@ -1576,7 +1563,7 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn nodes_v4_count(&self) -> usize {
-                self.v4.store.get_nodes_count()
+                self.v4.get_nodes_count()
             }
 
             /// Returns the number of IPv6 nodes in the store.
@@ -1585,7 +1572,7 @@ pub fn create_store(
             /// number in the store, due to contention at the time of
             /// reading the value.
             pub fn nodes_v6_count(&self) -> usize {
-                self.v6.store.get_nodes_count()
+                self.v6.get_nodes_count()
             }
 
             /// Print the store statistics to the standard output.
@@ -1601,25 +1588,25 @@ pub fn create_store(
             // The Store statistics.
             pub fn stats(&self) -> StoreStats {
                 StoreStats {
-                    v4: self.v4.store.counters.get_prefix_stats(),
-                    v6: self.v6.store.counters.get_prefix_stats(),
+                    v4: self.v4.counters.get_prefix_stats(),
+                    v6: self.v6.counters.get_prefix_stats(),
                 }
             }
 
             // Disk Persistence
 
             pub fn persist_strategy(&self) -> PersistStrategy {
-                self.v4.store.config.persist_strategy()
+                self.v4.config.persist_strategy()
             }
 
             pub fn get_records_for_prefix(&self, prefix: &Prefix) ->
                 Vec<Record<M>> {
                 match prefix.is_v4() {
-                    true => self.v4.store.persistence.as_ref().map_or(vec![],
+                    true => self.v4.persist_tree.as_ref().map_or(vec![],
                         |p| p.get_records_for_prefix(
                             PrefixId::<IPv4>::from(*prefix)
                         )),
-                    false => self.v6.store.persistence.as_ref().map_or(vec![],
+                    false => self.v6.persist_tree.as_ref().map_or(vec![],
                         |p| p.get_records_for_prefix(
                             PrefixId::<IPv6>::from(*prefix)
                         ))
@@ -1630,12 +1617,12 @@ pub fn create_store(
             /// with their values to disk
             pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
                 if let Some(persistence) =
-                    self.v4.store.persistence.as_ref() {
+                    self.v4.persist_tree.as_ref() {
                         persistence.flush_to_disk()?;
                 }
 
                 if let Some(persistence) =
-                    self.v6.store.persistence.as_ref() {
+                    self.v6.persist_tree.as_ref() {
                         persistence.flush_to_disk()?;
                 }
 
@@ -1646,16 +1633,16 @@ pub fn create_store(
             /// to disk, for IPv4 and IPv6 respectively.
             pub fn approx_persisted_items(&self) -> (usize, usize) {
                 (
-                    self.v4.store.persistence.as_ref().map_or(0, |p| p.approximate_len()),
-                    self.v6.store.persistence.as_ref().map_or(0, |p| p.approximate_len())
+                    self.v4.persist_tree.as_ref().map_or(0, |p| p.approximate_len()),
+                    self.v6.persist_tree.as_ref().map_or(0, |p| p.approximate_len())
                 )
             }
 
             /// Return an estimation of the disk space currently used by the
             /// store in bytes.
             pub fn disk_space(&self) -> u64 {
-                self.v4.store.persistence.as_ref().map_or(0, |p| p.disk_space()) +
-                self.v6.store.persistence.as_ref().map_or(0, |p| p.disk_space())
+                self.v4.persist_tree.as_ref().map_or(0, |p| p.disk_space()) +
+                self.v6.persist_tree.as_ref().map_or(0, |p| p.disk_space())
             }
         }
     };
