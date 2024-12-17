@@ -373,10 +373,8 @@ impl<
         pfx: PrefixId<AF>,
         record: PublicRecord<M>,
         update_path_selections: Option<M::TBI>,
-        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();
-        // let record = MultiMapValue::new(meta, ltime, status);
 
         if pfx.get_len() == 0 {
             let res = self.update_default_route_prefix_meta(record, guard)?;

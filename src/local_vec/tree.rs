@@ -3,7 +3,6 @@ use std::{
     marker::PhantomData,
 };
 
-use crate::{af::{AddressFamily, Zero}, custom_alloc::UpsertReport};
 use crate::local_vec::node::TreeBitMapNode;
 use crate::local_vec::storage_backend::StorageBackend;
 use crate::match_node_for_strides_with_local_vec;
@@ -12,6 +11,10 @@ use crate::prefix_record::InternalPrefixRecord;
 use crate::stats::{SizedStride, StrideStats};
 use crate::stride::*;
 use crate::synth_int::{U256, U512};
+use crate::{
+    af::{AddressFamily, Zero},
+    custom_alloc::UpsertReport,
+};
 
 #[cfg(feature = "cli")]
 use crate::node_id::InMemNodeId;
@@ -56,8 +59,8 @@ pub struct CacheGuard<
     pub guard: std::cell::Ref<'a, SizedStrideNode<AF, NodeId>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy>
-    std::ops::Deref for CacheGuard<'a, AF, NodeId>
+impl<AF: 'static + AddressFamily, NodeId: SortableNodeId + Copy>
+    std::ops::Deref for CacheGuard<'_, AF, NodeId>
 {
     type Target = SizedStrideNode<AF, NodeId>;
 
@@ -74,8 +77,8 @@ pub struct PrefixCacheGuard<
     pub guard: std::cell::Ref<'a, InternalPrefixRecord<AF, Meta>>,
 }
 
-impl<'a, AF: 'static + AddressFamily, Meta: crate::prefix_record::Meta>
-    std::ops::Deref for PrefixCacheGuard<'a, AF, Meta>
+impl<AF: 'static + AddressFamily, Meta: crate::prefix_record::Meta>
+    std::ops::Deref for PrefixCacheGuard<'_, AF, Meta>
 {
     type Target = InternalPrefixRecord<AF, Meta>;
 
@@ -340,7 +343,12 @@ where
         match self.store.retrieve_prefix_mut(update_node_idx) {
             Some(update_pfx) => {
                 update_pfx.meta = meta;
-                Ok(UpsertReport { cas_count: 0, prefix_new: false, mui_new: false, mui_count: 0 })
+                Ok(UpsertReport {
+                    cas_count: 0,
+                    prefix_new: false,
+                    mui_new: false,
+                    mui_count: 0,
+                })
                 // <Store::Meta>::merge_update(&mut update_pfx.meta, meta)
             }
             // TODO
@@ -471,7 +479,8 @@ impl<Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         writeln!(_f, "prefix vec size {}", self.store.get_prefixes_len())?;
         writeln!(_f, "finished building tree...")?;
         writeln!(_f, "{:?} nodes created", total_nodes)?;
-        writeln!(_f,
+        writeln!(
+            _f,
             "size of node: {} bytes",
             std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
         )?;
@@ -555,7 +564,7 @@ impl<Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
                 ) //  = scale / 7
             )?;
 
-            writeln!(_f," {}", prefixes_num)?;
+            writeln!(_f, " {}", prefixes_num)?;
         }
         Ok(())
     }

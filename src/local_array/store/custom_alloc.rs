@@ -191,7 +191,7 @@ use log::{debug, info, log_enabled, trace};
 use crossbeam_epoch::{self as epoch, Atomic};
 use crossbeam_utils::Backoff;
 use epoch::{Guard, Owned};
-use lsm_tree::{AbstractTree, Segment};
+use lsm_tree::AbstractTree;
 use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
@@ -361,8 +361,18 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
-    pub fn flush_to_disk(&self) -> Result<Option<Segment>, lsm_tree::Error> {
-        self.0.flush_active_memtable(0)
+    pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
+        let segment = self.0.flush_active_memtable(0);
+
+        if let Ok(Some(segment)) = segment {
+            self.0.register_segments(&[segment])?;
+            self.0.compact(
+                std::sync::Arc::new(lsm_tree::compaction::Leveled::default()),
+                0,
+            )?;
+        };
+
+        Ok(())
     }
 
     pub fn approximate_len(&self) -> usize {
@@ -371,13 +381,6 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
 
     pub fn disk_space(&self) -> u64 {
         self.0.disk_space()
-    }
-
-    pub fn register_segments(
-        &self,
-        segments: &[lsm_tree::Segment],
-    ) -> Result<(), lsm_tree::Error> {
-        self.0.register_segments(segments)
     }
 
     #[cfg(feature = "persist")]

@@ -343,7 +343,9 @@ pub fn stride_sizes(
 // ---------- Create Store struct -------------------------------------------
 
 // This macro creates the struct that will be the public API for the
-// PrefixStore. Therefore all methods defined in here should be public.
+// PrefixStore. It aspires to be a thin wrapper around the v4 and v6 stores,
+// so that users can use it AF agnostically. All methods defined in here
+// should be public.
 
 /// Creates a new, user-named struct with user-defined specified stride sizes
 /// that can used as a store type. The size of the prefix and the total key in
@@ -377,8 +379,7 @@ pub fn stride_sizes(
 /// bytes of the key of a record in the persisted storage. An IPv4 prefix is
 /// therefore 5 bytes (address part + prefix length), and 17 bytes for IPv6.
 /// The total number of bytes of the key is calculated thus: prefix (5 or 17)
-/// + multi_unique_id (4 bytes) + logical time of reception of the PDU into
-/// Rotonda (8 bytes).
+/// + multi_unique_id (4 bytes) + logical time of reception of the PDU into Rotonda (8 bytes).
 ///
 /// # Example
 /// ```ignore
@@ -498,19 +499,6 @@ pub fn create_store(
             v6: #strides6_name<M>,
             config: StoreConfig
         }
-
-        // impl<
-        //         M: Meta
-        //     > Default for #store_name<M>
-        // {
-        //     fn default() -> Self {
-        //         let config = StoreConfig {
-        //             persist_strategy: PersistStrategy::PersistHistory,
-        //             persist_path: #persist_path.to_string()
-        //         };
-        //         Self::new_with_config(config).expect("failed to create store")
-        //     }
-        // }
 
         impl<
                 M: Meta
@@ -699,35 +687,25 @@ pub fn create_store(
 
                 match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => {
-                        match self.config.persist_strategy() {
-                            PersistStrategy::PersistOnly =>
-                                self.v4.match_prefix_in_persisted_store(
-                                    PrefixId::<IPv4>::new(
-                                        addr.into(),
-                                        search_pfx.len(),
-                                    ),
-                                    options.mui,
-                                ),
-                            _ => self.v4.match_prefix_by_store_direct(
-                                    PrefixId::<IPv4>::new(
-                                        addr.into(),
-                                        search_pfx.len(),
-                                    ),
-                                    options,
-                                    guard
-                                )
-                        }
+                        self.v4.match_prefix(
+                            PrefixId::<IPv4>::new(
+                                addr.into(),
+                                search_pfx.len(),
+                            ),
+                            options,
+                            guard
+                        )
                     },
-
-                    std::net::IpAddr::V6(addr) =>
-                        self.v6.match_prefix_by_store_direct(
+                    std::net::IpAddr::V6(addr) => {
+                        self.v6.match_prefix(
                             PrefixId::<IPv6>::new(
                                 addr.into(),
                                 search_pfx.len(),
                             ),
                             options,
                             guard
-                        ),
+                        )
+                    }
                 }
             }
 
@@ -744,42 +722,21 @@ pub fn create_store(
                 search_pfx: &Prefix,
                 guard: &Guard
             ) -> Option<Result<Record<M>, PrefixStoreError>> {
-
                 match search_pfx.addr() {
-                    std::net::IpAddr::V4(addr) => self.v4.store
-                        .non_recursive_retrieve_prefix(
-                            PrefixId::<IPv4>::new(
-                                addr.into(),
-                                search_pfx.len(),
-                            ),
-                        )
-                        .0
-                        .map(|p_rec| unsafe { p_rec
-                            .get_path_selections(guard).best()
-                            .map_or_else(
-                                || Err(PrefixStoreError::BestPathNotFound),
-                                |mui| p_rec.record_map
-                                    .get_record_for_active_mui(mui)
-                                    .ok_or(PrefixStoreError::StoreNotReadyError)
-                            )
-                        }),
-                    std::net::IpAddr::V6(addr) => self.v6.store
-                        .non_recursive_retrieve_prefix(
-                            PrefixId::<IPv6>::new(
-                                addr.into(),
-                                search_pfx.len(),
-                            ),
-                        )
-                        .0
-                        .map(|p_rec| unsafe { p_rec
-                            .get_path_selections(guard).best()
-                            .map_or_else(
-                                || Err(PrefixStoreError::BestPathNotFound),
-                                |mui| p_rec.record_map
-                                    .get_record_for_active_mui(mui)
-                                    .ok_or(PrefixStoreError::StoreNotReadyError)
-                            )
-                        })
+                    std::net::IpAddr::V4(addr) => self.v4.best_path(
+                        PrefixId::<IPv4>::new(
+                            addr.into(),
+                            search_pfx.len()
+                        ),
+                        guard
+                    ),
+                    std::net::IpAddr::V6(addr) => self.v6.best_path(
+                        PrefixId::<IPv6>::new(
+                            addr.into(),
+                            search_pfx.len(),
+                        ),
+                        guard
+                    )
                 }
             }
 
@@ -804,60 +761,57 @@ pub fn create_store(
                 guard: &Guard
             ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
                 match search_pfx.addr() {
-                    std::net::IpAddr::V4(addr) => self.v4.store
-                        .non_recursive_retrieve_prefix(
+                    std::net::IpAddr::V4(addr) => self.v4
+                        .calculate_and_store_best_and_backup_path(
                             PrefixId::<IPv4>::new(
                                 addr.into(),
                                 search_pfx.len(),
                             ),
-                            // guard
-                        ).0.map_or(
-                            Err(PrefixStoreError::StoreNotReadyError),
-                            |p_rec| p_rec.calculate_and_store_best_backup(
-                                tbi, guard),
+                            tbi,
+                            guard
                         ),
-                    std::net::IpAddr::V6(addr) => self.v6.store
-                        .non_recursive_retrieve_prefix(
+                    std::net::IpAddr::V6(addr) => self.v6
+                        .calculate_and_store_best_and_backup_path(
                             PrefixId::<IPv6>::new(
                                 addr.into(),
                                 search_pfx.len(),
                             ),
-                            // guard
-                        ).0.map_or(
-                            Err(PrefixStoreError::StoreNotReadyError),
-                            |p_rec| p_rec.calculate_and_store_best_backup(
-                                tbi, guard),
-                        ),
+                            tbi,
+                            guard
+                        )
                 }
             }
 
+            /// Return whether the best path selection, stored for this prefix
+            /// in the store is up to date with all the routes stored for
+            /// this prefix.
+            ///
+            /// Will return an error if the prefix does not exist in the store
+            ///
+            /// The `guard` should be a `&epoch::pin()`. It allows the
+            /// QuerySet to contain references to the meta-data objects,
+            /// instead of cloning them into it.
             pub fn is_ps_outdated(
                 &self,
                 search_pfx: &Prefix,
                 guard: &Guard
             ) -> Result<bool, PrefixStoreError> {
                 match search_pfx.addr() {
-                    std::net::IpAddr::V4(addr) => self.v4.store
-                        .non_recursive_retrieve_prefix(
+                    std::net::IpAddr::V4(addr) => self.v4
+                        .is_ps_outdated(
                             PrefixId::<IPv4>::new(
                                 addr.into(),
                                 search_pfx.len(),
                             ),
-                            // guard
-                        ).0.map_or(
-                            Err(PrefixStoreError::StoreNotReadyError),
-                            |p| Ok(p.is_ps_outdated(guard))
+                            guard
                         ),
-                    std::net::IpAddr::V6(addr) => self.v6.store
-                        .non_recursive_retrieve_prefix(
+                    std::net::IpAddr::V6(addr) => self.v6
+                        .is_ps_outdated(
                             PrefixId::<IPv6>::new(
                                 addr.into(),
                                 search_pfx.len(),
                             ),
-                            // guard
-                        ).0.map_or(
-                            Err(PrefixStoreError::StoreNotReadyError),
-                            |p| Ok(p.is_ps_outdated(guard))
+                            guard
                         )
                 }
             }
@@ -1430,14 +1384,12 @@ pub fn create_store(
                         self.v4.store.mark_mui_as_active_for_prefix(
                             PrefixId::<IPv4>::from(*prefix),
                             mui,
-                            // &guard
                         )
                     }
                     std::net::IpAddr::V6(addr) => {
                         self.v6.store.mark_mui_as_active_for_prefix(
                             PrefixId::<IPv6>::from(*prefix),
                             mui,
-                            // &guard
                         )
                     }
                 }
@@ -1677,16 +1629,14 @@ pub fn create_store(
             /// Persist all the non-unique (prefix, mui, ltime) tuples
             /// with their values to disk
             pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
-                if let Some(persistence) = self.v4.store.persistence.as_ref() {
-                    if let Some(segment) = persistence.flush_to_disk()? {
-                        persistence.register_segments(&[segment])?;
-                    }
+                if let Some(persistence) =
+                    self.v4.store.persistence.as_ref() {
+                        persistence.flush_to_disk()?;
                 }
 
-                if let Some(persistence) = self.v6.store.persistence.as_ref() {
-                    if let Some(segment) = persistence.flush_to_disk()? {
-                        persistence.register_segments(&[segment])?;
-                    }
+                if let Some(persistence) =
+                    self.v6.store.persistence.as_ref() {
+                        persistence.flush_to_disk()?;
                 }
 
                 Ok(())

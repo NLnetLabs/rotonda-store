@@ -1,3 +1,5 @@
+use routecore::bgp::aspath::HopPath;
+use routecore::bgp::message::update_builder::StandardCommunitiesList;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::File;
@@ -16,6 +18,8 @@ use rotonda_store::custom_alloc::UpsertReport;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::{MultiThreadedStore, RouteStatus};
 use rotonda_store::PublicRecord;
+use routecore::bgp::message::PduParseInfo;
+use routecore::bgp::path_attributes::OwnedPathAttributes;
 use routecore::mrt::MrtFile;
 
 use rand::seq::SliceRandom;
@@ -160,6 +164,10 @@ struct Cli {
     /// Verify the persisted entries
     #[arg(long, default_value_t = false)]
     verify: bool,
+
+    /// Persistence Strategy
+    #[arg(long)]
+    persist_strategy: Option<String>,
 }
 
 fn insert<T: rotonda_store::Meta>(
@@ -407,8 +415,8 @@ fn st_prime_store(
 }
 
 fn main() {
-    let store_config = StoreConfig {
-        persist_strategy: PersistStrategy::PersistOnly,
+    let mut store_config = StoreConfig {
+        persist_strategy: PersistStrategy::PersistHistory,
         persist_path: "/tmp/rotonda/".into(),
     };
 
@@ -420,6 +428,26 @@ fn main() {
     let mut mib_total: usize = 0;
     let mut inner_stores = vec![];
     let mut persisted_prefixes = BTreeSet::new();
+
+    store_config.persist_strategy = match &args.persist_strategy {
+        Some(a) if a == &"memory_only".to_string() => {
+            PersistStrategy::MemoryOnly
+        }
+        Some(a) if a == &"write_ahead".to_string() => {
+            PersistStrategy::WriteAhead
+        }
+        Some(a) if a == &"persist_only".to_string() => {
+            PersistStrategy::PersistOnly
+        }
+        Some(a) if a == &"persist_history".to_string() => {
+            PersistStrategy::PersistHistory
+        }
+        None => PersistStrategy::PersistHistory,
+        Some(a) => {
+            eprintln!("Unknown persist strategy: {}", a);
+            return;
+        }
+    };
 
     // Create all the stores necessary, and if at least one is created, create
     // a reference to the first one.
@@ -433,10 +461,15 @@ fn main() {
         }
         a if a.single_store => {
             inner_stores.push(
-                MultiThreadedStore::<PaBytes>::new_with_config(store_config)
-                    .unwrap(),
+                MultiThreadedStore::<PaBytes>::new_with_config(
+                    store_config.clone(),
+                )
+                .unwrap(),
             );
-            println!("created a single-store\n");
+            println!(
+                "created a single-store with strategy: {:?}\n",
+                store_config
+            );
             Some(&inner_stores[0])
         }
         a if a.parse_only => {
@@ -450,6 +483,7 @@ fn main() {
                 );
             }
             println!("Number of created stores: {}", inner_stores.len());
+            println!("store config: {:?}", store_config);
             Some(&inner_stores[0])
         }
     };
@@ -566,12 +600,30 @@ fn main() {
             }
             if values.len() > max_len {
                 max_len = values.len();
-                println!(
-                    "len {}: {} -> {:?}",
-                    max_len,
-                    pfx,
-                    store.unwrap().get_records_for_prefix(&pfx)
-                );
+                let recs = store.unwrap().get_records_for_prefix(&pfx);
+                println!("LEN {} prefix: {}", max_len, pfx);
+                for rec in recs {
+                    let pa = OwnedPathAttributes::from((
+                        PduParseInfo::modern(),
+                        rec.meta.0.to_vec(),
+                    ));
+                    print!(
+                        "({})\tp[{}]",
+                        rec.multi_uniq_id,
+                        &pa.get::<HopPath>().unwrap()
+                    );
+                    if let Some(comms) = &pa.get::<StandardCommunitiesList>()
+                    {
+                        print!(" c[");
+                        comms
+                            .communities()
+                            .iter()
+                            .for_each(|c| print!("{c} "));
+                        println!("]");
+                    } else {
+                        println!(" no_c");
+                    };
+                }
             }
             values.iter().filter(|v| v.meta.0.is_empty()).for_each(|v| {
                 println!("withdraw for {}, mui {}", pfx, v.multi_uniq_id)

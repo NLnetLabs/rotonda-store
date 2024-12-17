@@ -4,7 +4,7 @@ use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::PersistTree;
+use crate::custom_alloc::{PersistStrategy, PersistTree};
 use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::prefix_record::{Meta, PublicRecord};
 use inetnum::addr::Prefix;
@@ -17,6 +17,7 @@ use crate::{MatchOptions, MatchType};
 
 use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
 use super::store::atomic_types::{RouteStatus, StoredPrefix};
+use super::store::errors::PrefixStoreError;
 
 //------------ Prefix Matching ----------------------------------------------
 
@@ -121,11 +122,24 @@ where
         ))
     }
 
-    pub fn match_prefix_by_store_direct(
+    pub fn match_prefix(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
-        // mui: Option<u32>,
+        guard: &'a Guard,
+    ) -> QueryResult<M> {
+        match self.store.config.persist_strategy() {
+            PersistStrategy::PersistOnly => {
+                self.match_prefix_in_persisted_store(search_pfx, options.mui)
+            }
+            _ => self.match_prefix_in_memory(search_pfx, options, guard),
+        }
+    }
+
+    fn match_prefix_in_memory(
+        &'a self,
+        search_pfx: PrefixId<AF>,
+        options: &MatchOptions,
         guard: &'a Guard,
     ) -> QueryResult<M> {
         // `non_recursive_retrieve_prefix` returns an exact match only, so no
@@ -242,7 +256,7 @@ where
         }
     }
 
-    pub fn match_prefix_in_persisted_store(
+    fn match_prefix_in_persisted_store(
         &'a self,
         search_pfx: PrefixId<AF>,
         mui: Option<u32>,
@@ -277,6 +291,54 @@ where
         }
     }
 
+    pub fn best_path(
+        &'a self,
+        search_pfx: PrefixId<AF>,
+        guard: &Guard,
+    ) -> Option<Result<PublicRecord<M>, PrefixStoreError>> {
+        self.store
+            .non_recursive_retrieve_prefix(search_pfx)
+            .0
+            .map(|p_rec| {
+                p_rec.get_path_selections(guard).best().map_or_else(
+                    || Err(PrefixStoreError::BestPathNotFound),
+                    |mui| {
+                        p_rec
+                            .record_map
+                            .get_record_for_active_mui(mui)
+                            .ok_or(PrefixStoreError::StoreNotReadyError)
+                    },
+                )
+            })
+    }
+
+    pub fn calculate_and_store_best_and_backup_path(
+        &self,
+        search_pfx: PrefixId<AF>,
+        tbi: &<M as Meta>::TBI,
+        guard: &Guard,
+    ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
+        self.store
+            .non_recursive_retrieve_prefix(search_pfx)
+            .0
+            .map_or(Err(PrefixStoreError::StoreNotReadyError), |p_rec| {
+                p_rec.calculate_and_store_best_backup(tbi, guard)
+            })
+    }
+
+    pub fn is_ps_outdated(
+        &self,
+        search_pfx: PrefixId<AF>,
+        guard: &Guard,
+    ) -> Result<bool, PrefixStoreError> {
+        self.store
+            .non_recursive_retrieve_prefix(search_pfx)
+            .0
+            .map_or(Err(PrefixStoreError::StoreNotReadyError), |p| {
+                Ok(p.is_ps_outdated(guard))
+            })
+    }
+
     // In a LMP search we have to go over all the nibble lengths in the
     // stride up until the value of the actual nibble length were looking for
     // (until we reach stride length for all strides that aren't the last)
@@ -298,6 +360,7 @@ where
     // nibble              1010 1011 1100 1101 1110 1111    x
     // nibble len offset      4(contd.)
 
+    #[deprecated]
     pub fn match_prefix_by_tree_traversal(
         &'a self,
         search_pfx: PrefixId<AF>,

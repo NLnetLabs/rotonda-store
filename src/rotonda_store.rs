@@ -1,7 +1,9 @@
 use std::{fmt, slice};
 
+pub use crate::prefix_record::{
+    Meta, PublicPrefixSingleRecord, RecordSingleSet,
+};
 use crate::prefix_record::{PublicRecord, RecordSet};
-pub use crate::prefix_record::{PublicPrefixSingleRecord, Meta, RecordSingleSet};
 use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use inetnum::addr::Prefix;
@@ -26,7 +28,7 @@ pub struct Stats<'a> {
     pub v6: &'a AfStrideStats,
 }
 
-impl<'a> std::fmt::Display for Stats<'a> {
+impl std::fmt::Display for Stats<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "v4 ")?;
         for s in self.v4.iter() {
@@ -45,7 +47,7 @@ pub struct Strides<'a> {
     pub v6: &'a Vec<u8>,
 }
 
-impl<'a> std::fmt::Debug for Strides<'a> {
+impl std::fmt::Debug for Strides<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "v4 ")?;
         for s in self.v4.iter() {
@@ -62,13 +64,13 @@ impl<'a> std::fmt::Debug for Strides<'a> {
 //------------ MatchOptions / MatchType -------------------------------------
 
 /// Options for the `match_prefix` method
-/// 
+///
 /// The `MatchOptions` struct is used to specify the options for the
 /// `match_prefix` method on the store.
-/// 
+///
 /// Note that the `match_type` field may be different from the actual
-/// `MatchType` returned from the result. 
-/// 
+/// `MatchType` returned from the result.
+///
 /// See [MultiThreadedStore::match_prefix] for more details.
 #[derive(Debug, Clone)]
 pub struct MatchOptions {
@@ -82,7 +84,7 @@ pub struct MatchOptions {
     pub include_more_specifics: bool,
     /// Whether to return records for a specific multi_uniq_id, None indicates
     /// all records.
-    pub mui: Option<u32>
+    pub mui: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -108,7 +110,6 @@ impl std::fmt::Display for MatchType {
     }
 }
 
-
 //------------ PrefixRecordIter ---------------------------------------------
 
 // Converts from the InternalPrefixRecord to the (public) PrefixRecord
@@ -119,9 +120,7 @@ pub struct PrefixSingleRecordIter<'a, M: Meta> {
     pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, M>>,
 }
 
-impl<'a, M: Meta> Iterator
-    for PrefixSingleRecordIter<'a, M>
-{
+impl<M: Meta> Iterator for PrefixSingleRecordIter<'_, M> {
     type Item = PublicPrefixSingleRecord<M>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -146,16 +145,14 @@ impl<'a, M: Meta> Iterator
     }
 }
 
-
 //------------- QueryResult -------------------------------------------------
 
 /// The type that is returned by a query.
-/// 
+///
 /// This is the result type of a query. It contains the prefix record that was
 /// found in the store, as well as less- or more-specifics as requested.
-/// 
+///
 /// See [MultiThreadedStore::match_prefix] for more details.
-
 
 #[derive(Clone, Debug)]
 pub struct QueryResult<M: crate::prefix_record::Meta> {
@@ -188,15 +185,23 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
             write!(f, "{},", rec)?;
         }
         writeln!(f, " ]")?;
-        writeln!(f, "less_specifics: {{ {} }}", if let Some(ls) = self.less_specifics.as_ref() {
-            format!("{}", ls)
-        } else {
-            "".to_string()
-        })?;
-        writeln!(f, "more_specifics: {{ {} }}", if let Some(ms) = self.more_specifics.as_ref() {
-            format!("{}", ms)
-        } else {
-            "".to_string()
-        })
+        writeln!(
+            f,
+            "less_specifics: {{ {} }}",
+            if let Some(ls) = self.less_specifics.as_ref() {
+                format!("{}", ls)
+            } else {
+                "".to_string()
+            }
+        )?;
+        writeln!(
+            f,
+            "more_specifics: {{ {} }}",
+            if let Some(ms) = self.more_specifics.as_ref() {
+                format!("{}", ms)
+            } else {
+                "".to_string()
+            }
+        )
     }
 }

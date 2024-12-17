@@ -1,11 +1,10 @@
 #[macro_export]
-
-// This macro expands into a match node {}
-// with match arms for all SizedStrideNode::Stride[3-8]
-// for use in insert()
-
 #[doc(hidden)]
 macro_rules! match_node_for_strides_with_local_vec {
+    // This macro expands into a match node {}
+    // with match arms for all SizedStrideNode::Stride[3-8]
+    // for use in insert()
+
     (
         $self: ident;
         // $user_data: ident;

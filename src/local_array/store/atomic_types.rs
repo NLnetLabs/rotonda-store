@@ -334,7 +334,7 @@ impl<M: Meta> MultiMapValue<M> {
         self.route_status = status;
     }
 
-    pub(crate) fn has_persisted_history(&self) -> bool {
+    pub(crate) fn has_persisted_data(&self) -> bool {
         self.persist_status.0
     }
 }

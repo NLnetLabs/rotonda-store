@@ -17,11 +17,11 @@ impl<AF: AddressFamily> PrefixId<AF> {
     }
 
     pub fn get_net(&self) -> AF {
-        self.0.0
+        self.0 .0
     }
 
     pub fn get_len(&self) -> u8 {
-        self.0.1
+        self.0 .1
     }
 }
 
@@ -79,9 +79,7 @@ pub struct QueryResult<M: crate::prefix_record::Meta> {
     pub more_specifics: Option<RecordSet<M>>,
 }
 
-impl<M: crate::prefix_record::Meta> std::fmt::Display
-    for QueryResult<M>
-{
+impl<M: crate::prefix_record::Meta> std::fmt::Display for QueryResult<M> {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),
@@ -109,7 +107,7 @@ impl<M: crate::prefix_record::Meta> std::fmt::Display
 
 //------------ Longest Matching Prefix  -------------------------------------
 
-impl<'a, Store> TreeBitMap<Store>
+impl<Store> TreeBitMap<Store>
 where
     Store: StorageBackend,
 {
@@ -127,7 +125,7 @@ where
     // nibble len offset   0 1    2            3                                4
 
     pub(crate) fn match_prefix(
-        &'a self,
+        &self,
         search_pfx: PrefixId<Store::AF>,
         options: &MatchOptions,
     ) -> QuerySingleResult<Store::Meta> {
@@ -141,8 +139,8 @@ where
 
         // These result values are kept in mutable variables, and assembled
         // at the end into a QueryResult struct. This proved to result in the
-        // most efficient code, where we don't have to match on 
-        // SizedStrideNode over and over. The `match_type` field in the 
+        // most efficient code, where we don't have to match on
+        // SizedStrideNode over and over. The `match_type` field in the
         // QueryResult is computed at the end.
 
         // The final prefix

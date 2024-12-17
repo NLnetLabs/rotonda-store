@@ -399,8 +399,7 @@ impl<M: Meta>
     }
 }
 
-impl<'a, M: Meta + 'a>
-    std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
+impl<M: Meta> std::iter::FromIterator<Arc<PublicPrefixSingleRecord<M>>>
     for RecordSingleSet<M>
 {
     fn from_iter<I: IntoIterator<Item = Arc<PublicPrefixSingleRecord<M>>>>(
@@ -429,7 +428,7 @@ impl<'a, M: Meta + 'a>
     }
 }
 
-impl<'a, AF: AddressFamily, M: Meta + 'a>
+impl<AF: AddressFamily, M: Meta>
     std::iter::FromIterator<(PrefixId<AF>, Arc<M>)> for RecordSingleSet<M>
 {
     fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Arc<M>)>>(
@@ -582,7 +581,7 @@ impl<M: Meta> From<(Vec<PublicPrefixRecord<M>>, Vec<PublicPrefixRecord<M>>)>
     }
 }
 
-impl<'a, M: Meta + 'a> std::iter::FromIterator<PublicPrefixRecord<M>>
+impl<M: Meta> std::iter::FromIterator<PublicPrefixRecord<M>>
     for RecordSet<M>
 {
     fn from_iter<I: IntoIterator<Item = PublicPrefixRecord<M>>>(
@@ -605,7 +604,7 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<PublicPrefixRecord<M>>
     }
 }
 
-impl<'a, AF: AddressFamily, M: Meta + 'a>
+impl<AF: AddressFamily, M: Meta>
     std::iter::FromIterator<(PrefixId<AF>, Vec<PublicRecord<M>>)>
     for RecordSet<M>
 {
@@ -674,7 +673,7 @@ pub struct RecordSetSingleIter<'a, M: Meta> {
     v6: std::slice::Iter<'a, PublicPrefixSingleRecord<M>>,
 }
 
-impl<'a, M: Meta> Iterator for RecordSetSingleIter<'a, M> {
+impl<M: Meta> Iterator for RecordSetSingleIter<'_, M> {
     type Item = PublicPrefixSingleRecord<M>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -698,7 +697,7 @@ pub struct RecordSetIter<'a, M: Meta> {
     v6: std::slice::Iter<'a, PublicPrefixRecord<M>>,
 }
 
-impl<'a, M: Meta> Iterator for RecordSetIter<'a, M> {
+impl<M: Meta> Iterator for RecordSetIter<'_, M> {
     type Item = PublicPrefixRecord<M>;
 
     fn next(&mut self) -> Option<Self::Item> {
