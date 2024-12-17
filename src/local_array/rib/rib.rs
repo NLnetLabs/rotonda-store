@@ -183,18 +183,18 @@
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
+use super::super::persist::lsm_tree::PersistTree;
 use crate::local_array::in_memory::atomic_stride::AtomicBitmap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
+use inetnum::addr::Prefix;
 use log::{debug, info, log_enabled, trace};
 
 use crossbeam_epoch as epoch;
 use crossbeam_utils::Backoff;
 use epoch::{Guard, Owned};
-use lsm_tree::AbstractTree;
-
-use std::marker::PhantomData;
+use roaring::RoaringBitmap;
 
 use crate::local_array::in_memory::tree::{
     SizedStrideNode, Stride, Stride3, Stride4, Stride5, StrideNodeId,
@@ -207,7 +207,6 @@ use crate::{
     prefix_record::PublicRecord,
 };
 
-use super::super::types::RouteStatus;
 use crate::local_array::in_memory::atomic_types::{
     NodeBuckets, StoredPrefix,
 };
@@ -223,10 +222,32 @@ pub use crate::local_array::query;
 
 use crate::{
     impl_search_level, impl_search_level_for_mui, retrieve_node_mut_closure,
-    store_node_closure, Meta,
+    store_node_closure, MatchType, Meta, QueryResult,
 };
 
 use crate::AddressFamily;
+
+//------------ StoreConfig ---------------------------------------------------
+
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum PersistStrategy {
+    WriteAhead,
+    PersistHistory,
+    MemoryOnly,
+    PersistOnly,
+}
+
+#[derive(Debug, Clone)]
+pub struct StoreConfig {
+    pub persist_strategy: PersistStrategy,
+    pub persist_path: String,
+}
+
+impl StoreConfig {
+    pub fn persist_strategy(&self) -> PersistStrategy {
+        self.persist_strategy
+    }
+}
 
 //------------ Counters -----------------------------------------------------
 
@@ -315,220 +336,10 @@ pub struct UpsertReport {
     pub mui_count: usize,
 }
 
-//------------ PersistTree ---------------------------------------------------
-
-pub struct PersistTree<
-    AF: AddressFamily,
-    // The size in bytes of the prefix in the peristed storage (disk), this
-    // amounnts to the bytes for the addres (4 for IPv4, 16 for IPv6) and 1
-    // bytefor the prefix length.
-    const PREFIX_SIZE: usize,
-    // The size in bytes of the complete key in the persisted storage, this
-    // is PREFIX_SIZE bytes (4; 16) + mui size (4) + ltime (8)
-    const KEY_SIZE: usize,
->(lsm_tree::Tree, PhantomData<AF>);
-
-impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
-    PersistTree<AF, PREFIX_SIZE, KEY_SIZE>
-{
-    pub fn insert(&self, key: [u8; KEY_SIZE], value: &[u8]) -> (u32, u32) {
-        self.0.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
-    }
-
-    pub fn get_records_for_prefix<M: Meta>(
-        &self,
-        prefix: PrefixId<AF>,
-    ) -> Vec<PublicRecord<M>> {
-        let prefix_b = &prefix.as_bytes::<PREFIX_SIZE>();
-        (*self.0.prefix(prefix_b))
-            .into_iter()
-            .map(|kv| {
-                let kv = kv.unwrap();
-                let (_, mui, ltime, status) = Self::parse_key(kv.0.as_ref());
-                PublicRecord::new(
-                    mui,
-                    ltime,
-                    status.try_into().unwrap(),
-                    kv.1.as_ref().to_vec().into(),
-                )
-            })
-            .collect::<Vec<_>>()
-    }
-
-    pub fn get_records_for_key<M: Meta + From<Vec<u8>>>(
-        &self,
-        key: &[u8],
-    ) -> Vec<(inetnum::addr::Prefix, PublicRecord<M>)> {
-        (*self.0.prefix(key))
-            .into_iter()
-            .map(|kv| {
-                let kv = kv.unwrap();
-                let (pfx, mui, ltime, status) =
-                    Self::parse_key(kv.0.as_ref());
-
-                (
-                    PrefixId::<AF>::from(pfx).into_pub(),
-                    PublicRecord::new(
-                        mui,
-                        ltime,
-                        status.try_into().unwrap(),
-                        kv.1.as_ref().to_vec().into(),
-                    ),
-                )
-            })
-            .collect::<Vec<_>>()
-    }
-
-    pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
-        let segment = self.0.flush_active_memtable(0);
-
-        if let Ok(Some(segment)) = segment {
-            self.0.register_segments(&[segment])?;
-            self.0.compact(
-                std::sync::Arc::new(lsm_tree::compaction::Leveled::default()),
-                0,
-            )?;
-        };
-
-        Ok(())
-    }
-
-    pub fn approximate_len(&self) -> usize {
-        self.0.approximate_len()
-    }
-
-    pub fn disk_space(&self) -> u64 {
-        self.0.disk_space()
-    }
-
-    #[cfg(feature = "persist")]
-    pub fn persistence_key(
-        // PREFIX_SIZE bytes
-        prefix_id: PrefixId<AF>,
-        // 4 bytes
-        mui: u32,
-        // 8 bytes
-        ltime: u64,
-        // 1 byte
-        status: RouteStatus,
-    ) -> [u8; KEY_SIZE] {
-        assert!(KEY_SIZE > PREFIX_SIZE);
-        let key = &mut [0_u8; KEY_SIZE];
-
-        // prefix 5 or 17 bytes
-        *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
-
-        // mui 4 bytes
-        *key[PREFIX_SIZE..PREFIX_SIZE + 4]
-            .first_chunk_mut::<4>()
-            .unwrap() = mui.to_le_bytes();
-
-        // ltime 8 bytes
-        *key[PREFIX_SIZE + 4..PREFIX_SIZE + 12]
-            .first_chunk_mut::<8>()
-            .unwrap() = ltime.to_le_bytes();
-
-        // status 1 byte
-        key[PREFIX_SIZE + 12] = status.into();
-
-        *key
-    }
-
-    #[cfg(feature = "persist")]
-    pub fn prefix_mui_persistence_key(
-        prefix_id: PrefixId<AF>,
-        mui: u32,
-    ) -> Vec<u8> {
-        let mut key = vec![];
-        // prefix 5 or 17 bytes
-        *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
-
-        // mui 4 bytes
-        *key[PREFIX_SIZE..PREFIX_SIZE + 4]
-            .first_chunk_mut::<4>()
-            .unwrap() = mui.to_le_bytes();
-
-        key
-    }
-
-    #[cfg(feature = "persist")]
-    pub fn parse_key(bytes: &[u8]) -> ([u8; PREFIX_SIZE], u32, u64, u8) {
-        (
-            // prefix 5 or 17 bytes
-            *bytes.first_chunk::<PREFIX_SIZE>().unwrap(),
-            // mui 4 bytes
-            u32::from_le_bytes(
-                *bytes[PREFIX_SIZE..PREFIX_SIZE + 4]
-                    .first_chunk::<4>()
-                    .unwrap(),
-            ),
-            // ltime 8 bytes
-            u64::from_le_bytes(
-                *bytes[PREFIX_SIZE + 4..PREFIX_SIZE + 12]
-                    .first_chunk::<8>()
-                    .unwrap(),
-            ),
-            // status 1 byte
-            bytes[PREFIX_SIZE + 12],
-        )
-    }
-
-    #[cfg(feature = "persist")]
-    pub fn parse_prefix(bytes: &[u8]) -> [u8; PREFIX_SIZE] {
-        *bytes.first_chunk::<PREFIX_SIZE>().unwrap()
-    }
-
-    #[cfg(feature = "persist")]
-    pub(crate) fn persist_record<M: Meta>(
-        &self,
-        prefix: PrefixId<AF>,
-        mui: u32,
-        record: &PublicRecord<M>,
-    ) {
-        self.insert(
-            PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::persistence_key(
-                prefix,
-                mui,
-                record.ltime,
-                record.status,
-            ),
-            record.meta.as_ref(),
-        );
-    }
-}
-
-impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
-    std::fmt::Debug for PersistTree<AF, PREFIX_SIZE, KEY_SIZE>
-{
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum PersistStrategy {
-    WriteAhead,
-    PersistHistory,
-    MemoryOnly,
-    PersistOnly,
-}
-
-#[derive(Debug, Clone)]
-pub struct StoreConfig {
-    pub persist_strategy: PersistStrategy,
-    pub persist_path: String,
-}
-
-impl StoreConfig {
-    pub fn persist_strategy(&self) -> PersistStrategy {
-        self.persist_strategy
-    }
-}
-
-// ----------- CustomAllocStorage -------------------------------------------
+// ----------- Rib -----------------------------------------------------------
 //
-// CustomAllocStorage is a storage backend that uses a custom allocator, that
-// consists of arrays that point to other arrays on collision.
+// A Routing Information Base that consists of multiple different trees for
+// in-memory and on-disk (persisted storage).
 #[derive(Debug)]
 pub struct Rib<
     AF: AddressFamily,
@@ -539,9 +350,9 @@ pub struct Rib<
     const KEY_SIZE: usize,
 > {
     pub config: StoreConfig,
-    pub(crate) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
+    pub(in crate::local_array) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
     #[cfg(feature = "persist")]
-    pub persist_tree: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
+    persist_tree: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
     // Global Roaring BitMap INdex that stores MUIs.
     pub counters: Counters,
 }
@@ -562,21 +373,18 @@ impl<
     ) -> Result<Self, Box<dyn std::error::Error>> {
         info!("store: initialize store {}", AF::BITS);
 
-        let persistence = match config.persist_strategy {
+        let persist_tree = match config.persist_strategy {
             PersistStrategy::MemoryOnly => None,
             _ => {
-                let persist_path = Path::new(&config.persist_path);
-                Some(PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>(
-                    lsm_tree::Config::new(persist_path).open()?,
-                    PhantomData,
-                ))
+                let persist_path = &Path::new(&config.persist_path);
+                Some(PersistTree::new(persist_path))
             }
         };
 
         let store = Rib {
             config,
             in_memory_tree: TreeBitMap::<AF, M, NB, PB>::init(),
-            persist_tree: persistence,
+            persist_tree,
             counters: Counters::default(),
         };
 
@@ -943,6 +751,18 @@ impl<
         })
     }
 
+    pub fn withdrawn_muis_bmin(
+        &'a self,
+        guard: &'a Guard,
+    ) -> &'a RoaringBitmap {
+        unsafe {
+            self.in_memory_tree
+                .withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .deref()
+        }
+    }
+
     // Change the status of the record for the specified (prefix, mui)
     // combination  to Withdrawn.
     pub fn mark_mui_as_withdrawn_for_prefix(
@@ -983,96 +803,97 @@ impl<
 
     // Change the status of the mui globally to Withdrawn. Iterators and match
     // functions will by default not return any records for this mui.
-    // pub fn mark_mui_as_withdrawn(
-    //     &self,
-    //     mui: u32,
-    //     guard: &Guard,
-    // ) -> Result<(), PrefixStoreError> {
-    //     let current = self
-    //         .in_memory_tree
-    //         .withdrawn_muis_bmin
-    //         .load(Ordering::Acquire, guard);
+    pub fn mark_mui_as_withdrawn(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self
+            .in_memory_tree
+            .withdrawn_muis_bmin
+            .load(Ordering::Acquire, guard);
 
-    //     let mut new = unsafe { current.as_ref() }.unwrap().clone();
-    //     new.insert(mui);
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.insert(mui);
 
-    //     #[allow(clippy::assigning_clones)]
-    //     loop {
-    //         match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
-    //             current,
-    //             Owned::new(new),
-    //             Ordering::AcqRel,
-    //             Ordering::Acquire,
-    //             guard,
-    //         ) {
-    //             Ok(_) => return Ok(()),
-    //             Err(updated) => {
-    //                 new =
-    //                     unsafe { updated.current.as_ref() }.unwrap().clone();
-    //             }
-    //         }
-    //     }
-    // }
+        #[allow(clippy::assigning_clones)]
+        loop {
+            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
 
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
-    // pub fn mark_mui_as_active(
-    //     &self,
-    //     mui: u32,
-    //     guard: &Guard,
-    // ) -> Result<(), PrefixStoreError> {
-    //     let current = self
-    //         .in_memory_tree
-    //         .withdrawn_muis_bmin
-    //         .load(Ordering::Acquire, guard);
+    pub fn mark_mui_as_active(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self
+            .in_memory_tree
+            .withdrawn_muis_bmin
+            .load(Ordering::Acquire, guard);
 
-    //     let mut new = unsafe { current.as_ref() }.unwrap().clone();
-    //     new.remove(mui);
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.remove(mui);
 
-    //     #[allow(clippy::assigning_clones)]
-    //     loop {
-    //         match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
-    //             current,
-    //             Owned::new(new),
-    //             Ordering::AcqRel,
-    //             Ordering::Acquire,
-    //             guard,
-    //         ) {
-    //             Ok(_) => return Ok(()),
-    //             Err(updated) => {
-    //                 new =
-    //                     unsafe { updated.current.as_ref() }.unwrap().clone();
-    //             }
-    //         }
-    //     }
-    // }
+        #[allow(clippy::assigning_clones)]
+        loop {
+            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
 
-    // Whether this mui is globally withdrawn. Note that this overrules (by
-    // default) any (prefix, mui) combination in iterators and match functions.
-    // pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-    //     unsafe {
-    //         self.in_memory_tree
-    //             .withdrawn_muis_bmin
-    //             .load(Ordering::Acquire, guard)
-    //             .as_ref()
-    //     }
-    //     .unwrap()
-    //     .contains(mui)
-    // }
+    // Whether this mui is globally withdrawn. Note that this overrules
+    // (by default) any (prefix, mui) combination in iterators and match
+    // functions.
+    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+        unsafe {
+            self.in_memory_tree
+                .withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap()
+        .contains(mui)
+    }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
-    // pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
-    //     !unsafe {
-    //         self.in_memory_tree
-    //             .withdrawn_muis_bmin
-    //             .load(Ordering::Acquire, guard)
-    //             .as_ref()
-    //     }
-    //     .unwrap()
-    //     .contains(mui)
-    // }
+    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+        !unsafe {
+            self.in_memory_tree
+                .withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap()
+        .contains(mui)
+    }
 
     // This function is used by the upsert_prefix function above.
     //
@@ -1326,6 +1147,83 @@ impl<
             }
         }
         panic!("prefix length for {:?} is too long", prefix);
+    }
+
+    //-------- Persistence ---------------------------------------------------
+
+    pub fn persist_strategy(&self) -> PersistStrategy {
+        self.config.persist_strategy
+    }
+
+    pub fn match_prefix_in_persisted_store(
+        &'a self,
+        search_pfx: PrefixId<AF>,
+        mui: Option<u32>,
+    ) -> QueryResult<M> {
+        let key: Vec<u8> = if let Some(mui) = mui {
+            PersistTree::<AF,
+        PREFIX_SIZE, KEY_SIZE>::prefix_mui_persistence_key(search_pfx, mui)
+        } else {
+            search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
+        };
+
+        if let Some(persist) = &self.persist_tree {
+            QueryResult {
+                prefix: Some(search_pfx.into_pub()),
+                match_type: MatchType::ExactMatch,
+                prefix_meta: persist
+                    .get_records_for_key(&key)
+                    .into_iter()
+                    .map(|(_, rec)| rec)
+                    .collect::<Vec<_>>(),
+                less_specifics: None,
+                more_specifics: None,
+            }
+        } else {
+            QueryResult {
+                prefix: None,
+                match_type: MatchType::EmptyMatch,
+                prefix_meta: vec![],
+                less_specifics: None,
+                more_specifics: None,
+            }
+        }
+    }
+
+    pub fn get_records_for_prefix(
+        &self,
+        prefix: &Prefix,
+    ) -> Vec<PublicRecord<M>> {
+        if let Some(p) = &self.persist_tree {
+            p.get_records_for_prefix(PrefixId::from(*prefix))
+        } else {
+            vec![]
+        }
+    }
+
+    pub fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {
+        if let Some(p) = &self.persist_tree {
+            p.flush_to_disk()
+                .map_err(|_| PrefixStoreError::PersistFailed)
+        } else {
+            Err(PrefixStoreError::PersistFailed)
+        }
+    }
+
+    pub fn approx_persisted_items(&self) -> usize {
+        if let Some(p) = &self.persist_tree {
+            p.approximate_len()
+        } else {
+            0
+        }
+    }
+
+    pub fn disk_space(&self) -> u64 {
+        if let Some(p) = &self.persist_tree {
+            p.disk_space()
+        } else {
+            0
+        }
     }
 
     // ------- THE HASHING FUNCTION -----------------------------------------

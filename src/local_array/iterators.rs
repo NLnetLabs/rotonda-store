@@ -6,7 +6,6 @@
 // storage (and some over the TreeBitMap nodes, the parent of the store),
 // as such all the iterators here are composed of iterators over the
 // individual nodes. The Node Iterators live in the node.rs file.
-use std::sync::atomic::Ordering;
 
 use super::in_memory::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::in_memory::tree::{Stride3, Stride4, Stride5, StrideNodeId};
@@ -817,8 +816,7 @@ impl<
                     }
                 };
 
-                let global_withdrawn_bmin =
-                    self.in_memory_tree.withdrawn_muis_bmin(guard);
+                let global_withdrawn_bmin = self.withdrawn_muis_bmin(guard);
 
                 Some(MoreSpecificPrefixIter {
                     store: self,
@@ -864,8 +862,7 @@ impl<
                 .in_memory_tree
                 .prefix_buckets
                 .get_root_prefix_set(cur_len);
-            let global_withdrawn_bmin =
-                self.in_memory_tree.withdrawn_muis_bmin(guard);
+            let global_withdrawn_bmin = self.withdrawn_muis_bmin(guard);
 
             Some(LessSpecificPrefixIter {
                 prefixes: &self.in_memory_tree.prefix_buckets,

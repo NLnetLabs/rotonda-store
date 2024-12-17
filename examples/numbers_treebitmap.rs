@@ -8,7 +8,6 @@ use std::ffi::OsString;
 use std::fs::File;
 use std::net::{IpAddr, Ipv4Addr};
 use std::process;
-use std::sync::atomic::Ordering;
 
 #[create_store((
     ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),

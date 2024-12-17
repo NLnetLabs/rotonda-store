@@ -1,13 +1,11 @@
 use crate::prefix_record::{Meta, PublicRecord};
 use crate::prelude::multi::PrefixId;
-use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
+use crossbeam_epoch::{self as epoch, Atomic};
 use log::{error, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 use std::hash::Hash;
-use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
-};
+use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
 
 use super::atomic_types::{NodeBuckets, PrefixBuckets};
@@ -204,7 +202,7 @@ pub struct TreeBitMap<
 > {
     pub(crate) node_buckets: NB,
     pub(crate) prefix_buckets: PB,
-    withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     _af: PhantomData<AF>,
     _m: PhantomData<M>,
 }
@@ -226,102 +224,91 @@ impl<
         }
     }
 
-    pub fn withdrawn_muis_bmin<'a>(
-        &'a self,
-        guard: &'a Guard,
-    ) -> &'a RoaringBitmap {
-        unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .deref()
-        }
-    }
-
     // Change the status of the mui globally to Withdrawn. Iterators and match
     // functions will by default not return any records for this mui.
-    pub fn mark_mui_as_withdrawn(
-        &self,
-        mui: u32,
-        guard: &Guard,
-    ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+    // pub fn mark_mui_as_withdrawn(
+    //     &self,
+    //     mui: u32,
+    //     guard: &Guard,
+    // ) -> Result<(), PrefixStoreError> {
+    //     let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.insert(mui);
+    //     let mut new = unsafe { current.as_ref() }.unwrap().clone();
+    //     new.insert(mui);
 
-        #[allow(clippy::assigning_clones)]
-        loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
-    }
+    //     #[allow(clippy::assigning_clones)]
+    //     loop {
+    //         match self.withdrawn_muis_bmin.compare_exchange(
+    //             current,
+    //             Owned::new(new),
+    //             Ordering::AcqRel,
+    //             Ordering::Acquire,
+    //             guard,
+    //         ) {
+    //             Ok(_) => return Ok(()),
+    //             Err(updated) => {
+    //                 new =
+    //                     unsafe { updated.current.as_ref() }.unwrap().clone();
+    //             }
+    //         }
+    //     }
+    // }
 
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
-    pub fn mark_mui_as_active(
-        &self,
-        mui: u32,
-        guard: &Guard,
-    ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+    // pub fn mark_mui_as_active(
+    //     &self,
+    //     mui: u32,
+    //     guard: &Guard,
+    // ) -> Result<(), PrefixStoreError> {
+    //     let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.remove(mui);
+    //     let mut new = unsafe { current.as_ref() }.unwrap().clone();
+    //     new.remove(mui);
 
-        #[allow(clippy::assigning_clones)]
-        loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
-    }
+    //     #[allow(clippy::assigning_clones)]
+    //     loop {
+    //         match self.withdrawn_muis_bmin.compare_exchange(
+    //             current,
+    //             Owned::new(new),
+    //             Ordering::AcqRel,
+    //             Ordering::Acquire,
+    //             guard,
+    //         ) {
+    //             Ok(_) => return Ok(()),
+    //             Err(updated) => {
+    //                 new =
+    //                     unsafe { updated.current.as_ref() }.unwrap().clone();
+    //             }
+    //         }
+    //     }
+    // }
 
     // Whether this mui is globally withdrawn. Note that this overrules
     // (by default) any (prefix, mui) combination in iterators and match
     // functions.
-    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-        unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
-    }
+    // pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+    //     unsafe {
+    //         self.withdrawn_muis_bmin
+    //             .load(Ordering::Acquire, guard)
+    //             .as_ref()
+    //     }
+    //     .unwrap()
+    //     .contains(mui)
+    // }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
-    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
-        !unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
-    }
+    // pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+    //     !unsafe {
+    //         self.withdrawn_muis_bmin
+    //             .load(Ordering::Acquire, guard)
+    //             .as_ref()
+    //     }
+    //     .unwrap()
+    //     .contains(mui)
+    // }
 }
 
 impl<
@@ -515,15 +502,12 @@ impl<
         &self,
         record: PublicRecord<M>,
         guard: &epoch::Guard,
-        // user_data: Option<&<M as MergeUpdate>::UserDataIn>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
 
-        if let Some(root_node) = self.retrieve_node_mut(
-            self.get_root_node_id(),
-            record.multi_uniq_id,
-            // guard,
-        ) {
+        if let Some(root_node) = self
+            .retrieve_node_mut(self.get_root_node_id(), record.multi_uniq_id)
+        {
             match root_node {
                 SizedStrideRef::Stride3(_) => {
                     self.in_memory_tree

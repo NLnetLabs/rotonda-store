@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 
@@ -7,8 +5,9 @@ use crate::af::AddressFamily;
 use crate::local_array::in_memory::atomic_types::{
     NodeBuckets, PrefixBuckets,
 };
+use crate::local_array::persist::lsm_tree::PersistTree;
 use crate::prefix_record::{Meta, PublicRecord};
-use crate::rib::{PersistStrategy, PersistTree, Rib};
+use crate::rib::{PersistStrategy, Rib};
 use inetnum::addr::Prefix;
 
 use crate::QueryResult;
@@ -116,7 +115,7 @@ where
         impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a,
         PrefixStoreError,
     > {
-        let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
+        let bmin = self.withdrawn_muis_bmin(guard);
 
         if mui.is_some() && bmin.contains(mui.unwrap()) {
             Err(PrefixStoreError::PrefixNotFound)
@@ -169,7 +168,7 @@ where
                         // the local statuses of the records with muis
                         // that appear in the specified bitmap index.
                         pfx.record_map.as_records_with_rewritten_status(
-                            self.in_memory_tree.withdrawn_muis_bmin(guard),
+                            self.withdrawn_muis_bmin(guard),
                             RouteStatus::Withdrawn,
                         )
                     },
@@ -254,40 +253,40 @@ where
         }
     }
 
-    fn match_prefix_in_persisted_store(
-        &'a self,
-        search_pfx: PrefixId<AF>,
-        mui: Option<u32>,
-    ) -> QueryResult<M> {
-        let key: Vec<u8> = if let Some(mui) = mui {
-            PersistTree::<AF,
-        PREFIX_SIZE, KEY_SIZE>::prefix_mui_persistence_key(search_pfx, mui)
-        } else {
-            search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
-        };
+    // fn match_prefix_in_persisted_store(
+    //     &'a self,
+    //     search_pfx: PrefixId<AF>,
+    //     mui: Option<u32>,
+    // ) -> QueryResult<M> {
+    //     let key: Vec<u8> = if let Some(mui) = mui {
+    //         PersistTree::<AF,
+    //     PREFIX_SIZE, KEY_SIZE>::prefix_mui_persistence_key(search_pfx, mui)
+    //     } else {
+    //         search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
+    //     };
 
-        if let Some(persist) = &self.persist_tree {
-            QueryResult {
-                prefix: Some(search_pfx.into_pub()),
-                match_type: MatchType::ExactMatch,
-                prefix_meta: persist
-                    .get_records_for_key(&key)
-                    .into_iter()
-                    .map(|(_, rec)| rec)
-                    .collect::<Vec<_>>(),
-                less_specifics: None,
-                more_specifics: None,
-            }
-        } else {
-            QueryResult {
-                prefix: None,
-                match_type: MatchType::EmptyMatch,
-                prefix_meta: vec![],
-                less_specifics: None,
-                more_specifics: None,
-            }
-        }
-    }
+    //     if let Some(persist) = &self.persist_tree {
+    //         QueryResult {
+    //             prefix: Some(search_pfx.into_pub()),
+    //             match_type: MatchType::ExactMatch,
+    //             prefix_meta: persist
+    //                 .get_records_for_key(&key)
+    //                 .into_iter()
+    //                 .map(|(_, rec)| rec)
+    //                 .collect::<Vec<_>>(),
+    //             less_specifics: None,
+    //             more_specifics: None,
+    //         }
+    //     } else {
+    //         QueryResult {
+    //             prefix: None,
+    //             match_type: MatchType::EmptyMatch,
+    //             prefix_meta: vec![],
+    //             less_specifics: None,
+    //             more_specifics: None,
+    //         }
+    //     }
+    // }
 
     pub fn best_path(
         &'a self,
@@ -896,7 +895,7 @@ where
         mui: Option<u32>,
         guard: &Guard,
     ) -> Vec<PublicRecord<M>> {
-        let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
+        let bmin = self.withdrawn_muis_bmin(guard);
 
         pfx.record_map.get_filtered_records(mui, bmin)
     }
