@@ -2,8 +2,9 @@ use std::fmt;
 use std::fmt::Debug;
 use std::{cmp::Ordering, sync::Arc};
 
-use crate::local_array::store::atomic_types::RouteStatus;
-use crate::{af::AddressFamily, local_array::node::PrefixId};
+use crate::af::AddressFamily;
+use crate::local_array::types::RouteStatus;
+use crate::prelude::multi::PrefixId;
 use inetnum::addr::Prefix;
 
 //------------ InternalPrefixRecord -----------------------------------------

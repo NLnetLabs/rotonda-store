@@ -10,13 +10,13 @@ use inetnum::addr::Prefix;
 
 pub use crate::af::{AddressFamily, IPv4, IPv6};
 
-pub use crate::local_array::store::custom_alloc;
+pub use crate::local_array::rib::rib;
 
 pub const RECORDS_MAX_NUM: usize = 3;
 
 //------------ The publicly available Rotonda Stores ------------------------
 
-pub use crate::local_array::store::DefaultStore as MultiThreadedStore;
+pub use crate::local_array::rib::DefaultStore as MultiThreadedStore;
 pub use crate::local_vec::store::Store as SingleThreadedStore;
 
 //------------ Types for strides displaying/monitoring ----------------------

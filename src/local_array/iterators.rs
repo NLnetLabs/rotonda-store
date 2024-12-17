@@ -8,21 +8,24 @@
 // individual nodes. The Node Iterators live in the node.rs file.
 use std::sync::atomic::Ordering;
 
-use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
-use super::custom_alloc::CustomAllocStorage;
-use crate::local_array::store::atomic_types::RouteStatus;
+use super::in_memory::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
+use super::in_memory::tree::{Stride3, Stride4, Stride5, StrideNodeId};
+use super::types::PrefixId;
+use crate::local_array::in_memory::tree::SizedStrideRef;
+use crate::local_array::types::RouteStatus;
 use crate::prefix_record::PublicRecord;
+use crate::rib;
 use crate::{
     af::AddressFamily,
     local_array::{
         bit_span::BitSpan,
-        node::{
-            NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter, PrefixId,
-            SizedStrideRef, Stride3, Stride4, Stride5, StrideNodeId,
+        in_memory::node::{
+            NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
         },
     },
     prefix_record::Meta,
 };
+use rib::Rib;
 
 use crossbeam_epoch::Guard;
 use inetnum::addr::Prefix;
@@ -293,7 +296,7 @@ pub(crate) struct MoreSpecificPrefixIter<
     const PREFIX_SIZE: usize,
     const KEY_SIZE: usize,
 > {
-    store: &'a CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
+    store: &'a Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
     cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
     start_bit_span: BitSpan,
@@ -708,7 +711,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
 // ----------- Iterator initialization methods for CustomAllocStorage -------
 
 // These are only the methods that are starting the iterations. All other
-// methods for CustomAllocStorage are in the main custom_alloc.rs file.
+// methods for Rib are in the main rib.rs file.
 
 impl<
         'a,
@@ -718,7 +721,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
         const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+    > Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.
@@ -814,11 +817,8 @@ impl<
                     }
                 };
 
-                let global_withdrawn_bmin = unsafe {
-                    self.withdrawn_muis_bmin
-                        .load(Ordering::Acquire, guard)
-                        .deref()
-                };
+                let global_withdrawn_bmin =
+                    self.in_memory_tree.withdrawn_muis_bmin(guard);
 
                 Some(MoreSpecificPrefixIter {
                     store: self,
@@ -860,15 +860,15 @@ impl<
             None
         } else {
             let cur_len = start_prefix_id.get_len() - 1;
-            let cur_bucket = self.prefixes.get_root_prefix_set(cur_len);
-            let global_withdrawn_bmin = unsafe {
-                self.withdrawn_muis_bmin
-                    .load(Ordering::Acquire, guard)
-                    .deref()
-            };
+            let cur_bucket = self
+                .in_memory_tree
+                .prefix_buckets
+                .get_root_prefix_set(cur_len);
+            let global_withdrawn_bmin =
+                self.in_memory_tree.withdrawn_muis_bmin(guard);
 
             Some(LessSpecificPrefixIter {
-                prefixes: &self.prefixes,
+                prefixes: &self.in_memory_tree.prefix_buckets,
                 cur_len,
                 cur_bucket,
                 cur_level: 0,
@@ -887,8 +887,11 @@ impl<
         &'a self,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PrefixIter {
-            prefixes: &self.prefixes,
-            cur_bucket: self.prefixes.get_root_prefix_set(0),
+            prefixes: &self.in_memory_tree.prefix_buckets,
+            cur_bucket: self
+                .in_memory_tree
+                .prefix_buckets
+                .get_root_prefix_set(0),
             cur_len: 0,
             cur_level: 0,
             cursor: 0,

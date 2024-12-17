@@ -9,6 +9,8 @@ use crate::af::Zero;
 use crate::synth_int::AtomicU128;
 use crate::{impl_primitive_atomic_stride, AddressFamily};
 
+use super::tree::StrideNodeId;
+
 pub type Stride3 = u16;
 pub type Stride4 = u32;
 pub type Stride5 = u64;
@@ -563,7 +565,7 @@ where
     fn into_node_id<AF: AddressFamily>(
         addr_bits: AF,
         len: u8,
-    ) -> super::node::StrideNodeId<AF>;
+    ) -> StrideNodeId<AF>;
 
     // Convert a ptrbitarr into a pfxbitarr sized bitmap,
     // so we can do bitwise operations with a pfxbitarr sized

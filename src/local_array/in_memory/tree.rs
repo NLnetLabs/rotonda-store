@@ -1,20 +1,24 @@
 use crate::prefix_record::{Meta, PublicRecord};
-use crossbeam_epoch::{self as epoch};
+use crate::prelude::multi::PrefixId;
+use crossbeam_epoch::{self as epoch, Atomic, Guard, Owned};
 use log::{error, log_enabled, trace};
+use roaring::RoaringBitmap;
 
 use std::hash::Hash;
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
+use std::sync::atomic::{
+    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+};
 use std::{fmt::Debug, marker::PhantomData};
 
+use super::atomic_types::{NodeBuckets, PrefixBuckets};
 use crate::af::AddressFamily;
-use crate::custom_alloc::{CustomAllocStorage, StoreConfig, UpsertReport};
 use crate::insert_match;
-use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
+use crate::rib::{Rib, StoreConfig, UpsertReport};
 
+use super::super::errors::PrefixStoreError;
 pub(crate) use super::atomic_stride::*;
-use super::store::errors::PrefixStoreError;
 
-pub(crate) use crate::local_array::node::TreeBitMapNode;
+use super::node::TreeBitMapNode;
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
@@ -72,80 +76,6 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     ExistingNode(StrideNodeId<AF>),
     NewPrefix,
     ExistingPrefix,
-}
-
-#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct PrefixId<AF: AddressFamily>(Option<(AF, u8)>);
-
-impl<AF: AddressFamily> PrefixId<AF> {
-    pub fn new(net: AF, len: u8) -> Self {
-        PrefixId(Some((net, len)))
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
-
-    pub fn get_net(&self) -> AF {
-        self.0.unwrap().0
-    }
-
-    pub fn get_len(&self) -> u8 {
-        self.0.unwrap().1
-    }
-
-    // This should never fail, since there shouldn't be a invalid prefix in
-    // this prefix id in the first place.
-    pub fn into_pub(&self) -> inetnum::addr::Prefix {
-        inetnum::addr::Prefix::new(
-            self.get_net().into_ipaddr(),
-            self.get_len(),
-        )
-        .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
-    }
-
-    // Increment the length of the prefix without changing the bits part.
-    // This is used to iterate over more-specific prefixes for this prefix,
-    // since the more specifics iterator includes the requested `base_prefix`
-    // itself.
-    pub fn inc_len(self) -> Self {
-        Self(self.0.map(|(net, len)| (net, len + 1)))
-    }
-
-    pub fn as_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
-        match self.0 {
-            Some(r) => r.0.as_prefix_bytes(r.1),
-            _ => [255; PREFIX_SIZE],
-        }
-    }
-}
-
-impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
-    fn default() -> Self {
-        PrefixId(None)
-    }
-}
-
-impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
-    fn from(value: inetnum::addr::Prefix) -> Self {
-        Self(Some((AF::from_ipaddr(value.addr()), value.len())))
-    }
-}
-
-impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<PrefixId<AF>>
-    for [u8; PREFIX_SIZE]
-{
-    fn from(value: PrefixId<AF>) -> Self {
-        value.as_bytes::<PREFIX_SIZE>()
-    }
-}
-
-impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<[u8; PREFIX_SIZE]>
-    for PrefixId<AF>
-{
-    fn from(value: [u8; PREFIX_SIZE]) -> Self {
-        PrefixId(Some(AF::from_prefix_bytes(value)))
-    }
 }
 
 //--------------------- Per-Stride-Node-Id Type -----------------------------
@@ -265,15 +195,133 @@ impl std::fmt::Display for StrideType {
 
 //--------------------- TreeBitMap ------------------------------------------
 
+#[derive(Debug)]
 pub struct TreeBitMap<
     AF: AddressFamily,
     M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
-    const PREFIX_SIZE: usize,
-    const KEY_SIZE: usize,
 > {
-    pub store: CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
+    pub(crate) node_buckets: NB,
+    pub(crate) prefix_buckets: PB,
+    withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    _af: PhantomData<AF>,
+    _m: PhantomData<M>,
+}
+
+impl<
+        AF: AddressFamily,
+        M: Meta,
+        NB: NodeBuckets<AF>,
+        PB: PrefixBuckets<AF, M>,
+    > TreeBitMap<AF, M, NB, PB>
+{
+    pub(crate) fn init() -> Self {
+        Self {
+            node_buckets: NodeBuckets::init(),
+            prefix_buckets: PB::init(),
+            withdrawn_muis_bmin: RoaringBitmap::new().into(),
+            _af: PhantomData,
+            _m: PhantomData,
+        }
+    }
+
+    pub fn withdrawn_muis_bmin<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> &'a RoaringBitmap {
+        unsafe {
+            self.withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .deref()
+        }
+    }
+
+    // Change the status of the mui globally to Withdrawn. Iterators and match
+    // functions will by default not return any records for this mui.
+    pub fn mark_mui_as_withdrawn(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.insert(mui);
+
+        #[allow(clippy::assigning_clones)]
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
+
+    // Change the status of the mui globally to Active. Iterators and match
+    // functions will default to the status on the record itself.
+    pub fn mark_mui_as_active(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.remove(mui);
+
+        #[allow(clippy::assigning_clones)]
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
+
+    // Whether this mui is globally withdrawn. Note that this overrules
+    // (by default) any (prefix, mui) combination in iterators and match
+    // functions.
+    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+        unsafe {
+            self.withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap()
+        .contains(mui)
+    }
+
+    // Whether this mui is globally active. Note that the local statuses of
+    // records (prefix, mui) may be set to withdrawn in iterators and match
+    // functions.
+    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+        !unsafe {
+            self.withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .as_ref()
+        }
+        .unwrap()
+        .contains(mui)
+    }
 }
 
 impl<
@@ -283,15 +331,15 @@ impl<
         PB: PrefixBuckets<AF, M>,
         const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+    > Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     pub fn new(
         config: StoreConfig,
     ) -> Result<
-        TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
+        Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
         Box<dyn std::error::Error>,
     > {
-        let root_node = match CustomAllocStorage::<
+        let root_node = match Rib::<
             AF,
             M,
             NB,
@@ -323,18 +371,7 @@ impl<
             }
         };
 
-        Ok(
-            TreeBitMap {
-                store: CustomAllocStorage::<
-                    AF,
-                    M,
-                    NB,
-                    PB,
-                    PREFIX_SIZE,
-                    KEY_SIZE,
-                >::init(root_node, config)?,
-            },
-        )
+        Rib::<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>::init(root_node, config)
     }
 
     // Partition for stride 4
@@ -382,12 +419,12 @@ impl<
         }
 
         let mut stride_end: u8 = 0;
-        let mut cur_i = self.store.get_root_node_id();
+        let mut cur_i = self.get_root_node_id();
         let mut level: u8 = 0;
         let mut acc_retry_count = 0;
 
         loop {
-            let stride = self.store.get_stride_sizes()[level as usize];
+            let stride = self.get_stride_sizes()[level as usize];
             stride_end += stride;
             let nibble_len = if pfx.get_len() < stride_end {
                 stride + pfx.get_len() - stride_end
@@ -452,10 +489,6 @@ impl<
         }
     }
 
-    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
-        self.store.get_root_node_id()
-    }
-
     // Yes, we're hating this. But, the root node has no room for a serial of
     // the prefix 0/0 (the default route), which doesn't even matter, unless,
     // UNLESS, somebody wants to store a default route. So we have to store a
@@ -486,40 +519,39 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("Updating the default route...");
 
-        if let Some(root_node) = self.store.retrieve_node_mut(
-            self.store.get_root_node_id(),
+        if let Some(root_node) = self.retrieve_node_mut(
+            self.get_root_node_id(),
             record.multi_uniq_id,
             // guard,
         ) {
             match root_node {
                 SizedStrideRef::Stride3(_) => {
-                    self.store
-                        .buckets
-                        .get_store3(self.store.get_root_node_id())
+                    self.in_memory_tree
+                        .node_buckets
+                        .get_store3(self.get_root_node_id())
                         .update_rbm_index(record.multi_uniq_id)?;
                 }
                 SizedStrideRef::Stride4(_) => {
-                    self.store
-                        .buckets
-                        .get_store4(self.store.get_root_node_id())
+                    self.in_memory_tree
+                        .node_buckets
+                        .get_store4(self.get_root_node_id())
                         .update_rbm_index(record.multi_uniq_id)?;
                 }
                 SizedStrideRef::Stride5(_) => {
-                    self.store
-                        .buckets
-                        .get_store5(self.store.get_root_node_id())
+                    self.in_memory_tree
+                        .node_buckets
+                        .get_store5(self.get_root_node_id())
                         .update_rbm_index(record.multi_uniq_id)?;
                 }
             };
         };
 
-        self.store.upsert_prefix(
+        self.upsert_prefix(
             PrefixId::new(AF::zero(), 0),
             record,
             // Do not update the path selection for the default route.
             None,
             guard,
-            // user_data,
         )
     }
 
@@ -531,8 +563,8 @@ impl<
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        trace!("{:?}", self.store.retrieve_node(start_node_id));
-        match self.store.retrieve_node(start_node_id) {
+        trace!("{:?}", self.retrieve_node(start_node_id));
+        match self.retrieve_node(start_node_id) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
@@ -608,18 +640,17 @@ impl<
         PB: PrefixBuckets<AF, M>,
         const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > std::fmt::Display for TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+    > std::fmt::Display for Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(_f, "{} prefixes created", self.store.get_prefixes_count())?;
-        writeln!(_f, "{} nodes created", self.store.get_nodes_count())?;
+        writeln!(_f, "{} prefixes created", self.get_prefixes_count())?;
+        writeln!(_f, "{} nodes created", self.get_nodes_count())?;
         writeln!(_f)?;
 
         writeln!(
             _f,
             "stride division {:?}",
-            self.store
-                .get_stride_sizes()
+            self.get_stride_sizes()
                 .iter()
                 .map_while(|s| if s > &0 { Some(*s) } else { None })
                 .collect::<Vec<_>>()
@@ -636,8 +667,7 @@ impl<
 
         trace!(
             "stride_sizes {:?}",
-            self.store
-                .get_stride_sizes()
+            self.get_stride_sizes()
                 .iter()
                 .map_while(|s| if s > &0 { Some(*s) } else { None })
                 .enumerate()
@@ -647,7 +677,7 @@ impl<
         for crate::stats::CreatedNodes {
             depth_level: len,
             count: prefix_count,
-        } in self.store.counters.get_prefix_stats()
+        } in self.counters.get_prefix_stats()
         {
             let max_pfx = u128::overflowing_pow(2, len as u32);
             let n = (prefix_count as u32 / SCALE) as usize;

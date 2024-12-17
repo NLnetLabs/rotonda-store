@@ -183,35 +183,49 @@
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
+use crate::local_array::in_memory::atomic_stride::AtomicBitmap;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use log::{debug, info, log_enabled, trace};
 
-use crossbeam_epoch::{self as epoch, Atomic};
+use crossbeam_epoch as epoch;
 use crossbeam_utils::Backoff;
 use epoch::{Guard, Owned};
 use lsm_tree::AbstractTree;
-use roaring::RoaringBitmap;
 
 use std::marker::PhantomData;
 
-use crate::{local_array::tree::*, stats::CreatedNodes};
+use crate::local_array::in_memory::tree::{
+    SizedStrideNode, Stride, Stride3, Stride4, Stride5, StrideNodeId,
+    TreeBitMap,
+};
+use crate::local_array::types::PrefixId;
+use crate::stats::CreatedNodes;
 use crate::{
-<<<<<<< Updated upstream
-=======
-    local_array::store::oncebox::{OnceBox, OnceBoxSlice},
->>>>>>> Stashed changes
-    local_array::{bit_span::BitSpan, store::errors::PrefixStoreError},
+    local_array::{bit_span::BitSpan, errors::PrefixStoreError},
     prefix_record::PublicRecord,
 };
+
+use super::super::types::RouteStatus;
+use crate::local_array::in_memory::atomic_types::{
+    NodeBuckets, StoredPrefix,
+};
+use crate::local_array::in_memory::atomic_types::{NodeSet, StoredNode};
+use crate::local_array::in_memory::atomic_types::{PrefixBuckets, PrefixSet};
+use crate::local_array::in_memory::node::TreeBitMapNode;
+use crate::local_array::in_memory::tree::SizedStrideRef;
+
+// Make sure to also import the other methods for the Rib, so the proc macro
+// create_store can use them.
+pub use crate::local_array::iterators;
+pub use crate::local_array::query;
 
 use crate::{
     impl_search_level, impl_search_level_for_mui, retrieve_node_mut_closure,
     store_node_closure, Meta,
 };
 
-use super::atomic_types::*;
 use crate::AddressFamily;
 
 //------------ Counters -----------------------------------------------------
@@ -506,7 +520,7 @@ pub struct StoreConfig {
 }
 
 impl StoreConfig {
-    pub(crate) fn persist_strategy(&self) -> PersistStrategy {
+    pub fn persist_strategy(&self) -> PersistStrategy {
         self.persist_strategy
     }
 }
@@ -516,7 +530,7 @@ impl StoreConfig {
 // CustomAllocStorage is a storage backend that uses a custom allocator, that
 // consists of arrays that point to other arrays on collision.
 #[derive(Debug)]
-pub struct CustomAllocStorage<
+pub struct Rib<
     AF: AddressFamily,
     M: Meta,
     NB: NodeBuckets<AF>,
@@ -524,16 +538,12 @@ pub struct CustomAllocStorage<
     const PREFIX_SIZE: usize,
     const KEY_SIZE: usize,
 > {
-    pub(crate) config: StoreConfig,
-    pub(crate) buckets: NB,
-    pub prefixes: PB,
+    pub config: StoreConfig,
+    pub(crate) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
     #[cfg(feature = "persist")]
-    pub persistence: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
-    pub default_route_prefix_serial: AtomicUsize,
+    pub persist_tree: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
     // Global Roaring BitMap INdex that stores MUIs.
-    pub withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
-    _m: PhantomData<M>,
 }
 
 impl<
@@ -544,7 +554,7 @@ impl<
         PB: PrefixBuckets<AF, M>,
         const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > CustomAllocStorage<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+    > Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
     pub(crate) fn init(
         root_node: SizedStrideNode<AF>,
@@ -563,15 +573,11 @@ impl<
             }
         };
 
-        let store = CustomAllocStorage {
+        let store = Rib {
             config,
-            buckets: NodeBuckets::<AF>::init(),
-            prefixes: PrefixBuckets::<AF, M>::init(),
-            persistence,
-            default_route_prefix_serial: AtomicUsize::new(0),
-            withdrawn_muis_bmin: RoaringBitmap::new().into(),
+            in_memory_tree: TreeBitMap::<AF, M, NB, PB>::init(),
+            persist_tree: persistence,
             counters: Counters::default(),
-            _m: PhantomData,
         };
 
         let _retry_count = store.store_node(
@@ -639,7 +645,7 @@ impl<
         match next_node {
             SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
                 &search_level_3,
-                self.buckets.get_store3(id),
+                self.in_memory_tree.node_buckets.get_store3(id),
                 new_node,
                 multi_uniq_id,
                 0,
@@ -647,7 +653,7 @@ impl<
             ),
             SizedStrideNode::Stride4(new_node) => (search_level_4.f)(
                 &search_level_4,
-                self.buckets.get_store4(id),
+                self.in_memory_tree.node_buckets.get_store4(id),
                 new_node,
                 multi_uniq_id,
                 0,
@@ -655,7 +661,7 @@ impl<
             ),
             SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
                 &search_level_5,
-                self.buckets.get_store5(id),
+                self.in_memory_tree.node_buckets.get_store5(id),
                 new_node,
                 multi_uniq_id,
                 0,
@@ -694,17 +700,17 @@ impl<
         match self.get_stride_for_id(id) {
             3 => (search_level_3.f)(
                 &search_level_3,
-                self.buckets.get_store3(id),
+                self.in_memory_tree.node_buckets.get_store3(id),
                 0,
             ),
             4 => (search_level_4.f)(
                 &search_level_4,
-                self.buckets.get_store4(id),
+                self.in_memory_tree.node_buckets.get_store4(id),
                 0,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
-                self.buckets.get_store5(id),
+                self.in_memory_tree.node_buckets.get_store5(id),
                 0,
             ),
         }
@@ -745,17 +751,17 @@ impl<
         match self.get_stride_for_id(id) {
             3 => (search_level_3.f)(
                 &search_level_3,
-                self.buckets.get_store3(id),
+                self.in_memory_tree.node_buckets.get_store3(id),
                 0,
             ),
             4 => (search_level_4.f)(
                 &search_level_4,
-                self.buckets.get_store4(id),
+                self.in_memory_tree.node_buckets.get_store4(id),
                 0,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
-                self.buckets.get_store5(id),
+                self.in_memory_tree.node_buckets.get_store5(id),
                 0,
             ),
         }
@@ -792,21 +798,21 @@ impl<
             );
         }
 
-        match self.buckets.get_stride_for_id(id) {
+        match self.in_memory_tree.node_buckets.get_stride_for_id(id) {
             3 => (search_level_3.f)(
                 &search_level_3,
-                self.buckets.get_store3(id),
+                self.in_memory_tree.node_buckets.get_store3(id),
                 0,
             ),
 
             4 => (search_level_4.f)(
                 &search_level_4,
-                self.buckets.get_store4(id),
+                self.in_memory_tree.node_buckets.get_store4(id),
                 0,
             ),
             _ => (search_level_5.f)(
                 &search_level_5,
-                self.buckets.get_store5(id),
+                self.in_memory_tree.node_buckets.get_store5(id),
                 0,
             ),
         }
@@ -821,16 +827,6 @@ impl<
     }
 
     // Prefixes related methods
-
-    pub(crate) fn load_default_route_prefix_serial(&self) -> usize {
-        self.default_route_prefix_serial.load(Ordering::SeqCst)
-    }
-
-    #[allow(dead_code)]
-    fn increment_default_route_prefix_serial(&self) -> usize {
-        self.default_route_prefix_serial
-            .fetch_add(1, Ordering::SeqCst)
-    }
 
     // THE CRITICAL SECTION
     //
@@ -883,22 +879,13 @@ impl<
                         );
                     }
 
-<<<<<<< Updated upstream
                     let (mui_count, retry_count) =
                         locked_prefix.record_map.upsert_record(
                             prefix,
                             record,
-                            &self.persistence,
+                            &self.persist_tree,
                             self.config.persist_strategy,
                         )?;
-=======
-                    // We're creating a StoredPrefix without our record first,
-                    // to avoid having to clone it on retry.
-                    let this_level =
-                        PB::get_bits_for_len(prefix.get_len(), level);
-                    let next_level =
-                        PB::get_bits_for_len(prefix.get_len(), level + 1);
->>>>>>> Stashed changes
 
                     // See if someone beat us to creating the record.
                     if mui_count.is_some() {
@@ -909,89 +896,7 @@ impl<
                         self.counters.inc_prefixes_count(prefix.get_len());
                     }
 
-<<<<<<< Updated upstream
                     (mui_count, retry_count)
-=======
-                    let p = locked_prefix
-                        .get_or_init(1 << (next_level - this_level), || {
-                            new_stored_prefix
-                        });
-                    // let back_off = Backoff::new();
-
-                    let res = p.record_map.upsert_record(record);
-
-                    // loop {
-                    //     if let Ok(()) = set_res {
-                    //         break;
-                    //     } else {
-                    //         if let Some(stored_record) = locked_prefix.get() {
-                    //             res = stored_record
-                    //                 .record_map
-                    //                 .upsert_record(record.clone());
-                    //             // locked_prefix.set(*stored_record);
-                    //         };
-                    //     }
-                    //     back_off.snooze();
-                    // }
-
-                    // We're expecting an empty slot.
-                    // match atomic_stored_prefix.0.compare_exchange(
-                    //     Shared::null(),
-                    //     // tag with value 1, means the path selection is set to
-                    //     // outdated.
-                    //     Owned::new(new_stored_prefix).with_tag(1),
-                    //     Ordering::AcqRel,
-                    //     Ordering::Acquire,
-                    //     guard,
-                    // ) {
-                    //     // ...and we got an empty slot, the newly created
-                    //     // StoredPrefix is stored into it.
-                    //     Ok(spfx) => {
-                    //         if log_enabled!(log::Level::Info) {
-                    //             let StoredPrefix {
-                    //                 prefix,
-                    //                 record_map: stored_record,
-                    //                 ..
-                    //             } = unsafe { spfx.deref() };
-                    //             if log_enabled!(log::Level::Info) {
-                    //                 info!(
-                    //                         "{} store: Inserted new prefix record {}/{} with {:?}",
-                    //                         std::thread::current().name().unwrap(),
-                    //                         prefix.get_net().into_ipaddr(), prefix.get_len(),
-                    //                         stored_record
-                    //                     );
-                    //             }
-                    //         }
-
-                    self.counters.inc_prefixes_count(prefix.get_len());
-
-                    //         // ..and update the record_map with the actual record
-                    //         // we got from the user.
-                    //         unsafe { spfx.deref() }
-                    //             .record_map
-                    //             .upsert_record(record)
-                    //     }
-                    //     // ...somebody beat us to it, the slot's not empty
-                    //     // anymore, we'll have to do it again.
-                    //     Err(CompareExchangeError { current, new: _ }) => {
-                    //         if log_enabled!(log::Level::Debug) {
-                    //             debug!(
-                    //                     "{} store: Prefix can't be inserted as new {:?}",
-                    //                     std::thread::current().name().unwrap(),
-                    //                     current
-                    //                 );
-                    //         }
-                    //         retry_count += 1;
-                    //         let stored_prefix = unsafe { current.deref() };
-
-                    //         // update the record_map from the winning thread
-                    //         // with our caller's record.
-                    //         stored_prefix.set_ps_outdated(guard)?;
-                    //         stored_prefix.record_map.upsert_record(record)
-                    //     }
-                    // }
-                    res
->>>>>>> Stashed changes
                 }
                 // There already is a StoredPrefix with a record at this
                 // location.
@@ -1016,7 +921,7 @@ impl<
                         stored_prefix.record_map.upsert_record(
                             prefix,
                             record,
-                            &self.persistence,
+                            &self.persist_tree,
                             self.config.persist_strategy,
                         )?;
                     mui_is_new = mui_count.is_none();
@@ -1078,88 +983,96 @@ impl<
 
     // Change the status of the mui globally to Withdrawn. Iterators and match
     // functions will by default not return any records for this mui.
-    pub fn mark_mui_as_withdrawn(
-        &self,
-        mui: u32,
-        guard: &Guard,
-    ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+    // pub fn mark_mui_as_withdrawn(
+    //     &self,
+    //     mui: u32,
+    //     guard: &Guard,
+    // ) -> Result<(), PrefixStoreError> {
+    //     let current = self
+    //         .in_memory_tree
+    //         .withdrawn_muis_bmin
+    //         .load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.insert(mui);
+    //     let mut new = unsafe { current.as_ref() }.unwrap().clone();
+    //     new.insert(mui);
 
-        #[allow(clippy::assigning_clones)]
-        loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
-    }
+    //     #[allow(clippy::assigning_clones)]
+    //     loop {
+    //         match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+    //             current,
+    //             Owned::new(new),
+    //             Ordering::AcqRel,
+    //             Ordering::Acquire,
+    //             guard,
+    //         ) {
+    //             Ok(_) => return Ok(()),
+    //             Err(updated) => {
+    //                 new =
+    //                     unsafe { updated.current.as_ref() }.unwrap().clone();
+    //             }
+    //         }
+    //     }
+    // }
 
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
-    pub fn mark_mui_as_active(
-        &self,
-        mui: u32,
-        guard: &Guard,
-    ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+    // pub fn mark_mui_as_active(
+    //     &self,
+    //     mui: u32,
+    //     guard: &Guard,
+    // ) -> Result<(), PrefixStoreError> {
+    //     let current = self
+    //         .in_memory_tree
+    //         .withdrawn_muis_bmin
+    //         .load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.remove(mui);
+    //     let mut new = unsafe { current.as_ref() }.unwrap().clone();
+    //     new.remove(mui);
 
-        #[allow(clippy::assigning_clones)]
-        loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
-    }
+    //     #[allow(clippy::assigning_clones)]
+    //     loop {
+    //         match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+    //             current,
+    //             Owned::new(new),
+    //             Ordering::AcqRel,
+    //             Ordering::Acquire,
+    //             guard,
+    //         ) {
+    //             Ok(_) => return Ok(()),
+    //             Err(updated) => {
+    //                 new =
+    //                     unsafe { updated.current.as_ref() }.unwrap().clone();
+    //             }
+    //         }
+    //     }
+    // }
 
     // Whether this mui is globally withdrawn. Note that this overrules (by
     // default) any (prefix, mui) combination in iterators and match functions.
-    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-        unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
-    }
+    // pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+    //     unsafe {
+    //         self.in_memory_tree
+    //             .withdrawn_muis_bmin
+    //             .load(Ordering::Acquire, guard)
+    //             .as_ref()
+    //     }
+    //     .unwrap()
+    //     .contains(mui)
+    // }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
-    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
-        !unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
-    }
+    // pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+    //     !unsafe {
+    //         self.in_memory_tree
+    //             .withdrawn_muis_bmin
+    //             .load(Ordering::Acquire, guard)
+    //             .as_ref()
+    //     }
+    //     .unwrap()
+    //     .contains(mui)
+    // }
 
     // This function is used by the upsert_prefix function above.
     //
@@ -1174,17 +1087,11 @@ impl<
     pub(crate) fn non_recursive_retrieve_prefix_mut(
         &'a self,
         search_prefix_id: PrefixId<AF>,
-<<<<<<< Updated upstream
     ) -> (&'a StoredPrefix<AF, M>, bool) {
-=======
-    ) -> Result<
-        (&'a StoredPrefix<AF, M>, u8),
-        (&'a OnceBoxSlice<StoredPrefix<AF, M>>, u8),
-    > {
->>>>>>> Stashed changes
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
         let mut prefix_set = self
-            .prefixes
+            .in_memory_tree
+            .prefix_buckets
             .get_root_prefix_set(search_prefix_id.get_len());
         let mut level: u8 = 0;
 
@@ -1194,29 +1101,16 @@ impl<
             let index = Self::hash_prefix_id(search_prefix_id, level);
 
             // probe the slot with the index that's the result of the hashing.
-<<<<<<< Updated upstream
             // let locked_prefix = prefix_set.0.get(index);
             let stored_prefix = match prefix_set.0.get(index) {
                 Some(p) => {
                     trace!("prefix set found.");
                     (p, true)
                 }
-=======
-            // stored_prefix = Some(prefix_set.0[index]);
-            // let prefix_probe = if !prefixes.is_null() {
-            trace!("prefix set found.");
-            let locked_prefix = prefix_set.0.get(index);
-            let stored_prefix = match locked_prefix {
-                // None => {
-                // panic!("index for PrefixSet out of bounds. search_prefix_id {:?}, level {}", search_prefix_id, level);
-                // }
-                Some(p) => p,
->>>>>>> Stashed changes
                 None => {
                     // We're at the end of the chain and haven't found our
                     // search_prefix_id anywhere. Return the end-of-the-chain
                     // StoredPrefix, so the caller can attach a new one.
-<<<<<<< Updated upstream
                     trace!(
                         "no record. returning last found record in level
                         {}, with index {}.",
@@ -1225,7 +1119,7 @@ impl<
                     );
                     let index = Self::hash_prefix_id(search_prefix_id, level);
                     trace!("calculate next index {}", index);
-                    (
+                    let var_name = (
                         prefix_set
                             .0
                             .get_or_init(index, || {
@@ -1239,14 +1133,8 @@ impl<
                             })
                             .0,
                         false,
-                    )
-=======
-                    // trace!("no prefix set.");
-                    trace!("no record. returning last found record.");
-                    return Err((&prefix_set.0, level));
-                    // .map(|sp| (sp, level)
-                    // .ok_or(locked_prefix)
->>>>>>> Stashed changes
+                    );
+                    var_name
                 }
             };
 
@@ -1281,7 +1169,10 @@ impl<
             usize,
         )>,
     ) {
-        let mut prefix_set = self.prefixes.get_root_prefix_set(id.get_len());
+        let mut prefix_set = self
+            .in_memory_tree
+            .prefix_buckets
+            .get_root_prefix_set(id.get_len());
         let mut parents = [None; 32];
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -1294,17 +1185,7 @@ impl<
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
-<<<<<<< Updated upstream
             if let Some(stored_prefix) = prefix_set.0.get(index) {
-=======
-            // let mut prefixes = prefix_set; //.0.load(Ordering::Acquire, guard);
-
-            // if !prefixes.is_none() {
-            // let prefix_ref = prefixes.0[index];
-            if let Some(stored_prefix) = prefix_set.0.get(index)
-            // unsafe { prefix_ref }.get_stored_prefix(guard)
-            {
->>>>>>> Stashed changes
                 if id == stored_prefix.get_prefix_id() {
                     trace!("found requested prefix {:?}", id);
                     parents[level as usize] = Some((prefix_set, index));
@@ -1327,6 +1208,7 @@ impl<
         }
     }
 
+    #[deprecated]
     #[allow(clippy::type_complexity)]
     pub(crate) fn retrieve_prefix(
         &'a self,
@@ -1352,18 +1234,7 @@ impl<
                 // HASHING FUNCTION
                 let index = Self::hash_prefix_id(prefix_id, level);
 
-<<<<<<< Updated upstream
                 if let Some(stored_prefix) = prefix_set.0.get(index) {
-=======
-                // let prefixes = prefix_set.0.load(Ordering::SeqCst, guard);
-                // let tag = prefixes.tag();
-                // let prefix_ref = unsafe { &prefixes.deref()[index] };
-
-                if let Some(stored_prefix) =
-                    // unsafe { prefix_ref }.get_stored_prefix(guard)
-                    prefix_set.0.get(index)
-                {
->>>>>>> Stashed changes
                     if prefix_id == stored_prefix.prefix {
                         trace!("found requested prefix {:?}", prefix_id,);
                         return Some((stored_prefix, 0));
@@ -1382,7 +1253,9 @@ impl<
 
         (search_level.f)(
             &search_level,
-            self.prefixes.get_root_prefix_set(prefix_id.get_len()),
+            self.in_memory_tree
+                .prefix_buckets
+                .get_root_prefix_set(prefix_id.get_len()),
             0,
         )
     }
@@ -1390,7 +1263,7 @@ impl<
     #[allow(dead_code)]
     fn remove_prefix(&mut self, index: PrefixId<AF>) -> Option<M> {
         match index.is_empty() {
-            false => self.prefixes.remove(index),
+            false => self.in_memory_tree.prefix_buckets.remove(index),
             true => None,
         }
     }
@@ -1406,11 +1279,11 @@ impl<
     // Stride related methods
 
     pub(crate) fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8 {
-        self.buckets.get_stride_for_id(id)
+        self.in_memory_tree.node_buckets.get_stride_for_id(id)
     }
 
     pub fn get_stride_sizes(&self) -> &[u8] {
-        self.buckets.get_stride_sizes()
+        self.in_memory_tree.node_buckets.get_stride_sizes()
     }
 
     // pub(crate) fn get_strides_len() -> u8 {

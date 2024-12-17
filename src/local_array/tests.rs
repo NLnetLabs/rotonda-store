@@ -4,7 +4,7 @@ use std::error::Error;
 //------------ AddressFamily bit flippers -----------------------------------
 #[test]
 fn test_af_1() -> Result<(), Box<dyn Error>> {
-    use crate::local_array::tree::StrideNodeId;
+    use crate::prelude::multi::StrideNodeId;
     use crate::AddressFamily;
     use crate::IPv4;
 
@@ -33,7 +33,7 @@ fn test_af_1() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_af_2() -> Result<(), Box<dyn Error>> {
-    use crate::local_array::tree::StrideNodeId;
+    use crate::prelude::multi::StrideNodeId;
     use crate::IPv4;
 
     let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111;

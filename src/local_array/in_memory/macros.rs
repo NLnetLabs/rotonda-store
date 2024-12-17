@@ -47,7 +47,7 @@ macro_rules! insert_match {
             // retry_count from this macro.
             let local_retry_count = 0;
             // retrieve_node_mut updates the bitmap index if necessary.
-            if let Some(current_node) = $self.store.retrieve_node_mut($cur_i, $record.multi_uniq_id) {
+            if let Some(current_node) = $self.retrieve_node_mut($cur_i, $record.multi_uniq_id) {
                 match current_node {
                     $(
                         SizedStrideRef::$variant(current_node) => {
@@ -62,7 +62,7 @@ macro_rules! insert_match {
                                 // the length of THIS stride
                                 $stride_len,
                                 // the length of the next stride
-                                $self.store.get_stride_sizes().get(($level + 1) as usize),
+                                $self.get_stride_sizes().get(($level + 1) as usize),
                                 $is_last_stride,
                             ) {
                                 (NewNodeOrIndex::NewNode(n), retry_count) => {
@@ -70,13 +70,13 @@ macro_rules! insert_match {
                                     // $self.stats[$stats_level].inc($level);
 
                                     // get a new identifier for the node we're going to create.
-                                    let new_id = $self.store.acquire_new_node_id(($pfx.get_net(), $truncate_len + $nibble_len));
+                                    let new_id = $self.acquire_new_node_id(($pfx.get_net(), $truncate_len + $nibble_len));
 
                                     // store the new node in the global
                                     // store. It returns the created id
                                     // and the number of retries before
                                     // success.
-                                    match $self.store.store_node(new_id, $record.multi_uniq_id, n)  {
+                                    match $self.store_node(new_id, $record.multi_uniq_id, n)  {
                                         Ok((node_id, s_retry_count)) => {
                                             Ok((node_id, $acc_retry_count + s_retry_count + retry_count))
                                         },
@@ -97,7 +97,7 @@ macro_rules! insert_match {
                                     Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
                                 },
                                 (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                    return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
+                                    return $self.upsert_prefix($pfx, $record, $update_path_selections, $guard)
                                         .and_then(|mut r| {
                                             r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
                                             Ok(r)
@@ -106,7 +106,7 @@ macro_rules! insert_match {
                                     // $self.stats[$stats_level].inc_prefix_count($level);
                                 }
                                 (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                    return $self.store.upsert_prefix($pfx, $record, $update_path_selections, $guard)
+                                    return $self.upsert_prefix($pfx, $record, $update_path_selections, $guard)
                                         .and_then(|mut r| {
                                             r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
                                             Ok(r)
@@ -175,8 +175,8 @@ macro_rules! impl_primitive_atomic_stride {
                 fn into_node_id<AF: AddressFamily>(
                     addr_bits: AF,
                     len: u8
-                ) -> $crate::local_array::node::StrideNodeId<AF> {
-                    let id = $crate::local_array::node::StrideNodeId::new_with_cleaned_id(addr_bits, len);
+                ) -> StrideNodeId<AF> {
+                    let id = StrideNodeId::new_with_cleaned_id(addr_bits, len);
                     id
                 }
 

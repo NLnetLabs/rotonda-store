@@ -61,7 +61,6 @@ impl<T> Drop for OnceBox<T> {
     }
 }
 
-<<<<<<< Updated upstream
 #[derive(Debug, Default)]
 pub struct OnceBoxSlice<T> {
     ptr: AtomicPtr<OnceBox<T>>,
@@ -73,19 +72,6 @@ impl<T> OnceBoxSlice<T> {
         Self {
             ptr: AtomicPtr::new(null_mut()),
             p2_size,
-=======
-#[derive(Debug)]
-pub struct OnceBoxSlice<T> {
-    ptr: AtomicPtr<OnceBox<T>>,
-    pow2_size: u8,
-}
-
-impl<T> OnceBoxSlice<T> {
-    pub fn new(size: u8) -> Self {
-        Self {
-            ptr: AtomicPtr::new(null_mut()),
-            pow2_size: 1 << size as usize,
->>>>>>> Stashed changes
         }
     }
 
@@ -98,39 +84,24 @@ impl<T> OnceBoxSlice<T> {
         if ptr.is_null() {
             None
         } else {
-<<<<<<< Updated upstream
             let slice =
                 unsafe { slice::from_raw_parts(ptr, 1 << self.p2_size) };
-=======
-            let slice = unsafe {
-                slice::from_raw_parts(ptr, 1 << self.pow2_size as usize)
-            };
->>>>>>> Stashed changes
             slice.get(idx).and_then(|inner| inner.get())
         }
     }
 
-<<<<<<< Updated upstream
     pub fn get_or_init(
         &self,
         idx: usize,
         create: impl FnOnce() -> T,
     ) -> (&T, bool) {
         // assert!(idx < (1 << self.p2_size));
-=======
-    pub fn is_null(&self) -> bool {
-        self.ptr.load(Ordering::Relaxed).is_null()
-    }
-
-    pub fn get_or_init(&self, idx: usize, create: impl FnOnce() -> T) -> &T {
->>>>>>> Stashed changes
         let slice = self.get_or_make_slice();
         slice[idx].get_or_init(create)
     }
 
     fn get_or_make_slice(&self) -> &[OnceBox<T>] {
         let ptr = self.ptr.load(Ordering::Relaxed);
-<<<<<<< Updated upstream
         if !ptr.is_null() {
             return unsafe { slice::from_raw_parts(ptr, 1 << self.p2_size) };
         }
@@ -138,17 +109,6 @@ impl<T> OnceBoxSlice<T> {
         // Create a slice, set it, get again.
         let mut vec = Vec::with_capacity(1 << self.p2_size);
         for _ in 0..(1 << self.p2_size) {
-=======
-        if ptr != null_mut() {
-            return unsafe {
-                slice::from_raw_parts(ptr, 1 << self.pow2_size as usize)
-            };
-        }
-
-        // Create a slice, set it, get again.
-        let mut vec = Vec::with_capacity(1 << self.pow2_size as usize);
-        for _ in 0..(1 << self.pow2_size) {
->>>>>>> Stashed changes
             vec.push(OnceBox::new())
         }
         // Convert Vec<[OnceBox<T>] -> Box<[OnceBox<T>] -> &mut [OnceBox<T>]
@@ -172,22 +132,14 @@ impl<T> OnceBoxSlice<T> {
                 let _ = unsafe {
                     Box::from_raw(slice::from_raw_parts_mut(
                         ptr,
-<<<<<<< Updated upstream
                         1 << self.p2_size,
-=======
-                        self.pow2_size as usize,
->>>>>>> Stashed changes
                     ))
                 };
                 current
             }
         };
 
-<<<<<<< Updated upstream
         unsafe { slice::from_raw_parts(res, 1 << self.p2_size) }
-=======
-        unsafe { slice::from_raw_parts(res, self.pow2_size as usize) }
->>>>>>> Stashed changes
     }
 }
 
@@ -198,11 +150,7 @@ impl<T> Drop for OnceBoxSlice<T> {
             let _ = unsafe {
                 Box::from_raw(slice::from_raw_parts_mut(
                     ptr,
-<<<<<<< Updated upstream
                     1 << self.p2_size,
-=======
-                    self.pow2_size as usize,
->>>>>>> Stashed changes
                 ))
             };
         }

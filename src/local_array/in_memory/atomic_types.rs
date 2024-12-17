@@ -13,14 +13,18 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
-use crate::custom_alloc::{PersistStrategy, PersistTree};
-use crate::local_array::tree::*;
+use crate::local_array::types::{PrefixId, RouteStatus};
+// use crate::local_array::in_memory_tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
+use crate::rib::{PersistStrategy, PersistTree};
 use crate::AddressFamily;
 
-use super::errors::PrefixStoreError;
+use super::super::errors::PrefixStoreError;
+use super::atomic_stride;
+use super::node::TreeBitMapNode;
 use super::oncebox::OnceBoxSlice;
+use super::tree::{Stride, Stride3, Stride4, Stride5, StrideNodeId};
 
 // ----------- Node related structs -----------------------------------------
 
@@ -48,7 +52,6 @@ pub struct NodeSet<AF: AddressFamily, S: Stride>(
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
-<<<<<<< Updated upstream
     pub fn init(p2_size: u8) -> Self {
         if log_enabled!(log::Level::Debug) {
             debug!(
@@ -59,22 +62,6 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         }
 
         NodeSet(OnceBoxSlice::new(p2_size), RoaringBitmap::new().into())
-=======
-    pub fn init(pow2_size: u8) -> Self {
-        if log_enabled!(log::Level::Debug) {
-            debug!(
-                "{} store: creating space for {} nodes",
-                std::thread::current().name().unwrap(),
-                1 << pow2_size
-            );
-        }
-
-        // let mut l = vec![];
-        // for _i in 0..size {
-        //     l.push(OnceBox::new());
-        // }
-        NodeSet(OnceBoxSlice::new(pow2_size), RoaringBitmap::new().into())
->>>>>>> Stashed changes
     }
 
     pub fn update_rbm_index(
@@ -82,7 +69,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         multi_uniq_id: u32,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
-        S: crate::local_array::atomic_stride::Stride,
+        S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;
@@ -98,7 +85,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         _guard: &crate::epoch::Guard,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
-        S: crate::local_array::atomic_stride::Stride,
+        S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;
@@ -172,11 +159,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
                 std::thread::current().name().unwrap_or("unnamed-thread"),
                 pfx_id.get_len()
             );
-<<<<<<< Updated upstream
             PrefixSet::init(next_level - this_level)
-=======
-            PrefixSet::empty(next_level - this_level)
->>>>>>> Stashed changes
         };
         // End of calculation
 
@@ -254,8 +237,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         &'a self,
         tbi: &M::TBI,
         guard: &'a Guard,
-    ) -> Result<(Option<u32>, Option<u32>), super::errors::PrefixStoreError>
-    {
+    ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
         let path_selection_muis = self.record_map.best_backup(*tbi);
 
         self.set_path_selections(
@@ -273,46 +255,6 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
             None
         } else {
             Some(&self.next_bucket)
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
-pub enum RouteStatus {
-    Active,
-    InActive,
-    Withdrawn,
-}
-
-impl std::fmt::Display for RouteStatus {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            RouteStatus::Active => write!(f, "active"),
-            RouteStatus::InActive => write!(f, "inactive"),
-            RouteStatus::Withdrawn => write!(f, "withdrawn"),
-        }
-    }
-}
-
-impl From<RouteStatus> for u8 {
-    fn from(value: RouteStatus) -> Self {
-        match value {
-            RouteStatus::Active => 1,
-            RouteStatus::InActive => 2,
-            RouteStatus::Withdrawn => 3,
-        }
-    }
-}
-
-impl TryFrom<u8> for RouteStatus {
-    type Error = PrefixStoreError;
-
-    fn try_from(value: u8) -> Result<Self, Self::Error> {
-        match value {
-            1 => Ok(RouteStatus::Active),
-            2 => Ok(RouteStatus::InActive),
-            3 => Ok(RouteStatus::Withdrawn),
-            _ => Err(PrefixStoreError::StoreNotReadyError),
         }
     }
 }
@@ -711,50 +653,18 @@ pub struct PrefixSet<AF: AddressFamily, M: Meta>(
 );
 
 impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
-<<<<<<< Updated upstream
     pub fn init(p2_size: u8) -> Self {
         PrefixSet(OnceBoxSlice::new(p2_size))
-=======
-    pub fn init(pow2_size: u8) -> Self {
-        // let mut l = Vec::with_capacity(size);
-
-        // let l = AtomicStoredPrefix<AF, M>>>::new(vec![
-        // AtomicStoredPrefix::empty(),
-        // ]);
-        trace!("creating space for {} prefixes in prefix_set", pow2_size);
-        // for _i in 0..size {
-        //     l.push(OnceBox::new());
-        // }
-        PrefixSet(OnceBoxSlice::new(pow2_size))
->>>>>>> Stashed changes
     }
 
     pub(crate) fn is_empty(&self) -> bool {
-<<<<<<< Updated upstream
-=======
-        // if self.0.len() == 1 {
-        //     true
-        // } else {
-        //     false
-        // }
->>>>>>> Stashed changes
         self.0.is_null()
     }
 
     pub(crate) fn get_by_index(
         &self,
         index: usize,
-<<<<<<< Updated upstream
     ) -> Option<&StoredPrefix<AF, M>> {
         self.0.get(index)
-=======
-        _guard: &'a Guard,
-    ) -> Option<&'a StoredPrefix<AF, M>> {
-        self.0.get(index)
-    }
-
-    pub(crate) fn empty(pow2_size: u8) -> Self {
-        PrefixSet(OnceBoxSlice::new(pow2_size))
->>>>>>> Stashed changes
     }
 }

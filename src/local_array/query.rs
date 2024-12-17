@@ -4,25 +4,27 @@ use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 
 use crate::af::AddressFamily;
-use crate::custom_alloc::{PersistStrategy, PersistTree};
-use crate::local_array::store::atomic_types::{NodeBuckets, PrefixBuckets};
+use crate::local_array::in_memory::atomic_types::{
+    NodeBuckets, PrefixBuckets,
+};
 use crate::prefix_record::{Meta, PublicRecord};
+use crate::rib::{PersistStrategy, PersistTree, Rib};
 use inetnum::addr::Prefix;
 
 use crate::QueryResult;
 
-use crate::local_array::node::TreeBitMapNode;
-use crate::local_array::tree::TreeBitMap;
+use crate::local_array::in_memory::node::TreeBitMapNode;
 use crate::{MatchOptions, MatchType};
 
-use super::node::{PrefixId, SizedStrideRef, StrideNodeId};
-use super::store::atomic_types::{RouteStatus, StoredPrefix};
-use super::store::errors::PrefixStoreError;
+use super::errors::PrefixStoreError;
+use super::in_memory::atomic_types::StoredPrefix;
+use super::in_memory::tree::{SizedStrideRef, StrideNodeId};
+use super::types::{PrefixId, RouteStatus};
 
 //------------ Prefix Matching ----------------------------------------------
 
 impl<'a, AF, M, NB, PB, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
-    TreeBitMap<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+    Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 where
     AF: AddressFamily,
     M: Meta,
@@ -36,9 +38,9 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        let result = self.store.non_recursive_retrieve_prefix(prefix_id);
+        let result = self.non_recursive_retrieve_prefix(prefix_id);
         let prefix = result.0;
-        let more_specifics_vec = self.store.more_specific_prefix_iter_from(
+        let more_specifics_vec = self.more_specific_prefix_iter_from(
             prefix_id,
             mui,
             include_withdrawn,
@@ -71,12 +73,12 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        let result = self.store.non_recursive_retrieve_prefix(prefix_id);
+        let result = self.non_recursive_retrieve_prefix(prefix_id);
 
         let prefix = result.0;
         let less_specifics_vec = result.1.map(
             |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.store.less_specific_prefix_iter(
+                self.less_specific_prefix_iter(
                     prefix_id,
                     mui,
                     include_withdrawn,
@@ -112,14 +114,20 @@ where
         guard: &'a Guard,
     ) -> Result<
         impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a,
-        std::io::Error,
+        PrefixStoreError,
     > {
-        Ok(self.store.more_specific_prefix_iter_from(
-            prefix_id,
-            mui,
-            include_withdrawn,
-            guard,
-        ))
+        let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
+
+        if mui.is_some() && bmin.contains(mui.unwrap()) {
+            Err(PrefixStoreError::PrefixNotFound)
+        } else {
+            Ok(self.more_specific_prefix_iter_from(
+                prefix_id,
+                mui,
+                include_withdrawn,
+                guard,
+            ))
+        }
     }
 
     pub fn match_prefix(
@@ -128,7 +136,7 @@ where
         options: &MatchOptions,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        match self.store.config.persist_strategy() {
+        match self.config.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 self.match_prefix_in_persisted_store(search_pfx, options.mui)
             }
@@ -145,35 +153,28 @@ where
         // `non_recursive_retrieve_prefix` returns an exact match only, so no
         // longest matching prefix!
         let mut stored_prefix =
-            self.store.non_recursive_retrieve_prefix(search_pfx).0.map(
-                |pfx| {
-                    (
-                        pfx.prefix,
-                        if !options.include_withdrawn {
-                            // Filter out all the withdrawn records, both
-                            // with globally withdrawn muis, and with local
-                            // statuses
-                            // set to Withdrawn.
-                            self.get_filtered_records(pfx, options.mui, guard)
-                                .into_iter()
-                                .collect()
-                        } else {
-                            // Do no filter out any records, but do rewrite
-                            // the local statuses of the records with muis
-                            // that appear in the specified bitmap index.
-                            pfx.record_map.as_records_with_rewritten_status(
-                                unsafe {
-                                    self.store
-                                        .withdrawn_muis_bmin
-                                        .load(Ordering::Acquire, guard)
-                                        .deref()
-                                },
-                                RouteStatus::Withdrawn,
-                            )
-                        },
-                    )
-                },
-            );
+            self.non_recursive_retrieve_prefix(search_pfx).0.map(|pfx| {
+                (
+                    pfx.prefix,
+                    if !options.include_withdrawn {
+                        // Filter out all the withdrawn records, both
+                        // with globally withdrawn muis, and with local
+                        // statuses
+                        // set to Withdrawn.
+                        self.get_filtered_records(pfx, options.mui, guard)
+                            .into_iter()
+                            .collect()
+                    } else {
+                        // Do no filter out any records, but do rewrite
+                        // the local statuses of the records with muis
+                        // that appear in the specified bitmap index.
+                        pfx.record_map.as_records_with_rewritten_status(
+                            self.in_memory_tree.withdrawn_muis_bmin(guard),
+                            RouteStatus::Withdrawn,
+                        )
+                    },
+                )
+            });
 
         // Check if we have an actual exact match, if not then fetch the
         // first lesser-specific with the greatest length, that's the Longest
@@ -188,7 +189,6 @@ where
             // so we need to find the longest matching prefix.
             (MatchType::LongestMatch | MatchType::EmptyMatch, _) => {
                 stored_prefix = self
-                    .store
                     .less_specific_prefix_iter(
                         search_pfx,
                         options.mui,
@@ -216,36 +216,34 @@ where
                 .unwrap_or_default(),
             less_specifics: if options.include_less_specifics {
                 Some(
-                    self.store
-                        .less_specific_prefix_iter(
-                            if let Some(ref pfx) = stored_prefix {
-                                pfx.0
-                            } else {
-                                search_pfx
-                            },
-                            options.mui,
-                            options.include_withdrawn,
-                            guard,
-                        )
-                        .collect(),
+                    self.less_specific_prefix_iter(
+                        if let Some(ref pfx) = stored_prefix {
+                            pfx.0
+                        } else {
+                            search_pfx
+                        },
+                        options.mui,
+                        options.include_withdrawn,
+                        guard,
+                    )
+                    .collect(),
                 )
             } else {
                 None
             },
             more_specifics: if options.include_more_specifics {
                 Some(
-                    self.store
-                        .more_specific_prefix_iter_from(
-                            if let Some(pfx) = stored_prefix {
-                                pfx.0
-                            } else {
-                                search_pfx
-                            },
-                            options.mui,
-                            options.include_withdrawn,
-                            guard,
-                        )
-                        .collect(),
+                    self.more_specific_prefix_iter_from(
+                        if let Some(pfx) = stored_prefix {
+                            pfx.0
+                        } else {
+                            search_pfx
+                        },
+                        options.mui,
+                        options.include_withdrawn,
+                        guard,
+                    )
+                    .collect(),
                 )
                 // The user requested more specifics, but there aren't any, so
                 // we need to return an empty vec, not a None.
@@ -268,7 +266,7 @@ where
             search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
         };
 
-        if let Some(persist) = &self.store.persistence {
+        if let Some(persist) = &self.persist_tree {
             QueryResult {
                 prefix: Some(search_pfx.into_pub()),
                 match_type: MatchType::ExactMatch,
@@ -296,8 +294,7 @@ where
         search_pfx: PrefixId<AF>,
         guard: &Guard,
     ) -> Option<Result<PublicRecord<M>, PrefixStoreError>> {
-        self.store
-            .non_recursive_retrieve_prefix(search_pfx)
+        self.non_recursive_retrieve_prefix(search_pfx)
             .0
             .map(|p_rec| {
                 p_rec.get_path_selections(guard).best().map_or_else(
@@ -318,8 +315,7 @@ where
         tbi: &<M as Meta>::TBI,
         guard: &Guard,
     ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
-        self.store
-            .non_recursive_retrieve_prefix(search_pfx)
+        self.non_recursive_retrieve_prefix(search_pfx)
             .0
             .map_or(Err(PrefixStoreError::StoreNotReadyError), |p_rec| {
                 p_rec.calculate_and_store_best_backup(tbi, guard)
@@ -331,8 +327,7 @@ where
         search_pfx: PrefixId<AF>,
         guard: &Guard,
     ) -> Result<bool, PrefixStoreError> {
-        self.store
-            .non_recursive_retrieve_prefix(search_pfx)
+        self.non_recursive_retrieve_prefix(search_pfx)
             .0
             .map_or(Err(PrefixStoreError::StoreNotReadyError), |p| {
                 Ok(p.is_ps_outdated(guard))
@@ -376,45 +371,44 @@ where
         // which lives on the root node itself! We are *not* going to return
         // all of the prefixes in the tree as more-specifics.
         if search_pfx.get_len() == 0 {
-            match self.store.load_default_route_prefix_serial() {
-                0 => {
-                    return QueryResult {
-                        prefix: None,
-                        prefix_meta: vec![],
-                        match_type: MatchType::EmptyMatch,
-                        less_specifics: None,
-                        more_specifics: None,
-                    };
-                }
+            // match self.load_default_route_prefix_serial() {
+            //     0 => {
+            //         return QueryResult {
+            //             prefix: None,
+            //             prefix_meta: vec![],
+            //             match_type: MatchType::EmptyMatch,
+            //             less_specifics: None,
+            //             more_specifics: None,
+            //         };
+            //     }
 
-                _serial => {
-                    let prefix_meta = self
-                        .store
-                        .retrieve_prefix(PrefixId::new(AF::zero(), 0))
-                        .map(|sp| sp.0.record_map.as_records())
-                        .unwrap_or_default();
-                    return QueryResult {
-                        prefix: Prefix::new(
-                            search_pfx.get_net().into_ipaddr(),
-                            search_pfx.get_len(),
-                        )
-                        .ok(),
-                        prefix_meta,
-                        match_type: MatchType::ExactMatch,
-                        less_specifics: None,
-                        more_specifics: None,
-                    };
-                }
-            }
+            //     _serial => {
+            let prefix_meta = self
+                .retrieve_prefix(PrefixId::new(AF::zero(), 0))
+                .map(|sp| sp.0.record_map.as_records())
+                .unwrap_or_default();
+            return QueryResult {
+                prefix: Prefix::new(
+                    search_pfx.get_net().into_ipaddr(),
+                    search_pfx.get_len(),
+                )
+                .ok(),
+                prefix_meta,
+                match_type: MatchType::ExactMatch,
+                less_specifics: None,
+                more_specifics: None,
+            };
+            // }
+            // }
         }
 
         let mut stride_end = 0;
 
         let root_node_id = self.get_root_node_id();
-        let mut node = match self.store.get_stride_for_id(root_node_id) {
-            3 => self.store.retrieve_node(root_node_id).unwrap(),
-            4 => self.store.retrieve_node(root_node_id).unwrap(),
-            _ => self.store.retrieve_node(root_node_id).unwrap(),
+        let mut node = match self.get_stride_for_id(root_node_id) {
+            3 => self.retrieve_node(root_node_id).unwrap(),
+            4 => self.retrieve_node(root_node_id).unwrap(),
+            _ => self.retrieve_node(root_node_id).unwrap(),
         };
 
         let mut nibble;
@@ -458,7 +452,7 @@ where
         // having to match over a SizedStrideNode again in the
         // `post-processing` section.
 
-        for stride in self.store.get_stride_sizes() {
+        for stride in self.get_stride_sizes() {
             stride_end += stride;
 
             let last_stride = search_pfx.get_len() < stride_end;
@@ -519,7 +513,7 @@ where
                         // exit nodes.
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
@@ -538,7 +532,7 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
@@ -637,7 +631,7 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
@@ -656,7 +650,7 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
@@ -744,7 +738,7 @@ where
                     ) {
                         (Some(n), Some(pfx_idx)) => {
                             match_prefix_idx = Some(pfx_idx);
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
@@ -763,7 +757,7 @@ where
                             }
                         }
                         (Some(n), None) => {
-                            node = self.store.retrieve_node(n).unwrap();
+                            node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
@@ -839,7 +833,7 @@ where
         let mut match_type: MatchType = MatchType::EmptyMatch;
         let prefix = None;
         if let Some(pfx_idx) = match_prefix_idx {
-            match_type = match self.store.retrieve_prefix(pfx_idx) {
+            match_type = match self.retrieve_prefix(pfx_idx) {
                 Some(prefix) => {
                     if prefix.0.prefix.get_len() == search_pfx.get_len() {
                         MatchType::ExactMatch
@@ -864,7 +858,7 @@ where
                     .unwrap()
                     .iter()
                     .filter_map(move |p| {
-                        self.store.retrieve_prefix(*p).map(|p| {
+                        self.retrieve_prefix(*p).map(|p| {
                             Some((p.0.prefix, p.0.record_map.as_records()))
                         })
                     })
@@ -876,8 +870,7 @@ where
                 more_specifics_vec.map(|vec| {
                     vec.into_iter()
                         .map(|p| {
-                            self.store
-                                .retrieve_prefix(p)
+                            self.retrieve_prefix(p)
                                 .unwrap_or_else(|| {
                                     panic!(
                                         "more specific {:?} does not exist",
@@ -903,13 +896,7 @@ where
         mui: Option<u32>,
         guard: &Guard,
     ) -> Vec<PublicRecord<M>> {
-        let bmin = unsafe {
-            self.store
-                .withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap();
+        let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
 
         pfx.record_map.get_filtered_records(mui, bmin)
     }

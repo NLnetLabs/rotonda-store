@@ -1,11 +1,9 @@
-mod atomic_stride;
-pub(crate) mod bit_span;
-pub(crate) mod node;
-pub(crate) mod query;
+pub(crate) mod in_memory;
 mod tests;
-pub(crate) mod tree;
 
-pub mod store;
-
-#[macro_use]
-mod macros;
+pub(crate) mod bit_span;
+pub mod errors;
+pub mod iterators;
+pub mod query;
+pub mod rib;
+pub mod types;

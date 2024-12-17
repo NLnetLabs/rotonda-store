@@ -13,7 +13,7 @@ use crate::stride::*;
 use crate::synth_int::{U256, U512};
 use crate::{
     af::{AddressFamily, Zero},
-    custom_alloc::UpsertReport,
+    rib::UpsertReport,
 };
 
 #[cfg(feature = "cli")]

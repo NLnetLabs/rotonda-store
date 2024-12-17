@@ -7,14 +7,14 @@ use std::{
 use log::trace;
 use parking_lot_core::SpinWait;
 
-// pub use super::atomic_stride::*;
-use super::bit_span::BitSpan;
-use super::store::iterators::SizedNodeMoreSpecificIter;
-use crate::local_array::store::iterators::SizedPrefixIter;
+use super::super::bit_span::BitSpan;
+use super::super::iterators::{SizedNodeMoreSpecificIter, SizedPrefixIter};
+use super::tree::{AtomicBitmap, AtomicStride2, AtomicStride3, AtomicStride4, AtomicStride5, CasResult, NewNodeOrIndex, SizedStrideNode, Stride, Stride3, Stride4, Stride5, StrideNodeId};
 
-pub use crate::local_array::tree::*;
+// pub use crate::in_memory_tree::*;
 use crate::af::Zero;
 use crate::af::AddressFamily;
+use crate::local_array::types::PrefixId;
 
 //------------ TreeBitMap Node ----------------------------------------------
 
@@ -80,7 +80,6 @@ where
     AF: AddressFamily,
     S: Stride
 {
-<<<<<<< Updated upstream
     pub(crate) fn new() -> Self {
         TreeBitMapNode {
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
@@ -89,16 +88,6 @@ where
         }
     }
 
-=======
-    pub(crate) fn empty() -> Self {
-        TreeBitMapNode { 
-            ptrbitarr: <S as Stride>::AtomicPtrSize::new(), 
-            pfxbitarr: <S as Stride>::AtomicPfxSize::new(),
-            _af: PhantomData
-        }
-    }
-    
->>>>>>> Stashed changes
     // ------- Iterators ----------------------------------------------------
 
     // Iterate over all the child node of this node
@@ -957,8 +946,8 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // immutables
     base_prefix: StrideNodeId<AF>,
-    pfxbitarr: <<S as crate::local_array::atomic_stride::Stride>::AtomicPfxSize 
-        as crate::local_array::atomic_stride::AtomicBitmap>::InnerType,
+    pfxbitarr: <<S as super::atomic_stride::Stride>::AtomicPfxSize 
+        as super::atomic_stride::AtomicBitmap>::InnerType,
     // we need to keep around only the `bits` part of the `bit_span`
     // technically, (it needs resetting the current state to it after each
     // prefix-length), but we'll keep the start-length as well for clarity

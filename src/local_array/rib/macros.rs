@@ -155,7 +155,6 @@ macro_rules! retrieve_node_mut_closure {
                 let index = Self::hash_node_id($id, level);
                 let node;
 
-<<<<<<< Updated upstream
                 match nodes.0.get(index) {
                     // This arm only ever gets called in multi-threaded code
                     // where our thread (running this code *now*), andgot ahead
@@ -190,18 +189,6 @@ macro_rules! retrieve_node_mut_closure {
                             return Some(SizedStrideRef::$stride(&node.node));
                         };
                     },
-=======
-                // Read the node from the block pointed to by the Atomic
-                // pointer.
-                // assert!(nodes.0.get(index).is_some());
-                // let stored_node = unsafe {
-                //     &mut nodes.0[index].assume_init_ref()
-                // };
-                // let this_node = stored_node.load(Ordering::Acquire, guard);
-
-                match nodes.0.get(index) {
-                    None => None,
->>>>>>> Stashed changes
                     Some(this_node) => {
                         node = this_node;
                         if $id == this_node.node_id {
@@ -268,10 +255,6 @@ macro_rules! store_node_closure {
             multi_uniq_id: u32,
             mut level: u8,
             retry_count: u32| {
-<<<<<<< Updated upstream
-=======
-                // println!("-");
->>>>>>> Stashed changes
                 let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level);
                 trace!("{:032b}", $id.get_id().0);
                 trace!("id {:?}", $id.get_id());
@@ -280,22 +263,11 @@ macro_rules! store_node_closure {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
 
-<<<<<<< Updated upstream
                 match nodes.0.get(index) {
                     None => {
                         // No node exists, so we create one here.
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
-=======
-                // No node exists, so we create one here.
-                let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
 
-                let node_set_len = next_level - this_level;
->>>>>>> Stashed changes
-
-                let ptrbitarr = new_node.ptrbitarr.load();
-                let pfxbitarr = new_node.pfxbitarr.load();
-
-                let stored_node = nodes.0.get_or_init(index, || {
                         if log_enabled!(log::Level::Trace) {
                             trace!("Empty node found, creating new node {} len{} lvl{}",
                                 $id, $id.get_id().1, level + 1
@@ -310,7 +282,6 @@ macro_rules! store_node_closure {
 
                         trace!("multi uniq id {}", multi_uniq_id);
 
-<<<<<<< Updated upstream
                         let node_set = NodeSet::init(next_level - this_level);
 
                         let ptrbitarr = new_node.ptrbitarr.load();
@@ -337,24 +308,8 @@ macro_rules! store_node_closure {
                             if !its_us && pfxbitarr != 0 {
                                 stored_node.node.pfxbitarr.merge_with(pfxbitarr);
                             }
-=======
-                        // let node_set = if next_level > 0 {
-                        //     NodeSet::init((1 << (next_level - this_level)) as usize )
-                        // } else {
-                        //     NodeSet(
-                        //         Box::new([]),
-                        //         std::sync::RwLock::new(RoaringBitmap::new())
-                        //     )
-                        // }
-                        StoredNode {
-                            node_id: $id,
-                            node: TreeBitMapNode::<AF, $stride>::empty(),
-                            node_set: NodeSet::init(node_set_len)
->>>>>>> Stashed changes
                         }
-                    });
 
-<<<<<<< Updated upstream
                         return Ok(($id, retry_count));
                     }
                     Some(stored_node) => {
@@ -414,39 +369,7 @@ macro_rules! store_node_closure {
                                 // There's no next level!
                                 _ => panic!("out of storage levels, current level is {}", level),
                             }
-=======
-                if stored_node.node_id == $id {
-                    stored_node.node_set.update_rbm_index(
-                        multi_uniq_id, $guard
-                    )?;
-
-                    stored_node.node.ptrbitarr.merge_with(ptrbitarr);
-                    stored_node.node.pfxbitarr.merge_with(pfxbitarr);
-
-                    Ok(($id, retry_count))
-                } else {
-                    // it's not "our" node, make a (recursive)
-                    // call to create it.
-                    level += 1;
-                    trace!("Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
-                        stored_node.node_id, $id, $id.get_id().1, level, index
-                    );
-
-                    return match <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level) {
-                        // on to the next level!
-                        next_bit_shift if next_bit_shift > 0 => {
-                            (search_level.f)(
-                                search_level,
-                                &stored_node.node_set,
-                                new_node,
-                                multi_uniq_id,
-                                level,
-                                retry_count
-                            )
->>>>>>> Stashed changes
                         }
-                        // There's no next level!
-                        _ => panic!("out of storage levels, current level is {}", level),
                     }
                 }
             }

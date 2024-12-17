@@ -15,16 +15,16 @@ pub mod multi {
 
     pub use crossbeam_epoch::{self as epoch, Guard};
 
-    pub use crate::local_array::store::atomic_types::RouteStatus;
-    pub use crate::local_array::store::atomic_types::{
+    pub use crate::local_array::errors::PrefixStoreError;
+    pub use crate::local_array::in_memory::atomic_types::{
         NodeBuckets, NodeSet, PrefixBuckets, PrefixSet,
     };
-    pub use crate::local_array::store::errors::PrefixStoreError;
-    pub use crate::local_array::tree::{PrefixId, StrideNodeId, TreeBitMap};
+    pub use crate::local_array::in_memory::tree::StrideNodeId;
+    pub use crate::local_array::types::{PrefixId, RouteStatus};
     pub use crate::prefix_record::PublicRecord as Record;
 
-    pub use crate::custom_alloc::CustomAllocStorage;
-    pub use crate::custom_alloc::{
+    pub use crate::rib::Rib;
+    pub use crate::rib::{
         Counters, PersistStrategy, StoreConfig, StoreStats, UpsertReport,
     };
 
