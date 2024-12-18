@@ -1046,30 +1046,28 @@ pub fn create_store(
                 let (left, right) = match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => {
 
-                        let bmin = self.v6.withdrawn_muis_bmin(guard);
-
-                        if mui.is_some() && bmin.contains(mui.unwrap()) {
-                          (None, None)
-                         } else {
-                                (Some(self.v4.more_specific_prefix_iter_from(
-                                        PrefixId::<IPv4>::new(
-                                            addr.into(),
-                                            search_pfx.len(),
-                                        ),
-                                        mui,
-                                        include_withdrawn,
-                                        guard
-                                    ).map(|p| PrefixRecord::from(p))
-                                ),
-                                None)
-                            }
+                        if mui.is_some_and(
+                            |m| { self.v6.mui_is_withdrawn(m, guard) }) {
+                                (None, None)
+                        } else {
+                            (Some(self.v4.more_specific_prefix_iter_from(
+                                    PrefixId::<IPv4>::new(
+                                        addr.into(),
+                                        search_pfx.len(),
+                                    ),
+                                    mui,
+                                    include_withdrawn,
+                                    guard
+                                ).map(|p| PrefixRecord::from(p))
+                            ),
+                            None)
                         }
+                    }
                     std::net::IpAddr::V6(addr) => {
 
-                        let bmin = self.v6.withdrawn_muis_bmin(guard);
-
-                        if mui.is_some() && bmin.contains(mui.unwrap()) {
-                         (None, None)
+                        if mui.is_some_and(
+                            |m| { self.v6.mui_is_withdrawn(m, guard) }) {
+                                (None, None)
                         } else {
                             (
                                 None,
@@ -1097,10 +1095,8 @@ pub fn create_store(
                 guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> +'a {
 
-                let bmin =
-                    self.v4.withdrawn_muis_bmin(guard);
-
-                if bmin.contains(mui) && !include_withdrawn {
+                if self.v4.mui_is_withdrawn(mui, guard)
+                    && !include_withdrawn {
                     None
                 } else {
                     Some(
@@ -1124,9 +1120,8 @@ pub fn create_store(
                 guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> +'a {
 
-                let bmin = self.v6.withdrawn_muis_bmin(guard);
-
-                if bmin.contains(mui) && !include_withdrawn {
+                if self.v6.mui_is_withdrawn(mui, guard)
+                    && !include_withdrawn {
                     None
                 } else {
                     Some(

@@ -707,7 +707,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
     }
 }
 
-// ----------- Iterator initialization methods for CustomAllocStorage -------
+// ----------- Iterator initialization methods for Rib -----------------------
 
 // These are only the methods that are starting the iterations. All other
 // methods for Rib are in the main rib.rs file.
@@ -733,7 +733,7 @@ impl<
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
         trace!("more specifics for {:?}", start_prefix_id);
 
-        // A v4 /32 or a v4 /128 doesn't have more specific prefixes 🤓.
+        // A v4 /32 or a v6 /128 doesn't have more specific prefixes 🤓.
         if start_prefix_id.get_len() >= AF::BITS {
             None
         } else {
@@ -896,39 +896,3 @@ impl<
         }
     }
 }
-
-// ----------- InternalPrefixRecord -> RecordSet (public) -------------------
-
-// impl<'a, AF: AddressFamily, Meta: crate::prefix_record::Meta>
-//     std::iter::FromIterator<InternalPrefixRecord<AF, Meta>>
-//     for routecore::bgp::RecordSet<'a, Meta>
-// {
-//     fn from_iter<I: IntoIterator<Item = InternalPrefixRecord<AF, Meta>>>(
-//         iter: I,
-//     ) -> Self {
-//         let mut v4 = vec![];
-//         let mut v6 = vec![];
-//         for pfx in iter {
-//             let addr = pfx.net.into_ipaddr();
-//             match addr {
-//                 std::net::IpAddr::V4(_) => {
-//                     v4.push(
-//                         routecore::bgp::PrefixRecord::new_with_local_meta(
-//                             Prefix::new(addr, pfx.len).unwrap(),
-//                             pfx.meta,
-//                         ),
-//                     );
-//                 }
-//                 std::net::IpAddr::V6(_) => {
-//                     v6.push(
-//                         routecore::bgp::PrefixRecord::new_with_local_meta(
-//                             Prefix::new(addr, pfx.len).unwrap(),
-//                             pfx.meta,
-//                         ),
-//                     );
-//                 }
-//             }
-//         }
-//         Self { v4, v6 }
-//     }
-// }

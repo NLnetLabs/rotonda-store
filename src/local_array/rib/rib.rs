@@ -350,7 +350,7 @@ pub struct Rib<
     const KEY_SIZE: usize,
 > {
     pub config: StoreConfig,
-    pub(in crate::local_array) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
+    pub(crate) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
     #[cfg(feature = "persist")]
     persist_tree: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
     // Global Roaring BitMap INdex that stores MUIs.
@@ -751,7 +751,7 @@ impl<
         })
     }
 
-    pub fn withdrawn_muis_bmin(
+    pub(crate) fn withdrawn_muis_bmin(
         &'a self,
         guard: &'a Guard,
     ) -> &'a RoaringBitmap {
