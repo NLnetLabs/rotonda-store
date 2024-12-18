@@ -4,5 +4,8 @@ pub(crate) mod node;
 mod oncebox;
 pub(crate) mod tree;
 
+#[deprecated]
+mod deprecated_query;
+
 #[macro_use]
 mod macros;

@@ -340,6 +340,7 @@ impl<
                 if let Some(mui) = self.mui {
                     if let Some(p) = self
                         .store
+                        .in_memory_tree
                         .non_recursive_retrieve_prefix(
                             next_pfx.unwrap_or_else(|| {
                                 panic!(
@@ -376,6 +377,7 @@ impl<
                 } else {
                     return self
                         .store
+                        .in_memory_tree
                         .non_recursive_retrieve_prefix(
                             next_pfx.unwrap_or_else(|| {
                                 panic!(
@@ -434,9 +436,9 @@ impl<
 
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
-                    self.store.retrieve_node(next_ptr)
+                    self.store.in_memory_tree.retrieve_node(next_ptr)
                 } else {
-                    self.store.retrieve_node_for_mui(
+                    self.store.in_memory_tree.retrieve_node_for_mui(
                         next_ptr,
                         self.mui.unwrap(),
                         // self.guard,
@@ -739,7 +741,7 @@ impl<
         } else {
             // calculate the node start_prefix_id lives in.
             let (start_node_id, start_bit_span) =
-                self.get_node_id_for_prefix(&start_prefix_id);
+                self.in_memory_tree.get_node_id_for_prefix(&start_prefix_id);
             trace!("start node {}", start_node_id);
 
             trace!(
@@ -762,9 +764,10 @@ impl<
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
             let node = if let Some(mui) = mui {
-                self.retrieve_node_for_mui(start_node_id, mui)
+                self.in_memory_tree
+                    .retrieve_node_for_mui(start_node_id, mui)
             } else {
-                self.retrieve_node(start_node_id)
+                self.in_memory_tree.retrieve_node(start_node_id)
             };
 
             if let Some(node) = node {

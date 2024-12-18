@@ -47,68 +47,116 @@ macro_rules! insert_match {
             // retry_count from this macro.
             let local_retry_count = 0;
             // retrieve_node_mut updates the bitmap index if necessary.
-            if let Some(current_node) = $self.retrieve_node_mut($cur_i, $record.multi_uniq_id) {
+            if let Some(current_node) = $self.in_memory_tree.retrieve_node_mut(
+                $cur_i, $record.multi_uniq_id) {
                 match current_node {
                     $(
                         SizedStrideRef::$variant(current_node) => {
-                            // eval_node_or_prefix_at mutates the node to reflect changes
-                            // in the ptrbitarr & pfxbitarr.
+                            // eval_node_or_prefix_at mutates the node to
+                            // reflect changes in the ptrbitarr & pfxbitarr.
                             match current_node.eval_node_or_prefix_at(
                                 $nibble,
                                 $nibble_len,
-                                // All the bits of the search prefix, but with a length set to
-                                // the start of the current stride.
-                                StrideNodeId::dangerously_new_with_id_as_is($pfx.get_net(), $truncate_len),
+                                // All the bits of the search prefix, but with
+                                // a length set to the start of the current
+                                // stride.
+                                StrideNodeId::dangerously_new_with_id_as_is(
+                                    $pfx.get_net(), $truncate_len),
                                 // the length of THIS stride
                                 $stride_len,
                                 // the length of the next stride
-                                $self.get_stride_sizes().get(($level + 1) as usize),
+                                $self
+                                    .in_memory_tree
+                                    .get_stride_sizes()
+                                    .get(($level + 1) as usize),
                                 $is_last_stride,
                             ) {
                                 (NewNodeOrIndex::NewNode(n), retry_count) => {
-                                    // Stride3 logs to stats[0], Stride4 logs to stats[1], etc.
+                                    // Stride3 logs to stats[0], Stride4 logs
+                                    // to stats[1], etc.
                                     // $self.stats[$stats_level].inc($level);
 
-                                    // get a new identifier for the node we're going to create.
-                                    let new_id = $self.acquire_new_node_id(($pfx.get_net(), $truncate_len + $nibble_len));
+                                    // get a new identifier for the node we're
+                                    // going to create.
+                                        let new_id =
+                                            StrideNodeId::new_with_cleaned_id(
+                                                $pfx.get_net(),
+                                                $truncate_len + $nibble_len
+                                           );
 
                                     // store the new node in the global
                                     // store. It returns the created id
                                     // and the number of retries before
                                     // success.
-                                    match $self.store_node(new_id, $record.multi_uniq_id, n)  {
+                                    match $self.in_memory_tree.store_node(
+                                        new_id,
+                                        $record.multi_uniq_id, n
+                                    ) {
                                         Ok((node_id, s_retry_count)) => {
-                                            Ok((node_id, $acc_retry_count + s_retry_count + retry_count))
+                                            Ok((
+                                                node_id,
+                                                $acc_retry_count +
+                                                s_retry_count +
+                                                retry_count
+                                            ))
                                         },
                                         Err(err) => {
                                             Err(err)
                                         }
                                     }
                                 }
-                                (NewNodeOrIndex::ExistingNode(node_id), retry_count) => {
-                                    // $self.store.update_node($cur_i,SizedStrideRefMut::$variant(current_node));
+                                (NewNodeOrIndex::ExistingNode(node_id),
+                                    retry_count
+                                ) => {
                                     if log_enabled!(log::Level::Trace) {
                                         if local_retry_count > 0 {
-                                            trace!("{} contention: Node already exists {}",
-                                            std::thread::current().name().unwrap_or("unnamed-thread"), node_id
+                                            trace!("{} contention: Node \
+                                                 already exists {}",
+                                            std::thread::current()
+                                                .name()
+                                                .unwrap_or("unnamed-thread"),
+                                                node_id
                                             )
                                         }
                                     }
-                                    Ok((node_id, $acc_retry_count + local_retry_count + retry_count))
+                                    Ok((
+                                        node_id,
+                                        $acc_retry_count +
+                                        local_retry_count +
+                                        retry_count
+                                    ))
                                 },
                                 (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                    return $self.upsert_prefix($pfx, $record, $update_path_selections, $guard)
-                                        .and_then(|mut r| {
-                                            r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
+                                    return $self.upsert_prefix(
+                                        $pfx,
+                                        $record,
+                                        $update_path_selections,
+                                        $guard
+                                    ).and_then(|mut r| {
+                                            r.cas_count +=
+                                                $acc_retry_count as usize +
+                                                local_retry_count as usize +
+                                                retry_count as usize;
                                             Ok(r)
                                         })
                                     // Log
-                                    // $self.stats[$stats_level].inc_prefix_count($level);
+                                    // $self.stats[$stats_level].
+                                    //inc_prefix_count($level);
                                 }
-                                (NewNodeOrIndex::ExistingPrefix, retry_count) => {
-                                    return $self.upsert_prefix($pfx, $record, $update_path_selections, $guard)
-                                        .and_then(|mut r| {
-                                            r.cas_count += $acc_retry_count as usize + local_retry_count as usize + retry_count as usize;
+                                (
+                                    NewNodeOrIndex::ExistingPrefix,
+                                     retry_count
+                                 ) =>
+                                     {
+                                        return $self.upsert_prefix(
+                                            $pfx,
+                                            $record,
+                                            $update_path_selections,$guard
+                                        ).and_then(|mut r| {
+                                            r.cas_count +=
+                                                $acc_retry_count as usize +
+                                                local_retry_count as usize +
+                                                retry_count as usize;
                                             Ok(r)
                                         })
                                 }
