@@ -563,7 +563,7 @@ fn main() {
     if let Some(store) = store {
         println!("store in-memory counters");
         println!("------------------------");
-        println!("prefixes:\t\t\t{:?}\n", store.prefixes_count());
+        println!("prefixes:\t\t\t{:?}\n", store.prefixes_count().in_memory());
 
         println!("store persistence counters");
         println!("--------------------------");

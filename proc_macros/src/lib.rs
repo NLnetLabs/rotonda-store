@@ -1497,7 +1497,7 @@ pub fn create_store(
             ///
             /// Note that this method will actually traverse the complete
             /// tree.
-            pub fn prefixes_count(&self) -> usize {
+            pub fn prefixes_count(&self) -> UpsertCounters {
                 self.v4.get_prefixes_count()
                 + self.v6.get_prefixes_count()
             }
@@ -1507,7 +1507,7 @@ pub fn create_store(
             /// Note that this counter may be lower than the actual
             /// number in the store, due to contention at the time of
             /// reading the value.
-            pub fn prefixes_v4_count(&self) -> usize {
+            pub fn prefixes_v4_count(&self) -> UpsertCounters {
                 self.v4.get_prefixes_count()
             }
 
@@ -1517,16 +1517,17 @@ pub fn create_store(
             /// Note that this counter may be lower than the actual
             /// number in the store, due to contention at the time of
             /// reading the value.
-            pub fn prefixes_v4_count_for_len(&self, len: u8) -> usize {
-                self.v4.get_prefixes_count_for_len(len)
-            }
+            pub fn prefixes_v4_count_for_len(&self, len: u8)
+                -> UpsertCounters {
+                    self.v4.get_prefixes_count_for_len(len)
+                }
 
             /// Returns the number of all IPv6 prefixes in the store.
             ///
             /// Note that this counter may be lower than the actual
             /// number in the store, due to contention at the time of
             /// reading the value.
-            pub fn prefixes_v6_count(&self) -> usize {
+            pub fn prefixes_v6_count(&self) -> UpsertCounters {
                 self.v6.get_prefixes_count()
             }
 
@@ -1536,9 +1537,10 @@ pub fn create_store(
             /// Note that this counter may be lower than the actual
             /// number in the store, due to contention at the time of
             /// reading the value.
-            pub fn prefixes_v6_count_for_len(&self, len: u8) -> usize {
-                self.v6.get_prefixes_count_for_len(len)
-            }
+            pub fn prefixes_v6_count_for_len(&self, len: u8)
+                -> UpsertCounters {
+                    self.v6.get_prefixes_count_for_len(len)
+                }
 
             /// Returns the number of nodes in the store.
             ///

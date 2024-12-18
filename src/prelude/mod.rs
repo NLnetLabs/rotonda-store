@@ -25,7 +25,8 @@ pub mod multi {
 
     pub use crate::rib::Rib;
     pub use crate::rib::{
-        Counters, PersistStrategy, StoreConfig, StoreStats, UpsertReport,
+        PersistStrategy, StoreConfig, StoreStats, UpsertCounters,
+        UpsertReport,
     };
 
     pub use routecore::bgp::path_selection::TiebreakerInfo;

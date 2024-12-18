@@ -57,8 +57,12 @@ impl StoreConfig {
 
 #[derive(Debug)]
 pub struct Counters {
+    // number of created nodes in the in-mem tree
     nodes: AtomicUsize,
+    // number of unique prefixes in the store
     prefixes: [AtomicUsize; 129],
+    // number of unique (prefix, mui) values inserted in the in-mem tree
+    routes: AtomicUsize,
 }
 
 impl Counters {
@@ -98,6 +102,10 @@ impl Counters {
             })
             .collect()
     }
+
+    pub fn inc_routes_count(&self) {
+        self.routes.fetch_add(1, Ordering::Relaxed);
+    }
 }
 
 impl Default for Counters {
@@ -110,6 +118,59 @@ impl Default for Counters {
         Self {
             nodes: AtomicUsize::new(0),
             prefixes: prefixes.try_into().unwrap(),
+            routes: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct UpsertCounters {
+    // number of unique inserted prefixes|routes in the in-mem tree
+    in_memory_count: usize,
+    // number of unique persisted prefixes|routes
+    persisted_count: usize,
+    // total number of unique inserted prefixes|routes in the RIB
+    total_count: usize,
+}
+
+impl UpsertCounters {
+    pub fn in_memory(&self) -> usize {
+        self.in_memory_count
+    }
+
+    pub fn persisted(&self) -> usize {
+        self.persisted_count
+    }
+
+    pub fn total(&self) -> usize {
+        self.total_count
+    }
+}
+
+impl std::fmt::Display for UpsertCounters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
+        write!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
+        write!(f, "Total inserted Items:\t{}", self.total_count)
+    }
+}
+
+impl std::ops::AddAssign for UpsertCounters {
+    fn add_assign(&mut self, rhs: Self) {
+        self.in_memory_count += rhs.in_memory_count;
+        self.persisted_count += rhs.persisted_count;
+        self.total_count += rhs.total_count;
+    }
+}
+
+impl std::ops::Add for UpsertCounters {
+    type Output = UpsertCounters;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            in_memory_count: self.in_memory_count + rhs.in_memory_count,
+            persisted_count: self.persisted_count + rhs.persisted_count,
+            total_count: self.total_count + rhs.total_count,
         }
     }
 }
@@ -608,18 +669,28 @@ impl<
         pfx.record_map.get_filtered_records(mui, bmin)
     }
 
-    pub fn get_prefixes_count(&self) -> (usize, usize) {
-        (
-            self.counters.get_prefixes_count().iter().sum(),
-            self.in_memory_tree.get_prefixes_count(),
-        )
+    pub fn get_prefixes_count(&self) -> UpsertCounters {
+        UpsertCounters {
+            in_memory_count: self.in_memory_tree.get_prefixes_count(),
+            persisted_count: self
+                .persist_tree
+                .as_ref()
+                .map_or(0, |p| p.get_prefixes_count()),
+            total_count: self.counters.get_prefixes_count().iter().sum(),
+        }
     }
 
-    pub fn get_prefixes_count_for_len(&self, len: u8) -> (usize, usize) {
-        (
-            self.counters.get_prefixes_count()[len as usize],
-            self.in_memory_tree.get_prefixes_count(),
-        )
+    pub fn get_prefixes_count_for_len(&self, len: u8) -> UpsertCounters {
+        UpsertCounters {
+            in_memory_count: self
+                .in_memory_tree
+                .get_prefixes_count_for_len(len),
+            persisted_count: self
+                .persist_tree
+                .as_ref()
+                .map_or(0, |p| p.get_prefixes_count_for_len(len)),
+            total_count: self.counters.get_prefixes_count()[len as usize],
+        }
     }
 
     // Stride related methods

@@ -6,6 +6,7 @@ use std::path::Path;
 use lsm_tree::AbstractTree;
 
 use crate::local_array::types::{PrefixId, RouteStatus};
+use crate::rib::Counters;
 use crate::{AddressFamily, MatchType, Meta, PublicRecord, QueryResult};
 
 pub struct PersistTree<
@@ -17,7 +18,11 @@ pub struct PersistTree<
     // The size in bytes of the complete key in the persisted storage, this
     // is PREFIX_SIZE bytes (4; 16) + mui size (4) + ltime (8)
     const KEY_SIZE: usize,
->(lsm_tree::Tree, PhantomData<AF>);
+> {
+    tree: lsm_tree::Tree,
+    counters: Counters,
+    _af: PhantomData<AF>,
+}
 
 impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     PersistTree<AF, PREFIX_SIZE, KEY_SIZE>
@@ -25,14 +30,15 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     pub fn new(
         persist_path: &Path,
     ) -> PersistTree<AF, PREFIX_SIZE, KEY_SIZE> {
-        PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>(
-            lsm_tree::Config::new(persist_path).open().unwrap(),
-            PhantomData,
-        )
+        PersistTree::<AF, PREFIX_SIZE, KEY_SIZE> {
+            tree: lsm_tree::Config::new(persist_path).open().unwrap(),
+            counters: Counters::default(),
+            _af: PhantomData,
+        }
     }
 
     pub fn insert(&self, key: [u8; KEY_SIZE], value: &[u8]) -> (u32, u32) {
-        self.0.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
+        self.tree.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
     }
 
     pub fn get_records_for_prefix<M: Meta>(
@@ -40,7 +46,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         prefix: PrefixId<AF>,
     ) -> Vec<PublicRecord<M>> {
         let prefix_b = &prefix.as_bytes::<PREFIX_SIZE>();
-        (*self.0.prefix(prefix_b))
+        (*self.tree.prefix(prefix_b))
             .into_iter()
             .map(|kv| {
                 let kv = kv.unwrap();
@@ -59,7 +65,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         key: &[u8],
     ) -> Vec<(inetnum::addr::Prefix, PublicRecord<M>)> {
-        (*self.0.prefix(key))
+        (*self.tree.prefix(key))
             .into_iter()
             .map(|kv| {
                 let kv = kv.unwrap();
@@ -105,11 +111,11 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     }
 
     pub fn flush_to_disk(&self) -> Result<(), lsm_tree::Error> {
-        let segment = self.0.flush_active_memtable(0);
+        let segment = self.tree.flush_active_memtable(0);
 
         if let Ok(Some(segment)) = segment {
-            self.0.register_segments(&[segment])?;
-            self.0.compact(
+            self.tree.register_segments(&[segment])?;
+            self.tree.compact(
                 std::sync::Arc::new(lsm_tree::compaction::Leveled::default()),
                 0,
             )?;
@@ -119,11 +125,19 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     }
 
     pub fn approximate_len(&self) -> usize {
-        self.0.approximate_len()
+        self.tree.approximate_len()
     }
 
     pub fn disk_space(&self) -> u64 {
-        self.0.disk_space()
+        self.tree.disk_space()
+    }
+
+    pub fn get_prefixes_count(&self) -> usize {
+        self.counters.get_prefixes_count().iter().sum()
+    }
+
+    pub fn get_prefixes_count_for_len(&self, len: u8) -> usize {
+        self.counters.get_prefixes_count()[len as usize]
     }
 
     #[cfg(feature = "persist")]
