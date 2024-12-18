@@ -9,7 +9,8 @@ use crossbeam_epoch::{self as epoch, Atomic};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
-use crate::local_array::in_memory::tree::{StrideNodeId, TreeBitMap};
+use crate::local_array::in_memory::node::SizedStrideRef;
+use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::local_array::types::PrefixId;
 use crate::stats::CreatedNodes;
 use crate::{
@@ -20,7 +21,7 @@ use crate::local_array::in_memory::atomic_types::PrefixBuckets;
 use crate::local_array::in_memory::atomic_types::{
     NodeBuckets, StoredPrefix,
 };
-use crate::local_array::in_memory::tree::{NewNodeOrIndex, SizedStrideRef};
+use crate::local_array::in_memory::node::{NewNodeOrIndex, StrideNodeId};
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.

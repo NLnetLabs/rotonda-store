@@ -8,9 +8,10 @@
 // individual nodes. The Node Iterators live in the node.rs file.
 
 use super::in_memory::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
-use super::in_memory::tree::{Stride3, Stride4, Stride5, StrideNodeId};
+use super::in_memory::node::StrideNodeId;
+use super::in_memory::tree::{Stride3, Stride4, Stride5};
 use super::types::PrefixId;
-use crate::local_array::in_memory::tree::SizedStrideRef;
+use crate::local_array::in_memory::node::SizedStrideRef;
 use crate::local_array::types::RouteStatus;
 use crate::prefix_record::PublicRecord;
 use crate::rib;

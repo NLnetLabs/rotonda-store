@@ -187,10 +187,8 @@ use crate::local_array::bit_span::BitSpan;
 use crate::local_array::in_memory::atomic_types::StoredNode;
 use crate::prefix_record::Meta;
 use crate::prelude::multi::{NodeSet, PrefixId};
-use crossbeam_epoch::Atomic;
 use crossbeam_utils::Backoff;
 use log::{debug, log_enabled, trace};
-use roaring::RoaringBitmap;
 
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
@@ -208,180 +206,12 @@ use crate::{
 use super::super::errors::PrefixStoreError;
 pub(crate) use super::atomic_stride::*;
 
-use super::node::TreeBitMapNode;
+use super::node::{
+    SizedStrideNode, SizedStrideRef, StrideNodeId, TreeBitMapNode,
+};
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
-
-//------------------- Sized Node Enums ------------------------------------
-
-// No, no, NO, NO, no, no! We're not going to Box this, because that's slow!
-// This enum is never used to store nodes/prefixes, it's only to be used in
-// generic code.
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug)]
-pub enum SizedStrideNode<AF: AddressFamily> {
-    Stride3(TreeBitMapNode<AF, Stride3>),
-    Stride4(TreeBitMapNode<AF, Stride4>),
-    Stride5(TreeBitMapNode<AF, Stride5>),
-}
-
-impl<AF, S> Default for TreeBitMapNode<AF, S>
-where
-    AF: AddressFamily,
-    S: Stride,
-{
-    fn default() -> Self {
-        Self {
-            ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
-            pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
-            _af: PhantomData,
-        }
-    }
-}
-
-impl<AF> Default for SizedStrideNode<AF>
-where
-    AF: AddressFamily,
-{
-    fn default() -> Self {
-        SizedStrideNode::Stride3(TreeBitMapNode {
-            ptrbitarr: AtomicStride2(AtomicU8::new(0)),
-            pfxbitarr: AtomicStride3(AtomicU16::new(0)),
-            _af: PhantomData,
-        })
-    }
-}
-
-// Used to create a public iterator over all nodes.
-#[derive(Debug)]
-pub enum SizedStrideRef<'a, AF: AddressFamily> {
-    Stride3(&'a TreeBitMapNode<AF, Stride3>),
-    Stride4(&'a TreeBitMapNode<AF, Stride4>),
-    Stride5(&'a TreeBitMapNode<AF, Stride5>),
-}
-
-pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
-    NewNode(SizedStrideNode<AF>),
-    ExistingNode(StrideNodeId<AF>),
-    NewPrefix,
-    ExistingPrefix,
-}
-
-//--------------------- Per-Stride-Node-Id Type -----------------------------
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct StrideNodeId<AF: AddressFamily>(Option<(AF, u8)>);
-
-impl<AF: AddressFamily> StrideNodeId<AF> {
-    pub fn empty() -> Self {
-        Self(None)
-    }
-
-    pub fn dangerously_new_with_id_as_is(addr_bits: AF, len: u8) -> Self {
-        Self(Some((addr_bits, len)))
-    }
-
-    #[inline]
-    pub fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
-        Self(Some((addr_bits.truncate_to_len(len), len)))
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
-    }
-
-    pub fn get_id(&self) -> (AF, u8) {
-        self.0.unwrap()
-    }
-    pub fn get_len(&self) -> u8 {
-        self.0.unwrap().1
-    }
-    pub fn set_len(mut self, len: u8) -> Self {
-        self.0.as_mut().unwrap().1 = len;
-        self
-    }
-
-    pub fn add_to_len(mut self, len: u8) -> Self {
-        self.0.as_mut().unwrap().1 += len;
-        self
-    }
-
-    #[inline]
-    pub fn truncate_to_len(self) -> Self {
-        let (addr_bits, len) = self.0.unwrap();
-        StrideNodeId::new_with_cleaned_id(addr_bits, len)
-    }
-
-    // clean out all bits that are set beyond the len. This function should
-    // be used before doing any ORing to add a nibble.
-    #[inline]
-    pub fn unwrap_with_cleaned_id(&self) -> (AF, u8) {
-        let (addr_bits, len) = self.0.unwrap();
-        (addr_bits.truncate_to_len(len), len)
-    }
-
-    pub fn add_nibble(&self, nibble: u32, nibble_len: u8) -> Self {
-        let (addr_bits, len) = self.unwrap_with_cleaned_id();
-        let res = addr_bits.add_nibble(len, nibble, nibble_len);
-        Self(Some(res))
-    }
-
-    pub fn into_inner(self) -> Option<(AF, u8)> {
-        self.0
-    }
-}
-
-impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .map(|x| format!("{}-{}", x.0, x.1))
-                .unwrap_or_else(|| "-".to_string())
-        )
-    }
-}
-
-impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
-    for PrefixId<AF>
-{
-    fn from(id: StrideNodeId<AF>) -> Self {
-        let (addr_bits, len) = id.0.unwrap();
-        PrefixId::new(addr_bits, len)
-    }
-}
-
-//------------------------- Node Collections --------------------------------
-
-// #[derive(Eq, PartialEq, Ord, PartialOrd, Hash, Debug, Copy, Clone)]
-// pub enum StrideType {
-//     Stride3,
-//     Stride4,
-//     Stride5,
-// }
-
-// impl From<u8> for StrideType {
-//     fn from(level: u8) -> Self {
-//         match level {
-//             3 => StrideType::Stride3,
-//             4 => StrideType::Stride4,
-//             5 => StrideType::Stride5,
-//             _ => panic!("Invalid stride level {}", level),
-//         }
-//     }
-// }
-
-// impl std::fmt::Display for StrideType {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         match self {
-//             StrideType::Stride3 => write!(f, "S3"),
-//             StrideType::Stride4 => write!(f, "S4"),
-//             StrideType::Stride5 => write!(f, "S5"),
-//         }
-//     }
-// }
 
 //--------------------- TreeBitMap ------------------------------------------
 

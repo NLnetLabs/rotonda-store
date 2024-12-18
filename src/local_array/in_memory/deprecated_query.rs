@@ -2,18 +2,18 @@ use log::trace;
 
 use crate::af::AddressFamily;
 use crate::prelude::multi::PrefixSet;
-use crate::rib::Rib;
 use inetnum::addr::Prefix;
 
 use crate::{Meta, QueryResult};
 
-use crate::local_array::in_memory::node::TreeBitMapNode;
+use crate::local_array::in_memory::node::{SizedStrideRef, TreeBitMapNode};
 use crate::{MatchOptions, MatchType};
 
 use super::super::in_memory::atomic_types::StoredPrefix;
-use super::super::in_memory::tree::{SizedStrideRef, Stride, StrideNodeId};
+use super::super::in_memory::tree::Stride;
 use super::super::types::PrefixId;
 use super::atomic_types::{NodeBuckets, PrefixBuckets};
+use super::node::StrideNodeId;
 use super::tree::TreeBitMap;
 
 #[allow(dead_code)]

@@ -23,9 +23,9 @@ use crate::AddressFamily;
 
 use super::super::errors::PrefixStoreError;
 use super::atomic_stride;
-use super::node::TreeBitMapNode;
+use super::node::{StrideNodeId, TreeBitMapNode};
 use super::oncebox::OnceBoxSlice;
-use super::tree::{Stride, Stride3, Stride4, Stride5, StrideNodeId};
+use super::tree::{Stride, Stride3, Stride4, Stride5};
 
 // ----------- Node related structs -----------------------------------------
 

@@ -9,7 +9,7 @@ use crate::af::Zero;
 use crate::synth_int::AtomicU128;
 use crate::{impl_primitive_atomic_stride, AddressFamily};
 
-use super::tree::StrideNodeId;
+use super::node::StrideNodeId;
 
 pub type Stride3 = u16;
 pub type Stride4 = u32;

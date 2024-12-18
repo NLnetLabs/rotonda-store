@@ -19,7 +19,7 @@ pub mod multi {
     pub use crate::local_array::in_memory::atomic_types::{
         NodeBuckets, NodeSet, PrefixBuckets, PrefixSet,
     };
-    pub use crate::local_array::in_memory::tree::StrideNodeId;
+    pub use crate::local_array::in_memory::node::StrideNodeId;
     pub use crate::local_array::types::{PrefixId, RouteStatus};
     pub use crate::prefix_record::PublicRecord as Record;
 
