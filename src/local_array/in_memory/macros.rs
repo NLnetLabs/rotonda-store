@@ -66,7 +66,6 @@ macro_rules! insert_match {
                                 $stride_len,
                                 // the length of the next stride
                                 $self
-                                    .in_memory_tree
                                     .get_stride_sizes()
                                     .get(($level + 1) as usize),
                                 $is_last_stride,
@@ -78,11 +77,11 @@ macro_rules! insert_match {
 
                                     // get a new identifier for the node we're
                                     // going to create.
-                                        let new_id =
-                                            StrideNodeId::new_with_cleaned_id(
-                                                $pfx.get_net(),
-                                                $truncate_len + $nibble_len
-                                           );
+                                    let new_id =
+                                        StrideNodeId::new_with_cleaned_id(
+                                            $pfx.get_net(),
+                                            $truncate_len + $nibble_len
+                                       );
 
                                     // store the new node in the global
                                     // store. It returns the created id

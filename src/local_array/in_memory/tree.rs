@@ -1,4 +1,3 @@
-use crate::local_array::bit_span::BitSpan;
 // ----------- THE STORE ----------------------------------------------------
 //
 // The CustomAllocStore provides in-memory storage for the BitTreeMapNodes
@@ -184,6 +183,7 @@ use crate::local_array::bit_span::BitSpan;
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
+use crate::local_array::bit_span::BitSpan;
 use crate::local_array::in_memory::atomic_types::StoredNode;
 use crate::prefix_record::Meta;
 use crate::prelude::multi::{NodeSet, PrefixId};
