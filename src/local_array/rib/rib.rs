@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use inetnum::addr::Prefix;
 use log::{debug, error, info, log_enabled, trace};
 
-use crossbeam_epoch as epoch;
+use crossbeam_epoch::{self as epoch, Atomic};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
@@ -215,9 +215,11 @@ pub struct Rib<
     const KEY_SIZE: usize,
 > {
     pub config: StoreConfig,
-    pub(crate) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
+    pub(in crate::local_array) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
     #[cfg(feature = "persist")]
     persist_tree: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
+    // Global Roaring BitMap INdex that stores MUIs.
+    pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
 }
 
@@ -255,6 +257,7 @@ impl<
             config,
             in_memory_tree: TreeBitMap::<AF, M, NB, PB>::new()?,
             persist_tree,
+            withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
         };
 
@@ -515,8 +518,7 @@ impl<
         guard: &'a Guard,
     ) -> &'a RoaringBitmap {
         unsafe {
-            self.in_memory_tree
-                .withdrawn_muis_bmin
+            self.withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .deref()
         }
@@ -569,17 +571,14 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self
-            .in_memory_tree
-            .withdrawn_muis_bmin
-            .load(Ordering::Acquire, guard);
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.insert(mui);
 
         #[allow(clippy::assigning_clones)]
         loop {
-            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+            match self.withdrawn_muis_bmin.compare_exchange(
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
@@ -602,17 +601,14 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self
-            .in_memory_tree
-            .withdrawn_muis_bmin
-            .load(Ordering::Acquire, guard);
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.remove(mui);
 
         #[allow(clippy::assigning_clones)]
         loop {
-            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+            match self.withdrawn_muis_bmin.compare_exchange(
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
@@ -633,8 +629,7 @@ impl<
     // functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
         unsafe {
-            self.in_memory_tree
-                .withdrawn_muis_bmin
+            self.withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .as_ref()
         }
@@ -647,8 +642,7 @@ impl<
     // functions.
     pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
         !unsafe {
-            self.in_memory_tree
-                .withdrawn_muis_bmin
+            self.withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .as_ref()
         }

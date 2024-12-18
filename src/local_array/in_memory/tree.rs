@@ -394,8 +394,6 @@ pub struct TreeBitMap<
 > {
     pub(crate) node_buckets: NB,
     pub(crate) prefix_buckets: PB,
-    // Global Roaring BitMap INdex that stores MUIs.
-    pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
     _af: PhantomData<AF>,
     _m: PhantomData<M>,
@@ -412,7 +410,6 @@ impl<
         let tree_bitmap = Self {
             node_buckets: NodeBuckets::init(),
             prefix_buckets: PB::init(),
-            withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             _af: PhantomData,
             _m: PhantomData,
