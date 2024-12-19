@@ -510,97 +510,115 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it, if it's more than 1. Returns None if this is the
     // first entry.
-    pub(crate) fn upsert_record<
-        AF: AddressFamily,
-        const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    >(
+    pub(crate) fn upsert_record(
         &self,
-        prefix: PrefixId<AF>,
+        // prefix: PrefixId<AF>,
         new_rec: PublicRecord<M>,
-        persistence: &Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
-        strategy: PersistStrategy,
-    ) -> Result<(Option<usize>, usize), PrefixStoreError> {
+        persist_status: PersistStatus,
+        // persistence: &Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
+        // strategy: PersistStrategy,
+    ) -> Result<(Option<(MultiMapValue<M>, usize)>, usize), PrefixStoreError>
+    {
         let (mut record_map, retry_count) = self.guard_with_retry(0);
         let key = new_rec.multi_uniq_id;
 
-        match (strategy, record_map.get_mut(&key)) {
-            // New record for (prefix, mui) in memory.
-
-            // We store the record in memory only.
-            (
-                PersistStrategy::PersistHistory | PersistStrategy::MemoryOnly,
-                None,
-            ) => {
-                record_map.insert(
-                    key,
-                    MultiMapValue::from((
-                        new_rec,
-                        PersistStatus::not_persisted(),
-                    )),
-                );
-
+        match record_map.contains_key(&key) {
+            true => {
+                let old_rec = record_map
+                    .insert(
+                        key,
+                        MultiMapValue::from((new_rec, persist_status)),
+                    )
+                    .map(|r| (r, record_map.len()));
+                Ok((old_rec, retry_count))
+            }
+            false => {
+                let new_rec = MultiMapValue::from((new_rec, persist_status));
+                let old_rec = record_map.insert(key, new_rec);
+                assert!(old_rec.is_none());
                 Ok((None, retry_count))
             }
-            // We only persist the record.
-            (PersistStrategy::PersistOnly, None) => {
-                if let Some(persistence) = persistence {
-                    persistence.persist_record(prefix, key, &new_rec);
-                    Ok((None, retry_count))
-                } else {
-                    Err(PrefixStoreError::PersistFailed)
-                }
-            }
-            // We store both in memory and persist it.
-            (PersistStrategy::WriteAhead, None) => {
-                if let Some(persistence) = persistence {
-                    persistence.persist_record(prefix, key, &new_rec);
-                    let mmv = MultiMapValue::from((
-                        new_rec,
-                        PersistStatus::persisted(),
-                    ));
-                    record_map.insert(key, mmv);
-
-                    Ok((None, retry_count))
-                } else {
-                    Err(PrefixStoreError::PersistFailed)
-                }
-            }
-
-            // Existing record for (prefix, mui) in memory.
-
-            // We store the record in memory only, and discard the old record.
-            (PersistStrategy::MemoryOnly, Some(exist_rec)) => {
-                *exist_rec = MultiMapValue::from((
-                    new_rec,
-                    PersistStatus::not_persisted(),
-                ));
-
-                Ok((Some(record_map.len()), retry_count))
-            }
-            // We only persist record, so how come there's one in memory?
-            // Should not happen.
-            (PersistStrategy::PersistOnly, Some(_)) => {
-                panic!("Encountered illegally stored record");
-            }
-            // We store the new record in memory and persist the old record.
-            (
-                PersistStrategy::PersistHistory | PersistStrategy::WriteAhead,
-                Some(exist_rec),
-            ) => {
-                if let Some(persistence) = persistence {
-                    persistence.persist_record(prefix, key, &new_rec);
-                    *exist_rec = MultiMapValue::from((
-                        new_rec,
-                        PersistStatus::persisted(),
-                    ));
-
-                    Ok((Some(record_map.len()), retry_count))
-                } else {
-                    Err(PrefixStoreError::PersistFailed)
-                }
-            }
         }
+
+        // Ok((record_map.len(), retry_count))
+
+        // match (strategy, record_map.get_mut(&key)) {
+        //     // New record for (prefix, mui) in memory.
+
+        //     // We store the record in memory only.
+        //     (
+        //         PersistStrategy::PersistHistory | PersistStrategy::MemoryOnly,
+        //         None,
+        //     ) => {
+        //         record_map.insert(
+        //             key,
+        //             MultiMapValue::from((
+        //                 new_rec,
+        //                 PersistStatus::not_persisted(),
+        //             )),
+        //         );
+
+        //         Ok((None, retry_count))
+        //     }
+        //     // We only persist the record.
+        //     (PersistStrategy::PersistOnly, None) => {
+        //         if let Some(persistence) = persistence {
+        //             persistence.persist_record(prefix, key, &new_rec);
+        //             Ok((None, retry_count))
+        //         } else {
+        //             Err(PrefixStoreError::PersistFailed)
+        //         }
+        //     }
+        //     // We store both in memory and persist it.
+        //     (PersistStrategy::WriteAhead, None) => {
+        //         if let Some(persistence) = persistence {
+        //             persistence.persist_record(prefix, key, &new_rec);
+        //             let mmv = MultiMapValue::from((
+        //                 new_rec,
+        //                 PersistStatus::persisted(),
+        //             ));
+        //             record_map.insert(key, mmv);
+
+        //             Ok((None, retry_count))
+        //         } else {
+        //             Err(PrefixStoreError::PersistFailed)
+        //         }
+        //     }
+
+        //     // Existing record for (prefix, mui) in memory.
+
+        //     // We store the record in memory only, and discard the old record.
+        //     (PersistStrategy::MemoryOnly, Some(exist_rec)) => {
+        //         *exist_rec = MultiMapValue::from((
+        //             new_rec,
+        //             PersistStatus::not_persisted(),
+        //         ));
+
+        //         Ok((Some(record_map.len()), retry_count))
+        //     }
+        //     // We only persist record, so how come there's one in memory?
+        //     // Should not happen.
+        //     (PersistStrategy::PersistOnly, Some(_)) => {
+        //         panic!("Encountered illegally stored record");
+        //     }
+        //     // We store the new record in memory and persist the old record.
+        //     (
+        //         PersistStrategy::PersistHistory | PersistStrategy::WriteAhead,
+        //         Some(exist_rec),
+        //     ) => {
+        //         if let Some(persistence) = persistence {
+        //             persistence.persist_record(prefix, key, &new_rec);
+        //             *exist_rec = MultiMapValue::from((
+        //                 new_rec,
+        //                 PersistStatus::persisted(),
+        //             ));
+
+        //             Ok((Some(record_map.len()), retry_count))
+        //         } else {
+        //             Err(PrefixStoreError::PersistFailed)
+        //         }
+        //     }
+        // }
     }
 }
 

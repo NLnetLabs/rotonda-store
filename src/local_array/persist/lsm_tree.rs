@@ -85,8 +85,8 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
-    fn match_prefix_in_persisted_store<'a, M: Meta>(
-        &'a self,
+    fn match_prefix_in_persisted_store<M: Meta>(
+        &self,
         search_pfx: PrefixId<AF>,
         mui: Option<u32>,
     ) -> QueryResult<M> {
@@ -221,13 +221,13 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     pub(crate) fn persist_record<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
-        mui: u32,
+        // mui: u32,
         record: &PublicRecord<M>,
     ) {
         self.insert(
             PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::persistence_key(
                 prefix,
-                mui,
+                record.multi_uniq_id,
                 record.ltime,
                 record.status,
             ),

@@ -10,6 +10,7 @@ pub enum PrefixStoreError {
     BestPathNotFound,
     RecordNotInMemory,
     PersistFailed,
+    StatusUnknown,
 }
 
 impl std::error::Error for PrefixStoreError {}
@@ -28,7 +29,11 @@ impl fmt::Display for PrefixStoreError {
                 write!(f, "Error: Store isn't ready yet.")
             }
             PrefixStoreError::PathSelectionOutdated => {
-                write!(f, "Error: The Path Selection process is based on outdated paths.")
+                write!(
+                    f,
+                    "Error: The Path Selection process is based on \
+                    outdated paths."
+                )
             }
             PrefixStoreError::PrefixNotFound => {
                 write!(f, "Error: The Prefix cannot be found.")
@@ -51,6 +56,13 @@ impl fmt::Display for PrefixStoreError {
                     f,
                     "Error: The record for this (prefix, mui) cannot be \
                     persisted."
+                )
+            }
+            PrefixStoreError::StatusUnknown => {
+                write!(
+                    f,
+                    "Warning: The record is persisted, but the upsert \
+                    counters cannot be reported for persist only strategy."
                 )
             }
         }

@@ -11,8 +11,8 @@ macro_rules! insert_match {
         $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
         $is_last_stride: expr;
         $pfx: ident; // the whole search prefix
-        $record: ident; // the record holding the metadata
-        $update_path_selections: ident; // boolean indicate whether to update the path selections for this route
+        $mui: ident; // the reccord holding the metadata
+        // $update_path_selections: ident; // boolean indicate whether to update the path selections for this route
         $truncate_len: ident; // the start of the length of this stride
         $stride_len: ident; // the length of this stride
         $cur_i: expr; // the id of the current node in this stride
@@ -47,8 +47,8 @@ macro_rules! insert_match {
             // retry_count from this macro.
             let local_retry_count = 0;
             // retrieve_node_mut updates the bitmap index if necessary.
-            if let Some(current_node) = $self.in_memory_tree.retrieve_node_mut(
-                $cur_i, $record.multi_uniq_id) {
+            if let Some(current_node) = $self.retrieve_node_mut(
+                $cur_i, $mui) {
                 match current_node {
                     $(
                         SizedStrideRef::$variant(current_node) => {
@@ -83,13 +83,13 @@ macro_rules! insert_match {
                                             $truncate_len + $nibble_len
                                        );
 
-                                    // store the new node in the global
-                                    // store. It returns the created id
-                                    // and the number of retries before
+                                    // store the new node in the in_memory
+                                    // part of the RIB. It returns the created
+                                    // id and the number of retries before
                                     // success.
-                                    match $self.in_memory_tree.store_node(
+                                    match $self.store_node(
                                         new_id,
-                                        $record.multi_uniq_id, n
+                                        $mui, n
                                     ) {
                                         Ok((node_id, s_retry_count)) => {
                                             Ok((
@@ -126,38 +126,23 @@ macro_rules! insert_match {
                                     ))
                                 },
                                 (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                    return $self.upsert_prefix(
-                                        $pfx,
-                                        $record,
-                                        $update_path_selections,
-                                        $guard
-                                    ).and_then(|mut r| {
-                                            r.cas_count +=
-                                                $acc_retry_count as usize +
-                                                local_retry_count as usize +
-                                                retry_count as usize;
-                                            Ok(r)
-                                        })
-                                    // Log
-                                    // $self.stats[$stats_level].
-                                    //inc_prefix_count($level);
-                                }
+                                    break
+                                        $acc_retry_count +
+                                        local_retry_count +
+                                        retry_count
+
+                                },
                                 (
                                     NewNodeOrIndex::ExistingPrefix,
                                      retry_count
                                  ) =>
                                      {
-                                        return $self.upsert_prefix(
-                                            $pfx,
-                                            $record,
-                                            $update_path_selections,$guard
-                                        ).and_then(|mut r| {
-                                            r.cas_count +=
-                                                $acc_retry_count as usize +
-                                                local_retry_count as usize +
-                                                retry_count as usize;
-                                            Ok(r)
-                                        })
+                                    break
+                                        $acc_retry_count +
+                                        local_retry_count +
+                                        retry_count
+
+
                                 }
                             }   // end of eval_node_or_prefix_at
                         }

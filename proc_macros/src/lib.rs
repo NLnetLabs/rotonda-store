@@ -1443,7 +1443,6 @@ pub fn create_store(
                 )
             }
 
-
             /// Change the status of all records for this `multi_uniq_id` to
             /// Withdrawn.
             ///
@@ -1468,8 +1467,6 @@ pub fn create_store(
 
                 res_v4.and(res_v6)
             }
-
-
 
             // Whether the global status for IPv4 prefixes and the specified
             // `multi_uniq_id` is set to `Withdrawn`.

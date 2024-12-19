@@ -46,7 +46,7 @@ impl AsRef<[u8]> for Ipv4Route {
 }
 
 impl From<Vec<u8>> for Ipv4Route {
-    fn from(value: Vec<u8>) -> Self {
+    fn from(_value: Vec<u8>) -> Self {
         todo!()
     }
 }

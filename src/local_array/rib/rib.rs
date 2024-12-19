@@ -17,9 +17,11 @@ use crate::{
     local_array::errors::PrefixStoreError, prefix_record::PublicRecord,
 };
 
-use crate::local_array::in_memory::atomic_types::PrefixBuckets;
 use crate::local_array::in_memory::atomic_types::{
     NodeBuckets, StoredPrefix,
+};
+use crate::local_array::in_memory::atomic_types::{
+    PersistStatus, PrefixBuckets,
 };
 use crate::local_array::in_memory::node::{NewNodeOrIndex, StrideNodeId};
 
@@ -267,93 +269,31 @@ impl<
 
     pub fn insert(
         &self,
-        pfx: PrefixId<AF>,
+        prefix: PrefixId<AF>,
         record: PublicRecord<M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let guard = &epoch::pin();
-
-        if pfx.get_len() == 0 {
-            let res = self.update_default_route_prefix_meta(record, guard)?;
-            return Ok(res);
-        }
-
-        let mut stride_end: u8 = 0;
-        let mut cur_i = self.in_memory_tree.get_root_node_id();
-        let mut level: u8 = 0;
-        let mut acc_retry_count = 0;
-
-        loop {
-            let stride =
-                self.in_memory_tree.get_stride_sizes()[level as usize];
-            stride_end += stride;
-            let nibble_len = if pfx.get_len() < stride_end {
-                stride + pfx.get_len() - stride_end
-            } else {
-                stride
-            };
-
-            let nibble = AF::get_nibble(
-                pfx.get_net(),
-                stride_end - stride,
-                nibble_len,
-            );
-            let is_last_stride = pfx.get_len() <= stride_end;
-            let stride_start = stride_end - stride;
-            // let back_off = crossbeam_utils::Backoff::new();
-
-            // insert_match! returns the node_id of the next node to be
-            // traversed. It was created if it did not exist.
-            let node_result = insert_match![
-                // applicable to the whole outer match in the macro
-                self;
-                guard;
-                nibble_len;
-                nibble;
-                is_last_stride;
-                pfx;
-                record;
-                // perform an update for the paths in this record
-                update_path_selections;
-                // the length at the start of the stride a.k.a. start_bit
-                stride_start;
-                stride;
-                cur_i;
-                level;
-                acc_retry_count;
-                // Strides to create match arm for; stats level
-                Stride3; 0,
-                Stride4; 1,
-                Stride5; 2
-            ];
-
-            match node_result {
-                Ok((next_id, retry_count)) => {
-                    cur_i = next_id;
-                    level += 1;
-                    acc_retry_count += retry_count;
-                }
-                Err(err) => {
-                    if log_enabled!(log::Level::Error) {
-                        error!(
-                            "{} failing to store (intermediate) node {}.
-                             Giving up this node. This shouldn't happen!",
-                            std::thread::current()
-                                .name()
-                                .unwrap_or("unnamed-thread"),
-                            cur_i,
-                        );
-                        error!(
-                            "{} {}",
-                            std::thread::current()
-                                .name()
-                                .unwrap_or("unnamed-thread"),
-                            err
-                        );
+        self.in_memory_tree
+            .set_prefix_exists(prefix, record.multi_uniq_id)
+            .and_then(|c1| {
+                self.upsert_prefix(
+                    prefix,
+                    record,
+                    update_path_selections,
+                    guard,
+                )
+                .map(|mut c| {
+                    if c.prefix_new {
+                        self.counters.inc_prefixes_count(prefix.get_len());
                     }
-                }
-            }
-        }
+                    if c.mui_new {
+                        self.counters.inc_routes_count();
+                    }
+                    c.cas_count += c1 as usize;
+                    c
+                })
+            })
     }
 
     fn upsert_prefix(
@@ -363,151 +303,64 @@ impl<
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
-        let mut prefix_is_new = true;
-        let mut mui_is_new = true;
+        let mui = record.multi_uniq_id;
+        match self.config.persist_strategy {
+            PersistStrategy::WriteAhead => {
+                if let Some(persist_tree) = &self.persist_tree {
+                    persist_tree.persist_record(prefix, &record);
 
-        let (mui_count, cas_count) = match self
-            .in_memory_tree
-            .non_recursive_retrieve_prefix_mut(prefix)
-        {
-            // There's no StoredPrefix at this location yet. Create a new
-            // PrefixRecord and try to store it in the empty slot.
-            (locked_prefix, false) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
-                        "{} store: Create new prefix record",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread")
-                    );
-                }
-
-                let (mui_count, retry_count) =
-                    locked_prefix.record_map.upsert_record(
-                        prefix,
-                        record,
-                        &self.persist_tree,
-                        self.config.persist_strategy,
-                    )?;
-
-                // See if someone beat us to creating the record.
-                if mui_count.is_some() {
-                    mui_is_new = false;
-                    prefix_is_new = false;
+                    self.in_memory_tree
+                        .upsert_prefix(
+                            prefix,
+                            record,
+                            PersistStatus::persisted(),
+                            update_path_selections,
+                            guard,
+                        )
+                        .map(|(report, _old_rec)| report)
                 } else {
-                    // No, we were the first, we created a new prefix
-                    self.counters.inc_prefixes_count(prefix.get_len());
+                    Err(PrefixStoreError::StoreNotReadyError)
                 }
-
-                (mui_count, retry_count)
             }
-            // There already is a StoredPrefix with a record at this
-            // location.
-            (stored_prefix, true) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
-                        "{} store: Found existing prefix record for {}/{}",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread"),
-                        prefix.get_net(),
-                        prefix.get_len()
-                    );
+            PersistStrategy::PersistHistory => self
+                .in_memory_tree
+                .upsert_prefix(
+                    prefix,
+                    record,
+                    PersistStatus::not_persisted(),
+                    update_path_selections,
+                    guard,
+                )
+                .map(|(report, old_rec)| {
+                    if let Some(rec) = old_rec {
+                        if let Some(persist_tree) = &self.persist_tree {
+                            persist_tree.persist_record(
+                                prefix,
+                                &PublicRecord::from((mui, &rec)),
+                            );
+                        }
+                    }
+                    report
+                }),
+            PersistStrategy::MemoryOnly => self
+                .in_memory_tree
+                .upsert_prefix(
+                    prefix,
+                    record,
+                    PersistStatus::not_persisted(),
+                    update_path_selections,
+                    guard,
+                )
+                .map(|(report, _)| report),
+            PersistStrategy::PersistOnly => {
+                if let Some(persist_tree) = &self.persist_tree {
+                    persist_tree.persist_record(prefix, &record);
+                    Err(PrefixStoreError::StatusUnknown)
+                } else {
+                    Err(PrefixStoreError::PersistFailed)
                 }
-                prefix_is_new = false;
-
-                // Update the already existing record_map with our
-                // caller's record.
-                stored_prefix.set_ps_outdated(guard)?;
-
-                let (mui_count, retry_count) =
-                    stored_prefix.record_map.upsert_record(
-                        prefix,
-                        record,
-                        &self.persist_tree,
-                        self.config.persist_strategy,
-                    )?;
-                mui_is_new = mui_count.is_none();
-
-                if let Some(tbi) = update_path_selections {
-                    stored_prefix
-                        .calculate_and_store_best_backup(&tbi, guard)?;
-                }
-
-                (mui_count, retry_count)
             }
-        };
-
-        Ok(UpsertReport {
-            prefix_new: prefix_is_new,
-            cas_count,
-            mui_new: mui_is_new,
-            mui_count: mui_count.unwrap_or(1),
-        })
-    }
-
-    // Yes, we're hating this. But, the root node has no room for a serial of
-    // the prefix 0/0 (the default route), which doesn't even matter, unless,
-    // UNLESS, somebody wants to store a default route. So we have to store a
-    // serial for this prefix. The normal place for a serial of any prefix is
-    // on the pfxvec of its paren. But, hey, guess what, the
-    // default-route-prefix lives *on* the root node, and, you know, the root
-    // node doesn't have a parent. We can:
-    // - Create a type RootTreeBitmapNode with a ptrbitarr with a size one
-    //   bigger than a "normal" TreeBitMapNod for the first stride size. no we
-    //   have to iterate over the root-node type in all matches on
-    //   stride_size, just because we have exactly one instance of the
-    //   RootTreeBitmapNode. So no.
-    // - Make the `get_pfx_index` method on the implementations of the
-    //   `Stride` trait check for a length of zero and branch if it is and
-    //   return the serial of the root node. Now each and every call to this
-    //   method will have to check a condition for exactly one instance of
-    //   RootTreeBitmapNode. So again, no.
-    // - The root node only gets used at the beginning of a search query or an
-    //   insert. So if we provide two specialised methods that will now how to
-    //   search for the default-route prefix and now how to set serial for
-    //  that prefix and make sure we start searching/inserting with one of
-    //   those specialized methods we're good to go.
-    fn update_default_route_prefix_meta(
-        &self,
-        record: PublicRecord<M>,
-        guard: &epoch::Guard,
-    ) -> Result<UpsertReport, PrefixStoreError> {
-        trace!("Updating the default route...");
-
-        if let Some(root_node) = self.in_memory_tree.retrieve_node_mut(
-            self.in_memory_tree.get_root_node_id(),
-            record.multi_uniq_id,
-        ) {
-            match root_node {
-                SizedStrideRef::Stride3(_) => {
-                    self.in_memory_tree
-                        .node_buckets
-                        .get_store3(self.in_memory_tree.get_root_node_id())
-                        .update_rbm_index(record.multi_uniq_id)?;
-                }
-                SizedStrideRef::Stride4(_) => {
-                    self.in_memory_tree
-                        .node_buckets
-                        .get_store4(self.in_memory_tree.get_root_node_id())
-                        .update_rbm_index(record.multi_uniq_id)?;
-                }
-                SizedStrideRef::Stride5(_) => {
-                    self.in_memory_tree
-                        .node_buckets
-                        .get_store5(self.in_memory_tree.get_root_node_id())
-                        .update_rbm_index(record.multi_uniq_id)?;
-                }
-            };
-        };
-
-        self.upsert_prefix(
-            PrefixId::new(AF::zero(), 0),
-            record,
-            // Do not update the path selection for the default route.
-            None,
-            guard,
-        )
+        }
     }
 
     pub fn get_nodes_count(&self) -> usize {
@@ -686,13 +539,6 @@ impl<
                 .map_or(0, |p| p.get_prefixes_count_for_len(len)),
             total_count: self.counters.get_prefixes_count()[len as usize],
         }
-    }
-
-    // Stride related methods
-
-    // Pass through the in_memory stride sizes, for printing purposes
-    pub fn get_stride_sizes(&self) -> &[u8] {
-        self.in_memory_tree.node_buckets.get_stride_sizes()
     }
 
     //-------- Persistence ---------------------------------------------------

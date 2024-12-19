@@ -187,28 +187,29 @@ use crate::local_array::bit_span::BitSpan;
 use crate::local_array::in_memory::atomic_types::StoredNode;
 use crate::prefix_record::Meta;
 use crate::prelude::multi::{NodeSet, PrefixId};
+use crossbeam_epoch::Guard;
 use crossbeam_utils::Backoff;
-use log::{debug, log_enabled, trace};
+use log::{debug, error, log_enabled, trace};
 
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
 
 use super::atomic_types::{
-    NodeBuckets, PrefixBuckets, PrefixSet, StoredPrefix,
+    MultiMapValue, NodeBuckets, PersistStatus, PrefixBuckets, PrefixSet,
+    StoredPrefix,
 };
 use crate::af::AddressFamily;
-use crate::rib::Counters;
+use crate::rib::{Counters, UpsertReport};
 use crate::{
-    impl_search_level, impl_search_level_for_mui, retrieve_node_mut_closure,
-    store_node_closure,
+    impl_search_level, impl_search_level_for_mui, insert_match,
+    retrieve_node_mut_closure, store_node_closure, PublicRecord,
 };
 
 use super::super::errors::PrefixStoreError;
 pub(crate) use super::atomic_stride::*;
+use crate::local_array::in_memory::node::{NewNodeOrIndex, StrideNodeId};
 
-use super::node::{
-    SizedStrideNode, SizedStrideRef, StrideNodeId, TreeBitMapNode,
-};
+use super::node::{SizedStrideNode, SizedStrideRef, TreeBitMapNode};
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
@@ -276,6 +277,234 @@ impl<
         )?;
 
         Ok(tree_bitmap)
+    }
+
+    pub(crate) fn set_prefix_exists(
+        &self,
+        pfx: PrefixId<AF>,
+        mui: u32,
+        // update_path_selections: Option<M::TBI>,
+    ) -> Result<u32, PrefixStoreError> {
+        if pfx.get_len() == 0 {
+            return self.update_default_route_prefix_meta(mui);
+            // return Ok(res);
+        }
+
+        let mut stride_end: u8 = 0;
+        let mut cur_i = self.get_root_node_id();
+        let mut level: u8 = 0;
+        let mut acc_retry_count = 0;
+
+        let a = loop {
+            let stride = self.get_stride_sizes()[level as usize];
+            stride_end += stride;
+            let nibble_len = if pfx.get_len() < stride_end {
+                stride + pfx.get_len() - stride_end
+            } else {
+                stride
+            };
+
+            let nibble = AF::get_nibble(
+                pfx.get_net(),
+                stride_end - stride,
+                nibble_len,
+            );
+            let is_last_stride = pfx.get_len() <= stride_end;
+            let stride_start = stride_end - stride;
+            // let back_off = crossbeam_utils::Backoff::new();
+
+            // insert_match! returns the node_id of the next node to be
+            // traversed. It was created if it did not exist.
+            let node_result = insert_match![
+                // applicable to the whole outer match in the macro
+                self;
+                guard;
+                nibble_len;
+                nibble;
+                is_last_stride;
+                pfx;
+                mui;
+                // record;
+                // perform an update for the paths in this record
+                // update_path_selections;
+                // the length at the start of the stride a.k.a. start_bit
+                stride_start;
+                stride;
+                cur_i;
+                level;
+                acc_retry_count;
+                // Strides to create match arm for; stats level
+                Stride3; 0,
+                Stride4; 1,
+                Stride5; 2
+            ];
+
+            match node_result {
+                Ok((next_id, retry_count)) => {
+                    cur_i = next_id;
+                    level += 1;
+                    acc_retry_count += retry_count;
+                }
+                Err(err) => {
+                    if log_enabled!(log::Level::Error) {
+                        error!(
+                            "{} failing to store (intermediate) node {}.
+                             Giving up this node. This shouldn't happen!",
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread"),
+                            cur_i,
+                        );
+                        error!(
+                            "{} {}",
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread"),
+                            err
+                        );
+                    }
+                }
+            }
+        };
+
+        Ok(a)
+    }
+
+    pub(crate) fn upsert_prefix(
+        &self,
+        prefix: PrefixId<AF>,
+        record: PublicRecord<M>,
+        persist_status: PersistStatus,
+        update_path_selections: Option<M::TBI>,
+        guard: &Guard,
+    ) -> Result<(UpsertReport, Option<MultiMapValue<M>>), PrefixStoreError>
+    {
+        let mut prefix_is_new = true;
+        let mut mui_is_new = true;
+
+        let (mui_count, cas_count) = match self
+            .non_recursive_retrieve_prefix_mut(prefix)
+        {
+            // There's no StoredPrefix at this location yet. Create a new
+            // PrefixRecord and try to store it in the empty slot.
+            (stored_prefix, false) => {
+                if log_enabled!(log::Level::Debug) {
+                    debug!(
+                        "{} store: Create new prefix record",
+                        std::thread::current()
+                            .name()
+                            .unwrap_or("unnamed-thread")
+                    );
+                }
+
+                let (mui_count, retry_count) = stored_prefix
+                    .record_map
+                    .upsert_record(record, persist_status)?;
+
+                // See if someone beat us to creating the record.
+                if mui_count.is_some() {
+                    mui_is_new = false;
+                    prefix_is_new = false;
+                } else {
+                    // No, we were the first, we created a new prefix
+                    self.counters.inc_prefixes_count(prefix.get_len());
+                }
+
+                (mui_count, retry_count)
+            }
+            // There already is a StoredPrefix with a record at this
+            // location.
+            (stored_prefix, true) => {
+                if log_enabled!(log::Level::Debug) {
+                    debug!(
+                        "{} store: Found existing prefix record for {}/{}",
+                        std::thread::current()
+                            .name()
+                            .unwrap_or("unnamed-thread"),
+                        prefix.get_net(),
+                        prefix.get_len()
+                    );
+                }
+                prefix_is_new = false;
+
+                // Update the already existing record_map with our
+                // caller's record.
+                stored_prefix.set_ps_outdated(guard)?;
+
+                let (mui_count, retry_count) = stored_prefix
+                    .record_map
+                    .upsert_record(record, persist_status)?;
+                mui_is_new = mui_count.is_none();
+
+                if let Some(tbi) = update_path_selections {
+                    stored_prefix
+                        .calculate_and_store_best_backup(&tbi, guard)?;
+                }
+
+                (mui_count, retry_count)
+            }
+        };
+
+        let count = mui_count.as_ref().map(|m| m.1).unwrap_or(1);
+        Ok((
+            UpsertReport {
+                prefix_new: prefix_is_new,
+                cas_count,
+                mui_new: mui_is_new,
+                mui_count: count,
+            },
+            mui_count.map(|m| m.0),
+        ))
+    }
+
+    // Yes, we're hating this. But, the root node has no room for a serial of
+    // the prefix 0/0 (the default route), which doesn't even matter, unless,
+    // UNLESS, somebody wants to store a default route. So we have to store a
+    // serial for this prefix. The normal place for a serial of any prefix is
+    // on the pfxvec of its paren. But, hey, guess what, the
+    // default-route-prefix lives *on* the root node, and, you know, the root
+    // node doesn't have a parent. We can:
+    // - Create a type RootTreeBitmapNode with a ptrbitarr with a size one
+    //   bigger than a "normal" TreeBitMapNod for the first stride size. no we
+    //   have to iterate over the root-node type in all matches on
+    //   stride_size, just because we have exactly one instance of the
+    //   RootTreeBitmapNode. So no.
+    // - Make the `get_pfx_index` method on the implementations of the
+    //   `Stride` trait check for a length of zero and branch if it is and
+    //   return the serial of the root node. Now each and every call to this
+    //   method will have to check a condition for exactly one instance of
+    //   RootTreeBitmapNode. So again, no.
+    // - The root node only gets used at the beginning of a search query or an
+    //   insert. So if we provide two specialised methods that will now how to
+    //   search for the default-route prefix and now how to set serial for
+    //  that prefix and make sure we start searching/inserting with one of
+    //   those specialized methods we're good to go.
+    fn update_default_route_prefix_meta(
+        &self,
+        mui: u32,
+    ) -> Result<u32, PrefixStoreError> {
+        trace!("Updating the default route...");
+
+        if let Some(root_node) =
+            self.retrieve_node_mut(self.get_root_node_id(), mui)
+        {
+            match root_node {
+                SizedStrideRef::Stride3(_) => self
+                    .node_buckets
+                    .get_store3(self.get_root_node_id())
+                    .update_rbm_index(mui),
+                SizedStrideRef::Stride4(_) => self
+                    .node_buckets
+                    .get_store4(self.get_root_node_id())
+                    .update_rbm_index(mui),
+                SizedStrideRef::Stride5(_) => self
+                    .node_buckets
+                    .get_store5(self.get_root_node_id())
+                    .update_rbm_index(mui),
+            }
+        } else {
+            Err(PrefixStoreError::StoreNotReadyError)
+        }
     }
 
     // Create a new node in the store with payload `next_node`.
@@ -449,8 +678,8 @@ impl<
         }
     }
 
-    // retrieve a node, but only its bitmap index contains the specified mui.
-    // Used for iterators per mui.
+    // retrieve a node, but only if its bitmap index contains the specified
+    // mui. Used for iterators per mui.
     #[allow(clippy::type_complexity)]
     pub(crate) fn retrieve_node_for_mui(
         &self,
@@ -541,7 +770,6 @@ impl<
             );
 
             // probe the slot with the index that's the result of the hashing.
-            // let locked_prefix = prefix_set.0.get(index);
             let stored_prefix = match prefix_set.0.get(index) {
                 Some(p) => {
                     trace!("prefix set found.");
