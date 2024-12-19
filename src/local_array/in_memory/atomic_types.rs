@@ -13,12 +13,10 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
-use crate::local_array::persist::lsm_tree::PersistTree;
 use crate::local_array::types::{PrefixId, RouteStatus};
 // use crate::local_array::in_memory_tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
-use crate::rib::PersistStrategy;
 use crate::AddressFamily;
 
 use super::super::errors::PrefixStoreError;

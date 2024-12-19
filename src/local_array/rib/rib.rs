@@ -3,13 +3,12 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use inetnum::addr::Prefix;
-use log::{debug, error, info, log_enabled, trace};
+use log::info;
 
 use crossbeam_epoch::{self as epoch, Atomic};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
-use crate::local_array::in_memory::node::SizedStrideRef;
 use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::local_array::types::PrefixId;
 use crate::stats::CreatedNodes;
@@ -23,14 +22,13 @@ use crate::local_array::in_memory::atomic_types::{
 use crate::local_array::in_memory::atomic_types::{
     PersistStatus, PrefixBuckets,
 };
-use crate::local_array::in_memory::node::{NewNodeOrIndex, StrideNodeId};
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
 pub use crate::local_array::iterators;
 pub use crate::local_array::query;
 
-use crate::{insert_match, IPv4, IPv6, MatchType, Meta, QueryResult};
+use crate::{IPv4, IPv6, MatchType, Meta, QueryResult};
 
 use crate::AddressFamily;
 
