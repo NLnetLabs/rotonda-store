@@ -155,17 +155,31 @@ impl<M: Meta> Iterator for PrefixSingleRecordIter<'_, M> {
 /// See [MultiThreadedStore::match_prefix] for more details.
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<M: crate::prefix_record::Meta> {
+pub struct QueryResult<M: Meta> {
     /// The match type of the resulting prefix
     pub match_type: MatchType,
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
     pub prefix_meta: Vec<PublicRecord<M>>,
-    /// The less-specifics of the resulting prefix together with their meta data
+    /// The less-specifics of the resulting prefix together with their meta
+    /// data
     pub less_specifics: Option<RecordSet<M>>,
-    /// The more-specifics of the resulting prefix together with their meta data
+    /// The more-specifics of the resulting prefix together with their meta
+    //// data
     pub more_specifics: Option<RecordSet<M>>,
+}
+
+impl<M: Meta> QueryResult<M> {
+    pub fn empty() -> Self {
+        QueryResult {
+            match_type: MatchType::EmptyMatch,
+            prefix: None,
+            prefix_meta: vec![],
+            less_specifics: None,
+            more_specifics: None,
+        }
+    }
 }
 
 impl<M: Meta> fmt::Display for QueryResult<M> {

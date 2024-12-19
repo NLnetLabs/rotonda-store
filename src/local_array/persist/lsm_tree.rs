@@ -85,7 +85,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
-    fn match_prefix_in_persisted_store<M: Meta>(
+    pub(crate) fn match_prefix<M: Meta>(
         &self,
         search_pfx: PrefixId<AF>,
         mui: Option<u32>,
@@ -96,17 +96,27 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         } else {
             search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
         };
+        let recs = self.get_records_for_key(&key);
 
-        QueryResult {
-            prefix: Some(search_pfx.into_pub()),
-            match_type: MatchType::ExactMatch,
-            prefix_meta: self
-                .get_records_for_key(&key)
-                .into_iter()
-                .map(|(_, rec)| rec)
-                .collect::<Vec<_>>(),
-            less_specifics: None,
-            more_specifics: None,
+        if !recs.is_empty() {
+            QueryResult {
+                prefix: Some(search_pfx.into_pub()),
+                match_type: MatchType::ExactMatch,
+                prefix_meta: recs
+                    .into_iter()
+                    .map(|(_, rec)| rec)
+                    .collect::<Vec<_>>(),
+                less_specifics: None,
+                more_specifics: None,
+            }
+        } else {
+            QueryResult {
+                prefix: Some(search_pfx.into_pub()),
+                match_type: MatchType::EmptyMatch,
+                prefix_meta: vec![],
+                less_specifics: None,
+                more_specifics: None,
+            }
         }
     }
 
@@ -212,10 +222,10 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         )
     }
 
-    #[cfg(feature = "persist")]
-    pub fn parse_prefix(bytes: &[u8]) -> [u8; PREFIX_SIZE] {
-        *bytes.first_chunk::<PREFIX_SIZE>().unwrap()
-    }
+    // #[cfg(feature = "persist")]
+    // pub fn parse_prefix(bytes: &[u8]) -> [u8; PREFIX_SIZE] {
+    //     *bytes.first_chunk::<PREFIX_SIZE>().unwrap()
+    // }
 
     #[cfg(feature = "persist")]
     pub(crate) fn persist_record<M: Meta>(

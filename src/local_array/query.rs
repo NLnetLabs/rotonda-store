@@ -54,7 +54,12 @@ where
                 None
             },
             prefix_meta: prefix
-                .map(|r| self.get_filtered_records(r, mui, guard))
+                .map(|r| {
+                    r.record_map.get_filtered_records(
+                        mui,
+                        self.withdrawn_muis_bmin(guard),
+                    )
+                })
                 .unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
@@ -95,7 +100,12 @@ where
                 None
             },
             prefix_meta: prefix
-                .map(|r| self.get_filtered_records(r, mui, guard))
+                .map(|r| {
+                    r.record_map.get_filtered_records(
+                        mui,
+                        self.withdrawn_muis_bmin(guard),
+                    )
+                })
                 .unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
             less_specifics: less_specifics_vec.map(|iter| iter.collect()),
@@ -135,7 +145,11 @@ where
     ) -> QueryResult<M> {
         match self.config.persist_strategy() {
             PersistStrategy::PersistOnly => {
-                self.match_prefix_in_persisted_store(search_pfx, options.mui)
+                if let Some(persist_tree) = &self.persist_tree {
+                    persist_tree.match_prefix(search_pfx, options.mui)
+                } else {
+                    QueryResult::empty()
+                }
             }
             _ => self.match_prefix_in_memory(search_pfx, options, guard),
         }
@@ -161,7 +175,11 @@ where
                         // with globally withdrawn muis, and with local
                         // statuses
                         // set to Withdrawn.
-                        self.get_filtered_records(pfx, options.mui, guard)
+                        pfx.record_map
+                            .get_filtered_records(
+                                options.mui,
+                                self.withdrawn_muis_bmin(guard),
+                            )
                             .into_iter()
                             .collect()
                     } else {

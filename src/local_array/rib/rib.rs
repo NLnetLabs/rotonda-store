@@ -218,7 +218,8 @@ pub struct Rib<
     pub config: StoreConfig,
     pub(in crate::local_array) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
     #[cfg(feature = "persist")]
-    persist_tree: Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
+    pub(in crate::local_array) persist_tree:
+        Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
     // Global Roaring BitMap INdex that stores MUIs.
     pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
@@ -504,16 +505,16 @@ impl<
 
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    pub(crate) fn get_filtered_records(
-        &self,
-        pfx: &StoredPrefix<AF, M>,
-        mui: Option<u32>,
-        guard: &Guard,
-    ) -> Vec<PublicRecord<M>> {
-        let bmin = self.withdrawn_muis_bmin(guard);
+    // pub(crate) fn get_filtered_records(
+    //     &self,
+    //     pfx: &StoredPrefix<AF, M>,
+    //     mui: Option<u32>,
+    //     guard: &Guard,
+    // ) -> Vec<PublicRecord<M>> {
+    //     let bmin = self.withdrawn_muis_bmin(guard);
 
-        pfx.record_map.get_filtered_records(mui, bmin)
-    }
+    //     pfx.record_map.get_filtered_records(mui, bmin)
+    // }
 
     pub fn get_prefixes_count(&self) -> UpsertCounters {
         UpsertCounters {
@@ -543,41 +544,6 @@ impl<
 
     pub fn persist_strategy(&self) -> PersistStrategy {
         self.config.persist_strategy
-    }
-
-    pub fn match_prefix_in_persisted_store(
-        &'a self,
-        search_pfx: PrefixId<AF>,
-        mui: Option<u32>,
-    ) -> QueryResult<M> {
-        let key: Vec<u8> = if let Some(mui) = mui {
-            PersistTree::<AF,
-        PREFIX_SIZE, KEY_SIZE>::prefix_mui_persistence_key(search_pfx, mui)
-        } else {
-            search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
-        };
-
-        if let Some(persist) = &self.persist_tree {
-            QueryResult {
-                prefix: Some(search_pfx.into_pub()),
-                match_type: MatchType::ExactMatch,
-                prefix_meta: persist
-                    .get_records_for_key(&key)
-                    .into_iter()
-                    .map(|(_, rec)| rec)
-                    .collect::<Vec<_>>(),
-                less_specifics: None,
-                more_specifics: None,
-            }
-        } else {
-            QueryResult {
-                prefix: None,
-                match_type: MatchType::EmptyMatch,
-                prefix_meta: vec![],
-                less_specifics: None,
-                more_specifics: None,
-            }
-        }
     }
 
     pub fn get_records_for_prefix(

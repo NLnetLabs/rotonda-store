@@ -1,17 +1,28 @@
 // ----------- Store Iterators ----------------------------------------------
 //
-// This file hosts the iterators for the CustomAllocStorage type and the
-// implementations for the methods that start'em.
-// Note that these iterators are only the iterators that go over the
-// storage (and some over the TreeBitMap nodes, the parent of the store),
-// as such all the iterators here are composed of iterators over the
-// individual nodes. The Node Iterators live in the node.rs file.
+// This file hosts the iterators for the Rib and implementations for the
+// methods that start'em. There are 3 Iterators:
+//
+// 1. an iterator `PrefixIter` that iterates over ALL of the prefix buckets of
+// the CHT backing the TreeBitMap.
+//
+// 2. a MoreSpecificsIterator that starts from a prefix in the prefix buckets
+// for that particular prefix length, but uses the node in the TreeBitMap to
+// find its more specifics.
+//
+// 3. a LessSpecificIterator, that just reduces the prefix size bit-by-bit and
+// looks in the prefix buckets for the diminuishing prefix.
+//
+// The Iterators that start from the root node of the TreeBitMap (which
+// is the only option for the single-threaded TreeBitMap) live in the
+// deprecated_node.rs file. They theoretically should be slower and cause more
+// contention, since every lookup has to go through the levels near the root
+// in the TreeBitMap.
 
 use super::in_memory::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
-use super::in_memory::node::StrideNodeId;
+use super::in_memory::node::{SizedStrideRef, StrideNodeId};
 use super::in_memory::tree::{Stride3, Stride4, Stride5};
 use super::types::PrefixId;
-use crate::local_array::in_memory::node::SizedStrideRef;
 use crate::local_array::types::RouteStatus;
 use crate::prefix_record::PublicRecord;
 use crate::rib;

@@ -515,7 +515,7 @@ impl<
     // Returns: a tuple with the node_id of the created node and the number of
     // retry_count
     #[allow(clippy::type_complexity)]
-    pub(crate) fn store_node(
+    fn store_node(
         &self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
