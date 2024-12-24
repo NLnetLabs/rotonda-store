@@ -221,7 +221,7 @@ pub struct Rib<
     pub(in crate::local_array) persist_tree:
         Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
     // Global Roaring BitMap INdex that stores MUIs.
-    pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    // pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
 }
 
@@ -259,7 +259,7 @@ impl<
             config,
             in_memory_tree: TreeBitMap::<AF, M, NB, PB>::new()?,
             persist_tree,
-            withdrawn_muis_bmin: RoaringBitmap::new().into(),
+            // withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
         };
 
@@ -374,17 +374,6 @@ impl<
         self.in_memory_tree.get_nodes_count()
     }
 
-    pub(crate) fn withdrawn_muis_bmin(
-        &'a self,
-        guard: &'a Guard,
-    ) -> &'a RoaringBitmap {
-        unsafe {
-            self.withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .deref()
-        }
-    }
-
     // Change the status of the record for the specified (prefix, mui)
     // combination  to Withdrawn.
     pub fn mark_mui_as_withdrawn_for_prefix(
@@ -432,14 +421,17 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+        let current = self
+            .in_memory_tree
+            .withdrawn_muis_bmin
+            .load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.insert(mui);
 
         #[allow(clippy::assigning_clones)]
         loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
+            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
@@ -462,14 +454,17 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+        let current = self
+            .in_memory_tree
+            .withdrawn_muis_bmin
+            .load(Ordering::Acquire, guard);
 
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.remove(mui);
 
         #[allow(clippy::assigning_clones)]
         loop {
-            match self.withdrawn_muis_bmin.compare_exchange(
+            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
@@ -490,7 +485,8 @@ impl<
     // functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
         unsafe {
-            self.withdrawn_muis_bmin
+            self.in_memory_tree
+                .withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .as_ref()
         }
@@ -503,7 +499,8 @@ impl<
     // functions.
     pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
         !unsafe {
-            self.withdrawn_muis_bmin
+            self.in_memory_tree
+                .withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .as_ref()
         }

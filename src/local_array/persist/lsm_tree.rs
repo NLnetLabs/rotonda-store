@@ -236,7 +236,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                     ),
                 }
             }
-            // Only the searc prefix itself has historical records attacched
+            // Only the search prefix itself has historical records attacched
             // to it, other prefixes (less|more specifics), have no records
             // attached. Not useful with the MemoryOnly strategy (historical
             // records are neve kept in memory).

@@ -21,7 +21,7 @@
 
 use super::in_memory::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::in_memory::node::{SizedStrideRef, StrideNodeId};
-use super::in_memory::tree::{Stride3, Stride4, Stride5};
+use super::in_memory::tree::{Stride3, Stride4, Stride5, TreeBitMap};
 use super::types::PrefixId;
 use crate::local_array::types::RouteStatus;
 use crate::prefix_record::PublicRecord;
@@ -304,10 +304,10 @@ pub(crate) struct MoreSpecificPrefixIter<
     M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
-    const PREFIX_SIZE: usize,
-    const KEY_SIZE: usize,
+    // const PREFIX_SIZE: usize,
+    // const KEY_SIZE: usize,
 > {
-    store: &'a Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
+    store: &'a TreeBitMap<AF, M, NB, PB>,
     cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
     start_bit_span: BitSpan,
@@ -328,10 +328,9 @@ impl<
         M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-        const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    > Iterator
-    for MoreSpecificPrefixIter<'a, AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+        // const PREFIX_SIZE: usize,
+        // const KEY_SIZE: usize,
+    > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
 {
     type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
 
@@ -352,7 +351,6 @@ impl<
                 if let Some(mui) = self.mui {
                     if let Some(p) = self
                         .store
-                        .in_memory_tree
                         .non_recursive_retrieve_prefix(
                             next_pfx.unwrap_or_else(|| {
                                 panic!(
@@ -389,7 +387,6 @@ impl<
                 } else {
                     return self
                         .store
-                        .in_memory_tree
                         .non_recursive_retrieve_prefix(
                             next_pfx.unwrap_or_else(|| {
                                 panic!(
@@ -448,9 +445,9 @@ impl<
 
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
-                    self.store.in_memory_tree.retrieve_node(next_ptr)
+                    self.store.retrieve_node(next_ptr)
                 } else {
-                    self.store.in_memory_tree.retrieve_node_for_mui(
+                    self.store.retrieve_node_for_mui(
                         next_ptr,
                         self.mui.unwrap(),
                         // self.guard,
@@ -732,9 +729,9 @@ impl<
         M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-        const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    > Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+        // const PREFIX_SIZE: usize,
+        // const KEY_SIZE: usize,
+    > TreeBitMap<AF, M, NB, PB>
 {
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.
@@ -753,7 +750,7 @@ impl<
         } else {
             // calculate the node start_prefix_id lives in.
             let (start_node_id, start_bit_span) =
-                self.in_memory_tree.get_node_id_for_prefix(&start_prefix_id);
+                self.get_node_id_for_prefix(&start_prefix_id);
             trace!("start node {}", start_node_id);
 
             trace!(
@@ -776,10 +773,9 @@ impl<
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
             let node = if let Some(mui) = mui {
-                self.in_memory_tree
-                    .retrieve_node_for_mui(start_node_id, mui)
+                self.retrieve_node_for_mui(start_node_id, mui)
             } else {
-                self.in_memory_tree.retrieve_node(start_node_id)
+                self.retrieve_node(start_node_id)
             };
 
             if let Some(node) = node {
@@ -873,14 +869,11 @@ impl<
             None
         } else {
             let cur_len = start_prefix_id.get_len() - 1;
-            let cur_bucket = self
-                .in_memory_tree
-                .prefix_buckets
-                .get_root_prefix_set(cur_len);
+            let cur_bucket = self.prefix_buckets.get_root_prefix_set(cur_len);
             let global_withdrawn_bmin = self.withdrawn_muis_bmin(guard);
 
             Some(LessSpecificPrefixIter {
-                prefixes: &self.in_memory_tree.prefix_buckets,
+                prefixes: &self.prefix_buckets,
                 cur_len,
                 cur_bucket,
                 cur_level: 0,
@@ -899,11 +892,8 @@ impl<
         &'a self,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PrefixIter {
-            prefixes: &self.in_memory_tree.prefix_buckets,
-            cur_bucket: self
-                .in_memory_tree
-                .prefix_buckets
-                .get_root_prefix_set(0),
+            prefixes: &self.prefix_buckets,
+            cur_bucket: self.prefix_buckets.get_root_prefix_set(0),
             cur_len: 0,
             cur_level: 0,
             cursor: 0,

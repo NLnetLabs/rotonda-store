@@ -957,7 +957,10 @@ pub fn create_store(
                     let (left, right) = match search_pfx.addr() {
                         std::net::IpAddr::V4(addr) => {
                             (
-                                Some(self.v4.less_specific_prefix_iter(
+                                Some(self
+                                    .v4
+                                    .in_memory_tree
+                                    .less_specific_prefix_iter(
                                         PrefixId::<IPv4>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -974,7 +977,10 @@ pub fn create_store(
                         std::net::IpAddr::V6(addr) => {
                             (
                                 None,
-                                Some(self.v6.less_specific_prefix_iter(
+                                Some(self
+                                    .v6
+                                    .in_memory_tree
+                                    .less_specific_prefix_iter(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1050,7 +1056,10 @@ pub fn create_store(
                             |m| { self.v6.mui_is_withdrawn(m, guard) }) {
                                 (None, None)
                         } else {
-                            (Some(self.v4.more_specific_prefix_iter_from(
+                            (Some(self
+                                .v4
+                                .in_memory_tree
+                                .more_specific_prefix_iter_from(
                                     PrefixId::<IPv4>::new(
                                         addr.into(),
                                         search_pfx.len(),
@@ -1071,7 +1080,10 @@ pub fn create_store(
                         } else {
                             (
                                 None,
-                                Some(self.v6.more_specific_prefix_iter_from(
+                                Some(self
+                                    .v6
+                                    .in_memory_tree
+                                    .more_specific_prefix_iter_from(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1100,7 +1112,10 @@ pub fn create_store(
                     None
                 } else {
                     Some(
-                        self.v4.more_specific_prefix_iter_from(
+                        self
+                            .v4
+                            .in_memory_tree
+                            .more_specific_prefix_iter_from(
                                 PrefixId::<IPv4>::new(
                                     0,
                                     0,
@@ -1125,7 +1140,9 @@ pub fn create_store(
                     None
                 } else {
                     Some(
-                        self.v6.more_specific_prefix_iter_from(
+                        self.v6
+                            .in_memory_tree
+                            .more_specific_prefix_iter_from(
                                 PrefixId::<IPv6>::new(
                                     0,
                                     0,
@@ -1221,10 +1238,10 @@ pub fn create_store(
             pub fn prefixes_iter(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.prefixes_iter()
+                self.v4.in_memory_tree.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
                     .chain(
-                        self.v6.prefixes_iter()
+                        self.v6.in_memory_tree.prefixes_iter()
                         .map(|p| PrefixRecord::from(p))
                     )
             }
@@ -1272,7 +1289,7 @@ pub fn create_store(
             pub fn prefixes_iter_v4(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.prefixes_iter()
+                self.v4.in_memory_tree.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1319,7 +1336,7 @@ pub fn create_store(
             pub fn prefixes_iter_v6(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v6.prefixes_iter()
+                self.v6.in_memory_tree.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
             }
 

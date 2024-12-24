@@ -187,11 +187,14 @@ use crate::local_array::bit_span::BitSpan;
 use crate::local_array::in_memory::atomic_types::StoredNode;
 use crate::prefix_record::Meta;
 use crate::prelude::multi::{NodeSet, PrefixId};
-use crossbeam_epoch::Guard;
+use crossbeam_epoch::{Atomic, Guard};
 use crossbeam_utils::Backoff;
 use log::{debug, error, log_enabled, trace};
+use roaring::RoaringBitmap;
 
-use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
+use std::sync::atomic::{
+    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+};
 use std::{fmt::Debug, marker::PhantomData};
 
 use super::atomic_types::{
@@ -225,6 +228,7 @@ pub struct TreeBitMap<
 > {
     pub(crate) node_buckets: NB,
     pub(crate) prefix_buckets: PB,
+    pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
     _af: PhantomData<AF>,
     _m: PhantomData<M>,
@@ -241,6 +245,7 @@ impl<
         let tree_bitmap = Self {
             node_buckets: NodeBuckets::init(),
             prefix_buckets: PB::init(),
+            withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             _af: PhantomData,
             _m: PhantomData,
@@ -580,6 +585,17 @@ impl<
             }
         } else {
             Err(PrefixStoreError::StoreNotReadyError)
+        }
+    }
+
+    pub(crate) fn withdrawn_muis_bmin<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> &'a RoaringBitmap {
+        unsafe {
+            self.withdrawn_muis_bmin
+                .load(Ordering::Acquire, guard)
+                .deref()
         }
     }
 
