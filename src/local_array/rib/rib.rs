@@ -5,9 +5,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use inetnum::addr::Prefix;
 use log::info;
 
-use crossbeam_epoch::{self as epoch, Atomic};
+use crossbeam_epoch::{self as epoch};
 use epoch::{Guard, Owned};
-use roaring::RoaringBitmap;
 
 use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::local_array::types::PrefixId;
@@ -23,7 +22,7 @@ use crate::local_array::in_memory::atomic_types::{
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
-pub use crate::local_array::iterators;
+pub use crate::local_array::in_memory::iterators;
 pub use crate::local_array::query;
 
 use crate::{IPv4, IPv6, Meta};
