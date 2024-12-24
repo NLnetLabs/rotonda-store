@@ -19,13 +19,12 @@
 // contention, since every lookup has to go through the levels near the root
 // in the TreeBitMap.
 
-use super::in_memory::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
-use super::in_memory::node::{SizedStrideRef, StrideNodeId};
-use super::in_memory::tree::{Stride3, Stride4, Stride5, TreeBitMap};
-use super::types::PrefixId;
+use super::super::types::PrefixId;
+use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
+use super::node::{SizedStrideRef, StrideNodeId};
+use super::tree::{Stride3, Stride4, Stride5, TreeBitMap};
 use crate::local_array::types::RouteStatus;
 use crate::prefix_record::PublicRecord;
-use crate::rib;
 use crate::{
     af::AddressFamily,
     local_array::{
@@ -36,7 +35,6 @@ use crate::{
     },
     prefix_record::Meta,
 };
-use rib::Rib;
 
 use crossbeam_epoch::Guard;
 use inetnum::addr::Prefix;

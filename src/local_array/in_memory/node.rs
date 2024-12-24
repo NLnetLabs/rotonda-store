@@ -8,7 +8,7 @@ use log::trace;
 use parking_lot_core::SpinWait;
 
 use super::super::bit_span::BitSpan;
-use super::super::iterators::{SizedNodeMoreSpecificIter, SizedPrefixIter};
+use super::iterators::{SizedNodeMoreSpecificIter, SizedPrefixIter};
 use super::tree::{AtomicBitmap, AtomicStride2, AtomicStride3, AtomicStride4, AtomicStride5, CasResult, Stride, Stride3, Stride4, Stride5};
 
 // pub use crate::in_memory_tree::*;

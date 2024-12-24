@@ -6,6 +6,9 @@ pub(crate) mod tree;
 
 // #[deprecated]
 // mod deprecated_query;
+
+pub mod iterators;
+
 mod query;
 
 #[macro_use]
