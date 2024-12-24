@@ -1,6 +1,6 @@
+use rotonda_store::meta_examples::NoMeta;
 use rotonda_store::prelude::*;
 use rotonda_store::SingleThreadedStore;
-use rotonda_store::meta_examples::NoMeta;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let v4 = vec![8];
@@ -345,7 +345,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_withdrawn: false,
                 include_less_specifics: false,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
+                include_history: IncludeHistory::None,
             },
         );
         println!("exact match: {:?}", s_spfx);

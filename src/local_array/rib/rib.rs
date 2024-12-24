@@ -16,9 +16,7 @@ use crate::{
     local_array::errors::PrefixStoreError, prefix_record::PublicRecord,
 };
 
-use crate::local_array::in_memory::atomic_types::{
-    NodeBuckets, StoredPrefix,
-};
+use crate::local_array::in_memory::atomic_types::NodeBuckets;
 use crate::local_array::in_memory::atomic_types::{
     PersistStatus, PrefixBuckets,
 };
@@ -28,14 +26,16 @@ use crate::local_array::in_memory::atomic_types::{
 pub use crate::local_array::iterators;
 pub use crate::local_array::query;
 
-use crate::{IPv4, IPv6, MatchType, Meta, QueryResult};
+use crate::{IPv4, IPv6, Meta};
 
 use crate::AddressFamily;
 
 //------------ StoreConfig ---------------------------------------------------
 
+/// Some description
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PersistStrategy {
+    /// The current records are kept in history
     WriteAhead,
     PersistHistory,
     MemoryOnly,
@@ -216,7 +216,7 @@ pub struct Rib<
     const KEY_SIZE: usize,
 > {
     pub config: StoreConfig,
-    pub(in crate::local_array) in_memory_tree: TreeBitMap<AF, M, NB, PB>,
+    pub in_memory_tree: TreeBitMap<AF, M, NB, PB>,
     #[cfg(feature = "persist")]
     pub(in crate::local_array) persist_tree:
         Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
@@ -289,7 +289,7 @@ impl<
                     if c.mui_new {
                         self.counters.inc_routes_count();
                     }
-                    c.cas_count += c1 as usize;
+                    c.cas_count += c1.0 as usize;
                     c
                 })
             })
@@ -353,8 +353,16 @@ impl<
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
+                    let (retry_count, exists) = self
+                        .in_memory_tree
+                        .set_prefix_exists(prefix, record.multi_uniq_id)?;
                     persist_tree.persist_record(prefix, &record);
-                    Err(PrefixStoreError::StatusUnknown)
+                    Ok(UpsertReport {
+                        cas_count: retry_count as usize,
+                        prefix_new: exists,
+                        mui_new: true,
+                        mui_count: 0,
+                    })
                 } else {
                     Err(PrefixStoreError::PersistFailed)
                 }
@@ -549,9 +557,10 @@ impl<
     pub fn get_records_for_prefix(
         &self,
         prefix: &Prefix,
+        mui: Option<u32>,
     ) -> Vec<PublicRecord<M>> {
         if let Some(p) = &self.persist_tree {
-            p.get_records_for_prefix(PrefixId::from(*prefix))
+            p.get_records_for_prefix(PrefixId::from(*prefix), mui)
         } else {
             vec![]
         }

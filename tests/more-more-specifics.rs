@@ -65,6 +65,7 @@ mod tests {
                     include_less_specifics: false,
                     include_more_specifics: true,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
                 guard,
             );
@@ -147,6 +148,7 @@ mod tests {
                     include_less_specifics: false,
                     include_more_specifics: true,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
                 guard,
             );

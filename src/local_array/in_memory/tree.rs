@@ -284,7 +284,7 @@ impl<
         pfx: PrefixId<AF>,
         mui: u32,
         // update_path_selections: Option<M::TBI>,
-    ) -> Result<u32, PrefixStoreError> {
+    ) -> Result<(u32, bool), PrefixStoreError> {
         if pfx.get_len() == 0 {
             return self.update_default_route_prefix_meta(mui);
             // return Ok(res);
@@ -295,7 +295,7 @@ impl<
         let mut level: u8 = 0;
         let mut acc_retry_count = 0;
 
-        let a = loop {
+        let retry_and_exists = loop {
             let stride = self.get_stride_sizes()[level as usize];
             stride_end += stride;
             let nibble_len = if pfx.get_len() < stride_end {
@@ -367,7 +367,86 @@ impl<
             }
         };
 
-        Ok(a)
+        Ok(retry_and_exists)
+    }
+
+    pub fn prefix_exists(&self, prefix_id: PrefixId<AF>) -> bool {
+        // if prefix_id.get_len() == 0 {
+        //     return self.update_default_route_prefix_meta(mui);
+        // }
+
+        let mut stride_end: u8 = 0;
+        let mut cur_i = self.get_root_node_id();
+        let mut level: u8 = 0;
+
+        loop {
+            let stride = self.get_stride_sizes()[level as usize];
+            stride_end += stride;
+            let nibble_len = if prefix_id.get_len() < stride_end {
+                stride + prefix_id.get_len() - stride_end
+            } else {
+                stride
+            };
+
+            let nibble = AF::get_nibble(
+                prefix_id.get_net(),
+                stride_end - stride,
+                nibble_len,
+            );
+            let stride_start = stride_end - stride;
+
+            let node_result = match self.retrieve_node(cur_i) {
+                Some(node) => match node {
+                    SizedStrideRef::Stride3(n) => {
+                        let (child_node, found) = n.prefix_exists_in_stride(
+                            prefix_id,
+                            nibble,
+                            nibble_len,
+                            stride_start,
+                        );
+                        if found {
+                            return true;
+                        } else {
+                            child_node
+                        }
+                    }
+                    SizedStrideRef::Stride4(n) => {
+                        let (child_node, found) = n.prefix_exists_in_stride(
+                            prefix_id,
+                            nibble,
+                            nibble_len,
+                            stride_start,
+                        );
+                        if found {
+                            return true;
+                        } else {
+                            child_node
+                        }
+                    }
+                    SizedStrideRef::Stride5(n) => {
+                        let (child_node, found) = n.prefix_exists_in_stride(
+                            prefix_id,
+                            nibble,
+                            nibble_len,
+                            stride_start,
+                        );
+                        if found {
+                            return true;
+                        } else {
+                            child_node
+                        }
+                    }
+                },
+                None => {
+                    return false;
+                }
+            };
+
+            if let Some(next_id) = node_result {
+                cur_i = next_id;
+                level += 1;
+            }
+        }
     }
 
     pub(crate) fn upsert_prefix(
@@ -405,9 +484,6 @@ impl<
                 if mui_count.is_some() {
                     mui_is_new = false;
                     prefix_is_new = false;
-                } else {
-                    // No, we were the first, we created a new prefix
-                    self.counters.inc_prefixes_count(prefix.get_len());
                 }
 
                 (mui_count, retry_count)
@@ -482,7 +558,7 @@ impl<
     fn update_default_route_prefix_meta(
         &self,
         mui: u32,
-    ) -> Result<u32, PrefixStoreError> {
+    ) -> Result<(u32, bool), PrefixStoreError> {
         trace!("Updating the default route...");
 
         if let Some(root_node) =

@@ -85,6 +85,13 @@ pub struct MatchOptions {
     /// Whether to return records for a specific multi_uniq_id, None indicates
     /// all records.
     pub mui: Option<u32>,
+    /// Whether to include historical records, i.e. records that have been
+    /// superceded by updates. `SearchPrefix` means only historical records
+    /// for the search prefix will be included (if present), `All` means
+    /// all retrieved prefixes, i.e. next to the search prefix, also the
+    /// historical records for less and more specific prefixes will be
+    /// included.
+    pub include_history: IncludeHistory,
 }
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
@@ -108,6 +115,13 @@ impl std::fmt::Display for MatchType {
             MatchType::EmptyMatch => write!(f, "empty-match"),
         }
     }
+}
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum IncludeHistory {
+    None,
+    SearchPrefix,
+    All,
 }
 
 //------------ PrefixRecordIter ---------------------------------------------

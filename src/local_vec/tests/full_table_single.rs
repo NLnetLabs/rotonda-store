@@ -81,6 +81,7 @@ mod full_table {
                         include_less_specifics: false,
                         include_more_specifics: false,
                         mui: None,
+                        include_history: IncludeHistory::None,
                     },
                 );
 
@@ -118,6 +119,7 @@ mod full_table {
                                 include_less_specifics: false,
                                 include_more_specifics: false,
                                 mui: None,
+                                include_history: IncludeHistory::None,
                             },
                         );
                         if let Some(_pfx) = res.prefix {

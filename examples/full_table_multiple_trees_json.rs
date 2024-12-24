@@ -92,6 +92,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     include_less_specifics: false,
                                     include_more_specifics: false,
                                     mui: None,
+                                    include_history: IncludeHistory::None,
                                 },
                                 guard,
                             );

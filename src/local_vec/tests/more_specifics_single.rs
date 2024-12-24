@@ -57,6 +57,7 @@ mod tests {
                     include_less_specifics: false,
                     include_more_specifics: true,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
             );
             println!("em/m-s: {:#?}", found_result);
@@ -134,6 +135,7 @@ mod tests {
                     include_less_specifics: false,
                     include_more_specifics: true,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
             );
             println!("em/m-s: {}", found_result);

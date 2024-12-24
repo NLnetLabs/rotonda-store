@@ -55,6 +55,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_less_specifics: true,
                 include_more_specifics: true,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
         );

@@ -5,6 +5,7 @@ use rotonda_store::prelude::multi::Record;
 use rotonda_store::prelude::multi::RouteStatus;
 use rotonda_store::rib::PersistStrategy;
 use rotonda_store::rib::StoreConfig;
+use rotonda_store::IncludeHistory;
 use rotonda_store::MatchOptions;
 use rotonda_store::Meta;
 use rotonda_store::MultiThreadedStore;
@@ -177,6 +178,7 @@ fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
             include_less_specifics: false,
             include_more_specifics: false,
             mui: None,
+            include_history: IncludeHistory::None,
         },
         &rotonda_store::epoch::pin(),
     );

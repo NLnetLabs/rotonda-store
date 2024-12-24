@@ -66,16 +66,16 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
     pub fn update_rbm_index(
         &self,
         multi_uniq_id: u32,
-    ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
+    ) -> Result<(u32, bool), crate::prelude::multi::PrefixStoreError>
     where
         S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;
         let mut rbm = self.1.write().unwrap();
-        rbm.insert(multi_uniq_id);
+        let absent = rbm.insert(multi_uniq_id);
 
-        Ok(try_count)
+        Ok((try_count, !absent))
     }
 
     pub fn remove_from_rbm_index(

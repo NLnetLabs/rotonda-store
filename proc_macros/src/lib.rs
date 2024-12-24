@@ -1572,9 +1572,9 @@ pub fn create_store(
             pub fn print_funky_stats(&self) {
                 println!("");
                 println!("Stats for IPv4 multi-threaded store\n");
-                println!("{}", self.v4);
+                println!("{}", self.v4.in_memory_tree);
                 println!("Stats for IPv6 multi-threaded store\n");
-                println!("{}", self.v6);
+                println!("{}", self.v6.in_memory_tree);
             }
 
             // The Store statistics.
@@ -1591,11 +1591,14 @@ pub fn create_store(
                 self.config.persist_strategy()
             }
 
-            pub fn get_records_for_prefix(&self, prefix: &Prefix) ->
+            pub fn get_records_for_prefix(
+                &self, prefix: &Prefix,
+                mui: Option<u32>
+            ) ->
                 Vec<Record<M>> {
                 match prefix.is_v4() {
-                    true => self.v4.get_records_for_prefix(prefix),
-                    false => self.v6.get_records_for_prefix(prefix)
+                    true => self.v4.get_records_for_prefix(prefix, mui),
+                    false => self.v6.get_records_for_prefix(prefix, mui)
                 }
             }
 

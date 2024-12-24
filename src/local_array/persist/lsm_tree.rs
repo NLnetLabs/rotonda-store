@@ -3,11 +3,17 @@
 use std::marker::PhantomData;
 use std::path::Path;
 
+use inetnum::addr::Prefix;
 use lsm_tree::AbstractTree;
 
 use crate::local_array::types::{PrefixId, RouteStatus};
+use crate::prefix_record::PublicPrefixRecord;
+use crate::rib::query::TreeQueryResult;
 use crate::rib::Counters;
-use crate::{AddressFamily, MatchType, Meta, PublicRecord, QueryResult};
+use crate::{
+    AddressFamily, IncludeHistory, MatchOptions, Meta, PublicRecord,
+    QueryResult, RecordSet,
+};
 
 pub struct PersistTree<
     AF: AddressFamily,
@@ -44,8 +50,14 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     pub fn get_records_for_prefix<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
+        mui: Option<u32>,
     ) -> Vec<PublicRecord<M>> {
-        let prefix_b = &prefix.as_bytes::<PREFIX_SIZE>();
+        let prefix_b = if let Some(mui) = mui {
+            &Self::prefix_mui_persistence_key(prefix, mui)
+        } else {
+            &prefix.as_bytes::<PREFIX_SIZE>()
+        };
+
         (*self.tree.prefix(prefix_b))
             .into_iter()
             .map(|kv| {
@@ -85,37 +97,184 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
+    fn enrich_prefix_most_recent<M: Meta>(
+        &self,
+        prefix: Option<PrefixId<AF>>,
+        mui: Option<u32>,
+    ) -> (Option<Prefix>, Vec<PublicRecord<M>>) {
+        match prefix {
+            Some(pfx) => {
+                let prefix_b = if let Some(mui) = mui {
+                    &Self::prefix_mui_persistence_key(pfx, mui)
+                } else {
+                    &pfx.as_bytes::<PREFIX_SIZE>()
+                };
+                (
+                    prefix.map(|p| p.into_pub()),
+                    (*self.tree.prefix(prefix_b))
+                        .into_iter()
+                        .last()
+                        .map(|kv| {
+                            let kv = kv.unwrap();
+                            let (_, mui, ltime, status) =
+                                Self::parse_key(kv.0.as_ref());
+                            vec![PublicRecord::new(
+                                mui,
+                                ltime,
+                                status.try_into().unwrap(),
+                                kv.1.as_ref().to_vec().into(),
+                            )]
+                        })
+                        .unwrap_or_default(),
+                )
+            }
+            None => (None, vec![]),
+        }
+    }
+
+    fn enrich_prefixes_most_recent<M: Meta>(
+        &self,
+        prefixes: Option<Vec<PrefixId<AF>>>,
+        mui: Option<u32>,
+    ) -> Option<RecordSet<M>> {
+        prefixes.map(|pfxs| {
+            pfxs.iter()
+                .flat_map(|pfx| {
+                    let prefix_b = if let Some(mui) = mui {
+                        &Self::prefix_mui_persistence_key(*pfx, mui)
+                    } else {
+                        &pfx.as_bytes::<PREFIX_SIZE>()
+                    };
+                    Some(PublicPrefixRecord::from((
+                        pfx.into_pub(),
+                        (*self.tree.prefix(prefix_b))
+                            .into_iter()
+                            .last()
+                            .map(|kv| {
+                                let kv = kv.unwrap();
+                                let (_, mui, ltime, status) =
+                                    Self::parse_key(kv.0.as_ref());
+                                vec![PublicRecord::new(
+                                    mui,
+                                    ltime,
+                                    status.try_into().unwrap(),
+                                    kv.1.as_ref().to_vec().into(),
+                                )]
+                            })
+                            .unwrap_or_default(),
+                    )))
+                })
+                .collect::<RecordSet<M>>()
+        })
+    }
+
+    fn enrich_prefix<M: Meta>(
+        &self,
+        prefix: Option<PrefixId<AF>>,
+        mui: Option<u32>,
+    ) -> (Option<Prefix>, Vec<PublicRecord<M>>) {
+        match prefix {
+            Some(pfx) => {
+                (Some(pfx.into_pub()), self.get_records_for_prefix(pfx, mui))
+            }
+            None => (None, vec![]),
+        }
+    }
+
+    fn enrich_prefixes<M: Meta>(
+        &self,
+        prefixes: Option<Vec<PrefixId<AF>>>,
+        mui: Option<u32>,
+    ) -> Option<RecordSet<M>> {
+        prefixes.map(|ls| {
+            ls.iter()
+                .flat_map(move |pfx| {
+                    Some(PublicPrefixRecord::from((
+                        *pfx,
+                        self.get_records_for_prefix(*pfx, mui),
+                    )))
+                })
+                .collect::<RecordSet<M>>()
+        })
+    }
+
+    fn sparse_record_set<M: Meta>(
+        &self,
+        prefixes: Option<Vec<PrefixId<AF>>>,
+    ) -> Option<RecordSet<M>> {
+        prefixes.map(|ls| {
+            ls.iter()
+                .flat_map(|pfx| {
+                    Some(PublicPrefixRecord::from((*pfx, vec![])))
+                })
+                .collect::<RecordSet<M>>()
+        })
+    }
+
     pub(crate) fn match_prefix<M: Meta>(
         &self,
-        search_pfx: PrefixId<AF>,
-        mui: Option<u32>,
+        search_pfxs: TreeQueryResult<AF>,
+        options: &MatchOptions,
     ) -> QueryResult<M> {
-        let key: Vec<u8> = if let Some(mui) = mui {
-            PersistTree::<AF,
-        PREFIX_SIZE, KEY_SIZE>::prefix_mui_persistence_key(search_pfx, mui)
-        } else {
-            search_pfx.as_bytes::<PREFIX_SIZE>().to_vec()
-        };
-        let recs = self.get_records_for_key(&key);
+        match options.include_history {
+            // All the records for all the prefixes
+            IncludeHistory::All => {
+                let (prefix, prefix_meta) =
+                    self.enrich_prefix(search_pfxs.prefix, options.mui);
 
-        if !recs.is_empty() {
-            QueryResult {
-                prefix: Some(search_pfx.into_pub()),
-                match_type: MatchType::ExactMatch,
-                prefix_meta: recs
-                    .into_iter()
-                    .map(|(_, rec)| rec)
-                    .collect::<Vec<_>>(),
-                less_specifics: None,
-                more_specifics: None,
+                QueryResult {
+                    prefix,
+                    prefix_meta,
+                    match_type: search_pfxs.match_type,
+                    less_specifics: self.enrich_prefixes(
+                        search_pfxs.less_specifics,
+                        options.mui,
+                    ),
+                    more_specifics: self.enrich_prefixes(
+                        search_pfxs.more_specifics,
+                        options.mui,
+                    ),
+                }
             }
-        } else {
-            QueryResult {
-                prefix: Some(search_pfx.into_pub()),
-                match_type: MatchType::EmptyMatch,
-                prefix_meta: vec![],
-                less_specifics: None,
-                more_specifics: None,
+            // Only the searc prefix itself has historical records attacched
+            // to it, other prefixes (less|more specifics), have no records
+            // attached. Not useful with the MemoryOnly strategy (historical
+            // records are neve kept in memory).
+            IncludeHistory::SearchPrefix => {
+                let (prefix, prefix_meta) =
+                    self.enrich_prefix(search_pfxs.prefix, options.mui);
+
+                QueryResult {
+                    prefix,
+                    prefix_meta,
+                    match_type: search_pfxs.match_type,
+                    less_specifics: self
+                        .sparse_record_set(search_pfxs.less_specifics),
+                    more_specifics: self
+                        .sparse_record_set(search_pfxs.more_specifics),
+                }
+            }
+            // Only the most recent record of the search prefix is returned
+            // with the prefixes. This is used for the PersistOnly strategy.
+            IncludeHistory::None => {
+                let (prefix, prefix_meta) = self.enrich_prefix_most_recent(
+                    search_pfxs.prefix,
+                    options.mui,
+                );
+
+                QueryResult {
+                    prefix,
+                    prefix_meta,
+                    match_type: search_pfxs.match_type,
+                    less_specifics: self.enrich_prefixes_most_recent(
+                        search_pfxs.less_specifics,
+                        options.mui,
+                    ),
+                    more_specifics: self.enrich_prefixes_most_recent(
+                        search_pfxs.more_specifics,
+                        options.mui,
+                    ),
+                }
             }
         }
     }
@@ -187,8 +346,8 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     pub fn prefix_mui_persistence_key(
         prefix_id: PrefixId<AF>,
         mui: u32,
-    ) -> Vec<u8> {
-        let mut key = vec![];
+    ) -> [u8; PREFIX_SIZE] {
+        let mut key = [0; PREFIX_SIZE];
         // prefix 5 or 17 bytes
         *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
 

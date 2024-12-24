@@ -3,7 +3,7 @@ pub use uuid::Uuid;
 
 pub use crate::prefix_record::{Meta, PublicPrefixRecord as PrefixRecord};
 pub use crate::stride::{Stride3, Stride4, Stride5};
-pub use crate::{MatchOptions, MatchType, QueryResult};
+pub use crate::{IncludeHistory, MatchOptions, MatchType, QueryResult};
 pub use inetnum::addr::Prefix;
 
 pub mod multi {

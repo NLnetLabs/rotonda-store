@@ -2,8 +2,8 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    prelude::multi::RouteStatus, test_types::BeBytesAsn, MatchOptions,
-    MultiThreadedStore, PublicRecord as Record,
+    prelude::multi::RouteStatus, test_types::BeBytesAsn, IncludeHistory,
+    MatchOptions, MultiThreadedStore, PublicRecord as Record,
 };
 
 mod common {
@@ -331,6 +331,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         include_less_specifics: false,
         include_more_specifics: false,
         mui: None,
+        include_history: IncludeHistory::None,
     };
 
     for pfx in pfx_vec_2 {
@@ -597,6 +598,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         include_less_specifics: false,
         include_more_specifics: false,
         mui: None,
+        include_history: IncludeHistory::None,
     };
 
     for pfx in wd_pfxs {
@@ -619,6 +621,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         include_less_specifics: false,
         include_more_specifics: true,
         mui: None,
+        include_history: IncludeHistory::None,
     };
 
     let pfx = Prefix::from_str("0.0.0.0/0").unwrap();

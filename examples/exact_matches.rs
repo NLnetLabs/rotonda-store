@@ -1,6 +1,6 @@
 use rotonda_store::meta_examples::NoMeta;
 use rotonda_store::prelude::multi::*;
-use rotonda_store::prelude::*;
+use rotonda_store::{prelude::*, IncludeHistory};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
@@ -348,6 +348,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_less_specifics: false,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
         );

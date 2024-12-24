@@ -1,88 +1,30 @@
 use log::trace;
 
 use crate::af::AddressFamily;
-use crate::prelude::multi::PrefixSet;
-use inetnum::addr::Prefix;
+use crate::rib::query::TreeQueryResult;
 
-use crate::{Meta, QueryResult};
+use crate::Meta;
 
 use crate::local_array::in_memory::node::{SizedStrideRef, TreeBitMapNode};
 use crate::{MatchOptions, MatchType};
 
-use super::super::in_memory::atomic_types::StoredPrefix;
 use super::super::in_memory::tree::Stride;
 use super::super::types::PrefixId;
 use super::atomic_types::{NodeBuckets, PrefixBuckets};
 use super::node::StrideNodeId;
 use super::tree::TreeBitMap;
 
-#[allow(dead_code)]
-impl<'a, AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
+impl<AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
 where
     AF: AddressFamily,
     M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 {
-    #[allow(clippy::type_complexity)]
-    fn retrieve_prefix(
-        &'a self,
-        prefix_id: PrefixId<AF>,
-    ) -> Option<(&'a StoredPrefix<AF, M>, usize)> {
-        struct SearchLevel<
-            's,
-            AF: AddressFamily,
-            M: crate::prefix_record::Meta,
-        > {
-            f: &'s dyn for<'a> Fn(
-                &SearchLevel<AF, M>,
-                &'a PrefixSet<AF, M>,
-                u8,
-            )
-                -> Option<(&'a StoredPrefix<AF, M>, usize)>,
-        }
-
-        let search_level = SearchLevel {
-            f: &|search_level: &SearchLevel<AF, M>,
-                 prefix_set: &PrefixSet<AF, M>,
-                 mut level: u8| {
-                // HASHING FUNCTION
-                let index =
-                    crate::local_array::in_memory::tree::TreeBitMap::<
-                        AF,
-                        M,
-                        NB,
-                        PB,
-                    >::hash_prefix_id(prefix_id, level);
-
-                if let Some(stored_prefix) = prefix_set.0.get(index) {
-                    if prefix_id == stored_prefix.prefix {
-                        trace!("found requested prefix {:?}", prefix_id,);
-                        return Some((stored_prefix, 0));
-                    };
-                    level += 1;
-
-                    (search_level.f)(
-                        search_level,
-                        &stored_prefix.next_bucket,
-                        level,
-                    );
-                }
-                None
-            },
-        };
-
-        (search_level.f)(
-            &search_level,
-            self.prefix_buckets.get_root_prefix_set(prefix_id.get_len()),
-            0,
-        )
-    }
-
     // This function assembles all entries in the `pfx_vec` of all child nodes
     // of the `start_node` into one vec, starting from itself and then
     // recursively assembling adding all `pfx_vec`s of its children.
-    fn _get_all_more_specifics_for_node(
+    fn get_all_more_specifics_for_node(
         &self,
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
@@ -95,7 +37,7 @@ where
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
-                    self._get_all_more_specifics_for_node(
+                    self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
                     );
@@ -107,7 +49,7 @@ where
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
-                    self._get_all_more_specifics_for_node(
+                    self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
                     );
@@ -119,7 +61,7 @@ where
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
-                    self._get_all_more_specifics_for_node(
+                    self.get_all_more_specifics_for_node(
                         child_node,
                         found_pfx_vec,
                     );
@@ -135,7 +77,7 @@ where
     // specified bit position in a ptr_vec of `current_node` into a vec,
     // then adds all prefixes of these children recursively into a vec and
     // returns that.
-    fn _get_all_more_specifics_from_nibble<S: Stride>(
+    fn get_all_more_specifics_from_nibble<S: Stride>(
         &self,
         current_node: &TreeBitMapNode<AF, S>,
         nibble: u32,
@@ -149,7 +91,7 @@ where
         );
 
         for child_node in cnvec.iter() {
-            self._get_all_more_specifics_for_node(*child_node, &mut msvec);
+            self.get_all_more_specifics_for_node(*child_node, &mut msvec);
         }
         Some(msvec)
     }
@@ -175,12 +117,12 @@ where
     // nibble              1010 1011 1100 1101 1110 1111    x
     // nibble len offset      4(contd.)
 
-    fn _match_prefix_by_tree_traversal(
-        &'a self,
+    pub(crate) fn match_prefix_by_tree_traversal(
+        &self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
         // guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> TreeQueryResult<AF> {
         // --- The Default Route Prefix -------------------------------------
 
         // The Default Route Prefix unfortunately does not fit in tree as we
@@ -202,9 +144,8 @@ where
             //     }
 
             //     _serial => {
-            return QueryResult {
+            return TreeQueryResult {
                 prefix: None,
-                prefix_meta: vec![],
                 match_type: MatchType::EmptyMatch,
                 less_specifics: None,
                 more_specifics: None,
@@ -329,7 +270,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -348,7 +289,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -367,7 +308,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self
-                                    ._get_all_more_specifics_from_nibble(
+                                    .get_all_more_specifics_from_nibble(
                                         current_node,
                                         nibble,
                                         nibble_len,
@@ -392,7 +333,7 @@ where
                                     // match arm more then once, we return
                                     // early here.
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -447,7 +388,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -466,7 +407,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -482,7 +423,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self
-                                    ._get_all_more_specifics_from_nibble(
+                                    .get_all_more_specifics_from_nibble(
                                         current_node,
                                         nibble,
                                         nibble_len,
@@ -498,10 +439,11 @@ where
                         (None, None) => {
                             match options.match_type {
                                 MatchType::EmptyMatch => {
-                                    // To make sure we don't process this match arm more then once, we
-                                    // return early here.
+                                    // To make sure we don't process this
+                                    // match arm more then once, we return
+                                    // early here.
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -554,7 +496,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -573,7 +515,7 @@ where
                             if last_stride {
                                 if options.include_more_specifics {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -589,7 +531,7 @@ where
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
                                 more_specifics_vec = self
-                                    ._get_all_more_specifics_from_nibble(
+                                    .get_all_more_specifics_from_nibble(
                                         current_node,
                                         nibble,
                                         nibble_len,
@@ -606,7 +548,7 @@ where
                             match options.match_type {
                                 MatchType::EmptyMatch => {
                                     more_specifics_vec = self
-                                        ._get_all_more_specifics_from_nibble(
+                                        .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
                                             nibble_len,
@@ -641,58 +583,27 @@ where
         // any of the match_types (as specified by the user, not the return
         // type) may end up here.
 
-        let mut match_type: MatchType = MatchType::EmptyMatch;
-        let prefix = None;
-        if let Some(pfx_idx) = match_prefix_idx {
-            match_type = match self.retrieve_prefix(pfx_idx) {
-                Some(prefix) => {
-                    if prefix.0.prefix.get_len() == search_pfx.get_len() {
-                        MatchType::ExactMatch
-                    } else {
-                        MatchType::LongestMatch
-                    }
-                }
-                None => MatchType::EmptyMatch,
-            };
+        let match_type = MatchType::EmptyMatch;
+        if let Some(prefix) = match_prefix_idx {
+            if prefix.get_len() == search_pfx.get_len() {
+                MatchType::ExactMatch
+            } else {
+                MatchType::LongestMatch
+            }
+        } else {
+            MatchType::EmptyMatch
         };
 
-        QueryResult {
-            prefix: prefix.map(|pfx: (&StoredPrefix<AF, M>, usize)| {
-                pfx.0.prefix.into_pub()
-            }),
-            prefix_meta: prefix
-                .map(|pfx| pfx.0.record_map.as_records())
-                .unwrap_or_default(),
+        TreeQueryResult {
+            prefix: match_prefix_idx,
             match_type,
             less_specifics: if options.include_less_specifics {
                 less_specifics_vec
-                    .unwrap()
-                    .iter()
-                    .filter_map(move |p| {
-                        self.retrieve_prefix(*p).map(|p| {
-                            Some((p.0.prefix, p.0.record_map.as_records()))
-                        })
-                    })
-                    .collect()
             } else {
                 None
             },
             more_specifics: if options.include_more_specifics {
-                more_specifics_vec.map(|vec| {
-                    vec.into_iter()
-                        .map(|p| {
-                            self.retrieve_prefix(p)
-                                .unwrap_or_else(|| {
-                                    panic!(
-                                        "more specific {:?} does not exist",
-                                        p
-                                    )
-                                })
-                                .0
-                        })
-                        .map(|sp| (sp.prefix, sp.record_map.as_records()))
-                        .collect()
-                })
+                more_specifics_vec
             } else {
                 None
             },

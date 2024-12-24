@@ -146,7 +146,12 @@ where
         match self.config.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.match_prefix(search_pfx, options.mui)
+                    persist_tree.match_prefix(
+                        self.in_memory_tree.match_prefix_by_tree_traversal(
+                            search_pfx, options,
+                        ),
+                        options,
+                    )
                 } else {
                     QueryResult::empty()
                 }
@@ -163,6 +168,7 @@ where
     ) -> QueryResult<M> {
         // `non_recursive_retrieve_prefix` returns an exact match only, so no
         // longest matching prefix!
+        let withdrawn_muis_bmin = self.withdrawn_muis_bmin(guard);
         let mut stored_prefix = self
             .in_memory_tree
             .non_recursive_retrieve_prefix(search_pfx)
@@ -178,7 +184,7 @@ where
                         pfx.record_map
                             .get_filtered_records(
                                 options.mui,
-                                self.withdrawn_muis_bmin(guard),
+                                withdrawn_muis_bmin,
                             )
                             .into_iter()
                             .collect()
@@ -187,7 +193,7 @@ where
                         // the local statuses of the records with muis
                         // that appear in the specified bitmap index.
                         pfx.record_map.as_records_with_rewritten_status(
-                            self.withdrawn_muis_bmin(guard),
+                            withdrawn_muis_bmin,
                             RouteStatus::Withdrawn,
                         )
                     },
@@ -319,4 +325,11 @@ where
                 Ok(p.is_ps_outdated(guard))
             })
     }
+}
+
+pub struct TreeQueryResult<AF: AddressFamily> {
+    pub match_type: MatchType,
+    pub prefix: Option<PrefixId<AF>>,
+    pub less_specifics: Option<Vec<PrefixId<AF>>>,
+    pub more_specifics: Option<Vec<PrefixId<AF>>>,
 }
