@@ -376,6 +376,14 @@ impl<
         }
     }
 
+    pub fn contains(&self, prefix: PrefixId<AF>, mui: Option<u32>) -> bool {
+        if let Some(mui) = mui {
+            self.in_memory_tree.prefix_exists_for_mui(prefix, mui)
+        } else {
+            self.in_memory_tree.prefix_exists(prefix)
+        }
+    }
+
     pub fn get_nodes_count(&self) -> usize {
         self.in_memory_tree.get_nodes_count()
     }

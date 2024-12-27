@@ -454,6 +454,89 @@ impl<
         }
     }
 
+    pub fn prefix_exists_for_mui(
+        &self,
+        prefix_id: PrefixId<AF>,
+        mui: u32,
+    ) -> bool {
+        // if prefix_id.get_len() == 0 {
+        //     return self.update_default_route_prefix_meta(mui);
+        // }
+
+        let mut stride_end: u8 = 0;
+        let mut cur_i = self.get_root_node_id();
+        let mut level: u8 = 0;
+
+        loop {
+            let stride = self.get_stride_sizes()[level as usize];
+            stride_end += stride;
+            let nibble_len = if prefix_id.get_len() < stride_end {
+                stride + prefix_id.get_len() - stride_end
+            } else {
+                stride
+            };
+
+            let nibble = AF::get_nibble(
+                prefix_id.get_net(),
+                stride_end - stride,
+                nibble_len,
+            );
+            let stride_start = stride_end - stride;
+
+            let node_result = match self.retrieve_node_for_mui(cur_i, mui) {
+                Some(node) => match node {
+                    SizedStrideRef::Stride3(n) => {
+                        let (child_node, found) = n.prefix_exists_in_stride(
+                            prefix_id,
+                            nibble,
+                            nibble_len,
+                            stride_start,
+                        );
+                        if found {
+                            return true;
+                        } else {
+                            child_node
+                        }
+                    }
+                    SizedStrideRef::Stride4(n) => {
+                        let (child_node, found) = n.prefix_exists_in_stride(
+                            prefix_id,
+                            nibble,
+                            nibble_len,
+                            stride_start,
+                        );
+                        if found {
+                            return true;
+                        } else {
+                            child_node
+                        }
+                    }
+                    SizedStrideRef::Stride5(n) => {
+                        let (child_node, found) = n.prefix_exists_in_stride(
+                            prefix_id,
+                            nibble,
+                            nibble_len,
+                            stride_start,
+                        );
+                        if found {
+                            return true;
+                        } else {
+                            child_node
+                        }
+                    }
+                },
+                None => {
+                    return false;
+                }
+            };
+
+            if let Some(next_id) = node_result {
+                cur_i = next_id;
+                level += 1;
+            }
+        }
+    }
+
     pub(crate) fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,

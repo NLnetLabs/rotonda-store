@@ -709,6 +709,35 @@ pub fn create_store(
                 }
             }
 
+
+            /// Return whether the requested prefix was ever created in the
+            /// RIB. Specifying a multi unique id will return whether the
+            /// (prefix, multi_uniq_id) tuple was ever created.
+            ///
+            /// The result ignores the status of the prefix, e.g. whether it
+            /// was withdrawn, or whether the global withdrawn for the multi
+            /// unique id is withdrawn.
+            pub fn contains(
+                &'a self,
+                prefix: &Prefix,
+                mui: Option<u32>
+            ) -> bool {
+                match prefix.addr() {
+                    std::net::IpAddr::V4(addr) => {
+                        self.v4.contains(
+                            PrefixId::<IPv4>::from(*prefix),
+                            mui
+                        )
+                    },
+                    std::net::IpAddr::V6(addr) => {
+                        self.v6.contains(
+                            PrefixId::<IPv6>::from(*prefix),
+                            mui
+                        )
+                    }
+                }
+            }
+
             /// Return the record that belongs to the pre-calculated and
             /// stored best path for a given prefix.
             ///
