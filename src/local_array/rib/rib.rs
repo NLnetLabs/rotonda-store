@@ -31,13 +31,20 @@ use crate::AddressFamily;
 
 //------------ StoreConfig ---------------------------------------------------
 
-/// Some description
+/// Defines where records are stored, in-memory and/or persisted (to disk),
+/// and, whether new records for a unique (prefix, mui) pair are overwritten
+/// or persisted.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PersistStrategy {
-    /// The current records are kept in history
+    /// Current records are stored both in-memory and persisted. Additionally
+    /// historical records are persisted.
     WriteAhead,
+    /// Current records are stored in-memory, historical records are pesisted.
     PersistHistory,
+    /// Current records are stored in-memory, historical records are discarded
+    /// when nwer records appear.
     MemoryOnly,
+    /// Both current and historical records are persisted.
     PersistOnly,
 }
 
