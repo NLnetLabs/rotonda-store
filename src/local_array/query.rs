@@ -9,7 +9,7 @@ use crate::prefix_record::PublicRecord;
 use crate::rib::{PersistStrategy, Rib};
 use inetnum::addr::Prefix;
 
-use crate::{Meta, QueryResult};
+use crate::{IncludeHistory, Meta, QueryResult};
 
 use crate::{MatchOptions, MatchType};
 
@@ -145,19 +145,174 @@ where
         guard: &'a Guard,
     ) -> QueryResult<M> {
         match self.config.persist_strategy() {
+            // All the records are persisted, they have never been committed
+            // to memory. However the in-memory-tree is still used to indicate
+            // which (prefix, mui) tuples have been created.
             PersistStrategy::PersistOnly => {
+                if options.match_type == MatchType::ExactMatch
+                    && !self.contains(search_pfx, options.mui)
+                {
+                    return QueryResult::empty();
+                }
+
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.match_prefix(
-                        self.in_memory_tree.match_prefix_by_tree_traversal(
-                            search_pfx, options,
-                        ),
-                        options,
-                    )
+                    persist_tree
+                        .match_prefix(
+                            self.in_memory_tree
+                                .match_prefix_by_tree_traversal(
+                                    search_pfx, options,
+                                ),
+                            options,
+                        )
+                        .into()
                 } else {
                     QueryResult::empty()
                 }
             }
-            _ => self.in_memory_tree.match_prefix(search_pfx, options, guard),
+            // Everything is in memory only, so look there. There can be no
+            // historical records for this variant, so we just return the
+            // stuff found in memeory. A request for  historical records
+            // willbe ignored.
+            PersistStrategy::MemoryOnly => self
+                .in_memory_tree
+                .match_prefix(search_pfx, options, guard)
+                .into(),
+            // We have the current records in memory, additionally they may be
+            // encriched with historical data from the persisted data.
+            PersistStrategy::WriteAhead => {
+                let mut res = self
+                    .in_memory_tree
+                    .match_prefix(search_pfx, options, guard);
+                if let Some(persist_tree) = &self.persist_tree {
+                    match options.include_history {
+                        IncludeHistory::All => {
+                            if self.contains(search_pfx, options.mui) {
+                                res.prefix_meta.extend(
+                                    persist_tree.get_records_for_prefix(
+                                        search_pfx,
+                                        options.mui,
+                                    ),
+                                );
+                            }
+
+                            if let Some(ls) = &mut res.less_specifics {
+                                for rec in ls {
+                                    if self.contains(rec.0, options.mui) {
+                                        // write ahead has the current record,
+                                        // as well as the historical ones, so
+                                        // we just override the recs from the
+                                        // in-memory tree.
+                                        rec.1 = persist_tree
+                                            .get_records_for_prefix(
+                                                rec.0,
+                                                options.mui,
+                                            );
+                                    }
+                                }
+                            };
+
+                            if let Some(rs) = &mut res.more_specifics {
+                                for rec in rs {
+                                    if self.contains(rec.0, options.mui) {
+                                        rec.1 = persist_tree
+                                            .get_records_for_prefix(
+                                                rec.0,
+                                                options.mui,
+                                            );
+                                    }
+                                }
+                            };
+
+                            res.into()
+                        }
+                        IncludeHistory::SearchPrefix => {
+                            if self.contains(search_pfx, options.mui) {
+                                res.prefix_meta.extend(
+                                    persist_tree.get_records_for_prefix(
+                                        search_pfx,
+                                        options.mui,
+                                    ),
+                                );
+                            }
+
+                            res.into()
+                        }
+                        IncludeHistory::None => res.into(),
+                    }
+                } else {
+                    res.into()
+                }
+            }
+            // All current info is in memory so look there,
+            // `in_memory_tree.match_prefix` will enrich with historical data
+            // for the prefix(es) if need be.
+            PersistStrategy::PersistHistory => {
+                let mut res = self
+                    .in_memory_tree
+                    .match_prefix(search_pfx, options, guard);
+
+                if let Some(persist_tree) = &self.persist_tree {
+                    match options.include_history {
+                        IncludeHistory::All => {
+                            res.prefix_meta.extend(
+                                persist_tree.get_records_for_prefix(
+                                    search_pfx,
+                                    options.mui,
+                                ),
+                            );
+
+                            if let Some(ls) = &mut res.less_specifics {
+                                for rec in ls {
+                                    if self.contains(rec.0, options.mui) {
+                                        // the persisted tree only has the
+                                        // historical records, so we extend
+                                        // the vec. It should already hold the
+                                        // current record.
+                                        rec.1.extend(
+                                            persist_tree
+                                                .get_records_for_prefix(
+                                                    rec.0,
+                                                    options.mui,
+                                                ),
+                                        );
+                                    }
+                                }
+                            };
+
+                            if let Some(rs) = &mut res.more_specifics {
+                                for rec in rs {
+                                    if self.contains(rec.0, options.mui) {
+                                        rec.1.extend(
+                                            persist_tree
+                                                .get_records_for_prefix(
+                                                    rec.0,
+                                                    options.mui,
+                                                ),
+                                        );
+                                    }
+                                }
+                            };
+
+                            res.into()
+                        }
+                        IncludeHistory::SearchPrefix => {
+                            if self.contains(search_pfx, options.mui) {
+                                res.prefix_meta.extend(
+                                    persist_tree.get_records_for_prefix(
+                                        search_pfx,
+                                        options.mui,
+                                    ),
+                                );
+                            }
+
+                            res.into()
+                        }
+                        IncludeHistory::None => res.into(),
+                    }
+                } else {
+                    res.into()
+                }
+            }
         }
     }
 
@@ -210,9 +365,35 @@ where
     }
 }
 
-pub struct TreeQueryResult<AF: AddressFamily> {
+pub(crate) struct TreeQueryResult<AF: AddressFamily> {
     pub match_type: MatchType,
     pub prefix: Option<PrefixId<AF>>,
     pub less_specifics: Option<Vec<PrefixId<AF>>>,
     pub more_specifics: Option<Vec<PrefixId<AF>>>,
+}
+
+pub(crate) struct FamilyQueryResult<AF: AddressFamily, M: Meta> {
+    pub match_type: MatchType,
+    pub prefix: Option<PrefixId<AF>>,
+    pub prefix_meta: Vec<PublicRecord<M>>,
+    pub less_specifics: Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>,
+    pub more_specifics: Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>,
+}
+
+impl<AF: AddressFamily, M: Meta> From<FamilyQueryResult<AF, M>>
+    for QueryResult<M>
+{
+    fn from(value: FamilyQueryResult<AF, M>) -> Self {
+        QueryResult {
+            match_type: value.match_type,
+            prefix: value.prefix.map(|p| p.into()),
+            prefix_meta: value.prefix_meta,
+            less_specifics: value
+                .less_specifics
+                .map(|ls| ls.into_iter().collect()),
+            more_specifics: value
+                .more_specifics
+                .map(|ms| ms.into_iter().collect()),
+        }
+    }
 }

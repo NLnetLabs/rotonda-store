@@ -1,4 +1,4 @@
-use crate::AddressFamily;
+use crate::{AddressFamily, Meta};
 
 use super::errors::PrefixStoreError;
 
@@ -99,6 +99,12 @@ impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
 impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     fn from(value: inetnum::addr::Prefix) -> Self {
         Self(Some((AF::from_ipaddr(value.addr()), value.len())))
+    }
+}
+
+impl<AF: AddressFamily> Into<inetnum::addr::Prefix> for PrefixId<AF> {
+    fn into(self) -> inetnum::addr::Prefix {
+        self.into_pub()
     }
 }
 

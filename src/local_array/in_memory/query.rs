@@ -3,9 +3,9 @@ use log::trace;
 
 use crate::af::AddressFamily;
 use crate::prelude::multi::RouteStatus;
-use crate::rib::query::TreeQueryResult;
+use crate::rib::query::{FamilyQueryResult, TreeQueryResult};
 
-use crate::{Meta, QueryResult};
+use crate::{Meta, PublicRecord, QueryResult};
 
 use crate::local_array::in_memory::node::{SizedStrideRef, TreeBitMapNode};
 use crate::{MatchOptions, MatchType};
@@ -28,7 +28,7 @@ where
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FamilyQueryResult<AF, M> {
         // `non_recursive_retrieve_prefix` returns an exact match only, so no
         // longest matching prefix!
         let withdrawn_muis_bmin = self.withdrawn_muis_bmin(guard);
@@ -92,8 +92,8 @@ where
             (MatchType::ExactMatch, _) => MatchType::EmptyMatch,
         };
 
-        QueryResult {
-            prefix: stored_prefix.as_ref().map(|p| p.0.into_pub()),
+        FamilyQueryResult {
+            prefix: stored_prefix.as_ref().map(|sp| sp.0), //.as_ref().map(|p| p.0.into_pub()),
             prefix_meta: stored_prefix
                 .as_ref()
                 .map(|pfx| pfx.1.clone())
@@ -110,7 +110,7 @@ where
                         options.include_withdrawn,
                         guard,
                     )
-                    .collect(),
+                    .collect::<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>(),
                 )
             } else {
                 None
@@ -127,7 +127,7 @@ where
                         options.include_withdrawn,
                         guard,
                     )
-                    .collect(),
+                    .collect::<Vec<_>>(),
                 )
                 // The user requested more specifics, but there aren't any, so
                 // we need to return an empty vec, not a None.

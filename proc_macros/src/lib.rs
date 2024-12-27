@@ -694,7 +694,7 @@ pub fn create_store(
                             ),
                             options,
                             guard
-                        )
+                        ).into()
                     },
                     std::net::IpAddr::V6(addr) => {
                         self.v6.match_prefix(
@@ -704,7 +704,7 @@ pub fn create_store(
                             ),
                             options,
                             guard
-                        )
+                        ).into()
                     }
                 }
             }

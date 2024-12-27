@@ -232,7 +232,6 @@ pub struct Rib<
 }
 
 impl<
-        'a,
         AF: AddressFamily,
         M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
@@ -521,19 +520,6 @@ impl<
         .unwrap()
         .contains(mui)
     }
-
-    // Helper to filter out records that are not-active (Inactive or
-    // Withdrawn), or whose mui appears in the global withdrawn index.
-    // pub(crate) fn get_filtered_records(
-    //     &self,
-    //     pfx: &StoredPrefix<AF, M>,
-    //     mui: Option<u32>,
-    //     guard: &Guard,
-    // ) -> Vec<PublicRecord<M>> {
-    //     let bmin = self.withdrawn_muis_bmin(guard);
-
-    //     pfx.record_map.get_filtered_records(mui, bmin)
-    // }
 
     pub fn get_prefixes_count(&self) -> UpsertCounters {
         UpsertCounters {

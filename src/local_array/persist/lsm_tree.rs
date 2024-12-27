@@ -8,7 +8,7 @@ use lsm_tree::AbstractTree;
 
 use crate::local_array::types::{PrefixId, RouteStatus};
 use crate::prefix_record::PublicPrefixRecord;
-use crate::rib::query::TreeQueryResult;
+use crate::rib::query::{FamilyQueryResult, TreeQueryResult};
 use crate::rib::Counters;
 use crate::{
     AddressFamily, IncludeHistory, MatchOptions, Meta, PublicRecord,
@@ -76,7 +76,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     pub fn get_records_for_key<M: Meta + From<Vec<u8>>>(
         &self,
         key: &[u8],
-    ) -> Vec<(inetnum::addr::Prefix, PublicRecord<M>)> {
+    ) -> Vec<(PrefixId<AF>, PublicRecord<M>)> {
         (*self.tree.prefix(key))
             .into_iter()
             .map(|kv| {
@@ -85,7 +85,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                     Self::parse_key(kv.0.as_ref());
 
                 (
-                    PrefixId::<AF>::from(pfx).into_pub(),
+                    PrefixId::<AF>::from(pfx),
                     PublicRecord::new(
                         mui,
                         ltime,
@@ -101,7 +101,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefix: Option<PrefixId<AF>>,
         mui: Option<u32>,
-    ) -> (Option<Prefix>, Vec<PublicRecord<M>>) {
+    ) -> (Option<PrefixId<AF>>, Vec<PublicRecord<M>>) {
         match prefix {
             Some(pfx) => {
                 let prefix_b = if let Some(mui) = mui {
@@ -110,7 +110,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                     &pfx.as_bytes::<PREFIX_SIZE>()
                 };
                 (
-                    prefix.map(|p| p.into_pub()),
+                    prefix,
                     (*self.tree.prefix(prefix_b))
                         .into_iter()
                         .last()
@@ -136,17 +136,17 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
         mui: Option<u32>,
-    ) -> Option<RecordSet<M>> {
+    ) -> Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>> {
         prefixes.map(|pfxs| {
             pfxs.iter()
-                .flat_map(|pfx| {
+                .map(|pfx| {
                     let prefix_b = if let Some(mui) = mui {
                         &Self::prefix_mui_persistence_key(*pfx, mui)
                     } else {
                         &pfx.as_bytes::<PREFIX_SIZE>()
                     };
-                    Some(PublicPrefixRecord::from((
-                        pfx.into_pub(),
+                    (
+                        *pfx,
                         (*self.tree.prefix(prefix_b))
                             .into_iter()
                             .last()
@@ -162,21 +162,20 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                                 )]
                             })
                             .unwrap_or_default(),
-                    )))
+                    )
                 })
-                .collect::<RecordSet<M>>()
+                .collect::<Vec<_>>()
         })
+        // .collect::<(PrefixId<AF>, Vec<PublicRecord<M>>)>()
     }
 
     fn enrich_prefix<M: Meta>(
         &self,
         prefix: Option<PrefixId<AF>>,
         mui: Option<u32>,
-    ) -> (Option<Prefix>, Vec<PublicRecord<M>>) {
+    ) -> (Option<PrefixId<AF>>, Vec<PublicRecord<M>>) {
         match prefix {
-            Some(pfx) => {
-                (Some(pfx.into_pub()), self.get_records_for_prefix(pfx, mui))
-            }
+            Some(pfx) => (Some(pfx), self.get_records_for_prefix(pfx, mui)),
             None => (None, vec![]),
         }
     }
@@ -185,29 +184,22 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
         mui: Option<u32>,
-    ) -> Option<RecordSet<M>> {
-        prefixes.map(|ls| {
-            ls.iter()
+    ) -> Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>> {
+        prefixes.map(|recs| {
+            recs.iter()
                 .flat_map(move |pfx| {
-                    Some(PublicPrefixRecord::from((
-                        *pfx,
-                        self.get_records_for_prefix(*pfx, mui),
-                    )))
+                    Some((*pfx, self.get_records_for_prefix(*pfx, mui)))
                 })
-                .collect::<RecordSet<M>>()
+                .collect()
         })
     }
 
     fn sparse_record_set<M: Meta>(
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
-    ) -> Option<RecordSet<M>> {
-        prefixes.map(|ls| {
-            ls.iter()
-                .flat_map(|pfx| {
-                    Some(PublicPrefixRecord::from((*pfx, vec![])))
-                })
-                .collect::<RecordSet<M>>()
+    ) -> Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>> {
+        prefixes.map(|recs| {
+            recs.iter().flat_map(|pfx| Some((*pfx, vec![]))).collect()
         })
     }
 
@@ -215,14 +207,14 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         search_pfxs: TreeQueryResult<AF>,
         options: &MatchOptions,
-    ) -> QueryResult<M> {
+    ) -> FamilyQueryResult<AF, M> {
         match options.include_history {
             // All the records for all the prefixes
             IncludeHistory::All => {
                 let (prefix, prefix_meta) =
                     self.enrich_prefix(search_pfxs.prefix, options.mui);
 
-                QueryResult {
+                FamilyQueryResult {
                     prefix,
                     prefix_meta,
                     match_type: search_pfxs.match_type,
@@ -244,7 +236,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 let (prefix, prefix_meta) =
                     self.enrich_prefix(search_pfxs.prefix, options.mui);
 
-                QueryResult {
+                FamilyQueryResult {
                     prefix,
                     prefix_meta,
                     match_type: search_pfxs.match_type,
@@ -262,7 +254,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                     options.mui,
                 );
 
-                QueryResult {
+                FamilyQueryResult {
                     prefix,
                     prefix_meta,
                     match_type: search_pfxs.match_type,
