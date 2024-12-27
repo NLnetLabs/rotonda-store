@@ -198,8 +198,7 @@ use std::sync::atomic::{
 use std::{fmt::Debug, marker::PhantomData};
 
 use super::atomic_types::{
-    MultiMapValue, NodeBuckets, PersistStatus, PrefixBuckets, PrefixSet,
-    StoredPrefix,
+    MultiMapValue, NodeBuckets, PrefixBuckets, PrefixSet, StoredPrefix,
 };
 use crate::af::AddressFamily;
 use crate::rib::{Counters, UpsertReport};
@@ -541,7 +540,6 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         record: PublicRecord<M>,
-        persist_status: PersistStatus,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<(UpsertReport, Option<MultiMapValue<M>>), PrefixStoreError>
@@ -549,38 +547,36 @@ impl<
         let mut prefix_is_new = true;
         let mut mui_is_new = true;
 
-        let (mui_count, cas_count) = match self
-            .non_recursive_retrieve_prefix_mut(prefix)
-        {
-            // There's no StoredPrefix at this location yet. Create a new
-            // PrefixRecord and try to store it in the empty slot.
-            (stored_prefix, false) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
-                        "{} store: Create new prefix record",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread")
-                    );
+        let (mui_count, cas_count) =
+            match self.non_recursive_retrieve_prefix_mut(prefix) {
+                // There's no StoredPrefix at this location yet. Create a new
+                // PrefixRecord and try to store it in the empty slot.
+                (stored_prefix, false) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
+                            "{} store: Create new prefix record",
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread")
+                        );
+                    }
+
+                    let (mui_count, retry_count) =
+                        stored_prefix.record_map.upsert_record(record)?;
+
+                    // See if someone beat us to creating the record.
+                    if mui_count.is_some() {
+                        mui_is_new = false;
+                        prefix_is_new = false;
+                    }
+
+                    (mui_count, retry_count)
                 }
-
-                let (mui_count, retry_count) = stored_prefix
-                    .record_map
-                    .upsert_record(record, persist_status)?;
-
-                // See if someone beat us to creating the record.
-                if mui_count.is_some() {
-                    mui_is_new = false;
-                    prefix_is_new = false;
-                }
-
-                (mui_count, retry_count)
-            }
-            // There already is a StoredPrefix with a record at this
-            // location.
-            (stored_prefix, true) => {
-                if log_enabled!(log::Level::Debug) {
-                    debug!(
+                // There already is a StoredPrefix with a record at this
+                // location.
+                (stored_prefix, true) => {
+                    if log_enabled!(log::Level::Debug) {
+                        debug!(
                         "{} store: Found existing prefix record for {}/{}",
                         std::thread::current()
                             .name()
@@ -588,26 +584,25 @@ impl<
                         prefix.get_net(),
                         prefix.get_len()
                     );
+                    }
+                    prefix_is_new = false;
+
+                    // Update the already existing record_map with our
+                    // caller's record.
+                    stored_prefix.set_ps_outdated(guard)?;
+
+                    let (mui_count, retry_count) =
+                        stored_prefix.record_map.upsert_record(record)?;
+                    mui_is_new = mui_count.is_none();
+
+                    if let Some(tbi) = update_path_selections {
+                        stored_prefix
+                            .calculate_and_store_best_backup(&tbi, guard)?;
+                    }
+
+                    (mui_count, retry_count)
                 }
-                prefix_is_new = false;
-
-                // Update the already existing record_map with our
-                // caller's record.
-                stored_prefix.set_ps_outdated(guard)?;
-
-                let (mui_count, retry_count) = stored_prefix
-                    .record_map
-                    .upsert_record(record, persist_status)?;
-                mui_is_new = mui_count.is_none();
-
-                if let Some(tbi) = update_path_selections {
-                    stored_prefix
-                        .calculate_and_store_best_backup(&tbi, guard)?;
-                }
-
-                (mui_count, retry_count)
-            }
-        };
+            };
 
         let count = mui_count.as_ref().map(|m| m.1).unwrap_or(1);
         Ok((

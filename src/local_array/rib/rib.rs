@@ -16,9 +16,7 @@ use crate::{
 };
 
 use crate::local_array::in_memory::atomic_types::NodeBuckets;
-use crate::local_array::in_memory::atomic_types::{
-    PersistStatus, PrefixBuckets,
-};
+use crate::local_array::in_memory::atomic_types::PrefixBuckets;
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
@@ -317,7 +315,6 @@ impl<
                         .upsert_prefix(
                             prefix,
                             record,
-                            PersistStatus::persisted(),
                             update_path_selections,
                             guard,
                         )
@@ -328,13 +325,7 @@ impl<
             }
             PersistStrategy::PersistHistory => self
                 .in_memory_tree
-                .upsert_prefix(
-                    prefix,
-                    record,
-                    PersistStatus::not_persisted(),
-                    update_path_selections,
-                    guard,
-                )
+                .upsert_prefix(prefix, record, update_path_selections, guard)
                 .map(|(report, old_rec)| {
                     if let Some(rec) = old_rec {
                         if let Some(persist_tree) = &self.persist_tree {
@@ -348,13 +339,7 @@ impl<
                 }),
             PersistStrategy::MemoryOnly => self
                 .in_memory_tree
-                .upsert_prefix(
-                    prefix,
-                    record,
-                    PersistStatus::not_persisted(),
-                    update_path_selections,
-                    guard,
-                )
+                .upsert_prefix(prefix, record, update_path_selections, guard)
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {

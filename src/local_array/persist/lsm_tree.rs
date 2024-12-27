@@ -3,16 +3,13 @@
 use std::marker::PhantomData;
 use std::path::Path;
 
-use inetnum::addr::Prefix;
 use lsm_tree::AbstractTree;
 
 use crate::local_array::types::{PrefixId, RouteStatus};
-use crate::prefix_record::PublicPrefixRecord;
-use crate::rib::query::{FamilyQueryResult, TreeQueryResult};
+use crate::rib::query::{FamilyQueryResult, FamilyRecord, TreeQueryResult};
 use crate::rib::Counters;
 use crate::{
     AddressFamily, IncludeHistory, MatchOptions, Meta, PublicRecord,
-    QueryResult, RecordSet,
 };
 
 pub struct PersistTree<
@@ -73,7 +70,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
-    pub fn get_records_for_key<M: Meta + From<Vec<u8>>>(
+    pub fn _get_records_for_key<M: Meta + From<Vec<u8>>>(
         &self,
         key: &[u8],
     ) -> Vec<(PrefixId<AF>, PublicRecord<M>)> {
@@ -136,7 +133,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
         mui: Option<u32>,
-    ) -> Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>> {
+    ) -> Option<FamilyRecord<AF, M>> {
         prefixes.map(|pfxs| {
             pfxs.iter()
                 .map(|pfx| {
@@ -166,7 +163,6 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 })
                 .collect::<Vec<_>>()
         })
-        // .collect::<(PrefixId<AF>, Vec<PublicRecord<M>>)>()
     }
 
     fn enrich_prefix<M: Meta>(
@@ -184,7 +180,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
         mui: Option<u32>,
-    ) -> Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>> {
+    ) -> Option<FamilyRecord<AF, M>> {
         prefixes.map(|recs| {
             recs.iter()
                 .flat_map(move |pfx| {
@@ -197,7 +193,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     fn sparse_record_set<M: Meta>(
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
-    ) -> Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>> {
+    ) -> Option<FamilyRecord<AF, M>> {
         prefixes.map(|recs| {
             recs.iter().flat_map(|pfx| Some((*pfx, vec![]))).collect()
         })

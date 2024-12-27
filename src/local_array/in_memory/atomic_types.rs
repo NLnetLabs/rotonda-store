@@ -258,25 +258,11 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
     }
 }
 
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct PersistStatus(bool);
-
-impl PersistStatus {
-    pub(crate) fn persisted() -> Self {
-        Self(true)
-    }
-
-    pub(crate) fn not_persisted() -> Self {
-        Self(false)
-    }
-}
-
 #[derive(Clone, Debug)]
 pub(crate) struct MultiMapValue<M> {
     meta: M,
     ltime: u64,
     route_status: RouteStatus,
-    persist_status: PersistStatus,
 }
 
 impl<M: Meta> MultiMapValue<M> {
@@ -295,10 +281,6 @@ impl<M: Meta> MultiMapValue<M> {
     pub(crate) fn set_route_status(&mut self, status: RouteStatus) {
         self.route_status = status;
     }
-
-    pub(crate) fn has_persisted_data(&self) -> bool {
-        self.persist_status.0
-    }
 }
 
 impl<M: Meta> std::fmt::Display for MultiMapValue<M> {
@@ -313,13 +295,12 @@ impl<M: Meta> std::fmt::Display for MultiMapValue<M> {
     }
 }
 
-impl<M: Meta> From<(PublicRecord<M>, PersistStatus)> for MultiMapValue<M> {
-    fn from(value: (PublicRecord<M>, PersistStatus)) -> Self {
+impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
+    fn from(value: PublicRecord<M>) -> Self {
         Self {
-            ltime: value.0.ltime,
-            route_status: value.0.status,
-            meta: value.0.meta,
-            persist_status: value.1,
+            ltime: value.ltime,
+            route_status: value.status,
+            meta: value.meta,
         }
     }
 }
@@ -508,13 +489,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     // record.multi_uniq_id. Returns the number of entries in the HashMap
     // after updating it, if it's more than 1. Returns None if this is the
     // first entry.
+    #[allow(clippy::type_complexity)]
     pub(crate) fn upsert_record(
         &self,
-        // prefix: PrefixId<AF>,
         new_rec: PublicRecord<M>,
-        persist_status: PersistStatus,
-        // persistence: &Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
-        // strategy: PersistStrategy,
     ) -> Result<(Option<(MultiMapValue<M>, usize)>, usize), PrefixStoreError>
     {
         let (mut record_map, retry_count) = self.guard_with_retry(0);
@@ -523,15 +501,12 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         match record_map.contains_key(&key) {
             true => {
                 let old_rec = record_map
-                    .insert(
-                        key,
-                        MultiMapValue::from((new_rec, persist_status)),
-                    )
+                    .insert(key, MultiMapValue::from(new_rec))
                     .map(|r| (r, record_map.len()));
                 Ok((old_rec, retry_count))
             }
             false => {
-                let new_rec = MultiMapValue::from((new_rec, persist_status));
+                let new_rec = MultiMapValue::from(new_rec);
                 let old_rec = record_map.insert(key, new_rec);
                 assert!(old_rec.is_none());
                 Ok((None, retry_count))

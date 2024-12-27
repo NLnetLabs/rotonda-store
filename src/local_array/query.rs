@@ -145,6 +145,14 @@ where
         guard: &'a Guard,
     ) -> QueryResult<M> {
         match self.config.persist_strategy() {
+            // Everything is in memory only, so look there. There can be no
+            // historical records for this variant, so we just return the
+            // stuff found in memeory. A request for  historical records
+            // willbe ignored.
+            PersistStrategy::MemoryOnly => self
+                .in_memory_tree
+                .match_prefix(search_pfx, options, guard)
+                .into(),
             // All the records are persisted, they have never been committed
             // to memory. However the in-memory-tree is still used to indicate
             // which (prefix, mui) tuples have been created.
@@ -169,14 +177,6 @@ where
                     QueryResult::empty()
                 }
             }
-            // Everything is in memory only, so look there. There can be no
-            // historical records for this variant, so we just return the
-            // stuff found in memeory. A request for  historical records
-            // willbe ignored.
-            PersistStrategy::MemoryOnly => self
-                .in_memory_tree
-                .match_prefix(search_pfx, options, guard)
-                .into(),
             // We have the current records in memory, additionally they may be
             // encriched with historical data from the persisted data.
             PersistStrategy::WriteAhead => {
@@ -243,9 +243,9 @@ where
                     res.into()
                 }
             }
-            // All current info is in memory so look there,
-            // `in_memory_tree.match_prefix` will enrich with historical data
-            // for the prefix(es) if need be.
+            // All current info is in memory so look there. If the user has
+            // requested historical records, we will ask the persist_tree to
+            // add those to the intermedidate result of the in-memory query.
             PersistStrategy::PersistHistory => {
                 let mut res = self
                     .in_memory_tree
@@ -372,12 +372,15 @@ pub(crate) struct TreeQueryResult<AF: AddressFamily> {
     pub more_specifics: Option<Vec<PrefixId<AF>>>,
 }
 
+pub(crate) type FamilyRecord<AF, M> =
+    Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>;
+
 pub(crate) struct FamilyQueryResult<AF: AddressFamily, M: Meta> {
     pub match_type: MatchType,
     pub prefix: Option<PrefixId<AF>>,
     pub prefix_meta: Vec<PublicRecord<M>>,
-    pub less_specifics: Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>,
-    pub more_specifics: Option<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>,
+    pub less_specifics: Option<FamilyRecord<AF, M>>,
+    pub more_specifics: Option<FamilyRecord<AF, M>>,
 }
 
 impl<AF: AddressFamily, M: Meta> From<FamilyQueryResult<AF, M>>

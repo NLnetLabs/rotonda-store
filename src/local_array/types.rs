@@ -1,4 +1,4 @@
-use crate::{AddressFamily, Meta};
+use crate::AddressFamily;
 
 use super::errors::PrefixStoreError;
 
@@ -102,9 +102,9 @@ impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     }
 }
 
-impl<AF: AddressFamily> Into<inetnum::addr::Prefix> for PrefixId<AF> {
-    fn into(self) -> inetnum::addr::Prefix {
-        self.into_pub()
+impl<AF: AddressFamily> From<PrefixId<AF>> for inetnum::addr::Prefix {
+    fn from(value: PrefixId<AF>) -> Self {
+        value.into_pub()
     }
 }
 

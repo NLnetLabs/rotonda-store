@@ -5,7 +5,7 @@ use crate::af::AddressFamily;
 use crate::prelude::multi::RouteStatus;
 use crate::rib::query::{FamilyQueryResult, TreeQueryResult};
 
-use crate::{Meta, PublicRecord, QueryResult};
+use crate::{Meta, PublicRecord};
 
 use crate::local_array::in_memory::node::{SizedStrideRef, TreeBitMapNode};
 use crate::{MatchOptions, MatchType};
@@ -93,7 +93,7 @@ where
         };
 
         FamilyQueryResult {
-            prefix: stored_prefix.as_ref().map(|sp| sp.0), //.as_ref().map(|p| p.0.into_pub()),
+            prefix: stored_prefix.as_ref().map(|sp| sp.0),
             prefix_meta: stored_prefix
                 .as_ref()
                 .map(|pfx| pfx.1.clone())
