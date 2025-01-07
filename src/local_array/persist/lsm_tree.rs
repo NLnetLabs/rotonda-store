@@ -3,7 +3,9 @@
 use std::marker::PhantomData;
 use std::path::Path;
 
-use lsm_tree::AbstractTree;
+use inetnum::addr::Prefix;
+use log::trace;
+use lsm_tree::{AbstractTree, KvPair};
 
 use crate::local_array::types::{PrefixId, RouteStatus};
 use crate::rib::query::{FamilyQueryResult, FamilyRecord, TreeQueryResult};
@@ -44,27 +46,74 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         self.tree.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
     }
 
+    pub fn remove(&self, key: [u8; KEY_SIZE]) {
+        self.tree.remove(key, 0);
+        // the last byte of the prefix holds the length of the prefix.
+        self.counters.dec_prefixes_count(key[PREFIX_SIZE]);
+    }
+
     pub fn get_records_for_prefix<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
         mui: Option<u32>,
     ) -> Vec<PublicRecord<M>> {
-        let prefix_b = if let Some(mui) = mui {
-            &Self::prefix_mui_persistence_key(prefix, mui)
-        } else {
-            &prefix.as_bytes::<PREFIX_SIZE>()
-        };
+        if let Some(mui) = mui {
+            let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
 
-        (*self.tree.prefix(prefix_b))
+            (*self.tree.prefix(prefix_b))
+                .into_iter()
+                .map(|kv| {
+                    let kv = kv.unwrap();
+                    let (_, mui, ltime, status) =
+                        Self::parse_key(kv.0.as_ref());
+                    PublicRecord::new(
+                        mui,
+                        ltime,
+                        status.try_into().unwrap(),
+                        kv.1.as_ref().to_vec().into(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        } else {
+            let prefix_b = &prefix.as_bytes::<PREFIX_SIZE>();
+
+            (*self.tree.prefix(prefix_b))
+                .into_iter()
+                .map(|kv| {
+                    let kv = kv.unwrap();
+                    let (_, mui, ltime, status) =
+                        Self::parse_key(kv.0.as_ref());
+                    PublicRecord::new(
+                        mui,
+                        ltime,
+                        status.try_into().unwrap(),
+                        kv.1.as_ref().to_vec().into(),
+                    )
+                })
+                .collect::<Vec<_>>()
+        }
+    }
+
+    pub(crate) fn get_records_with_keys_for_prefix_mui<M: Meta>(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: u32,
+    ) -> Vec<(Vec<u8>, PublicRecord<M>)> {
+        let key_b = Self::prefix_mui_persistence_key(prefix, mui);
+
+        (*self.tree.prefix(key_b))
             .into_iter()
             .map(|kv| {
                 let kv = kv.unwrap();
                 let (_, mui, ltime, status) = Self::parse_key(kv.0.as_ref());
-                PublicRecord::new(
-                    mui,
-                    ltime,
-                    status.try_into().unwrap(),
-                    kv.1.as_ref().to_vec().into(),
+                (
+                    kv.0.to_vec(),
+                    PublicRecord::new(
+                        mui,
+                        ltime,
+                        status.try_into().unwrap(),
+                        kv.1.as_ref().to_vec().into(),
+                    ),
                 )
             })
             .collect::<Vec<_>>()
@@ -104,7 +153,8 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 let prefix_b = if let Some(mui) = mui {
                     &Self::prefix_mui_persistence_key(pfx, mui)
                 } else {
-                    &pfx.as_bytes::<PREFIX_SIZE>()
+                    trace!("prefix only");
+                    &pfx.as_bytes::<PREFIX_SIZE>().to_vec()
                 };
                 (
                     prefix,
@@ -140,7 +190,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                     let prefix_b = if let Some(mui) = mui {
                         &Self::prefix_mui_persistence_key(*pfx, mui)
                     } else {
-                        &pfx.as_bytes::<PREFIX_SIZE>()
+                        &pfx.as_bytes::<PREFIX_SIZE>().to_vec()
                     };
                     (
                         *pfx,
@@ -245,10 +295,8 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             // Only the most recent record of the search prefix is returned
             // with the prefixes. This is used for the PersistOnly strategy.
             IncludeHistory::None => {
-                let (prefix, prefix_meta) = self.enrich_prefix_most_recent(
-                    search_pfxs.prefix,
-                    options.mui,
-                );
+                let (prefix, prefix_meta) =
+                    self.enrich_prefix(search_pfxs.prefix, options.mui);
 
                 FamilyQueryResult {
                     prefix,
@@ -334,8 +382,8 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     pub fn prefix_mui_persistence_key(
         prefix_id: PrefixId<AF>,
         mui: u32,
-    ) -> [u8; PREFIX_SIZE] {
-        let mut key = [0; PREFIX_SIZE];
+    ) -> Vec<u8> {
+        let mut key = vec![0; PREFIX_SIZE + 4];
         // prefix 5 or 17 bytes
         *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() = prefix_id.as_bytes();
 
@@ -391,6 +439,17 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             record.meta.as_ref(),
         );
     }
+
+    pub(crate) fn prefixes_iter<'a, M: Meta + 'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
+        PersistedPrefixIter::<AF, M, PREFIX_SIZE, KEY_SIZE> {
+            tree_iter: self.tree.iter(),
+            cur_rec: None,
+            _af: PhantomData,
+            _m: PhantomData,
+        }
+    }
 }
 
 impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
@@ -398,5 +457,105 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
+    }
+}
+
+pub(crate) struct PersistedPrefixIter<
+    AF: AddressFamily,
+    M: Meta,
+    const PREFIX_SIZE: usize,
+    const KEY_SIZE: usize,
+> {
+    cur_rec: Option<([u8; PREFIX_SIZE], Vec<PublicRecord<M>>)>,
+    tree_iter:
+        Box<dyn DoubleEndedIterator<Item = Result<KvPair, lsm_tree::Error>>>,
+    _af: PhantomData<AF>,
+    _m: PhantomData<M>,
+}
+
+impl<
+        AF: AddressFamily,
+        M: Meta,
+        const PREFIX_SIZE: usize,
+        const KEY_SIZE: usize,
+    > Iterator for PersistedPrefixIter<AF, M, PREFIX_SIZE, KEY_SIZE>
+{
+    type Item = (Prefix, Vec<PublicRecord<M>>);
+    fn next(&mut self) -> Option<Self::Item> {
+        let rec;
+
+        // Do we already have a record in our iter struct?
+        if let Some(_cur_rec) = &mut self.cur_rec {
+            rec = std::mem::take(&mut self.cur_rec);
+        } else {
+            // No, advance to the next record in the persist tree.
+            let next_rec = self.tree_iter.next();
+
+            match next_rec {
+                // The persist tree is completely done, iterator's done.
+                None => {
+                    return None;
+                }
+                Some(Ok((k, v))) => {
+                    let p_k =
+                        PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::parse_key(
+                            k.as_ref(),
+                        );
+                    rec = Some((
+                        p_k.0,
+                        vec![PublicRecord::<M> {
+                            multi_uniq_id: p_k.1,
+                            ltime: p_k.2,
+                            status: p_k.3.try_into().unwrap(),
+                            meta: v.to_vec().into(),
+                        }],
+                    ));
+                }
+                Some(Err(_)) => {
+                    // This is NOT GOOD. Both that it happens, and that we are
+                    // silently ignoring it.
+                    self.cur_rec = None;
+                    return None;
+                }
+            }
+        };
+
+        if let Some(mut r_rec) = rec {
+            for (k, v) in self.tree_iter.by_ref().flatten() {
+                let (pfx, mui, ltime, status) =
+                    PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::parse_key(
+                        k.as_ref(),
+                    );
+
+                if pfx == r_rec.0 {
+                    r_rec.1.push(PublicRecord {
+                        meta: v.to_vec().into(),
+                        multi_uniq_id: mui,
+                        ltime,
+                        status: status.try_into().unwrap(),
+                    });
+                } else {
+                    self.cur_rec = Some((
+                        pfx,
+                        vec![PublicRecord {
+                            meta: v.to_vec().into(),
+                            multi_uniq_id: mui,
+                            ltime,
+                            status: status.try_into().unwrap(),
+                        }],
+                    ));
+                    break;
+                }
+            }
+
+            Some((
+                Prefix::from(PrefixId::<AF>::from(
+                    *r_rec.0.first_chunk::<PREFIX_SIZE>().unwrap(),
+                )),
+                r_rec.1,
+            ))
+        } else {
+            None
+        }
     }
 }

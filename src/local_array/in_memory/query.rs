@@ -700,8 +700,7 @@ where
         // any of the match_types (as specified by the user, not the return
         // type) may end up here.
 
-        let match_type = MatchType::EmptyMatch;
-        if let Some(prefix) = match_prefix_idx {
+        let match_type = if let Some(prefix) = match_prefix_idx {
             if prefix.get_len() == search_pfx.get_len() {
                 MatchType::ExactMatch
             } else {

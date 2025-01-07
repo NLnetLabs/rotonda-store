@@ -10,6 +10,7 @@ use epoch::{Guard, Owned};
 
 use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::local_array::types::PrefixId;
+use crate::prelude::multi::RouteStatus;
 use crate::stats::CreatedNodes;
 use crate::{
     local_array::errors::PrefixStoreError, prefix_record::PublicRecord,
@@ -88,6 +89,10 @@ impl Counters {
 
     pub fn inc_prefixes_count(&self, len: u8) {
         self.prefixes[len as usize].fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn dec_prefixes_count(&self, len: u8) {
+        self.prefixes[len as usize].fetch_sub(1, Ordering::Relaxed);
     }
 
     pub fn get_prefix_stats(&self) -> Vec<CreatedNodes> {
@@ -378,16 +383,59 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
+        ltime: u64,
     ) -> Result<(), PrefixStoreError> {
-        let (stored_prefix, exists) = self
-            .in_memory_tree
-            .non_recursive_retrieve_prefix_mut(prefix);
+        match self.persist_strategy() {
+            PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
+                let (stored_prefix, exists) = self
+                    .in_memory_tree
+                    .non_recursive_retrieve_prefix_mut(prefix);
 
-        if !exists {
-            return Err(PrefixStoreError::StoreNotReadyError);
+                if !exists {
+                    return Err(PrefixStoreError::StoreNotReadyError);
+                }
+                stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
+            }
+            PersistStrategy::PersistOnly => {
+                let p_tree = self.persist_tree.as_ref().unwrap();
+                let stored_prefixes = p_tree
+                    .get_records_with_keys_for_prefix_mui::<M>(prefix, mui);
+
+                for s in stored_prefixes {
+                    let key: [u8; KEY_SIZE] = PersistTree::<
+                        AF,
+                        PREFIX_SIZE,
+                        KEY_SIZE,
+                    >::persistence_key(
+                        prefix,
+                        mui,
+                        ltime,
+                        RouteStatus::Withdrawn,
+                    );
+                    p_tree.insert(key, s.1.meta.as_ref());
+                    p_tree.remove(*s.0.first_chunk::<KEY_SIZE>().unwrap());
+                }
+            }
+            PersistStrategy::PersistHistory => {
+                let p_tree = self.persist_tree.as_ref().unwrap();
+                let stored_prefixes =
+                    p_tree.get_records_for_prefix::<M>(prefix, Some(mui));
+
+                for s in stored_prefixes {
+                    let key: [u8; KEY_SIZE] = PersistTree::<
+                        AF,
+                        PREFIX_SIZE,
+                        KEY_SIZE,
+                    >::persistence_key(
+                        prefix,
+                        mui,
+                        ltime,
+                        RouteStatus::Withdrawn,
+                    );
+                    p_tree.insert(key, s.meta.as_ref());
+                }
+            }
         }
-
-        stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
 
         Ok(())
     }
@@ -530,6 +578,18 @@ impl<
         }
     }
 
+    pub fn prefixes_iter(
+        &self,
+    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + '_ {
+        let pt_iter = self
+            .persist_tree
+            .as_ref()
+            .map(|t| t.prefixes_iter())
+            .into_iter()
+            .flatten();
+        self.in_memory_tree.prefixes_iter().chain(pt_iter)
+    }
+
     //-------- Persistence ---------------------------------------------------
 
     pub fn persist_strategy(&self) -> PersistStrategy {
@@ -599,3 +659,12 @@ impl<
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())
     }
 }
+
+// pub(crate) trait StorePrefixIter<M: Meta> {
+//     fn prefixes_iter<'a>(
+//         &'a self,
+//         // iter: Option<impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)>>,
+//     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a
+//     where
+//         M: 'a;
+// }

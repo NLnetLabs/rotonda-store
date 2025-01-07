@@ -164,15 +164,22 @@ where
                 }
 
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree
-                        .match_prefix(
-                            self.in_memory_tree
-                                .match_prefix_by_tree_traversal(
-                                    search_pfx, options,
-                                ),
-                            options,
-                        )
-                        .into()
+                    let exists = self
+                        .in_memory_tree
+                        .match_prefix_by_tree_traversal(search_pfx, options);
+                    println!("IN_MEM {:#?}", exists);
+                    println!(
+                        "{}",
+                        self.in_memory_tree // .prefixes_iter()
+                                            // .collect::<Vec<_>>()
+                    );
+                    println!(
+                        "{:#?}",
+                        self.in_memory_tree
+                            .prefixes_iter()
+                            .collect::<Vec<_>>()
+                    );
+                    persist_tree.match_prefix(exists, options).into()
                 } else {
                     QueryResult::empty()
                 }
@@ -365,6 +372,7 @@ where
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct TreeQueryResult<AF: AddressFamily> {
     pub match_type: MatchType,
     pub prefix: Option<PrefixId<AF>>,

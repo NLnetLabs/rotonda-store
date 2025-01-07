@@ -2,8 +2,8 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    prelude::multi::RouteStatus, test_types::BeBytesAsn, IncludeHistory,
-    MatchOptions, MultiThreadedStore, PublicRecord as Record,
+    prelude::multi::RouteStatus, rib::StoreConfig, test_types::BeBytesAsn,
+    IncludeHistory, MatchOptions, MultiThreadedStore, PublicRecord as Record,
 };
 
 mod common {
@@ -18,7 +18,29 @@ mod common {
 }
 
 #[test]
-fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
+fn test_concurrent_updates_1_multiple_persist_scenarios(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let tree_bitmap = MultiThreadedStore::<BeBytesAsn>::try_default()?;
+
+    test_concurrent_updates_1(std::sync::Arc::new(tree_bitmap))?;
+
+    let store_config = StoreConfig {
+        persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
+        persist_path: "/tmp/rotonda/".into(),
+    };
+
+    let tree_bitmap = std::sync::Arc::new(
+        MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
+    );
+
+    test_concurrent_updates_1(tree_bitmap)?;
+
+    Ok(())
+}
+
+fn test_concurrent_updates_1(
+    store: std::sync::Arc<MultiThreadedStore<BeBytesAsn>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     let pfx_vec_1 = vec![
@@ -48,8 +70,14 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         pfxs: Vec<Prefix>,
     }
 
-    let tree_bitmap =
-        std::sync::Arc::new(MultiThreadedStore::<BeBytesAsn>::try_default()?);
+    // let store_config = StoreConfig {
+    //     persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
+    //     persist_path: "/tmp/rotonda/".into(),
+    // };
+
+    // let store = std::sync::Arc::new(
+    //     MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
+    // );
 
     let mui_data_1 = MuiData {
         mui: 1,
@@ -74,7 +102,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
     let _: Vec<_> = vec![mui_data_1, mui_data_2, mui_data_3]
         .into_iter()
         .map(|data: MuiData| {
-            let tree_bitmap = tree_bitmap.clone();
+            let tree_bitmap = store.clone();
             let cur_ltime = cur_ltime.clone();
 
             std::thread::Builder::new()
@@ -108,11 +136,16 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         .map(|t| t.join())
         .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter().collect::<Vec<_>>());
+    println!("COUNT {}", store.prefixes_count());
 
-    let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
+    let all_pfxs_iter = store.prefixes_iter().collect::<Vec<_>>();
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
+
+    assert!(store.contains(&pfx, None));
+    assert!(store.contains(&pfx, Some(1)));
+    assert!(store.contains(&pfx, Some(2)));
+
     assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
@@ -303,7 +336,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         .clone()
         .into_iter()
         .map(|pfx: Prefix| {
-            let tree_bitmap = tree_bitmap.clone();
+            let tree_bitmap = store.clone();
             let cur_ltime = cur_ltime.clone();
 
             std::thread::Builder::new()
@@ -313,7 +346,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
                     tree_bitmap
-                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2)
+                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2, 10)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");
@@ -323,7 +356,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         .map(|t| t.join())
         .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter().collect::<Vec<_>>());
+    println!("{:#?}", store.prefixes_iter().collect::<Vec<_>>());
 
     let match_options = MatchOptions {
         match_type: rotonda_store::MatchType::ExactMatch,
@@ -336,8 +369,9 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
 
     for pfx in pfx_vec_2 {
         let guard = rotonda_store::epoch::pin();
-        let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
+        let res = store.match_prefix(&pfx, &match_options, &guard);
         assert_eq!(res.prefix, Some(pfx));
+        println!("PFX {:?}", res);
         assert_eq!(
             res.prefix_meta
                 .iter()
@@ -582,7 +616,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
                     tree_bitmap
-                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2)
+                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2, 11)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");

@@ -885,7 +885,7 @@ impl<
         .flatten()
     }
 
-    // Iterator over all the prefixes in the storage.
+    // Iterator over all the prefixes in the in_memory store.
     pub fn prefixes_iter(
         &'a self,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
