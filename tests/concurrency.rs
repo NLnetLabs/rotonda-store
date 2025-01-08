@@ -20,12 +20,32 @@ mod common {
 #[test]
 fn test_concurrent_updates_1_multiple_persist_scenarios(
 ) -> Result<(), Box<dyn std::error::Error>> {
+    //------- Default (MemoryOnly)
+
+    println!("default strategy starting...");
     let tree_bitmap = MultiThreadedStore::<BeBytesAsn>::try_default()?;
 
     test_concurrent_updates_1(std::sync::Arc::new(tree_bitmap))?;
 
+    //------- PersistOnly
+
+    println!("PersistOnly strategy starting...");
     let store_config = StoreConfig {
         persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
+        persist_path: "/tmp/rotonda/".into(),
+    };
+
+    let tree_bitmap = std::sync::Arc::new(
+        MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
+    );
+
+    test_concurrent_updates_1(tree_bitmap)?;
+
+    //------- PersistHistory
+
+    println!("PersistHistory strategy starting...");
+    let store_config = StoreConfig {
+        persist_strategy: rotonda_store::rib::PersistStrategy::PersistHistory,
         persist_path: "/tmp/rotonda/".into(),
     };
 

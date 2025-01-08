@@ -63,8 +63,15 @@ mod common {
     }
 }
 
+// rotonda_store::all_strategies![
+//     best_path;
+//     test_best_path_1;
+//     Ipv4Route
+// ];
+
 #[test]
-fn test_best_path_1() -> Result<(), Box<dyn std::error::Error>> {
+fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     let store_config = StoreConfig {

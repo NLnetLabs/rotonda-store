@@ -20,9 +20,16 @@ mod tests {
         prelude::*,
     };
 
-    #[test]
-    fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
+    rotonda_store::all_strategies![
+        test_treebitmap;
+        test_insert_extremes_ipv4;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_insert_extremes_ipv4(
+        trie: MultiThreadedStore<NoMeta>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -91,11 +98,18 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    rotonda_store::all_strategies![
+        tree_ipv4;
+        test_tree_ipv4;
+        PrefixAs
+    ];
+
+    fn test_tree_ipv4(
+        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -404,64 +418,84 @@ mod tests {
 
     #[test]
     fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+        for persist_strategy in [
+            PersistStrategy::MemoryOnly,
+            PersistStrategy::PersistOnly,
+            PersistStrategy::WriteAhead,
+            PersistStrategy::PersistHistory,
+        ] {
+            for i_net in 0..255 {
+                let config = StoreConfig {
+                    persist_strategy,
+                    persist_path: "/tmp/rotonda".into(),
+                };
+                let tree_bitmap =
+                    MultiThreadedStore::<NoMeta>::new_with_config(config)?;
 
-            let pfx_vec: Vec<Prefix> = (1..32)
-                .collect::<Vec<u8>>()
-                .into_iter()
-                .map(|i_len| {
-                    Prefix::new_relaxed(
-                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                        i_len,
-                    )
-                    .unwrap()
-                })
-                .collect();
+                let pfx_vec: Vec<Prefix> = (1..32)
+                    .collect::<Vec<u8>>()
+                    .into_iter()
+                    .map(|i_len| {
+                        Prefix::new_relaxed(
+                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                            i_len,
+                        )
+                        .unwrap()
+                    })
+                    .collect();
 
-            let mut i_len_s = 0;
-            for pfx in pfx_vec {
-                i_len_s += 1;
-                tree_bitmap.insert(
-                    &pfx,
-                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-                    None,
-                )?;
-
-                let res_pfx = Prefix::new_relaxed(
-                    std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                    i_len_s,
-                );
-
-                let guard = &epoch::pin();
-                for s_len in i_len_s..32 {
-                    let pfx = Prefix::new_relaxed(
-                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                        s_len,
-                    )?;
-                    let res = tree_bitmap.match_prefix(
+                let mut i_len_s = 0;
+                for pfx in pfx_vec {
+                    i_len_s += 1;
+                    tree_bitmap.insert(
                         &pfx,
-                        &MatchOptions {
-                            match_type: MatchType::LongestMatch,
-                            include_withdrawn: false,
-                            include_less_specifics: false,
-                            include_more_specifics: false,
-                            mui: None,
-                            include_history: IncludeHistory::None,
-                        },
-                        guard,
-                    );
-                    println!("{:?}", pfx);
+                        Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                        None,
+                    )?;
 
-                    assert_eq!(res.prefix.unwrap(), res_pfx?);
+                    let res_pfx = Prefix::new_relaxed(
+                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                        i_len_s,
+                    );
+
+                    let guard = &epoch::pin();
+                    for s_len in i_len_s..32 {
+                        let pfx = Prefix::new_relaxed(
+                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                            s_len,
+                        )?;
+                        let res = tree_bitmap.match_prefix(
+                            &pfx,
+                            &MatchOptions {
+                                match_type: MatchType::LongestMatch,
+                                include_withdrawn: false,
+                                include_less_specifics: false,
+                                include_more_specifics: false,
+                                mui: None,
+                                include_history: IncludeHistory::None,
+                            },
+                            guard,
+                        );
+                        println!("{:?}", pfx);
+
+                        assert_eq!(res.prefix.unwrap(), res_pfx?);
+                    }
                 }
             }
         }
+
         Ok(())
     }
 
+    // rotonda_store::all_strategies![
+    //     multi_ranges;
+    //     test_multi_ranges_ipv4;
+    //     NoMeta
+    // ];
+
     #[test]
-    fn test_multi_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_multi_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
         let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
@@ -596,7 +630,7 @@ mod tests {
             .any(|r| r.multi_uniq_id == 1));
 
         let wd_pfx = Prefix::from_str("1.0.0.0/16")?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2, 1)?;
 
         println!("all records");
 
@@ -733,7 +767,7 @@ mod tests {
 
         //------------------
 
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 1)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 1, 10)?;
         tree_bitmap.mark_mui_as_active_v4(1)?;
 
         let more_specifics = tree_bitmap.match_prefix(
@@ -782,10 +816,10 @@ mod tests {
         assert!(rec.is_empty());
 
         // withdraw muis 2,3,4,5 for the requested prefix
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 3)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 4)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 5)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2, 11)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 3, 12)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 4, 13)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 5, 14)?;
 
         let more_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/16")?,
@@ -855,12 +889,13 @@ mod tests {
         assert_eq!(less_specifics.prefix_meta.len(), 5);
 
         let less_specifics = less_specifics.less_specifics.unwrap();
-        // All records for the less specific /16 are withdrawn, so this should be empty.
+        // All records for the less specific /16 are withdrawn, so this should
+        // be empty.
         assert!(less_specifics.is_empty());
 
         //--------------------
 
-        tree_bitmap.mark_mui_as_active_for_prefix(&wd_pfx, 5)?;
+        tree_bitmap.mark_mui_as_active_for_prefix(&wd_pfx, 5, 1)?;
 
         let less_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/17")?,

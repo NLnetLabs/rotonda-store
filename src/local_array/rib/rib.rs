@@ -392,9 +392,9 @@ impl<
                     .non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
-                    return Err(PrefixStoreError::StoreNotReadyError);
+                    return Err(PrefixStoreError::PrefixNotFound);
                 }
-                stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
+                stored_prefix.record_map.mark_as_withdrawn_for_mui(mui, ltime);
             }
             PersistStrategy::PersistOnly => {
                 let p_tree = self.persist_tree.as_ref().unwrap();
@@ -413,15 +413,34 @@ impl<
                         RouteStatus::Withdrawn,
                     );
                     p_tree.insert(key, s.1.meta.as_ref());
+
+                    // remove the entry for the same (prefix, mui), but with
+                    // an older logical time
                     p_tree.remove(*s.0.first_chunk::<KEY_SIZE>().unwrap());
                 }
             }
             PersistStrategy::PersistHistory => {
-                let p_tree = self.persist_tree.as_ref().unwrap();
-                let stored_prefixes =
-                    p_tree.get_records_for_prefix::<M>(prefix, Some(mui));
+                // First do the in-memory part
+                let (stored_prefix, exists) = self
+                    .in_memory_tree
+                    .non_recursive_retrieve_prefix_mut(prefix);
 
-                for s in stored_prefixes {
+                if !exists {
+                    return Err(PrefixStoreError::StoreNotReadyError);
+                }
+                stored_prefix.record_map.mark_as_withdrawn_for_mui(mui, ltime);
+
+                // Use the record from the in-memory RIB to persist.
+                if let Some(_record) =
+                    stored_prefix.record_map.get_record_for_active_mui(mui)
+                {
+                    let p_tree =
+                        if let Some(p_tree) = self.persist_tree.as_ref() {
+                            p_tree
+                        } else {
+                            return Err(PrefixStoreError::StoreNotReadyError);
+                        };
+
                     let key: [u8; KEY_SIZE] = PersistTree::<
                         AF,
                         PREFIX_SIZE,
@@ -432,7 +451,11 @@ impl<
                         ltime,
                         RouteStatus::Withdrawn,
                     );
-                    p_tree.insert(key, s.meta.as_ref());
+                    // Here we are keeping persisted history, so no removal of
+                    // old (prefix, mui) records.
+                    // We are inserting an empty record, since this is a
+                    // withdrawal.
+                    p_tree.insert(key, &[]);
                 }
             }
         }
@@ -446,16 +469,94 @@ impl<
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
+        ltime: u64,
     ) -> Result<(), PrefixStoreError> {
-        let (stored_prefix, exists) = self
-            .in_memory_tree
-            .non_recursive_retrieve_prefix_mut(prefix);
+        match self.persist_strategy() {
+            PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
+                let (stored_prefix, exists) = self
+                    .in_memory_tree
+                    .non_recursive_retrieve_prefix_mut(prefix);
 
-        if !exists {
-            return Err(PrefixStoreError::StoreNotReadyError);
+                if !exists {
+                    return Err(PrefixStoreError::PrefixNotFound);
+                }
+                stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
+            }
+            PersistStrategy::PersistOnly => {
+                let p_tree = self.persist_tree.as_ref().unwrap();
+                // let stored_prefixes = p_tree
+                //     .get_records_with_keys_for_prefix_mui::<M>(prefix, mui)
+
+                if let Some(record) = p_tree
+                    .get_most_recent_record_for_prefix_mui::<M>(prefix, mui)
+                {
+                    // for s in stored_prefixes {
+                    let new_key: [u8; KEY_SIZE] = PersistTree::<
+                        AF,
+                        PREFIX_SIZE,
+                        KEY_SIZE,
+                    >::persistence_key(
+                        prefix,
+                        mui,
+                        ltime,
+                        RouteStatus::Active,
+                    );
+                    p_tree.insert(new_key, record.meta.as_ref());
+
+                    // remove the entry for the same (prefix, mui), but with
+                    // an older logical time
+                    let old_key = PersistTree::<
+                        AF, 
+                        PREFIX_SIZE,
+                        KEY_SIZE>::persistence_key(
+                            prefix, 
+                            mui, 
+                            record.ltime, 
+                            record.status
+                    );
+                    p_tree.remove(old_key);
+                }
+            }
+            PersistStrategy::PersistHistory => {
+                // First do the in-memory part
+                let (stored_prefix, exists) = self
+                    .in_memory_tree
+                    .non_recursive_retrieve_prefix_mut(prefix);
+
+                if !exists {
+                    return Err(PrefixStoreError::StoreNotReadyError);
+                }
+                stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
+
+                // Use the record from the in-memory RIB to persist.
+                if let Some(_record) =
+                    stored_prefix.record_map.get_record_for_active_mui(mui)
+                {
+                    let p_tree =
+                        if let Some(p_tree) = self.persist_tree.as_ref() {
+                            p_tree
+                        } else {
+                            return Err(PrefixStoreError::StoreNotReadyError);
+                        };
+
+                    let key: [u8; KEY_SIZE] = PersistTree::<
+                        AF,
+                        PREFIX_SIZE,
+                        KEY_SIZE,
+                    >::persistence_key(
+                        prefix,
+                        mui,
+                        ltime,
+                        RouteStatus::Active,
+                    );
+                    // Here we are keeping persisted history, so no removal of
+                    // old (prefix, mui) records.
+                    // We are inserting an empty record, since this is a
+                    // withdrawal.
+                    p_tree.insert(key, &[]);
+                }
+            }
         }
-
-        stored_prefix.record_map.mark_as_active_for_mui(mui);
 
         Ok(())
     }
@@ -659,12 +760,3 @@ impl<
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())
     }
 }
-
-// pub(crate) trait StorePrefixIter<M: Meta> {
-//     fn prefixes_iter<'a>(
-//         &'a self,
-//         // iter: Option<impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)>>,
-//     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a
-//     where
-//         M: 'a;
-// }

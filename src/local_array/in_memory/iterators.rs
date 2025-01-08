@@ -302,8 +302,6 @@ pub(crate) struct MoreSpecificPrefixIter<
     M: Meta,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
-    // const PREFIX_SIZE: usize,
-    // const KEY_SIZE: usize,
 > {
     store: &'a TreeBitMap<AF, M, NB, PB>,
     cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
@@ -326,8 +324,6 @@ impl<
         M: Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-        // const PREFIX_SIZE: usize,
-        // const KEY_SIZE: usize,
     > Iterator for MoreSpecificPrefixIter<'a, AF, M, NB, PB>
 {
     type Item = (PrefixId<AF>, Vec<PublicRecord<M>>);
@@ -727,8 +723,6 @@ impl<
         M: crate::prefix_record::Meta,
         NB: NodeBuckets<AF>,
         PB: PrefixBuckets<AF, M>,
-        // const PREFIX_SIZE: usize,
-        // const KEY_SIZE: usize,
     > TreeBitMap<AF, M, NB, PB>
 {
     // Iterator over all more-specific prefixes, starting from the given

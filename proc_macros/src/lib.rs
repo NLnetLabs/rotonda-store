@@ -988,8 +988,8 @@ pub fn create_store(
                             (
                                 Some(self
                                     .v4
-                                    .in_memory_tree
-                                    .less_specific_prefix_iter(
+                                    // .in_memory_tree
+                                    .less_specifics_iter_from(
                                         PrefixId::<IPv4>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1008,8 +1008,8 @@ pub fn create_store(
                                 None,
                                 Some(self
                                     .v6
-                                    .in_memory_tree
-                                    .less_specific_prefix_iter(
+                                    // .in_memory_tree
+                                    .less_specifics_iter_from(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1087,8 +1087,9 @@ pub fn create_store(
                         } else {
                             (Some(self
                                 .v4
-                                .in_memory_tree
-                                .more_specific_prefix_iter_from(
+                                // .in_memory_tree
+                                // .more_specific_prefix_iter_from(
+                                .more_specifics_iter_from(
                                     PrefixId::<IPv4>::new(
                                         addr.into(),
                                         search_pfx.len(),
@@ -1111,8 +1112,8 @@ pub fn create_store(
                                 None,
                                 Some(self
                                     .v6
-                                    .in_memory_tree
-                                    .more_specific_prefix_iter_from(
+                                    // .in_memory_tree
+                                    .more_specifics_iter_from(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
                                             search_pfx.len(),
@@ -1143,8 +1144,8 @@ pub fn create_store(
                     Some(
                         self
                             .v4
-                            .in_memory_tree
-                            .more_specific_prefix_iter_from(
+                            // .in_memory_tree
+                            .more_specifics_iter_from(
                                 PrefixId::<IPv4>::new(
                                     0,
                                     0,
@@ -1170,8 +1171,8 @@ pub fn create_store(
                 } else {
                     Some(
                         self.v6
-                            .in_memory_tree
-                            .more_specific_prefix_iter_from(
+                            // .in_memory_tree
+                            .more_specifics_iter_from(
                                 PrefixId::<IPv6>::new(
                                     0,
                                     0,
@@ -1318,7 +1319,7 @@ pub fn create_store(
             pub fn prefixes_iter_v4(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.in_memory_tree.prefixes_iter()
+                self.v4.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1365,7 +1366,7 @@ pub fn create_store(
             pub fn prefixes_iter_v6(
                 &'a self,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v6.in_memory_tree.prefixes_iter()
+                self.v6.prefixes_iter()
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1405,7 +1406,8 @@ pub fn create_store(
             pub fn mark_mui_as_active_for_prefix(
                 &self,
                 prefix: &Prefix,
-                mui: u32
+                mui: u32,
+                ltime: u64
             ) -> Result<(), PrefixStoreError> {
                 let guard = &epoch::pin();
                 match prefix.addr() {
@@ -1413,12 +1415,14 @@ pub fn create_store(
                         self.v4.mark_mui_as_active_for_prefix(
                             PrefixId::<IPv4>::from(*prefix),
                             mui,
+                            ltime
                         )
                     }
                     std::net::IpAddr::V6(addr) => {
                         self.v6.mark_mui_as_active_for_prefix(
                             PrefixId::<IPv6>::from(*prefix),
                             mui,
+                            ltime
                         )
                     }
                 }

@@ -120,21 +120,51 @@ where
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> Result<
-        impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a,
-        PrefixStoreError,
-    > {
-        let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
+        match self.config.persist_strategy() {
+            PersistStrategy::MemoryOnly
+            | PersistStrategy::WriteAhead
+            | PersistStrategy::PersistHistory => {
+                // if mui.is_some_and(|m| self.mui_is_withdrawn(m, guard)) {
+                //     println!("more_specifics_iter_from");
+                //     unimplemented!()
+                // } else {
+                self.in_memory_tree.more_specific_prefix_iter_from(
+                    prefix_id,
+                    mui,
+                    include_withdrawn,
+                    guard,
+                )
+                // }
+            }
+            PersistStrategy::PersistOnly => unimplemented!(),
+        }
+    }
 
-        if mui.is_some() && bmin.contains(mui.unwrap()) {
-            Err(PrefixStoreError::PrefixNotFound)
-        } else {
-            Ok(self.in_memory_tree.more_specific_prefix_iter_from(
-                prefix_id,
-                mui,
-                include_withdrawn,
-                guard,
-            ))
+    pub fn less_specifics_iter_from(
+        &'a self,
+        prefix_id: PrefixId<AF>,
+        mui: Option<u32>,
+        include_withdrawn: bool,
+        guard: &'a Guard,
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
+        match self.config.persist_strategy() {
+            PersistStrategy::MemoryOnly
+            | PersistStrategy::WriteAhead
+            | PersistStrategy::PersistHistory => {
+                // if mui.is_some_and(|m| self.mui_is_withdrawn(m, guard)) {
+                //     println!("less_specifics_iter_from");
+                //     unimplemented!()
+                // } else {
+                self.in_memory_tree.less_specific_prefix_iter(
+                    prefix_id,
+                    mui,
+                    include_withdrawn,
+                    guard,
+                )
+                // }
+            }
+            PersistStrategy::PersistOnly => unimplemented!(),
         }
     }
 
@@ -157,6 +187,19 @@ where
             // to memory. However the in-memory-tree is still used to indicate
             // which (prefix, mui) tuples have been created.
             PersistStrategy::PersistOnly => {
+                // If no withdawn should be included and a specific mui was
+                // requested, then return early, if the mui lives in the
+                // global withdrawn muis.
+                if !options.include_withdrawn {
+                    if let Some(mui) = options.mui {
+                        let withdrawn_muis_bmin =
+                            self.in_memory_tree.withdrawn_muis_bmin(guard);
+                        if withdrawn_muis_bmin.contains(mui) {
+                            return QueryResult::empty();
+                        }
+                    }
+                }
+
                 if options.match_type == MatchType::ExactMatch
                     && !self.contains(search_pfx, options.mui)
                 {
@@ -168,18 +211,15 @@ where
                         .in_memory_tree
                         .match_prefix_by_tree_traversal(search_pfx, options);
                     println!("IN_MEM {:#?}", exists);
-                    println!(
-                        "{}",
-                        self.in_memory_tree // .prefixes_iter()
-                                            // .collect::<Vec<_>>()
-                    );
+                    println!("{}", self.in_memory_tree);
                     println!(
                         "{:#?}",
                         self.in_memory_tree
                             .prefixes_iter()
                             .collect::<Vec<_>>()
                     );
-                    persist_tree.match_prefix(exists, options).into()
+                    let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
+                    persist_tree.match_prefix(exists, options, bmin).into()
                 } else {
                     QueryResult::empty()
                 }

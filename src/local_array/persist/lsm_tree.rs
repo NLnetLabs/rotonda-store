@@ -6,6 +6,7 @@ use std::path::Path;
 use inetnum::addr::Prefix;
 use log::trace;
 use lsm_tree::{AbstractTree, KvPair};
+use roaring::RoaringBitmap;
 
 use crate::local_array::types::{PrefixId, RouteStatus};
 use crate::rib::query::{FamilyQueryResult, FamilyRecord, TreeQueryResult};
@@ -42,7 +43,11 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         }
     }
 
-    pub fn insert(&self, key: [u8; KEY_SIZE], value: &[u8]) -> (u32, u32) {
+    pub(crate) fn insert(
+        &self,
+        key: [u8; KEY_SIZE],
+        value: &[u8],
+    ) -> (u32, u32) {
         self.tree.insert::<[u8; KEY_SIZE], &[u8]>(key, value, 0)
     }
 
@@ -94,6 +99,30 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         }
     }
 
+    pub fn get_most_recent_record_for_prefix_mui<M: Meta>(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: u32,
+    ) -> Option<PublicRecord<M>> {
+        let key_b = Self::prefix_mui_persistence_key(prefix, mui);
+
+        (*self.tree.prefix(key_b))
+            .into_iter()
+            .map(|kv| {
+                let kv = kv.unwrap();
+                (Self::parse_key(kv.0.as_ref()), kv.1)
+            })
+            .max_by(|(a, _), (b, _)| a.2.cmp(&b.2))
+            .map(|((_pfx, mui, ltime, status), m)| {
+                PublicRecord::new(
+                    mui,
+                    ltime,
+                    status.try_into().unwrap(),
+                    m.as_ref().to_vec().into(),
+                )
+            })
+    }
+
     pub(crate) fn get_records_with_keys_for_prefix_mui<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
@@ -143,42 +172,6 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             .collect::<Vec<_>>()
     }
 
-    fn enrich_prefix_most_recent<M: Meta>(
-        &self,
-        prefix: Option<PrefixId<AF>>,
-        mui: Option<u32>,
-    ) -> (Option<PrefixId<AF>>, Vec<PublicRecord<M>>) {
-        match prefix {
-            Some(pfx) => {
-                let prefix_b = if let Some(mui) = mui {
-                    &Self::prefix_mui_persistence_key(pfx, mui)
-                } else {
-                    trace!("prefix only");
-                    &pfx.as_bytes::<PREFIX_SIZE>().to_vec()
-                };
-                (
-                    prefix,
-                    (*self.tree.prefix(prefix_b))
-                        .into_iter()
-                        .last()
-                        .map(|kv| {
-                            let kv = kv.unwrap();
-                            let (_, mui, ltime, status) =
-                                Self::parse_key(kv.0.as_ref());
-                            vec![PublicRecord::new(
-                                mui,
-                                ltime,
-                                status.try_into().unwrap(),
-                                kv.1.as_ref().to_vec().into(),
-                            )]
-                        })
-                        .unwrap_or_default(),
-                )
-            }
-            None => (None, vec![]),
-        }
-    }
-
     fn enrich_prefixes_most_recent<M: Meta>(
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
@@ -219,9 +212,25 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefix: Option<PrefixId<AF>>,
         mui: Option<u32>,
+        include_withdrawn: bool,
+        bmin: &RoaringBitmap,
     ) -> (Option<PrefixId<AF>>, Vec<PublicRecord<M>>) {
         match prefix {
-            Some(pfx) => (Some(pfx), self.get_records_for_prefix(pfx, mui)),
+            Some(pfx) => (
+                Some(pfx),
+                self.get_records_for_prefix(pfx, mui)
+                    .into_iter()
+                    .filter_map(|mut r| {
+                        if bmin.contains(r.multi_uniq_id) {
+                            if !include_withdrawn {
+                                return None;
+                            }
+                            r.status = RouteStatus::Withdrawn;
+                        }
+                        Some(r)
+                    })
+                    .collect(),
+            ),
             None => (None, vec![]),
         }
     }
@@ -230,11 +239,27 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefixes: Option<Vec<PrefixId<AF>>>,
         mui: Option<u32>,
+        include_withdrawn: bool,
+        bmin: &RoaringBitmap,
     ) -> Option<FamilyRecord<AF, M>> {
         prefixes.map(|recs| {
             recs.iter()
                 .flat_map(move |pfx| {
-                    Some((*pfx, self.get_records_for_prefix(*pfx, mui)))
+                    Some((
+                        *pfx,
+                        self.get_records_for_prefix(*pfx, mui)
+                            .into_iter()
+                            .filter_map(|mut r| {
+                                if bmin.contains(r.multi_uniq_id) {
+                                    if !include_withdrawn {
+                                        return None;
+                                    }
+                                    r.status = RouteStatus::Withdrawn;
+                                }
+                                Some(r)
+                            })
+                            .collect(),
+                    ))
                 })
                 .collect()
         })
@@ -253,12 +278,17 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         search_pfxs: TreeQueryResult<AF>,
         options: &MatchOptions,
+        bmin: &RoaringBitmap,
     ) -> FamilyQueryResult<AF, M> {
         match options.include_history {
             // All the records for all the prefixes
             IncludeHistory::All => {
-                let (prefix, prefix_meta) =
-                    self.enrich_prefix(search_pfxs.prefix, options.mui);
+                let (prefix, prefix_meta) = self.enrich_prefix(
+                    search_pfxs.prefix,
+                    options.mui,
+                    options.include_withdrawn,
+                    bmin,
+                );
 
                 FamilyQueryResult {
                     prefix,
@@ -267,10 +297,14 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                     less_specifics: self.enrich_prefixes(
                         search_pfxs.less_specifics,
                         options.mui,
+                        options.include_withdrawn,
+                        bmin,
                     ),
                     more_specifics: self.enrich_prefixes(
                         search_pfxs.more_specifics,
                         options.mui,
+                        options.include_withdrawn,
+                        bmin,
                     ),
                 }
             }
@@ -279,8 +313,12 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             // attached. Not useful with the MemoryOnly strategy (historical
             // records are neve kept in memory).
             IncludeHistory::SearchPrefix => {
-                let (prefix, prefix_meta) =
-                    self.enrich_prefix(search_pfxs.prefix, options.mui);
+                let (prefix, prefix_meta) = self.enrich_prefix(
+                    search_pfxs.prefix,
+                    options.mui,
+                    options.include_withdrawn,
+                    bmin,
+                );
 
                 FamilyQueryResult {
                     prefix,
@@ -295,8 +333,12 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             // Only the most recent record of the search prefix is returned
             // with the prefixes. This is used for the PersistOnly strategy.
             IncludeHistory::None => {
-                let (prefix, prefix_meta) =
-                    self.enrich_prefix(search_pfxs.prefix, options.mui);
+                let (prefix, prefix_meta) = self.enrich_prefix(
+                    search_pfxs.prefix,
+                    options.mui,
+                    options.include_withdrawn,
+                    bmin,
+                );
 
                 FamilyQueryResult {
                     prefix,
