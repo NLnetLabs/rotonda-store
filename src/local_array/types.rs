@@ -98,7 +98,6 @@ impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
 
 impl<AF: AddressFamily> From<PrefixId<AF>> for inetnum::addr::Prefix {
     fn from(value: PrefixId<AF>) -> Self {
-        println!("{} {}", value.get_net(), value.get_len());
         Self::new(value.get_net().into_ipaddr(), value.get_len()).unwrap()
     }
 }
