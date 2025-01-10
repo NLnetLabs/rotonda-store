@@ -397,6 +397,7 @@ impl<
                 stored_prefix.record_map.mark_as_withdrawn_for_mui(mui, ltime);
             }
             PersistStrategy::PersistOnly => {
+                println!("mark as wd in persist tree {:?} for mui {:?}", prefix, mui);
                 let p_tree = self.persist_tree.as_ref().unwrap();
                 let stored_prefixes = p_tree
                     .get_records_with_keys_for_prefix_mui::<M>(prefix, mui);
@@ -524,7 +525,7 @@ impl<
                     .non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
-                    return Err(PrefixStoreError::StoreNotReadyError);
+                    return Err(PrefixStoreError::PrefixNotFound);
                 }
                 stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
 

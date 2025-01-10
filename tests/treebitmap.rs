@@ -487,18 +487,19 @@ mod tests {
         Ok(())
     }
 
-    // rotonda_store::all_strategies![
-    //     multi_ranges;
-    //     test_multi_ranges_ipv4;
-    //     NoMeta
-    // ];
+    rotonda_store::all_strategies![
+        multi_ranges;
+        test_multi_ranges_ipv4;
+        NoMeta
+    ];
 
-    #[test]
-    fn test_multi_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
+    // #[test]
+    fn test_multi_ranges_ipv4(
+        tree_bitmap: MultiThreadedStore<NoMeta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+        // let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 
@@ -786,6 +787,7 @@ mod tests {
         println!("more_specifics match w/o withdrawn #2 {}", more_specifics);
         // We withdrew mui 1 for the requested prefix itself, since mui 2 was
         // already withdrawn above, we're left with 3 records
+        println!("PREFIX META: {:#?}", more_specifics.prefix_meta);
         assert_eq!(more_specifics.prefix_meta.len(), 3);
 
         let more_specifics = more_specifics.more_specifics.unwrap();

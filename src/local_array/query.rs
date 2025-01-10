@@ -5,8 +5,8 @@ use crate::af::AddressFamily;
 use crate::local_array::in_memory::atomic_types::{
     NodeBuckets, PrefixBuckets,
 };
-use crate::prefix_record::PublicRecord;
 use crate::rib::{PersistStrategy, Rib};
+use crate::PublicRecord;
 use inetnum::addr::Prefix;
 
 use crate::{IncludeHistory, Meta, QueryResult};
@@ -121,24 +121,42 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
-        match self.config.persist_strategy() {
-            PersistStrategy::MemoryOnly
-            | PersistStrategy::WriteAhead
-            | PersistStrategy::PersistHistory => {
-                // if mui.is_some_and(|m| self.mui_is_withdrawn(m, guard)) {
-                //     println!("more_specifics_iter_from");
-                //     unimplemented!()
-                // } else {
-                self.in_memory_tree.more_specific_prefix_iter_from(
-                    prefix_id,
-                    mui,
-                    include_withdrawn,
-                    guard,
-                )
-                // }
-            }
-            PersistStrategy::PersistOnly => unimplemented!(),
-        }
+        // If the user wanted a specific mui and not withdrawn prefixes, we
+        // may return early if the mui is globally withdrawn.
+        (if mui.is_some_and(|m| {
+            !include_withdrawn && self.mui_is_withdrawn(m, guard)
+        }) {
+            None
+        } else {
+            Some(self.in_memory_tree.more_specific_prefix_iter_from(
+                prefix_id,
+                mui,
+                include_withdrawn,
+                guard,
+            ))
+        })
+        .into_iter()
+        .flatten()
+        .chain(
+            (if mui.is_some_and(|m| {
+                !include_withdrawn && self.mui_is_withdrawn(m, guard)
+            }) {
+                None
+            } else {
+                let global_withdrawn_bmin =
+                    self.in_memory_tree.withdrawn_muis_bmin(guard);
+                self.persist_tree.as_ref().map(|persist_tree| {
+                    persist_tree.more_specific_prefix_iter_from(
+                        prefix_id,
+                        mui,
+                        global_withdrawn_bmin,
+                        include_withdrawn,
+                    )
+                })
+            })
+            .into_iter()
+            .flatten(),
+        )
     }
 
     pub fn less_specifics_iter_from(
@@ -152,17 +170,18 @@ where
             PersistStrategy::MemoryOnly
             | PersistStrategy::WriteAhead
             | PersistStrategy::PersistHistory => {
-                // if mui.is_some_and(|m| self.mui_is_withdrawn(m, guard)) {
-                //     println!("less_specifics_iter_from");
-                //     unimplemented!()
-                // } else {
-                self.in_memory_tree.less_specific_prefix_iter(
-                    prefix_id,
-                    mui,
-                    include_withdrawn,
-                    guard,
-                )
-                // }
+                (if mui.is_some_and(|m| self.mui_is_withdrawn(m, guard)) {
+                    None
+                } else {
+                    Some(self.in_memory_tree.less_specific_prefix_iter(
+                        prefix_id,
+                        mui,
+                        include_withdrawn,
+                        guard,
+                    ))
+                })
+                .into_iter()
+                .flatten()
             }
             PersistStrategy::PersistOnly => unimplemented!(),
         }
@@ -187,13 +206,13 @@ where
             // to memory. However the in-memory-tree is still used to indicate
             // which (prefix, mui) tuples have been created.
             PersistStrategy::PersistOnly => {
+                let withdrawn_muis_bmin =
+                    self.in_memory_tree.withdrawn_muis_bmin(guard);
                 // If no withdawn should be included and a specific mui was
                 // requested, then return early, if the mui lives in the
                 // global withdrawn muis.
                 if !options.include_withdrawn {
                     if let Some(mui) = options.mui {
-                        let withdrawn_muis_bmin =
-                            self.in_memory_tree.withdrawn_muis_bmin(guard);
                         if withdrawn_muis_bmin.contains(mui) {
                             return QueryResult::empty();
                         }
@@ -207,19 +226,17 @@ where
                 }
 
                 if let Some(persist_tree) = &self.persist_tree {
-                    let exists = self
+                    let tbm_result = self
                         .in_memory_tree
                         .match_prefix_by_tree_traversal(search_pfx, options);
-                    println!("IN_MEM {:#?}", exists);
-                    println!("{}", self.in_memory_tree);
-                    println!(
-                        "{:#?}",
-                        self.in_memory_tree
-                            .prefixes_iter()
-                            .collect::<Vec<_>>()
-                    );
-                    let bmin = self.in_memory_tree.withdrawn_muis_bmin(guard);
-                    persist_tree.match_prefix(exists, options, bmin).into()
+
+                    persist_tree
+                        .match_prefix(
+                            tbm_result,
+                            options,
+                            withdrawn_muis_bmin,
+                        )
+                        .into()
                 } else {
                     QueryResult::empty()
                 }
