@@ -54,14 +54,7 @@ pub trait AddressFamily:
     // finding node_ids (always zero for 0/0).
     fn checked_shr_or_zero(self, rhs: u32) -> Self;
 
-    fn as_prefix_bytes<const PREFIX_SIZE: usize>(
-        &self,
-        pfx_len: u8,
-    ) -> [u8; PREFIX_SIZE];
-
-    fn from_prefix_bytes<const PREFIX_SIZE: usize>(
-        value: [u8; PREFIX_SIZE],
-    ) -> (Self, u8);
+    fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE];
 }
 
 //-------------- Ipv4 Type --------------------------------------------------
@@ -160,23 +153,10 @@ impl AddressFamily for IPv4 {
         self.checked_shr(rhs).unwrap_or(0)
     }
 
-    fn as_prefix_bytes<const PREFIX_SIZE: usize>(
-        &self,
-        pfx_len: u8,
-    ) -> [u8; PREFIX_SIZE] {
-        let bytes = &mut [0_u8; PREFIX_SIZE];
-        *bytes.first_chunk_mut::<4>().unwrap() = self.to_le_bytes();
-        bytes[PREFIX_SIZE - 1] = pfx_len;
-        *bytes
-    }
-
-    fn from_prefix_bytes<const PREFIX_SIZE: usize>(
-        value: [u8; PREFIX_SIZE],
-    ) -> (Self, u8) {
-        (
-            u32::from_le_bytes(*value.first_chunk::<4>().unwrap()),
-            value[PREFIX_SIZE - 1],
-        )
+    fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
+        *u32::to_be_bytes(*self)
+            .first_chunk::<PREFIX_SIZE>()
+            .unwrap()
     }
 }
 
@@ -296,23 +276,10 @@ impl AddressFamily for IPv6 {
         self.checked_shr(rhs).unwrap_or(0)
     }
 
-    fn as_prefix_bytes<const PREFIX_SIZE: usize>(
-        &self,
-        pfx_len: u8,
-    ) -> [u8; PREFIX_SIZE] {
-        let res = &mut [0_u8; PREFIX_SIZE];
-        *res.first_chunk_mut::<16>().unwrap() = self.to_le_bytes();
-        res[PREFIX_SIZE - 1] = pfx_len;
-        *res
-    }
-
-    fn from_prefix_bytes<const PREFIX_SIZE: usize>(
-        value: [u8; PREFIX_SIZE],
-    ) -> (Self, u8) {
-        (
-            u128::from_le_bytes(*value.first_chunk::<16>().unwrap()),
-            value[PREFIX_SIZE - 1],
-        )
+    fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
+        *u128::to_be_bytes(*self)
+            .first_chunk::<PREFIX_SIZE>()
+            .unwrap()
     }
 }
 

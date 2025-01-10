@@ -45,33 +45,22 @@ impl TryFrom<u8> for RouteStatus {
 //------------ PrefixId ------------------------------------------------------
 
 #[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
-pub struct PrefixId<AF: AddressFamily>(Option<(AF, u8)>);
+pub struct PrefixId<AF: AddressFamily> {
+    net: AF,
+    len: u8,
+}
 
 impl<AF: AddressFamily> PrefixId<AF> {
     pub fn new(net: AF, len: u8) -> Self {
-        PrefixId(Some((net, len)))
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
+        PrefixId { net, len }
     }
 
     pub fn get_net(&self) -> AF {
-        self.0.unwrap().0
+        self.net
     }
 
     pub fn get_len(&self) -> u8 {
-        self.0.unwrap().1
-    }
-
-    // This should never fail, since there shouldn't be a invalid prefix in
-    // this prefix id in the first place.
-    pub fn into_pub(&self) -> inetnum::addr::Prefix {
-        inetnum::addr::Prefix::new(
-            self.get_net().into_ipaddr(),
-            self.get_len(),
-        )
-        .unwrap_or_else(|p| panic!("can't convert {:?} into prefix.", p))
+        self.len
     }
 
     // Increment the length of the prefix without changing the bits part.
@@ -79,40 +68,38 @@ impl<AF: AddressFamily> PrefixId<AF> {
     // since the more specifics iterator includes the requested `base_prefix`
     // itself.
     pub fn inc_len(self) -> Self {
-        Self(self.0.map(|(net, len)| (net, len + 1)))
-    }
-
-    pub fn as_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
-        match self.0 {
-            Some(r) => r.0.as_prefix_bytes(r.1),
-            _ => [255; PREFIX_SIZE],
+        Self {
+            net: self.net,
+            len: self.len + 1,
         }
     }
-}
 
-impl<AF: AddressFamily> std::default::Default for PrefixId<AF> {
-    fn default() -> Self {
-        PrefixId(None)
+    // The lsm tree, used for persistence, stores the prefix in the key with
+    // len first, so that key range lookups can be made for more-specifics in
+    // each prefix length.
+    pub fn to_len_first_bytes<const PREFIX_SIZE: usize>(
+        &self,
+    ) -> [u8; PREFIX_SIZE] {
+        let bytes = &mut [0_u8; PREFIX_SIZE];
+        *bytes.last_chunk_mut::<4>().unwrap() = self.net.to_be_bytes();
+        bytes[0] = self.len;
+        *bytes
     }
 }
 
 impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     fn from(value: inetnum::addr::Prefix) -> Self {
-        Self(Some((AF::from_ipaddr(value.addr()), value.len())))
+        Self {
+            net: AF::from_ipaddr(value.addr()),
+            len: value.len(),
+        }
     }
 }
 
 impl<AF: AddressFamily> From<PrefixId<AF>> for inetnum::addr::Prefix {
     fn from(value: PrefixId<AF>) -> Self {
-        value.into_pub()
-    }
-}
-
-impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<PrefixId<AF>>
-    for [u8; PREFIX_SIZE]
-{
-    fn from(value: PrefixId<AF>) -> Self {
-        value.as_bytes::<PREFIX_SIZE>()
+        println!("{} {}", value.get_net(), value.get_len());
+        Self::new(value.get_net().into_ipaddr(), value.get_len()).unwrap()
     }
 }
 
@@ -120,6 +107,9 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<[u8; PREFIX_SIZE]>
     for PrefixId<AF>
 {
     fn from(value: [u8; PREFIX_SIZE]) -> Self {
-        PrefixId(Some(AF::from_prefix_bytes(value)))
+        Self {
+            net: u32::from_be_bytes(*value.last_chunk::<4>().unwrap()).into(),
+            len: value[0],
+        }
     }
 }

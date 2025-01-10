@@ -208,7 +208,7 @@ where
 {
     fn from(record: (PrefixId<AF>, Arc<M>)) -> Self {
         Self {
-            prefix: record.0.into_pub(),
+            prefix: record.0.into(),
             meta: (*record.1).clone(),
         }
     }
@@ -288,7 +288,7 @@ where
 {
     fn from(record: (PrefixId<AF>, Vec<PublicRecord<M>>)) -> Self {
         Self {
-            prefix: record.0.into_pub(),
+            prefix: record.0.into(),
             meta: record.1,
         }
     }
@@ -438,7 +438,7 @@ impl<AF: AddressFamily, M: Meta>
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
-            let u_pfx = pfx.0.into_pub();
+            let u_pfx = Prefix::from(pfx.0);
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
                     v4.push(PublicPrefixSingleRecord::new(
@@ -617,7 +617,7 @@ impl<AF: AddressFamily, M: Meta>
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
-            let u_pfx = pfx.0.into_pub();
+            let u_pfx = Prefix::from(pfx.0);
             match u_pfx.addr() {
                 std::net::IpAddr::V4(_) => {
                     v4.push(PublicPrefixRecord::new(u_pfx, pfx.1));
