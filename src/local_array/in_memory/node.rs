@@ -519,6 +519,7 @@ where
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
+
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -574,10 +575,13 @@ where
                 == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
         {
             // No children or at the end, return the definitive LMP we found.
-            true => (
+            true => { 
+                println!("found {:?}", found_pfx); 
+                (
                 None,      /* no more children */
                 found_pfx, /* The definitive LMP if any */
-            ),
+                )
+            },
             // There's another child, we won't return the found_pfx, since
             // we're not at the last nibble and we want an exact match only.
             false => (

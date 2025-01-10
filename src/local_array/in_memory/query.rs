@@ -714,7 +714,11 @@ where
             prefix: match_prefix_idx,
             match_type,
             less_specifics: if options.include_less_specifics {
-                less_specifics_vec
+                less_specifics_vec.map(|lsv| {
+                    lsv.into_iter()
+                        .filter(|r| r != &search_pfx)
+                        .collect::<Vec<_>>()
+                })
             } else {
                 None
             },

@@ -19,12 +19,11 @@
 // contention, since every lookup has to go through the levels near the root
 // in the TreeBitMap.
 
-use super::super::types::PrefixId;
 use super::atomic_types::{NodeBuckets, PrefixBuckets, PrefixSet};
 use super::node::{SizedStrideRef, StrideNodeId};
 use super::tree::{Stride3, Stride4, Stride5, TreeBitMap};
 use crate::local_array::types::RouteStatus;
-use crate::prefix_record::PublicRecord;
+use crate::PublicRecord;
 use crate::{
     af::AddressFamily,
     local_array::{
@@ -32,6 +31,7 @@ use crate::{
         in_memory::node::{
             NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
         },
+        types::PrefixId,
     },
     prefix_record::Meta,
 };
@@ -203,7 +203,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         //     })
                         // {
                         return Some((
-                            s_pfx.get_prefix_id().into_pub(),
+                            s_pfx.get_prefix_id().into(),
                             s_pfx.record_map.as_records(),
                         ));
                         // } else {
@@ -226,7 +226,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                         // {
                         self.cursor += 1;
                         return Some((
-                            s_pfx.get_prefix_id().into_pub(),
+                            s_pfx.get_prefix_id().into(),
                             s_pfx.record_map.as_records(),
                         ));
                         // }

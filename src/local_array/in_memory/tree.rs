@@ -1048,14 +1048,6 @@ impl<
         }
     }
 
-    #[allow(dead_code)]
-    fn remove_prefix(&mut self, index: PrefixId<AF>) -> Option<M> {
-        match index.is_empty() {
-            false => self.prefix_buckets.remove(index),
-            true => None,
-        }
-    }
-
     pub fn get_prefixes_count(&self) -> usize {
         self.counters.get_prefixes_count().iter().sum()
     }
