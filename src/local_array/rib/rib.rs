@@ -394,10 +394,15 @@ impl<
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
                 }
-                stored_prefix.record_map.mark_as_withdrawn_for_mui(mui, ltime);
+                stored_prefix
+                    .record_map
+                    .mark_as_withdrawn_for_mui(mui, ltime);
             }
             PersistStrategy::PersistOnly => {
-                println!("mark as wd in persist tree {:?} for mui {:?}", prefix, mui);
+                println!(
+                    "mark as wd in persist tree {:?} for mui {:?}",
+                    prefix, mui
+                );
                 let p_tree = self.persist_tree.as_ref().unwrap();
                 let stored_prefixes = p_tree
                     .get_records_with_keys_for_prefix_mui::<M>(prefix, mui);
@@ -429,7 +434,9 @@ impl<
                 if !exists {
                     return Err(PrefixStoreError::StoreNotReadyError);
                 }
-                stored_prefix.record_map.mark_as_withdrawn_for_mui(mui, ltime);
+                stored_prefix
+                    .record_map
+                    .mark_as_withdrawn_for_mui(mui, ltime);
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
@@ -507,12 +514,12 @@ impl<
                     // remove the entry for the same (prefix, mui), but with
                     // an older logical time
                     let old_key = PersistTree::<
-                        AF, 
+                        AF,
                         PREFIX_SIZE,
                         KEY_SIZE>::persistence_key(
-                            prefix, 
-                            mui, 
-                            record.ltime, 
+                            prefix,
+                            mui,
+                            record.ltime,
                             record.status
                     );
                     p_tree.remove(old_key);
@@ -683,12 +690,15 @@ impl<
     pub fn prefixes_iter(
         &self,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + '_ {
-        let pt_iter = self
-            .persist_tree
-            .as_ref()
-            .map(|t| t.prefixes_iter())
+        let pt_iter =
+            if self.config.persist_strategy == PersistStrategy::WriteAhead {
+                None
+            } else {
+                self.persist_tree.as_ref().map(|t| t.prefixes_iter())
+            }
             .into_iter()
             .flatten();
+
         self.in_memory_tree.prefixes_iter().chain(pt_iter)
     }
 

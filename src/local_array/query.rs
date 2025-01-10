@@ -139,7 +139,8 @@ where
         .flatten()
         .chain(
             (if mui.is_some_and(|m| {
-                !include_withdrawn && self.mui_is_withdrawn(m, guard)
+                self.config.persist_strategy == PersistStrategy::WriteAhead
+                    || (!include_withdrawn && self.mui_is_withdrawn(m, guard))
             }) {
                 None
             } else {
@@ -148,6 +149,7 @@ where
                 self.persist_tree.as_ref().map(|persist_tree| {
                     persist_tree.more_specific_prefix_iter_from(
                         prefix_id,
+                        vec![],
                         mui,
                         global_withdrawn_bmin,
                         include_withdrawn,
