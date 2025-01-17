@@ -26,6 +26,40 @@ where
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 {
+    pub fn get_value(
+        &'a self,
+        prefix_id: PrefixId<AF>,
+        mui: Option<u32>,
+        include_withdrawn: bool,
+        guard: &'a Guard,
+    ) -> Option<Vec<PublicRecord<M>>> {
+        match self.persist_strategy() {
+            PersistStrategy::WriteAhead => todo!(),
+            PersistStrategy::PersistHistory => todo!(),
+            PersistStrategy::MemoryOnly => self
+                .in_memory_tree
+                .non_recursive_retrieve_prefix(prefix_id)
+                .0
+                .map(|pfx| {
+                    pfx.record_map.get_filtered_records(
+                        mui,
+                        include_withdrawn,
+                        self.in_memory_tree.withdrawn_muis_bmin(guard),
+                    )
+                }),
+            PersistStrategy::PersistOnly => {
+                self.persist_tree.as_ref().map(|tree| {
+                    tree.get_records_for_prefix(
+                        prefix_id,
+                        mui,
+                        include_withdrawn,
+                        self.in_memory_tree.withdrawn_muis_bmin(guard),
+                    )
+                })
+            }
+        }
+    }
+
     pub fn more_specifics_from(
         &'a self,
         prefix_id: PrefixId<AF>,
@@ -33,9 +67,12 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        let result =
-            self.in_memory_tree.non_recursive_retrieve_prefix(prefix_id);
-        let prefix = result.0;
+        let prefix = if !self.contains(prefix_id, mui) {
+            Some(Prefix::from(prefix_id))
+        } else {
+            None
+        };
+        // let prefix = result.0;
         let more_specifics_vec =
             self.in_memory_tree.more_specific_prefix_iter_from(
                 prefix_id,
@@ -45,23 +82,27 @@ where
             );
 
         QueryResult {
-            prefix: if let Some(pfx) = prefix {
-                Prefix::new(
-                    pfx.prefix.get_net().into_ipaddr(),
-                    pfx.prefix.get_len(),
-                )
-                .ok()
-            } else {
-                None
-            },
+            // prefix: if let Some(pfx) = prefix_id {
+            //     Prefix::new(
+            //         pfx.prefix.get_net().into_ipaddr(),
+            //         pfx.prefix.get_len(),
+            //     )
+            //     .ok()
+            // } else {
+            //     None
+            // },
+            prefix,
+            // prefix_meta: prefix_id.record_map.get_filtered_records(
+            //     mui,
+            //     include_withdrawn,
+            //     self.in_memory_tree.withdrawn_muis_bmin(guard),
+            // ),
             prefix_meta: prefix
-                .map(|r| {
-                    r.record_map.get_filtered_records(
-                        mui,
-                        self.in_memory_tree.withdrawn_muis_bmin(guard),
-                    )
+                .map(|_pfx| {
+                    self.get_value(prefix_id, mui, include_withdrawn, guard)
+                        .unwrap_or_default()
                 })
-                .unwrap_or_default(),
+                .unwrap_or(vec![]),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
             more_specifics: Some(more_specifics_vec.collect()),
@@ -75,43 +116,47 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> QueryResult<M> {
-        let result =
-            self.in_memory_tree.non_recursive_retrieve_prefix(prefix_id);
+        let prefix = if !self.contains(prefix_id, mui) {
+            Some(Prefix::from(prefix_id))
+        } else {
+            None
+        };
 
-        let prefix = result.0;
-        let less_specifics_vec = result.1.map(
-            |(prefix_id, _level, _cur_set, _parents, _index)| {
-                self.in_memory_tree.less_specific_prefix_iter(
-                    prefix_id,
-                    mui,
-                    include_withdrawn,
-                    guard,
-                )
-            },
-        );
+        // let less_specifics_vec = result.1.map(
+        //     |(prefix_id, _level, _cur_set, _parents, _index)| {
+        let less_specifics_vec =
+            self.in_memory_tree.less_specific_prefix_iter(
+                prefix_id,
+                mui,
+                include_withdrawn,
+                guard,
+            );
 
         QueryResult {
-            prefix: if let Some(pfx) = prefix {
-                Prefix::new(
-                    pfx.prefix.get_net().into_ipaddr(),
-                    pfx.prefix.get_len(),
-                )
-                .ok()
-            } else {
-                None
-            },
-            prefix_meta: prefix
-                .map(|r| {
-                    r.record_map.get_filtered_records(
-                        mui,
-                        self.in_memory_tree.withdrawn_muis_bmin(guard),
-                    )
-                })
+            prefix,
+            // prefix_meta: prefix
+            //     .map(|r| {
+            //         r.record_map.get_filtered_records(
+            //             mui,
+            //             self.in_memory_tree.withdrawn_muis_bmin(guard),
+            //         )
+            //     })
+            //     .unwrap_or_default(),
+            prefix_meta: self
+                .get_value(prefix_id, mui, include_withdrawn, guard)
                 .unwrap_or_default(),
             match_type: MatchType::EmptyMatch,
-            less_specifics: less_specifics_vec.map(|iter| iter.collect()),
+            less_specifics: Some(less_specifics_vec.collect()),
             more_specifics: None,
         }
+    }
+
+    pub fn more_specifics_keys_from(
+        &self,
+        prefix_id: PrefixId<AF>,
+    ) -> impl Iterator<Item = PrefixId<AF>> + '_ {
+        self.in_memory_tree
+            .more_specific_prefix_only_iter_from(prefix_id)
     }
 
     pub fn more_specifics_iter_from(
@@ -121,6 +166,7 @@ where
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
+        println!("more_specifics_iter_from fn");
         // If the user wanted a specific mui and not withdrawn prefixes, we
         // may return early if the mui is globally withdrawn.
         (if mui.is_some_and(|m| {
@@ -195,6 +241,7 @@ where
         options: &MatchOptions,
         guard: &'a Guard,
     ) -> QueryResult<M> {
+        println!("match_prefix rib");
         match self.config.persist_strategy() {
             // Everything is in memory only, so look there. There can be no
             // historical records for this variant, so we just return the
@@ -208,29 +255,34 @@ where
             // to memory. However the in-memory-tree is still used to indicate
             // which (prefix, mui) tuples have been created.
             PersistStrategy::PersistOnly => {
-                let withdrawn_muis_bmin =
-                    self.in_memory_tree.withdrawn_muis_bmin(guard);
                 // If no withdawn should be included and a specific mui was
                 // requested, then return early, if the mui lives in the
                 // global withdrawn muis.
                 if !options.include_withdrawn {
                     if let Some(mui) = options.mui {
+                        let withdrawn_muis_bmin =
+                            self.in_memory_tree.withdrawn_muis_bmin(guard);
                         if withdrawn_muis_bmin.contains(mui) {
                             return QueryResult::empty();
                         }
                     }
                 }
 
-                if options.match_type == MatchType::ExactMatch
-                    && !self.contains(search_pfx, options.mui)
-                {
-                    return QueryResult::empty();
-                }
+                // if options.match_type == MatchType::ExactMatch
+                //     && !self.contains(search_pfx, options.mui)
+                // {
+                //     return QueryResult::empty();
+                // }
 
                 if let Some(persist_tree) = &self.persist_tree {
+                    let withdrawn_muis_bmin =
+                        self.in_memory_tree.withdrawn_muis_bmin(guard);
+                    println!("persist store found");
+                    println!("mem record {:#?}", search_pfx);
                     let tbm_result = self
                         .in_memory_tree
                         .match_prefix_by_tree_traversal(search_pfx, options);
+                    println!("found by traversal {:#?}", tbm_result);
 
                     persist_tree
                         .match_prefix(
@@ -240,6 +292,7 @@ where
                         )
                         .into()
                 } else {
+                    println!("no persist store");
                     QueryResult::empty()
                 }
             }
@@ -257,6 +310,9 @@ where
                                     persist_tree.get_records_for_prefix(
                                         search_pfx,
                                         options.mui,
+                                        options.include_withdrawn,
+                                        self.in_memory_tree
+                                            .withdrawn_muis_bmin(guard),
                                     ),
                                 );
                             }
@@ -272,6 +328,11 @@ where
                                             .get_records_for_prefix(
                                                 rec.0,
                                                 options.mui,
+                                                options.include_withdrawn,
+                                                self.in_memory_tree
+                                                    .withdrawn_muis_bmin(
+                                                        guard,
+                                                    ),
                                             );
                                     }
                                 }
@@ -284,6 +345,11 @@ where
                                             .get_records_for_prefix(
                                                 rec.0,
                                                 options.mui,
+                                                options.include_withdrawn,
+                                                self.in_memory_tree
+                                                    .withdrawn_muis_bmin(
+                                                        guard,
+                                                    ),
                                             );
                                     }
                                 }
@@ -297,6 +363,9 @@ where
                                     persist_tree.get_records_for_prefix(
                                         search_pfx,
                                         options.mui,
+                                        options.include_withdrawn,
+                                        self.in_memory_tree
+                                            .withdrawn_muis_bmin(guard),
                                     ),
                                 );
                             }
@@ -324,6 +393,9 @@ where
                                 persist_tree.get_records_for_prefix(
                                     search_pfx,
                                     options.mui,
+                                    options.include_withdrawn,
+                                    self.in_memory_tree
+                                        .withdrawn_muis_bmin(guard),
                                 ),
                             );
 
@@ -339,6 +411,11 @@ where
                                                 .get_records_for_prefix(
                                                     rec.0,
                                                     options.mui,
+                                                    options.include_withdrawn,
+                                                    self.in_memory_tree
+                                                        .withdrawn_muis_bmin(
+                                                            guard,
+                                                        ),
                                                 ),
                                         );
                                     }
@@ -353,6 +430,11 @@ where
                                                 .get_records_for_prefix(
                                                     rec.0,
                                                     options.mui,
+                                                    options.include_withdrawn,
+                                                    self.in_memory_tree
+                                                        .withdrawn_muis_bmin(
+                                                            guard,
+                                                        ),
                                                 ),
                                         );
                                     }
@@ -367,6 +449,9 @@ where
                                     persist_tree.get_records_for_prefix(
                                         search_pfx,
                                         options.mui,
+                                        options.include_withdrawn,
+                                        self.in_memory_tree
+                                            .withdrawn_muis_bmin(guard),
                                     ),
                                 );
                             }
@@ -396,7 +481,7 @@ where
                     |mui| {
                         p_rec
                             .record_map
-                            .get_record_for_active_mui(mui)
+                            .get_record_for_mui(mui, false)
                             .ok_or(PrefixStoreError::StoreNotReadyError)
                     },
                 )

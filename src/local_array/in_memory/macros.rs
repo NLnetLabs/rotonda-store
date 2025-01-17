@@ -187,7 +187,7 @@ macro_rules! impl_primitive_atomic_stride {
                 const STRIDE_LEN: u8 = $len;
 
                 fn get_bit_pos(nibble: u32, len: u8) -> $pfxsize {
-                    trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
+                    // trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
                     1 << (
                             <Self as Stride>::BITS - ((1 << len) - 1) as u8
                             - nibble as u8 - 1

@@ -13,7 +13,12 @@ impl AsRef<[u8]> for BeBytesAsn {
 
 impl From<Vec<u8>> for BeBytesAsn {
     fn from(value: Vec<u8>) -> Self {
-        Self(*value.first_chunk::<4>().unwrap())
+        println!("value {:#?}", value);
+        if let Some(value) = value.first_chunk::<4>() {
+            Self(*value)
+        } else {
+            Self([0; 4])
+        }
     }
 }
 

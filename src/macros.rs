@@ -115,3 +115,76 @@ macro_rules! all_strategies {
         )*
     };
 }
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! all_strategies_arced {
+    ( $( $fn_name: ident; $test_name: ident; $ty: ty ), * ) => {
+
+        $(
+            #[test]
+            fn $fn_name() -> Result<(), Box<dyn std::error::Error>> {
+                //------- Default (MemoryOnly)
+
+                println!("default strategy starting...");
+                let tree_bitmap =
+                    MultiThreadedStore::<$ty>::try_default()?;
+
+                $test_name(Arc::new(tree_bitmap))?;
+
+                //------- PersistOnly
+
+                println!("PersistOnly strategy starting...");
+                let store_config = StoreConfig {
+                    persist_strategy:
+                        rotonda_store::rib::PersistStrategy::PersistOnly,
+                    persist_path: "/tmp/rotonda/".into(),
+                };
+
+                let tree_bitmap = MultiThreadedStore::<
+                    $ty,
+                >::new_with_config(
+                    store_config
+                )?;
+
+                $test_name(Arc::new(tree_bitmap))?;
+
+                //------- PersistHistory
+
+                println!("PersistHistory strategy starting...");
+                let store_config = StoreConfig {
+                    persist_strategy:
+                        rotonda_store::rib::PersistStrategy::PersistHistory,
+                    persist_path: "/tmp/rotonda/".into(),
+                };
+
+                let tree_bitmap = MultiThreadedStore::<
+                    $ty,
+                >::new_with_config(
+                    store_config
+                )?;
+
+                $test_name(Arc::new(tree_bitmap))?;
+
+                //------- WriteAhead
+
+                println!("WriteAhead strategy starting...");
+                let store_config = StoreConfig {
+                    persist_strategy:
+                        rotonda_store::rib::PersistStrategy::WriteAhead,
+                    persist_path: "/tmp/rotonda/".into(),
+                };
+
+                let tree_bitmap = MultiThreadedStore::<
+                    $ty,
+                >::new_with_config(
+                    store_config
+                )?;
+
+                $test_name(Arc::new(tree_bitmap))?;
+
+                Ok(())
+            }
+        )*
+    };
+}

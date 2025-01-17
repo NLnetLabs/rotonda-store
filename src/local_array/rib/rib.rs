@@ -418,6 +418,7 @@ impl<
                         ltime,
                         RouteStatus::Withdrawn,
                     );
+
                     p_tree.insert(key, s.1.meta.as_ref());
 
                     // remove the entry for the same (prefix, mui), but with
@@ -440,7 +441,7 @@ impl<
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
-                    stored_prefix.record_map.get_record_for_active_mui(mui)
+                    stored_prefix.record_map.get_record_for_mui(mui, true)
                 {
                     let p_tree =
                         if let Some(p_tree) = self.persist_tree.as_ref() {
@@ -538,7 +539,7 @@ impl<
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
-                    stored_prefix.record_map.get_record_for_active_mui(mui)
+                    stored_prefix.record_map.get_record_for_mui(mui, true)
                 {
                     let p_tree =
                         if let Some(p_tree) = self.persist_tree.as_ref() {
@@ -712,9 +713,16 @@ impl<
         &self,
         prefix: &Prefix,
         mui: Option<u32>,
+        include_withdrawn: bool,
     ) -> Vec<PublicRecord<M>> {
         if let Some(p) = &self.persist_tree {
-            p.get_records_for_prefix(PrefixId::from(*prefix), mui)
+            let guard = epoch::pin();
+            p.get_records_for_prefix(
+                PrefixId::from(*prefix),
+                mui,
+                include_withdrawn,
+                self.in_memory_tree.withdrawn_muis_bmin(&guard),
+            )
         } else {
             vec![]
         }

@@ -356,15 +356,18 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         record_map.len()
     }
 
-    pub fn get_record_for_active_mui(
+    pub fn get_record_for_mui(
         &self,
         mui: u32,
+        include_withdrawn: bool,
     ) -> Option<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
 
         record_map.get(&mui).and_then(|r| {
-            if r.route_status() == RouteStatus::Active {
+            if include_withdrawn {
+                Some(PublicRecord::from((mui, r)))
+            } else if r.route_status() == RouteStatus::Active {
                 Some(PublicRecord::from((mui, r)))
             } else {
                 None
@@ -407,10 +410,13 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn get_filtered_records(
         &self,
         mui: Option<u32>,
+        include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
         if let Some(mui) = mui {
-            self.get_record_for_active_mui(mui).into_iter().collect()
+            self.get_record_for_mui(mui, include_withdrawn)
+                .into_iter()
+                .collect()
         } else {
             self.as_active_records_not_in_bmin(bmin)
         }

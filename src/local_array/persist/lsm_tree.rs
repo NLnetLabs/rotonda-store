@@ -4,6 +4,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 
 use inetnum::addr::Prefix;
+use log::trace;
 use lsm_tree::{AbstractTree, KvPair};
 use roaring::RoaringBitmap;
 
@@ -52,7 +53,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     }
 
     pub fn remove(&self, key: [u8; KEY_SIZE]) {
-        self.tree.remove(key, 0);
+        self.tree.remove_weak(key, 0);
         // the last byte of the prefix holds the length of the prefix.
         self.counters.dec_prefixes_count(key[PREFIX_SIZE]);
     }
@@ -61,42 +62,168 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &self,
         prefix: PrefixId<AF>,
         mui: Option<u32>,
+        include_withdrawn: bool,
+        withdrawn_muis_bmin: &RoaringBitmap,
     ) -> Vec<PublicRecord<M>> {
-        if let Some(mui) = mui {
-            let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
+        match (mui, include_withdrawn) {
+            // Specific mui, include withdrawn routes
+            (Some(mui), true) => {
+                // get the records from the persist store for the (prefix,
+                // mui) tuple only.
+                let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
+                (*self.tree.prefix(prefix_b))
+                    .into_iter()
+                    .map(|kv| {
+                        let kv = kv.unwrap();
+                        let (_, r_mui, ltime, mut status) =
+                            Self::parse_key(kv.0.as_ref());
 
-            (*self.tree.prefix(prefix_b))
-                .into_iter()
-                .map(|kv| {
-                    let kv = kv.unwrap();
-                    let (_, mui, ltime, status) =
-                        Self::parse_key(kv.0.as_ref());
-                    PublicRecord::new(
-                        mui,
-                        ltime,
-                        status,
-                        kv.1.as_ref().to_vec().into(),
-                    )
-                })
-                .collect::<Vec<_>>()
-        } else {
-            let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
+                        // If mui is in the global withdrawn muis table, then
+                        // rewrite the routestatus of the record to withdrawn.
+                        if withdrawn_muis_bmin.contains(r_mui) {
+                            status = RouteStatus::Withdrawn;
+                        }
+                        PublicRecord::new(
+                            mui,
+                            ltime,
+                            status,
+                            kv.1.as_ref().to_vec().into(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }
+            // Al muis, include withdrawn routes
+            (None, true) => {
+                // get all records for this prefix
+                let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
+                (*self.tree.prefix(prefix_b))
+                    .into_iter()
+                    .map(|kv| {
+                        let kv = kv.unwrap();
+                        let (_, r_mui, ltime, mut status) =
+                            Self::parse_key(kv.0.as_ref());
 
-            (*self.tree.prefix(prefix_b))
-                .into_iter()
-                .map(|kv| {
-                    let kv = kv.unwrap();
-                    let (_, mui, ltime, status) =
-                        Self::parse_key(kv.0.as_ref());
-                    PublicRecord::new(
-                        mui,
-                        ltime,
-                        status,
-                        kv.1.as_ref().to_vec().into(),
-                    )
-                })
-                .collect::<Vec<_>>()
+                        // If mui is in the global withdrawn muis table, then
+                        // rewrite the routestatus of the record to withdrawn.
+                        if withdrawn_muis_bmin.contains(r_mui) {
+                            status = RouteStatus::Withdrawn;
+                        }
+                        PublicRecord::new(
+                            r_mui,
+                            ltime,
+                            status,
+                            kv.1.as_ref().to_vec().into(),
+                        )
+                    })
+                    .collect::<Vec<_>>()
+            }
+            // All muis, exclude withdrawn routes
+            (None, false) => {
+                // get all records for this prefix
+                let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
+                (*self.tree.prefix(prefix_b))
+                    .into_iter()
+                    .filter_map(|kv| {
+                        let kv = kv.unwrap();
+                        let (_, r_mui, ltime, status) =
+                            Self::parse_key(kv.0.as_ref());
+
+                        // If mui is in the global withdrawn muis table, then
+                        // skip this record
+                        if status == RouteStatus::Withdrawn
+                            || withdrawn_muis_bmin.contains(r_mui)
+                        {
+                            return None;
+                        }
+                        Some(PublicRecord::new(
+                            r_mui,
+                            ltime,
+                            status,
+                            kv.1.as_ref().to_vec().into(),
+                        ))
+                    })
+                    .collect::<Vec<_>>()
+            }
+            // Specific mui, exclude withdrawn routes
+            (Some(mui), false) => {
+                // get the records from the persist store for the (prefix,
+                // mui) tuple only.
+                let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
+                (*self.tree.prefix(prefix_b))
+                    .into_iter()
+                    .filter_map(|kv| {
+                        let kv = kv.unwrap();
+                        let (_, r_mui, ltime, status) =
+                            Self::parse_key(kv.0.as_ref());
+
+                        // If mui is in the global withdrawn muis table, then
+                        // skip this record
+                        if status == RouteStatus::Withdrawn
+                            || withdrawn_muis_bmin.contains(r_mui)
+                        {
+                            return None;
+                        }
+                        Some(PublicRecord::new(
+                            mui,
+                            ltime,
+                            status,
+                            kv.1.as_ref().to_vec().into(),
+                        ))
+                    })
+                    .collect::<Vec<_>>()
+            }
         }
+
+        // if let Some(mui) = mui {
+        //     let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
+
+        //     (*self.tree.prefix(prefix_b))
+        //         .into_iter()
+        //         .filter_map(|kv| {
+        //             let kv = kv.unwrap();
+        //             let (_, mui, ltime, mut status) =
+        //                 Self::parse_key(kv.0.as_ref());
+        //             if include_withdrawn {
+        //                 // If mui is in the global withdrawn muis table, then
+        //                 // rewrite the routestatus of the record to withdrawn.
+        //                 if withdrawn_muis_bmin.contains(mui) {
+        //                     status = RouteStatus::Withdrawn;
+        //                 }
+        //             // If the use does not want withdrawn routes then filter
+        //             // them out here.
+        //             } else if status == RouteStatus::Withdrawn {
+        //                 return None;
+        //             }
+        //             Some(PublicRecord::new(
+        //                 mui,
+        //                 ltime,
+        //                 status,
+        //                 kv.1.as_ref().to_vec().into(),
+        //             ))
+        //         })
+        //         .collect::<Vec<_>>()
+        // } else {
+        //     let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
+
+        //     (*self.tree.prefix(prefix_b))
+        //         .into_iter()
+        //         .map(|kv| {
+        //             let kv = kv.unwrap();
+        //             let (_, mui, ltime, status) =
+        //                 Self::parse_key(kv.0.as_ref());
+        //             if include_withdrawn || status != RouteStatus::Withdrawn {
+        //                 Some(PublicRecord::new(
+        //                     mui,
+        //                     ltime,
+        //                     status,
+        //                     kv.1.as_ref().to_vec().into(),
+        //                 ))
+        //             } else {
+        //                 None
+        //             }
+        //         })
+        //         .collect::<Vec<_>>()
+        // }
     }
 
     pub fn get_most_recent_record_for_prefix_mui<M: Meta>(
@@ -166,37 +293,29 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         self.tree.range(start.to_len_first_bytes()..end)
     }
 
-    fn enrich_prefix<M: Meta>(
-        &self,
-        prefix: Option<PrefixId<AF>>,
-        mui: Option<u32>,
-        include_withdrawn: bool,
-        bmin: &RoaringBitmap,
-    ) -> (Option<PrefixId<AF>>, Vec<PublicRecord<M>>) {
-        match prefix {
-            Some(pfx) => (
-                Some(pfx),
-                self.get_records_for_prefix(pfx, mui)
-                    .into_iter()
-                    .filter_map(|mut r| {
-                        if !include_withdrawn
-                            && r.status == RouteStatus::Withdrawn
-                        {
-                            return None;
-                        }
-                        if bmin.contains(r.multi_uniq_id) {
-                            if !include_withdrawn {
-                                return None;
-                            }
-                            r.status = RouteStatus::Withdrawn;
-                        }
-                        Some(r)
-                    })
-                    .collect(),
-            ),
-            None => (None, vec![]),
-        }
-    }
+    // fn enrich_prefix<M: Meta>(
+    //     &self,
+    //     prefix: PrefixId<AF>,
+    //     mui: Option<u32>,
+    //     include_withdrawn: bool,
+    //     bmin: &RoaringBitmap,
+    // ) -> Vec<PublicRecord<M>> {
+    //     self.get_records_for_prefix(prefix, mui, include_withdrawn, bmin)
+    // .into_iter()
+    // .filter_map(|mut r| {
+    //     if !include_withdrawn && r.status == RouteStatus::Withdrawn {
+    //         return None;
+    //     }
+    //     if bmin.contains(r.multi_uniq_id) {
+    //         if !include_withdrawn {
+    //             return None;
+    //         }
+    //         r.status = RouteStatus::Withdrawn;
+    //     }
+    //     Some(r)
+    // })
+    // .collect()
+    // }
 
     fn enrich_prefixes<M: Meta>(
         &self,
@@ -210,18 +329,23 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 .flat_map(move |pfx| {
                     Some((
                         *pfx,
-                        self.get_records_for_prefix(*pfx, mui)
-                            .into_iter()
-                            .filter_map(|mut r| {
-                                if bmin.contains(r.multi_uniq_id) {
-                                    if !include_withdrawn {
-                                        return None;
-                                    }
-                                    r.status = RouteStatus::Withdrawn;
+                        self.get_records_for_prefix(
+                            *pfx,
+                            mui,
+                            include_withdrawn,
+                            bmin,
+                        )
+                        .into_iter()
+                        .filter_map(|mut r| {
+                            if bmin.contains(r.multi_uniq_id) {
+                                if !include_withdrawn {
+                                    return None;
                                 }
-                                Some(r)
-                            })
-                            .collect(),
+                                r.status = RouteStatus::Withdrawn;
+                            }
+                            Some(r)
+                        })
+                        .collect(),
                     ))
                 })
                 .collect()
@@ -243,17 +367,42 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         options: &MatchOptions,
         bmin: &RoaringBitmap,
     ) -> FamilyQueryResult<AF, M> {
-        let (prefix, prefix_meta) = self.enrich_prefix(
-            search_pfxs.prefix,
-            options.mui,
-            options.include_withdrawn,
-            bmin,
-        );
+        let (prefix, prefix_meta) = if let Some(prefix) = search_pfxs.prefix {
+            (
+                prefix,
+                self.get_records_for_prefix(
+                    prefix,
+                    options.mui,
+                    options.include_withdrawn,
+                    bmin,
+                ),
+            )
+        } else {
+            return FamilyQueryResult {
+                match_type: MatchType::EmptyMatch,
+                prefix: None,
+                prefix_meta: vec![],
+                less_specifics: if options.include_less_specifics {
+                    search_pfxs.less_specifics.map(|v| {
+                        v.into_iter().map(|p| (p, vec![])).collect::<Vec<_>>()
+                    })
+                } else {
+                    None
+                },
+                more_specifics: if options.include_more_specifics {
+                    search_pfxs.more_specifics.map(|v| {
+                        v.into_iter().map(|p| (p, vec![])).collect::<Vec<_>>()
+                    })
+                } else {
+                    None
+                },
+            };
+        };
 
         let mut res = match options.include_history {
             // All the records for all the prefixes
             IncludeHistory::All => FamilyQueryResult {
-                prefix,
+                prefix: Some(prefix),
                 prefix_meta,
                 match_type: search_pfxs.match_type,
                 less_specifics: self.enrich_prefixes(
@@ -264,7 +413,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 ),
                 more_specifics: search_pfxs.more_specifics.map(|ms| {
                     self.more_specific_prefix_iter_from(
-                        prefix.unwrap(),
+                        prefix,
                         ms.iter().map(|p| p.get_len()).collect::<Vec<_>>(),
                         options.mui,
                         bmin,
@@ -278,7 +427,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             // attached. Not useful with the MemoryOnly strategy (historical
             // records are neve kept in memory).
             IncludeHistory::SearchPrefix => FamilyQueryResult {
-                prefix,
+                prefix: Some(prefix),
                 prefix_meta,
                 match_type: search_pfxs.match_type,
                 less_specifics: self
@@ -288,30 +437,35 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             },
             // Only the most recent record of the search prefix is returned
             // with the prefixes. This is used for the PersistOnly strategy.
-            IncludeHistory::None => FamilyQueryResult {
-                prefix,
-                prefix_meta,
-                match_type: search_pfxs.match_type,
-                less_specifics: search_pfxs.less_specifics.map(|ls| {
-                    self.less_specific_prefix_iter_from(
-                        ls,
-                        options.mui,
-                        bmin,
-                        options.include_withdrawn,
-                    )
-                    .collect::<Vec<_>>()
-                }),
-                more_specifics: search_pfxs.more_specifics.map(|ms| {
-                    self.more_specific_prefix_iter_from(
-                        prefix.unwrap(),
-                        ms.iter().map(|p| p.get_len()).collect::<Vec<_>>(),
-                        options.mui,
-                        bmin,
-                        options.include_withdrawn,
-                    )
-                    .collect::<Vec<_>>()
-                }),
-            },
+            IncludeHistory::None => {
+                println!("Include history: None");
+                FamilyQueryResult {
+                    prefix: Some(prefix),
+                    prefix_meta,
+                    match_type: search_pfxs.match_type,
+                    less_specifics: search_pfxs.less_specifics.map(|ls| {
+                        self.less_specific_prefix_iter_from(
+                            ls,
+                            options.mui,
+                            bmin,
+                            options.include_withdrawn,
+                        )
+                        .collect::<Vec<_>>()
+                    }),
+                    more_specifics: search_pfxs.more_specifics.map(|ms| {
+                        self.more_specific_prefix_iter_from(
+                            prefix,
+                            ms.iter()
+                                .map(|p| p.get_len())
+                                .collect::<Vec<_>>(),
+                            options.mui,
+                            bmin,
+                            options.include_withdrawn,
+                        )
+                        .collect::<Vec<_>>()
+                    }),
+                }
+            }
         };
 
         res.match_type = match (options.match_type, &res) {
@@ -474,11 +628,13 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         global_withdrawn_bmin: &'a RoaringBitmap,
         include_withdrawn: bool,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
+        trace!("search more specifics in the persist store.");
         if search_lengths.is_empty() {
             for l in search_prefix.get_len() + 1..=AF::BITS {
                 search_lengths.push(l);
             }
         }
+        println!("more specific prefix lengths {:?}", search_lengths);
 
         let len = search_lengths.pop().unwrap();
         let cur_range = self
@@ -758,19 +914,22 @@ impl<
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(lp) = self.search_lengths.pop() {
-                let recs = self
-                    .store
-                    .get_records_for_prefix(lp, self.mui)
-                    .into_iter()
-                    .filter(|r| self.mui.is_none_or(|m| m == r.multi_uniq_id))
-                    .filter(|r| {
-                        self.include_withdrawn
-                            || (!self
-                                .global_withdrawn_bmin
-                                .contains(r.multi_uniq_id)
-                                && r.status != RouteStatus::Withdrawn)
-                    })
-                    .collect::<Vec<_>>();
+                let recs = self.store.get_records_for_prefix(
+                    lp,
+                    self.mui,
+                    self.include_withdrawn,
+                    self.global_withdrawn_bmin,
+                );
+                // .into_iter()
+                // .filter(|r| self.mui.is_none_or(|m| m == r.multi_uniq_id))
+                // .filter(|r| {
+                //     self.include_withdrawn
+                //         || (!self
+                //             .global_withdrawn_bmin
+                //             .contains(r.multi_uniq_id)
+                //             && r.status != RouteStatus::Withdrawn)
+                // })
+                // .collect::<Vec<_>>();
 
                 if !recs.is_empty() {
                     return Some((lp, recs));

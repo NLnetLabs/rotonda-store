@@ -2,7 +2,7 @@
 
 use inetnum::asn::Asn;
 
-use crate::Meta;
+use crate::{Meta, PublicRecord};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct PrefixAs([u8; 4]);

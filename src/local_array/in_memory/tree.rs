@@ -1157,13 +1157,13 @@ impl<
             0
         };
         let this_level = <NB>::len_to_store_bits(id.get_id().1, level);
-        trace!("bits division {}", this_level);
-        trace!(
-            "calculated index ({} << {}) >> {}",
-            id.get_id().0,
-            last_level,
-            ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
-        );
+        // trace!("bits division {}", this_level);
+        // trace!(
+        //     "calculated index ({} << {}) >> {}",
+        //     id.get_id().0,
+        //     last_level,
+        //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
+        // );
         // HASHING FUNCTION
         ((id.get_id().0 << last_level)
             >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))

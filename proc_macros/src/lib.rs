@@ -888,6 +888,25 @@ pub fn create_store(
                 }
             }
 
+            pub fn more_specifics_keys_from(&'a self,
+                search_pfx: &Prefix,
+            ) -> Vec<Prefix> {
+
+                match search_pfx.addr() {
+                    std::net::IpAddr::V4(addr) => self
+                        .v4
+                        .more_specifics_keys_from(PrefixId::from(*search_pfx)
+                        ).map(|p| Prefix::from(p)).collect(),
+                    std::net::IpAddr::V6(addr) => self
+                        .v6
+                        .more_specifics_keys_from(
+                            PrefixId::<IPv6>::from(
+                                *search_pfx
+                            ),
+                        ).map(|p| Prefix::from(p)).collect()
+                }
+            }
+
             /// Return a `QuerySet` that contains all the less-specific
             /// prefixes of the `search_pfx` in the store, including the
             /// meta-data of these prefixes.
@@ -1646,12 +1665,21 @@ pub fn create_store(
 
             pub fn get_records_for_prefix(
                 &self, prefix: &Prefix,
-                mui: Option<u32>
+                mui: Option<u32>,
+                include_withdrawn: bool
             ) ->
                 Vec<Record<M>> {
                 match prefix.is_v4() {
-                    true => self.v4.get_records_for_prefix(prefix, mui),
-                    false => self.v6.get_records_for_prefix(prefix, mui)
+                    true => self.v4.get_records_for_prefix(
+                        prefix,
+                        mui,
+                        include_withdrawn
+                    ),
+                    false => self.v6.get_records_for_prefix(
+                        prefix,
+                        mui,
+                        include_withdrawn
+                    )
                 }
             }
 

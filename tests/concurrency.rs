@@ -1,9 +1,13 @@
-use std::{str::FromStr, sync::atomic::Ordering};
+use std::{
+    str::FromStr,
+    sync::{atomic::Ordering, Arc},
+};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    prelude::multi::RouteStatus, rib::StoreConfig, test_types::BeBytesAsn,
-    IncludeHistory, MatchOptions, MultiThreadedStore, PublicRecord as Record,
+    meta_examples::NoMeta, prelude::multi::RouteStatus, rib::StoreConfig,
+    test_types::BeBytesAsn, IncludeHistory, MatchOptions, MultiThreadedStore,
+    PublicRecord as Record,
 };
 
 mod common {
@@ -17,49 +21,14 @@ mod common {
     }
 }
 
-#[test]
-fn test_concurrent_updates_1_multiple_persist_scenarios(
-) -> Result<(), Box<dyn std::error::Error>> {
-    //------- Default (MemoryOnly)
-
-    println!("default strategy starting...");
-    let tree_bitmap = MultiThreadedStore::<BeBytesAsn>::try_default()?;
-
-    test_concurrent_updates_1(std::sync::Arc::new(tree_bitmap))?;
-
-    //------- PersistOnly
-
-    println!("PersistOnly strategy starting...");
-    let store_config = StoreConfig {
-        persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
-        persist_path: "/tmp/rotonda/".into(),
-    };
-
-    let tree_bitmap = std::sync::Arc::new(
-        MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
-    );
-
-    test_concurrent_updates_1(tree_bitmap)?;
-
-    //------- PersistHistory
-
-    println!("PersistHistory strategy starting...");
-    let store_config = StoreConfig {
-        persist_strategy: rotonda_store::rib::PersistStrategy::PersistHistory,
-        persist_path: "/tmp/rotonda/".into(),
-    };
-
-    let tree_bitmap = std::sync::Arc::new(
-        MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
-    );
-
-    test_concurrent_updates_1(tree_bitmap)?;
-
-    Ok(())
-}
+rotonda_store::all_strategies![
+    test_cc_updates_1;
+    test_concurrent_updates_1;
+    BeBytesAsn
+];
 
 fn test_concurrent_updates_1(
-    store: std::sync::Arc<MultiThreadedStore<BeBytesAsn>>,
+    tree_bitmap: MultiThreadedStore<BeBytesAsn>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
@@ -118,12 +87,12 @@ fn test_concurrent_updates_1(
     };
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-
+    let tree_bitmap = std::sync::Arc::new(tree_bitmap);
     let _: Vec<_> = vec![mui_data_1, mui_data_2, mui_data_3]
         .into_iter()
         .map(|data: MuiData| {
-            let tree_bitmap = store.clone();
             let cur_ltime = cur_ltime.clone();
+            let tbm = tree_bitmap.clone();
 
             std::thread::Builder::new()
                 .name(data.mui.to_string())
@@ -132,7 +101,7 @@ fn test_concurrent_updates_1(
                     for pfx in data.pfxs {
                         let _ = cur_ltime.fetch_add(1, Ordering::Release);
 
-                        match tree_bitmap.insert(
+                        match tbm.insert(
                             &pfx,
                             Record::new(
                                 data.mui,
@@ -156,15 +125,15 @@ fn test_concurrent_updates_1(
         .map(|t| t.join())
         .collect();
 
-    println!("COUNT {}", store.prefixes_count());
+    println!("COUNT {:?}", tree_bitmap.prefixes_count());
 
-    let all_pfxs_iter = store.prefixes_iter().collect::<Vec<_>>();
+    let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
 
-    assert!(store.contains(&pfx, None));
-    assert!(store.contains(&pfx, Some(1)));
-    assert!(store.contains(&pfx, Some(2)));
+    assert!(tree_bitmap.contains(&pfx, None));
+    assert!(tree_bitmap.contains(&pfx, Some(1)));
+    assert!(tree_bitmap.contains(&pfx, Some(2)));
 
     assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
@@ -356,7 +325,7 @@ fn test_concurrent_updates_1(
         .clone()
         .into_iter()
         .map(|pfx: Prefix| {
-            let tree_bitmap = store.clone();
+            let tree_bitmap = tree_bitmap.clone();
             let cur_ltime = cur_ltime.clone();
 
             std::thread::Builder::new()
@@ -376,7 +345,10 @@ fn test_concurrent_updates_1(
         .map(|t| t.join())
         .collect();
 
-    println!("{:#?}", store.prefixes_iter().collect::<Vec<_>>());
+    println!(
+        "prefixes_iter {:#?}",
+        tree_bitmap.as_ref().prefixes_iter().collect::<Vec<_>>()
+    );
 
     let match_options = MatchOptions {
         match_type: rotonda_store::MatchType::ExactMatch,
@@ -389,7 +361,7 @@ fn test_concurrent_updates_1(
 
     for pfx in pfx_vec_2 {
         let guard = rotonda_store::epoch::pin();
-        let res = store.match_prefix(&pfx, &match_options, &guard);
+        let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
         assert_eq!(res.prefix, Some(pfx));
         println!("PFX {:?}", res);
         assert_eq!(
@@ -404,8 +376,16 @@ fn test_concurrent_updates_1(
     Ok(())
 }
 
-#[test]
-fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
+rotonda_store::all_strategies_arced![
+    test_cc_updates_2;
+    test_concurrent_updates_2;
+    BeBytesAsn
+];
+
+// #[test]
+fn test_concurrent_updates_2(
+    tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     let pfx_vec_1 = vec![
@@ -429,19 +409,25 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         Prefix::from_str("188.0.0.0/8")?,
     ];
 
-    let tree_bitmap =
-        std::sync::Arc::new(MultiThreadedStore::<BeBytesAsn>::try_default()?);
-
     const MUI_DATA: [u32; 4] = [65501, 65502, 65503, 65504];
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    println!("PersistOnly strategy starting...");
+    let store_config = StoreConfig {
+        persist_strategy: rotonda_store::rib::PersistStrategy::MemoryOnly,
+        persist_path: "/tmp/rotonda/".into(),
+    };
+    // let tree_bitmap = std::sync::Arc::new(
+    //     MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
+    // );
 
     let _: Vec<_> =
         vec![pfx_vec_1.clone(), pfx_vec_2.clone(), pfx_vec_3.clone()]
             .into_iter()
             .enumerate()
             .map(|(n, pfxs)| {
-                let tree_bitmap = tree_bitmap.clone();
+                let tbm = std::sync::Arc::clone(&tree_bitmap);
                 let cur_ltime = cur_ltime.clone();
 
                 std::thread::Builder::new()
@@ -451,7 +437,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
                         for (i, pfx) in pfxs.iter().enumerate() {
                             let _ = cur_ltime.fetch_add(1, Ordering::Release);
 
-                            match tree_bitmap.insert(
+                            match tbm.insert(
                                 pfx,
                                 Record::new(
                                     i as u32 + 1,
@@ -463,7 +449,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
                             ) {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    println!("{}", e);
+                                    println!("Err: {}", e);
                                 }
                             };
                         }
@@ -475,7 +461,10 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
             .map(|t| t.join())
             .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter().collect::<Vec<_>>());
+    println!(
+        "prefixes_iter#1 :{:#?}",
+        tree_bitmap.prefixes_iter().collect::<Vec<_>>()
+    );
 
     let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
 
@@ -626,7 +615,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     let _: Vec<_> = wd_pfxs
         .into_iter()
         .map(|pfx: Prefix| {
-            let tree_bitmap = tree_bitmap.clone();
+            let tbm = std::sync::Arc::clone(&tree_bitmap);
             let cur_ltime = cur_ltime.clone();
 
             std::thread::Builder::new()
@@ -635,8 +624,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
                     print!("\nstart withdraw {} ---", 2);
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
-                    tree_bitmap
-                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2, 11)
+                    tbm.mark_mui_as_withdrawn_for_prefix(&pfx, 2, 15)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");
@@ -659,6 +647,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         let guard = rotonda_store::epoch::pin();
         let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
         assert_eq!(res.prefix, Some(pfx));
+        println!("RES {:#?}", res);
         assert_eq!(
             res.prefix_meta
                 .iter()
@@ -669,8 +658,9 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    println!("get all prefixes");
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::ExactMatch,
+        match_type: rotonda_store::MatchType::EmptyMatch,
         include_withdrawn: false,
         include_less_specifics: false,
         include_more_specifics: true,
@@ -678,11 +668,53 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         include_history: IncludeHistory::None,
     };
 
-    let pfx = Prefix::from_str("0.0.0.0/0").unwrap();
+    // let pfx0 = Prefix::from_str("128.0.0.0/2").unwrap();
+    let pfx128 = Prefix::from_str("0.0.0.0/0").unwrap();
     let guard = rotonda_store::epoch::pin();
-    let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
+    // let res0 = tree_bitmap.match_prefix(&pfx0, &match_options, &guard);
+    let res128 = tree_bitmap.match_prefix(&pfx128, &match_options, &guard);
 
-    println!("{:#?}", res);
+    // println!("000 {:#?}", res0);
+    println!("128 {:#?}", res128);
+
+    assert!(tree_bitmap
+        .contains(&Prefix::from_str("185.34.14.0/24").unwrap(), None));
+
+    tree_bitmap
+        .insert(
+            &Prefix::from_str("32.0.0.0/4").unwrap(),
+            Record::new(
+                1,
+                cur_ltime.load(Ordering::Acquire),
+                RouteStatus::Active,
+                Asn::from(653400).into(),
+            ),
+            None,
+        )
+        .unwrap();
+
+    assert!(
+        tree_bitmap.contains(&Prefix::from_str("32.0.0.0/4").unwrap(), None)
+    );
+
+    assert_eq!(
+        tree_bitmap
+            .match_prefix(
+                &Prefix::from_str("0.0.0.0/2").unwrap(),
+                &match_options,
+                &guard
+            )
+            .more_specifics
+            .unwrap()
+            .len(),
+        1
+    );
+
+    // let guard = rotonda_store::epoch::pin();
+    // println!(
+    //     "more_specifics_iter_from {:#?}",
+    //     tree_bitmap.more_specifics_keys_from(&pfx128)
+    // );
 
     let active_len = all_pfxs_iter
         .iter()
@@ -690,8 +722,57 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         .collect::<Vec<_>>()
         .len();
     assert_eq!(active_len, all_pfxs_iter.len());
-    let len_2 = res.more_specifics.unwrap().v4.len();
+    let len_2 = res128.more_specifics.unwrap().v4.len();
+    // + res128.more_specifics.unwrap().v4.len();
     assert_eq!(active_len, len_2);
+
+    Ok(())
+}
+
+#[test]
+fn shit_test() -> Result<(), Box<dyn std::error::Error>> {
+    crate::common::init();
+
+    println!("PersistOnly strategy starting...");
+    let store_config = StoreConfig {
+        persist_strategy: rotonda_store::rib::PersistStrategy::MemoryOnly,
+        persist_path: "/tmp/rotonda/".into(),
+    };
+    let tree_bitmap = std::sync::Arc::new(
+        MultiThreadedStore::<NoMeta>::new_with_config(store_config)?,
+    );
+
+    let pfx1 = Prefix::from_str("185.34.0.0/16")?;
+    let pfx2 = Prefix::from_str("185.34.3.0/24")?;
+    // let search_pfx = Prefix::from_str("128.0.0.0/1")?;
+    let search_pfx = Prefix::from_str("0.0.0.0/0")?;
+
+    tree_bitmap
+        .insert(
+            &pfx1,
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )
+        .unwrap();
+
+    tree_bitmap
+        .insert(
+            &pfx2,
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )
+        .unwrap();
+
+    println!("-------------------");
+
+    let guard = rotonda_store::epoch::pin();
+    let mp = tree_bitmap
+        .more_specifics_iter_from(&search_pfx, None, false, &guard)
+        .collect::<Vec<_>>();
+
+    println!("more specifics : {:#?}", mp);
+
+    assert_eq!(mp.len(), 2);
 
     Ok(())
 }
