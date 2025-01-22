@@ -44,7 +44,6 @@ where
                         pfx.record_map
                             .get_filtered_records(
                                 options.mui,
-                                options.include_withdrawn,
                                 withdrawn_muis_bmin,
                             )
                             .into_iter()
@@ -117,7 +116,6 @@ where
                 None
             },
             more_specifics: if options.include_more_specifics {
-                println!("add more specifics");
                 Some(
                     self.more_specific_prefix_iter_from(
                         if let Some(pfx) = stored_prefix {
@@ -148,18 +146,11 @@ where
         start_node_id: StrideNodeId<AF>,
         found_pfx_vec: &mut Vec<PrefixId<AF>>,
     ) {
-        trace!(
-            "get_all_more_specifics_for_node {:?}",
-            self.retrieve_node(start_node_id)
-        );
+        trace!("{:?}", self.retrieve_node(start_node_id));
         match self.retrieve_node(start_node_id) {
             Some(SizedStrideRef::Stride3(n)) => {
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
-                );
-                trace!(
-                    "3 found_pfx no {:#?}",
-                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>()
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -173,10 +164,6 @@ where
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
                 );
-                trace!(
-                    "4 found_pfx no {:#?}",
-                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>()
-                );
 
                 for child_node in n.ptr_iter(start_node_id) {
                     self.get_all_more_specifics_for_node(
@@ -188,10 +175,6 @@ where
             Some(SizedStrideRef::Stride5(n)) => {
                 found_pfx_vec.extend(
                     n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>(),
-                );
-                trace!(
-                    "5 found_pfx no {:#?}",
-                    n.pfx_iter(start_node_id).collect::<Vec<PrefixId<AF>>>()
                 );
 
                 for child_node in n.ptr_iter(start_node_id) {
@@ -227,7 +210,6 @@ where
         for child_node in cnvec.iter() {
             self.get_all_more_specifics_for_node(*child_node, &mut msvec);
         }
-        trace!("MSVEC {:?}", msvec);
         Some(msvec)
     }
 
@@ -266,28 +248,28 @@ where
         // children of the root node. We, however, want the default prefix
         // which lives on the root node itself! We are *not* going to return
         // all of the prefixes in the tree as more-specifics.
-        // if search_pfx.get_len() == 0 {
-        // match self.load_default_route_prefix_serial() {
-        //     0 => {
-        //         return QueryResult {
-        //             prefix: None,
-        //             prefix_meta: vec![],
-        //             match_type: MatchType::EmptyMatch,
-        //             less_specifics: None,
-        //             more_specifics: None,
-        //         };
-        //     }
+        if search_pfx.get_len() == 0 {
+            // match self.load_default_route_prefix_serial() {
+            //     0 => {
+            //         return QueryResult {
+            //             prefix: None,
+            //             prefix_meta: vec![],
+            //             match_type: MatchType::EmptyMatch,
+            //             less_specifics: None,
+            //             more_specifics: None,
+            //         };
+            //     }
 
-        //     _serial => {
-        // return treequeryresult {
-        //     prefix: none,
-        //     match_type: matchtype::emptymatch,
-        //     less_specifics: none,
-        //     more_specifics: none,
-        // };
-        // }
-        // }
-        // }
+            //     _serial => {
+            return TreeQueryResult {
+                prefix: None,
+                match_type: MatchType::EmptyMatch,
+                less_specifics: None,
+                more_specifics: None,
+            };
+            // }
+            // }
+        }
 
         let mut stride_end = 0;
 
@@ -297,8 +279,6 @@ where
             4 => self.retrieve_node(root_node_id).unwrap(),
             _ => self.retrieve_node(root_node_id).unwrap(),
         };
-
-        trace!("RETRIEVED ROOT NODE {:#?}", node);
 
         let mut nibble;
         let mut nibble_len;
@@ -322,12 +302,11 @@ where
         };
 
         // The indexes of the more-specifics.
-        let mut more_specifics_vec: Vec<PrefixId<AF>> = vec![];
-        // let mut more_specifics_vec = if options.include_more_specifics {
-        //     Some(Vec::<PrefixId<AF>>::new())
-        // } else {
-        //     None
-        // };
+        let mut more_specifics_vec = if options.include_more_specifics {
+            Some(Vec::<PrefixId<AF>>::new())
+        } else {
+            None
+        };
 
         //---- Stride Processing --------------------------------------------
 
@@ -343,7 +322,6 @@ where
         // `post-processing` section.
 
         for stride in self.get_stride_sizes() {
-            println!("stride {}", stride);
             stride_end += stride;
 
             let last_stride = search_pfx.get_len() < stride_end;
@@ -408,7 +386,7 @@ where
 
                             if last_stride {
                                 if options.include_more_specifics {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -417,10 +395,7 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v.iter());
-                                    }
+                                        );
                                 }
                                 break;
                             }
@@ -430,7 +405,7 @@ where
 
                             if last_stride {
                                 if options.include_more_specifics {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -439,10 +414,7 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
                                 }
                                 break;
                             }
@@ -452,7 +424,7 @@ where
                         // node.
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
-                                if let Some(v) = self
+                                more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
                                         current_node,
                                         nibble,
@@ -461,10 +433,7 @@ where
                                             search_pfx.get_net(),
                                             stride_end - stride,
                                         ),
-                                    )
-                                {
-                                    more_specifics_vec.extend(v);
-                                }
+                                    );
                             }
                             match_prefix_idx = Some(pfx_idx);
                             break;
@@ -480,7 +449,7 @@ where
                                     // To make sure we don't process this
                                     // match arm more then once, we return
                                     // early here.
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -489,10 +458,7 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
 
                                     match_prefix_idx = None;
                                     break;
@@ -538,7 +504,7 @@ where
 
                             if last_stride {
                                 if options.include_more_specifics {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -547,10 +513,7 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v.iter());
-                                    }
+                                        );
                                 }
                                 break;
                             }
@@ -560,7 +523,7 @@ where
 
                             if last_stride {
                                 if options.include_more_specifics {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -569,17 +532,14 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
                                 }
                                 break;
                             }
                         }
                         (None, Some(pfx_idx)) => {
                             if options.include_more_specifics {
-                                if let Some(v) = self
+                                more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
                                         current_node,
                                         nibble,
@@ -588,10 +548,7 @@ where
                                             search_pfx.get_net(),
                                             stride_end - stride,
                                         ),
-                                    )
-                                {
-                                    more_specifics_vec.extend(v);
-                                }
+                                    );
                             }
                             match_prefix_idx = Some(pfx_idx);
                             break;
@@ -602,7 +559,7 @@ where
                                     // To make sure we don't process this
                                     // match arm more then once, we return
                                     // early here.
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -611,10 +568,7 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
 
                                     match_prefix_idx = None;
                                     break;
@@ -629,7 +583,6 @@ where
                     }
                 }
                 SizedStrideRef::Stride5(current_node) => {
-                    println!("5 {:?}", options.match_type);
                     let search_fn = match options.match_type {
                         MatchType::ExactMatch => {
                             if options.include_less_specifics {
@@ -654,13 +607,12 @@ where
                         &mut less_specifics_vec,
                     ) {
                         (Some(n), Some(pfx_idx)) => {
-                            trace!("5 found node. found prefix");
                             match_prefix_idx = Some(pfx_idx);
                             node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -669,21 +621,17 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
                                 }
                                 break;
                             }
                         }
                         (Some(n), None) => {
-                            trace!("5 found a next node. No prefix here.");
                             node = self.retrieve_node(n).unwrap();
 
                             if last_stride {
                                 if options.include_more_specifics {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -692,18 +640,14 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
                                 }
                                 break;
                             }
                         }
                         (None, Some(pfx_idx)) => {
-                            trace!("5 no next node. found prefix");
                             if options.include_more_specifics {
-                                if let Some(v) = self
+                                more_specifics_vec = self
                                     .get_all_more_specifics_from_nibble(
                                         current_node,
                                         nibble,
@@ -712,19 +656,15 @@ where
                                             search_pfx.get_net(),
                                             stride_end - stride,
                                         ),
-                                    )
-                                {
-                                    more_specifics_vec.extend(v);
-                                }
+                                    );
                             }
                             match_prefix_idx = Some(pfx_idx);
                             break;
                         }
                         (None, None) => {
-                            trace!("5 no next node. no prefix");
                             match options.match_type {
                                 MatchType::EmptyMatch => {
-                                    if let Some(v) = self
+                                    more_specifics_vec = self
                                         .get_all_more_specifics_from_nibble(
                                             current_node,
                                             nibble,
@@ -733,10 +673,8 @@ where
                                                 search_pfx.get_net(),
                                                 stride_end - stride,
                                             ),
-                                        )
-                                    {
-                                        more_specifics_vec.extend(v);
-                                    }
+                                        );
+
                                     match_prefix_idx = None;
                                     break;
                                 }
@@ -785,7 +723,7 @@ where
                 None
             },
             more_specifics: if options.include_more_specifics {
-                Some(more_specifics_vec)
+                more_specifics_vec
             } else {
                 None
             },
