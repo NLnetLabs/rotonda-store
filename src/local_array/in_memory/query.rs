@@ -44,6 +44,7 @@ where
                         pfx.record_map
                             .get_filtered_records(
                                 options.mui,
+                                options.include_withdrawn,
                                 withdrawn_muis_bmin,
                             )
                             .into_iter()
