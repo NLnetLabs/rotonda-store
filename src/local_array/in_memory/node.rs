@@ -1,19 +1,20 @@
+use core::ascii;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
-use std::{
-    fmt::Debug,
-    marker::PhantomData,
-};
+use std::{fmt::Debug, marker::PhantomData};
 
-use log::trace;
+use log::{log_enabled, trace};
 use parking_lot_core::SpinWait;
 
 use super::super::bit_span::BitSpan;
 use super::iterators::{SizedNodeMoreSpecificIter, SizedPrefixIter};
-use super::tree::{AtomicBitmap, AtomicStride2, AtomicStride3, AtomicStride4, AtomicStride5, CasResult, Stride, Stride3, Stride4, Stride5};
+use super::tree::{
+    AtomicBitmap, AtomicStride2, AtomicStride3, AtomicStride4, AtomicStride5,
+    CasResult, Stride, Stride3, Stride4, Stride5,
+};
 
 // pub use crate::in_memory_tree::*;
-use crate::af::Zero;
 use crate::af::AddressFamily;
+use crate::af::Zero;
 use crate::local_array::types::PrefixId;
 
 //------------ TreeBitMap Node ----------------------------------------------
@@ -30,11 +31,9 @@ use crate::local_array::types::PrefixId;
 // The elision of both the collection of children nodes and the prefix nodes
 // in a treebitmap node is enabled by the storage backend for the
 // multi-threaded store, since holds its entries keyed on the [node|prefix]
-// id. (in contrast with arrays or `vec`s, that have 
-pub struct TreeBitMapNode<
-    AF,
-    S,
-> where
+// id. (in contrast with arrays or `vec`s, that have
+pub struct TreeBitMapNode<AF, S>
+where
     Self: Sized,
     S: Stride,
     AF: AddressFamily,
@@ -44,8 +43,7 @@ pub struct TreeBitMapNode<
     pub _af: PhantomData<AF>,
 }
 
-impl<AF, S> Debug
-    for TreeBitMapNode<AF, S>
+impl<AF, S> Debug for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
     S: Stride,
@@ -58,11 +56,10 @@ where
     }
 }
 
-impl<AF, S>
-    std::fmt::Display for TreeBitMapNode<AF, S>
+impl<AF, S> std::fmt::Display for TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
-    S: Stride
+    S: Stride,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -74,52 +71,58 @@ where
     }
 }
 
-impl<AF, S>
-    TreeBitMapNode<AF, S>
+impl<AF, S> TreeBitMapNode<AF, S>
 where
     AF: AddressFamily,
-    S: Stride
+    S: Stride,
 {
     pub(crate) fn new() -> Self {
         TreeBitMapNode {
             ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
             pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
-            _af: PhantomData
+            _af: PhantomData,
         }
     }
 
     // ------- Iterators ----------------------------------------------------
 
     // Iterate over all the child node of this node
-    pub(crate) fn ptr_iter(&self, base_prefix: StrideNodeId<AF>) -> 
-        NodeChildIter<AF,S> {
-            NodeChildIter::<AF,S> {
-                base_prefix,
-                ptrbitarr: self.ptrbitarr.load(),
-                bit_span: BitSpan::new(0, 1),
-                _af: PhantomData,
-            }
+    pub(crate) fn ptr_iter(
+        &self,
+        base_prefix: StrideNodeId<AF>,
+    ) -> NodeChildIter<AF, S> {
+        NodeChildIter::<AF, S> {
+            base_prefix,
+            ptrbitarr: self.ptrbitarr.load(),
+            bit_span: BitSpan::new(0, 1),
+            _af: PhantomData,
+        }
     }
 
     // Iterate over all the prefix ids contained in this node.
     // Note that this function is *not* used by the iterator that iterates
     // over all prefixes. That one doesn't have to use the tree at all, but
     // uses the store directly.
-    pub(crate) fn pfx_iter(&self, base_prefix: StrideNodeId<AF>) -> 
-        NodePrefixIter<AF, S> {
+    pub(crate) fn pfx_iter(
+        &self,
+        base_prefix: StrideNodeId<AF>,
+    ) -> NodePrefixIter<AF, S> {
         NodePrefixIter::<AF, S> {
             pfxbitarr: self.pfxbitarr.load(),
             base_prefix,
-            bit_span: BitSpan::new(0,1 ),
+            cursor: 1,
             _af: PhantomData,
             _s: PhantomData,
         }
     }
 
     // Iterate over the more specific prefixes ids contained in this node
-    pub(crate) fn more_specific_pfx_iter(&self, base_prefix: StrideNodeId<AF>, 
-    start_bit_span: BitSpan, skip_self: bool) -> 
-        NodeMoreSpecificsPrefixIter<AF, S> {
+    pub(crate) fn more_specific_pfx_iter(
+        &self,
+        base_prefix: StrideNodeId<AF>,
+        start_bit_span: BitSpan,
+        skip_self: bool,
+    ) -> NodeMoreSpecificsPrefixIter<AF, S> {
         NodeMoreSpecificsPrefixIter::<AF, S> {
             pfxbitarr: self.pfxbitarr.load(),
             base_prefix,
@@ -132,9 +135,11 @@ where
 
     // Iterate over the nodes that contain more specifics for the requested
     // base_prefix and corresponding bit_span.
-    pub(crate) fn more_specific_ptr_iter(&self, base_prefix: StrideNodeId<AF>, 
-    start_bit_span: BitSpan) -> 
-        NodeMoreSpecificChildIter<AF, S> {
+    pub(crate) fn more_specific_ptr_iter(
+        &self,
+        base_prefix: StrideNodeId<AF>,
+        start_bit_span: BitSpan,
+    ) -> NodeMoreSpecificChildIter<AF, S> {
         NodeMoreSpecificChildIter::<AF, S> {
             ptrbitarr: self.ptrbitarr.load(),
             base_prefix,
@@ -143,10 +148,9 @@ where
         }
     }
 
-
     // ------- Search by Traversal methods -----------------------------------
 
-    // Inspects the stride (nibble, nibble_len) to see it there's already a 
+    // Inspects the stride (nibble, nibble_len) to see it there's already a
     // child node (if not at the last stride) or a prefix (if it's the last
     // stride).
     //
@@ -168,7 +172,6 @@ where
         next_stride: Option<&u8>,
         is_last_stride: bool,
     ) -> (NewNodeOrIndex<AF>, u32) {
-
         // THE CRITICAL SECTION
         //
         // UPDATING ptrbitarr & pfxbitarr
@@ -195,11 +198,11 @@ where
         // reverse is *not* true, i.e. a full nibble can also be the last
         // stride. Hence the `is_last_stride` argument
         if !is_last_stride {
-
             // We are not at the last stride
             // Check it the ptr bit is already set in this position
-            if (S::into_stride_size(ptrbitarr) & bit_pos) == 
-                <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType>::zero() {
+            if (S::into_stride_size(ptrbitarr) & bit_pos) ==
+                <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::
+                    InnerType>::zero() {
                 // Nope, set it and create a child node
 
                 match next_stride.unwrap() {
@@ -238,7 +241,8 @@ where
                 //
                 // preventing using an old ptrbitarr and overwrite bits set
                 // in the meantime elsewhere in the bitarray.
-                let mut a_ptrbitarr = self.ptrbitarr.compare_exchange(ptrbitarr,
+                let mut a_ptrbitarr = self.ptrbitarr.compare_exchange(
+                    ptrbitarr,
                     S::into_ptrbitarr_size(
                     bit_pos | S::into_stride_size(ptrbitarr),
                 ));
@@ -252,7 +256,8 @@ where
                             // Someone beat us to it, so we need to use the
                             // newer array.
                             retry_count += 1;
-                            a_ptrbitarr = self.ptrbitarr.compare_exchange(newer_array,
+                            a_ptrbitarr = self.ptrbitarr.compare_exchange(
+                                newer_array,
                                 S::into_ptrbitarr_size(
                                 bit_pos | S::into_stride_size(newer_array),
                             ));
@@ -269,7 +274,8 @@ where
             // only at the last stride do we create the bit in the prefix
             // bitmap, and only if it doesn't exist already
             if pfxbitarr & bit_pos
-                == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
+                == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::
+                    InnerType as std::ops::BitAnd>::Output::zero()
             {
 
                 // THE CRITICAL SECTION
@@ -278,7 +284,7 @@ where
                 //
                 // preventing using an old pfxbitarr and overwrite bits set
                 // in the meantime elsewhere in the bitarray.
-                let mut a_pfxbitarr = 
+                let mut a_pfxbitarr =
                 self.pfxbitarr.compare_exchange(
                     pfxbitarr, bit_pos | pfxbitarr
                 );
@@ -306,19 +312,22 @@ where
             return (NewNodeOrIndex::ExistingPrefix, retry_count);
         }
 
-        // Nodes always live at the last length of a stride (i.e. the last 
+        // Nodes always live at the last length of a stride (i.e. the last
         // nibble), so we add the stride length to the length of the
         // base_prefix (which is always the start length of the stride).
-        (NewNodeOrIndex::ExistingNode(
-            base_prefix.add_to_len(stride_len).truncate_to_len()
-        ), retry_count)
+        (
+            NewNodeOrIndex::ExistingNode(
+                base_prefix.add_to_len(stride_len).truncate_to_len(),
+            ),
+            retry_count,
+        )
     }
 
     //-------- Search nibble functions --------------------------------------
 
     // This function looks for the longest marching prefix in the provided
     // nibble, by iterating over all the bits in it and comparing that with
-    // the appropriate bytes from the requested prefix. It mutates the 
+    // the appropriate bytes from the requested prefix. It mutates the
     // `less_specifics_vec` that was passed in to hold all the prefixes found
     // along the way.
     pub(crate) fn search_stride_for_longest_match_at(
@@ -337,20 +346,25 @@ where
         trace!("start longest_match search");
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
-            nibble =
-                AddressFamily::get_nibble(search_pfx.get_net(), start_bit, n_l);
+            nibble = AddressFamily::get_nibble(
+                search_pfx.get_net(),
+                start_bit,
+                n_l,
+            );
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix.
             // This is not necessarily the final prefix that will be
             // returned.
 
-            // Check it there's a prefix matching in this bitmap for this 
+            // Check it there's a prefix matching in this bitmap for this
             // nibble.
             trace!("pfxbitarr {:032b}", pfxbitarr);
 
-            if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
-                let f_pfx = PrefixId::new(search_pfx.get_net().truncate_to_len(start_bit + n_l), start_bit + n_l);
+            if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize
+                as AtomicBitmap>::InnerType::zero() {
+                let f_pfx = PrefixId::new(search_pfx.get_net()
+                    .truncate_to_len(start_bit + n_l), start_bit + n_l);
                 // f_pfx.set_serial(self.get_pfx_serial(f_pfx, nibble, n_l, guard).load(Ordering::Relaxed));
 
                 // Receiving a less_specifics_vec means that the user wants
@@ -362,14 +376,17 @@ where
                     trace!("len {}", search_pfx.get_len());
                     trace!("start_bit {}", start_bit);
                     trace!("n_l {}", n_l);
-                    trace!("smaller length? {}", search_pfx.get_len() > start_bit + n_l);
+                    trace!("smaller length? {}",
+                        search_pfx.get_len() > start_bit + n_l);
                     trace!("{}", (S::into_stride_size(ptrbitarr)
                             & bit_pos)
-                            == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero());
+                            == <<S as Stride>::AtomicPfxSize
+                            as AtomicBitmap>::InnerType::zero());
                     if search_pfx.get_len() > start_bit + n_l
                         && (S::into_stride_size(ptrbitarr)
                             & bit_pos)
-                            == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+                            == <<S as Stride>::AtomicPfxSize
+                                as AtomicBitmap>::InnerType::zero()
                     {
                         ls_vec.push(f_pfx);
                     }
@@ -379,13 +396,17 @@ where
             }
         }
 
-        let base_prefix =
-            StrideNodeId::new_with_cleaned_id(search_pfx.get_net(), start_bit);
+        let base_prefix = StrideNodeId::new_with_cleaned_id(
+            search_pfx.get_net(),
+            start_bit,
+        );
 
         // Check if this the last stride, or if they're no more children to
         // go to, if so return what we found up until now.
         if search_pfx.get_len() <= start_bit + nibble_len
-            || (S::into_stride_size(ptrbitarr) & bit_pos) == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+            || (S::into_stride_size(ptrbitarr) & bit_pos) ==
+                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType
+                    ::zero()
         // No children or at the end, return the definitive LMP we found.
         {
             return (
@@ -419,7 +440,6 @@ where
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
-        println!("ptrbitarr {:064b}", ptrbitarr);
         // This is an exact match, so we're only considering the position of
         // the full nibble.
         let bit_pos = S::get_bit_pos(nibble, nibble_len);
@@ -432,7 +452,7 @@ where
         match search_pfx.get_len() <= start_bit + nibble_len {
             // We're at the last nibble.
             true => {
-                // Check for an actual prefix at the right position, i.e. 
+                // Check for an actual prefix at the right position, i.e.
                 // consider the complete nibble.
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     let f_pfx = PrefixId::new(search_pfx.get_net().truncate_to_len(start_bit + nibble_len), start_bit + nibble_len);
@@ -454,11 +474,10 @@ where
 
         (
             found_child, /* The node that has children in the next stride, if
-                            any */
-            found_pfx,   /* The exactly matching prefix, if any */
+                         any */
+            found_pfx, /* The exactly matching prefix, if any */
         )
     }
-
 
     pub(crate) fn prefix_exists_in_stride(
         &'_ self,
@@ -481,7 +500,7 @@ where
         match search_pfx.get_len() <= start_bit + nibble_len {
             // We're at the last nibble.
             true => {
-                // Check for an actual prefix at the right position, i.e. 
+                // Check for an actual prefix at the right position, i.e.
                 // consider the complete nibble.
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_pfx = true;
@@ -502,15 +521,15 @@ where
 
         (
             found_child, /* The node that has children in the next stride, if
-                            any */
-            found_pfx,   /* The exactly matching prefix, if any */
+                         any */
+            found_pfx, /* The exactly matching prefix, if any */
         )
     }
 
     // This function looks for the exactly matching prefix in the provided
     // nibble, just like the one above, but this *does* iterate over all the
-    // bytes in the nibble to collect the less-specific prefixes of the the 
-    // search prefix. This is of course slower, so it should only be used 
+    // bytes in the nibble to collect the less-specific prefixes of the the
+    // search prefix. This is of course slower, so it should only be used
     // when the user explicitly requests less-specifics.
     pub(crate) fn search_stride_for_exact_match_with_less_specifics_at(
         &self,
@@ -520,44 +539,50 @@ where
         start_bit: u8,
         less_specifics_vec: &mut Option<Vec<PrefixId<AF>>>,
     ) -> (Option<StrideNodeId<AF>>, Option<PrefixId<AF>>) {
-
         let pfxbitarr = self.pfxbitarr.load();
         let ptrbitarr = self.ptrbitarr.load();
         let mut bit_pos = S::get_bit_pos(nibble, nibble_len);
         let mut found_pfx = None;
 
-        let ls_vec = less_specifics_vec
-            .as_mut()
-            .expect(concat!("You shouldn't call this function without",
-            "a `less_specifics_vec` buffer. Supply one when calling this function",
-            "or use `search_stride_for_exact_match_at`"));
+        let ls_vec = less_specifics_vec.as_mut().expect(concat!(
+            "You shouldn't call this function without",
+            "a `less_specifics_vec` buffer. Supply one when calling this
+             function",
+            "or use `search_stride_for_exact_match_at`"
+        ));
 
         for n_l in 1..(nibble_len + 1) {
             // Move the bit in the right position.
-            nibble =
-                AddressFamily::get_nibble(search_pfx.get_net(), start_bit, n_l);
+            nibble = AddressFamily::get_nibble(
+                search_pfx.get_net(),
+                start_bit,
+                n_l,
+            );
             bit_pos = S::get_bit_pos(nibble, n_l);
 
             // Check if the prefix has been set, if so select the prefix.
             // This is not necessarily the final prefix that will be
             // returned.
 
-            // Check it there's a prefix matching in this bitmap for this 
+            // Check it there's a prefix matching in this bitmap for this
             // nibble.
-            if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
+            if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as
+                AtomicBitmap>::InnerType::zero() {
                 // since we want an exact match only, we will fill the prefix
                 // field only if we're exactly at the last bit of the nibble
                 if n_l == nibble_len {
                     let f_pfx =
                         PrefixId::new(
-                            search_pfx.get_net().truncate_to_len(start_bit + n_l), start_bit + n_l);
+                            search_pfx.get_net().truncate_to_len(start_bit +
+                                n_l), start_bit + n_l);
                         found_pfx = Some(f_pfx);
                 }
 
                 // Receiving a less_specifics_vec means that the user wants to
                 // have all the last-specific prefixes returned, so add the
                 // found prefix.
-                let f_pfx = PrefixId::new(search_pfx.get_net().truncate_to_len(start_bit + n_l), start_bit + n_l);
+                let f_pfx = PrefixId::new(search_pfx.get_net().
+                    truncate_to_len(start_bit + n_l), start_bit + n_l);
                 ls_vec.push(f_pfx);
             }
         }
@@ -569,14 +594,15 @@ where
             ls_vec.clear();
         }
 
-        // Check if this the last stride, or if they're no more children to 
+        // Check if this the last stride, or if they're no more children to
         // go to, if so return what we found up until now.
         match search_pfx.get_len() <= start_bit + nibble_len
             || (S::into_stride_size(ptrbitarr) & bit_pos)
-                == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType as std::ops::BitAnd>::Output::zero()
+                == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType
+                    as std::ops::BitAnd>::Output::zero()
         {
             // No children or at the end, return the definitive LMP we found.
-            true => { 
+            true => {
                 println!("found {:?}", found_pfx); 
                 (
                 None,      /* no more children */
@@ -586,7 +612,8 @@ where
             // There's another child, we won't return the found_pfx, since
             // we're not at the last nibble and we want an exact match only.
             false => (
-                Some(StrideNodeId::new_with_cleaned_id(search_pfx.get_net(), start_bit + nibble_len)),
+                Some(StrideNodeId::new_with_cleaned_id(search_pfx.get_net(),
+                    start_bit + nibble_len)),
                 None,
             ),
         }
@@ -601,8 +628,8 @@ where
         base_prefix: StrideNodeId<AF>,
     ) -> (
         Vec<StrideNodeId<AF>>, /* child nodes with more more-specifics in
-                                  this stride */
-        Vec<PrefixId<AF>>,     /* more-specific prefixes in this stride */
+                               this stride */
+        Vec<PrefixId<AF>>, /* more-specific prefixes in this stride */
     ) {
         trace!("start adding more specifics");
         let pfxbitarr = self.pfxbitarr.load();
@@ -618,7 +645,7 @@ where
         let mut found_child = None;
 
         // Is there also a child node here?
-        // Note that even without a child node, there may be more specifics 
+        // Note that even without a child node, there may be more specifics
         // further up in this pfxbitarr or children in this ptrbitarr.
         if (S::into_stride_size(ptrbitarr) & bit_pos)
             > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero(
@@ -637,13 +664,13 @@ where
         // and we've all strides sized 4, we would end up with a last
         // nibble_len of 1. `ms_nibble_len` will expand then from 2 up and
         // till 4.
-        // 
+        //
         // ex.:
-        // nibble: 1 , (nibble_len: 1)x
+        // nibble: 1 , (nibble_len: 1)
         // Iteration:
         // ms_nibble_len=1,n_l=0: 10, n_l=1: 11
         // ms_nibble_len=2,n_l=0: 100, n_l=1: 101, n_l=2: 110, n_l=3: 111
-        // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ..., 
+        // ms_nibble_len=3,n_l=0: 1000, n_l=1: 1001, n_l=2: 1010, ...,
         // n_l=7: 1111
 
         for ms_nibble_len in nibble_len + 1..=S::STRIDE_LEN {
@@ -672,7 +699,10 @@ where
             }
         }
 
-        trace!("found_children_with_more_specifics {:?}", found_children_with_more_specifics);
+        trace!(
+            "found_children_with_more_specifics {:?}",
+            found_children_with_more_specifics
+        );
         trace!("found_more_specifics_vec {:?}", found_more_specifics_vec);
 
         (
@@ -684,7 +714,6 @@ where
         )
     }
 }
-
 
 // ------------ Iterator methods --------------------------------------------
 
@@ -706,10 +735,10 @@ where
 //
 // Ex.:
 //
-// Stride no.          1       2       3      4       5       6       7       
-// StrideSize          5       5       4      3       3       3       3      
+// Stride no.          1       2       3      4       5       6       7
+// StrideSize          5       5       4      3       3       3       3
 // child pfxs len      /1-5   /5-10    /10-14 /15-17  /18-20  /21-23  /24-26
-// child Nodes len     /5      /10     /14    /17     /20     /23     /26 
+// child Nodes len     /5      /10     /14    /17     /20     /23     /26
 //
 // Stride no.          8      9
 // StrideSize          3      3
@@ -718,14 +747,14 @@ where
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeChildIter<AF: AddressFamily, S: Stride> {
-   base_prefix: StrideNodeId<AF>,
-   ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-   bit_span: BitSpan, // start with 0
-   _af: PhantomData<AF>,
+    base_prefix: StrideNodeId<AF>,
+    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+    bit_span: BitSpan, // start with 0
+    _af: PhantomData<AF>,
 }
 
-impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
-    NodeChildIter<AF, S>
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator
+    for NodeChildIter<AF, S>
 {
     type Item = StrideNodeId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -735,7 +764,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
             // move the bit_span left with the amount of bits we're going to
             // loop over.
             // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
-            // becomes 0000 0000 0000 1100, then it will iterate over 
+            // becomes 0000 0000 0000 1100, then it will iterate over
             // ...1100,...1101,...1110,...1111
             let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
             if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
@@ -743,8 +772,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
             {
                 self.bit_span.bits = cursor + 1;
                 return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
-            }    
-            
+            }
         }
         None
     }
@@ -755,8 +783,8 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // Create an iterator over all the child nodes that hold a more specific
 // prefixes of the specified start_bit_span. This basically the same Iterator
 // as the ChildNodeIter, except that it stops (potentially) earlier, to avoid
-// including nodes with adjacent prefixes. Starting an iterator with a 
-// `start_bit_span` of { bits: 0, len: 0 } will return all child nodes of 
+// including nodes with adjacent prefixes. Starting an iterator with a
+// `start_bit_span` of { bits: 0, len: 0 } will return all child nodes of
 // this node. In that case you could also use the `NodeChildIter` instead.
 //
 // inputs
@@ -767,13 +795,13 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // the tree (therefore, it's actually a Trie). Note that `base_prefix` +
 // `bit_span` define the actual starting prefix for this iterator.
 //
-// `ptrbitarr` 
-// is the bitmap that holds the slots that have child nodes. 
+// `ptrbitarr`
+// is the bitmap that holds the slots that have child nodes.
 //
-// `start_bit_span` 
-// is the bit span that is going to be used as a starting point for the 
+// `start_bit_span`
+// is the bit span that is going to be used as a starting point for the
 // iterator.
-// 
+//
 // `cursor`
 // holds the current cursor offset from the start_bit_span.bits, the sum of
 // these describe the current position in the bitmap. Used for re-entry into
@@ -798,33 +826,38 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // done now.
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
-   base_prefix: StrideNodeId<AF>,
-   ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-   start_bit_span: BitSpan,
-   cursor: Option<u32>,
+    base_prefix: StrideNodeId<AF>,
+    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+    start_bit_span: BitSpan,
+    cursor: Option<u32>,
 }
 
-impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
-    NodeMoreSpecificChildIter<AF, S>
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator
+    for NodeMoreSpecificChildIter<AF, S>
 {
     type Item = StrideNodeId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
         // Early exits
 
         // Empty bitmap
-        if self.ptrbitarr ==
-            <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType::zero() {
+        if self.ptrbitarr
+            == <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType::zero(
+            )
+        {
             trace!("empty ptrbitrarr. this iterator is done.");
             return None;
         }
 
         // Previous iteration incremented the cursor beyond the stride size.
-        if let Some(cursor) = self.cursor { 
+        if let Some(cursor) = self.cursor {
             if cursor >= (1 << (S::STRIDE_LEN - self.start_bit_span.len)) {
-                trace!("cursor.bits >= (1 << (S::STRIDE_LEN - self.
-                    start_bit_span.len))");
+                trace!(
+                    "cursor.bits >= (1 << (S::STRIDE_LEN - self.
+                    start_bit_span.len))"
+                );
                 trace!("cursor: {}", cursor);
-                trace!("start_bit_span: {} {}",
+                trace!(
+                    "start_bit_span: {} {}",
                     self.start_bit_span.bits,
                     self.start_bit_span.len
                 );
@@ -836,11 +869,14 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
         trace!("NodeMoreSpecificChildIter");
         trace!("base_prefix {}", self.base_prefix);
         trace!("stride_size {}", S::STRIDE_LEN);
-        trace!("start_bit_span bits {} len {} ",
-            self.start_bit_span.bits, self.start_bit_span.len);
+        trace!(
+            "start_bit_span bits {} len {} ",
+            self.start_bit_span.bits,
+            self.start_bit_span.len
+        );
         trace!("cursor bits {:?}", self.cursor);
         trace!("          x1  4   8  12  16  20  24  28  32");
-        trace!("ptrbitarr {:032b}x", self.ptrbitarr);
+        trace!("ptrbitarr {:032b}", self.ptrbitarr);
 
         let start = if let Some(bits) = self.cursor {
             bits
@@ -852,18 +888,16 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
         // stride (in case of a start_bit_span.bits == 0).
         let stop = <u32>::min(
             (1 << (S::STRIDE_LEN - self.start_bit_span.len)) + start,
-            (1 << S::STRIDE_LEN) - 1
-        ); 
+            (1 << S::STRIDE_LEN) - 1,
+        );
 
         trace!("start {:?} stop {}", start, stop);
         for cursor in start..=stop {
-            // move the bit_span left with the amount of bits we're going to
-            // loop over. e.g. a stride of size 4 with a nibble 0000 0000 0000
-            // 0011 becomes 0000 0000 0000 1100, then it will iterate over
+            // move the bit_span left with the amount of bits we're going to loop over.
+            // e.g. a stride of size 4 with a nibble 0000 0000 0000 0011
+            // becomes 0000 0000 0000 1100, then it will iterate over
             // ...1100,...1101,...1110,...1111
-            let bit_pos = 
-                S::get_bit_pos(
-                    cursor, S::STRIDE_LEN);
+            let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
             trace!("cmpbitarr x{:032b} {}", bit_pos, stop - start);
             if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
                 <<S as Stride>::AtomicPfxSize as AtomicBitmap
@@ -873,13 +907,8 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
                 self.cursor = Some(cursor + 1);
 
                 trace!("next bit_span {} {} with cursor {:?}",
-                    self.start_bit_span.bits,
-                    self.start_bit_span.len,
-                    self.cursor
-                );
-                return Some(
-                    self.base_prefix.add_nibble(cursor, S::STRIDE_LEN)
-                );
+                    self.start_bit_span.bits, self.start_bit_span.len, self.cursor);
+                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
             }
         }
         trace!("No more nodes. End of the iterator.");
@@ -905,23 +934,23 @@ impl<AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride5> {
     }
 }
 
-// ----------- NodePrefixIter ------------------------------------------------
+// ----------- NodePrefixIter -----------------------------------------------
 
 // Create an iterator of all prefix ids hosted by this node.
 
 // Partition for stride 3
 //
-// pfxbitarr (AF::BITS)  0 1 2  3  4  5  6   7   8   9  10  11  12  13  14 
-// bit_span (binary)     * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 * *
-// bit_span (dec.)       * 0 1  0  1  2  3   0   1   2   3   4   5   6   7 * *
-// len                   0 1   2           3                               
+// pfxbitarr (AF::BITS)  0 1 2  3  4  5  6   7   8   9  10  11  12  13  14
+// bit_span (binary)     * 0 1 00 01 10 11 000 001 010 011 100 101 110 111 *
+// bit_span (dec.)       * 0 1  0  1  2  3   0   1   2   3   4   5   6   7 *
+// len                   0 1   2           3
 //
-// pfxbitarr (example)   1 0 0 0  0  0  1  1   1   0   0   0   0   0   0   0 0
-// pos (example)         0 0 0 0  0  0  0  0   1   0   0   0   0   0   0   0 0                 
+// pfxbitarr (example)   1 0 0 0  0  0  1  1   1   0   0   0   0   0   0   0
+// pos (example)         0 0 0 0  0  0  0  0   1   0   0   0   0   0   0   0
 //
 // Ex.:
-// `pos` describes the bit that is currently under consideration. 
-// 
+// `pos` describes the bit that is currently under consideration.
+//
 // `pfxbitarr` is the bitmap that contains the prefixes. Every 1 in the
 // bitmap means that the prefix is hosted by this node. Moreover, the
 // position in the bitmap describes the address part of the prefix, given
@@ -936,29 +965,79 @@ impl<AF: AddressFamily> NodeMoreSpecificChildIter<AF, Stride5> {
 pub(crate) struct NodePrefixIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
     pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
-    bit_span: BitSpan, // start with 0
+    cursor: u8,
     _af: PhantomData<AF>,
     _s: PhantomData<S>,
 }
 
-impl<AF: AddressFamily, S: Stride> std::iter::Iterator for 
-    NodePrefixIter<AF, S> {
-        type Item = PrefixId<AF>;
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator
+    for NodePrefixIter<AF, S>
+{
+    type Item = PrefixId<AF>;
 
-        fn next(&mut self) -> Option<Self::Item> {
-        // iterate over all the possible values for this stride length, e.g.
-        // two bits can have 4 different values.
-        for cursor in self.bit_span.bits..(1 << S::STRIDE_LEN) {
-            
-            let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
-            if self.pfxbitarr & bit_pos >
-                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
-            {
-                self.bit_span.bits = cursor + 1;
-                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN).into());
-            }    
-            
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.pfxbitarr
+            == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero(
+            )
+        {
+            return None;
         }
+        if log_enabled!(log::Level::Trace) {
+            trace!("---- NodePrefixIter -----");
+            match S::STRIDE_LEN {
+                3 => {
+                    trace!(
+                        "pfxbitarr  {:016b} ({})",
+                        self.pfxbitarr,
+                        S::STRIDE_LEN
+                    );
+                }
+                4 => {
+                    trace!(
+                        "pfxbitarr  {:032b} ({})",
+                        self.pfxbitarr,
+                        S::STRIDE_LEN
+                    );
+                }
+                5 => {
+                    trace!(
+                        "pfxbitarr  {:064b} ({})",
+                        self.pfxbitarr,
+                        S::STRIDE_LEN
+                    );
+                }
+                _ => {
+                    trace!("UNKNOWN STRIDE SIZE ENCOUNTERED.");
+                }
+            };
+        }
+
+        let cursor = self.cursor;
+
+        for i in cursor..S::BITS - 1 {
+            let bit_pos = S::bit_pos_from_index(i);
+            self.cursor += 1;
+
+            if log_enabled!(log::Level::Trace) {
+                let bs = BitSpan::from_bit_pos_index(i);
+                trace!(
+                    "{:02}: {:06b} {:064b} bit_span: {:05b} (len: {})",
+                    i,
+                    i - 1,
+                    bit_pos,
+                    bs.bits,
+                    bs.len
+                );
+            }
+
+            if self.pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize
+                as AtomicBitmap>::InnerType::zero() {
+                let bs = BitSpan::from_bit_pos_index(i);
+                return Some(self.base_prefix.add_nibble(bs.bits, bs.len).into());
+            }
+        }
+
+        trace!("end of iterator NodePrefixIter for this node");
         None
     }
 }
@@ -967,20 +1046,20 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 // are a more-specific prefix of the `base_prefix` + `start_bit_span`.
 //
 // Inputs
-// 
+//
 // `base_prefix`
 // This iterator take a `base_prefix` since the nodes themselves have no
 // knowledge of their own prefixes, those are inferred by their position in
 // the tree (therefore, it's actually a Trie). Note that `base_prefix` +
 // `bit_span` define the actual starting prefix for this iterator.
 //
-// `pfxbitarr` 
+// `pfxbitarr`
 // is the bitmap that holds the slots that have prefixes.
 //
-// `start_bit_span` 
-// is the bit span that is going to be used as a starting point for the 
+// `start_bit_span`
+// is the bit span that is going to be used as a starting point for the
 // iterator.
-// 
+//
 // `cursor`
 // holds the current cursor offset from the start_bit_span.bits, the sum of
 // these describe the current position in the bitmap. Used for re-entry into
@@ -997,15 +1076,15 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 //
 // e.x.
 // The stride size is 5 and the starting bit span is {bits: 1, len: 3} (001)
-// This means that the stride size that we have to consider are 4 and 5. 3 
+// This means that the stride size that we have to consider are 4 and 5. 3
 // being the size of the current bit_span and 5 being the size of the total
-// stride. 
+// stride.
 // The starting point is therefore the bit_array 001. The iterator will go
 // over 001 00, 001 01, 001 10 and 001 11. The next bits to consider would be
 //  010 00 which would not fit our starting bit_span of 0010. So we have to
 // stop after 2 iterations. This means that the number of iterations is
 // determined by the difference between the number of bits in the stride size
-// (5) and the the number of bits in the start_bit_span (4). The number of 
+// (5) and the the number of bits in the start_bit_span (4). The number of
 // iterations in the above example is therefore 1 << (5 - 3) = 4.
 // Unlike the MoreSpecificPrefixIter, we will have to consider more lengths
 // than just the bit_span len. We will have to jump a few pfxbitarr bits and
@@ -1017,7 +1096,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator for
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // immutables
     base_prefix: StrideNodeId<AF>,
-    pfxbitarr: <<S as super::atomic_stride::Stride>::AtomicPfxSize 
+    pfxbitarr: <<S as super::atomic_stride::Stride>::AtomicPfxSize
         as super::atomic_stride::AtomicBitmap>::InnerType,
     // we need to keep around only the `bits` part of the `bit_span`
     // technically, (it needs resetting the current state to it after each
@@ -1029,114 +1108,156 @@ pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     _s: PhantomData<S>,
 }
 
-impl<AF: AddressFamily, S: Stride> std::iter::Iterator for 
-    NodeMoreSpecificsPrefixIter<AF, S> {
-        type Item = PrefixId<AF>;
+impl<AF: AddressFamily, S: Stride> std::iter::Iterator
+    for NodeMoreSpecificsPrefixIter<AF, S>
+{
+    type Item = PrefixId<AF>;
 
-        fn next(&mut self) -> Option<Self::Item> {
+    fn next(&mut self) -> Option<Self::Item> {
+        // Easy early exit conditions
 
-            // Easy early exit conditions
+        // Empty bitmap
+        if self.pfxbitarr
+            == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero(
+            )
+        {
+            trace!("empty pfxbitarr. This iterator is done.");
+            return None;
+        }
 
-            // Empty bitmap
-            if self.pfxbitarr == <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
-                trace!("empty pfxbitarr. This iterator is done.");
-                return None;
+        // No early exits, We're in business.
+        trace!("len_offset {}", ((1 << self.cursor.len) - 1));
+        trace!("start_bit {}", self.start_bit_span.bits);
+        trace!(
+            "number of check bits in len {}",
+            (1 << (self.cursor.len - self.start_bit_span.len))
+        );
+
+        trace!(
+            "next more specifics prefix iter start bits {} len {}",
+            self.start_bit_span.bits,
+            self.start_bit_span.len
+        );
+
+        let mut res = None;
+
+        // Move to the next len if we're at the first prefix-length that
+        // matches, if `skip_self` is set. Typically this flag is set for the
+        // first stride. In the consecutive strides, we don't want to skip the
+        // base prefix, since that base_prefix is a more specific prefix of
+        // the one requested in the first stride.
+        if self.skip_self
+            && (1 << (self.cursor.len - self.start_bit_span.len)) == 1
+        {
+            // self.cursor.len += (self.start_bit_span.bits & 1) as u8;
+            trace!("skipping self");
+            self.start_bit_span.bits <<= 1;
+            self.cursor.bits = self.start_bit_span.bits;
+            self.cursor.len += 1;
+            self.skip_self = false;
+            trace!(
+                "new start bits {} len {}",
+                self.start_bit_span.bits,
+                self.start_bit_span.len
+            );
+            trace!(
+                "new cursor bits {} len {}",
+                self.cursor.bits,
+                self.cursor.len
+            );
+        }
+
+        // Previous iteration or the skip_self routine may have
+        // incremented the cursor beyond the end of the stride size.
+        if self.cursor.len > S::STRIDE_LEN {
+            trace!("cursor.len > S::STRIDE_LEN. This iterator is done.");
+            return None;
+        }
+
+        loop {
+            trace!(
+                "          x1  4   8  12  16  20  24  28  32  36  40  44
+                  48  52  56  60  64"
+            );
+            trace!(
+                "cmpnibble {:064b} ({} + {}) len {} stride_size {}",
+                S::get_bit_pos(self.cursor.bits, self.cursor.len),
+                (1 << self.cursor.len) - 1,
+                self.cursor.bits,
+                self.cursor.len + self.base_prefix.get_len(),
+                S::STRIDE_LEN
+            );
+
+            trace!("pfxbitarr {:064b}", self.pfxbitarr);
+
+            if (S::get_bit_pos(self.cursor.bits, self.cursor.len)
+                | self.pfxbitarr)
+                == self.pfxbitarr
+            {
+                trace!(
+                    "found prefix with len {} at pos {} pfx len {}",
+                    self.cursor.len,
+                    self.cursor.bits,
+                    self.base_prefix.get_len() + self.cursor.len,
+                );
+                res = Some(
+                    self.base_prefix
+                        .add_nibble(self.cursor.bits, self.cursor.len)
+                        .into(),
+                );
+                trace!("found prefix {:?}", res);
             }
 
-            // No early exits, We're in business.
-            trace!("len_offset {}", ((1<< self.cursor.len) - 1));
-            trace!("start_bit {}", self.start_bit_span.bits);
-            trace!("number of check bits in len {}", 
-                (1 << (self.cursor.len - self.start_bit_span.len)));
+            // Determine when we're at the end of the bits applicable to
+            // this combo of this start_bit_span.
+            // bitspan offset:
+            // self.start_bit_span.bits
+            // number of matches in this length:
+            // 1 << (self.cursor.len - self.start_bit_span.len)
+            let max_pos_offset = self.start_bit_span.bits
+                + (1 << (self.cursor.len - self.start_bit_span.len))
+                - 1;
 
-            trace!("next more specifics prefix iter start bits {} len {}",
-                self.start_bit_span.bits, self.start_bit_span.len);
+            trace!(
+                "max_pos_offset {} > cursor bit_pos {}?",
+                max_pos_offset,
+                self.cursor.bits
+            );
+            trace!(
+                "number of check bits in len {}",
+                (1 << (self.cursor.len - self.start_bit_span.len))
+            );
 
-            let mut res = None;
-
-            // Move to the next len if we're at the first prefix-length that matches,
-            // if `skip_self` is set. Typically this flag is set for the first stride.
-            // In the consecutive strides, we don't want to skip the base prefix, since
-            // that base_prefix is a more specific prefix of the one requested in the
-            // first stride.
-            if self.skip_self && (1 << (self.cursor.len - self.start_bit_span.len)) == 1 {
-                // self.cursor.len += (self.start_bit_span.bits & 1) as u8;
-                trace!("skipping self");
+            // case 1. At the beginning or inside a prefix-length.
+            if max_pos_offset > self.cursor.bits {
+                self.cursor.bits += 1;
+            }
+            // case 2. At the end of a prefix-lengths in this stride.
+            else if self.cursor.len < S::STRIDE_LEN {
+                trace!("move len to {}", self.cursor.len + 1);
                 self.start_bit_span.bits <<= 1;
                 self.cursor.bits = self.start_bit_span.bits;
                 self.cursor.len += 1;
-                self.skip_self = false;
-                trace!("new start bits {} len {}", self.start_bit_span.bits, self.start_bit_span.len);
-                trace!("new cursor bits {} len {}", self.cursor.bits, self.cursor.len);
             }
-
-            // Previous iteration or the skip_self routine may have
-            // incremented the cursor beyond the end of the stride size.
-            if self.cursor.len > S::STRIDE_LEN {
-                trace!("cursor.len > S::STRIDE_LEN. This iterator is done.");
-                return None;
-            }
-            
-            loop {
-                trace!("          x1  4   8  12  16  20  24  28  32  36  40  44  48  52  56  60  64");
-                trace!("cmpnibble {:064b} ({} + {}) len {} stride_size {}", 
-                    S::get_bit_pos(self.cursor.bits, self.cursor.len), 
-                    (1<< self.cursor.len) - 1, 
-                    self.cursor.bits, 
-                    self.cursor.len + self.base_prefix.get_len(),
-                    S::STRIDE_LEN
+            // case 4. At the end of a prefix-length, but not at the end of the pfxbitarr.
+            else {
+                self.start_bit_span.bits <<= 1;
+                self.cursor.bits = self.start_bit_span.bits;
+                self.cursor.len += 1;
+                trace!(
+                    "end of stride, next cursor bits {} len {}",
+                    self.cursor.bits,
+                    self.cursor.len
                 );
-
-                trace!("pfxbitarr {:064b}", self.pfxbitarr);
-
-                if (S::get_bit_pos(self.cursor.bits, self.cursor.len) | self.pfxbitarr) == self.pfxbitarr {
-                    trace!("found prefix with len {} at pos {} pfx len {}",
-                        self.cursor.len, 
-                        self.cursor.bits,
-                        self.base_prefix.get_len() + self.cursor.len,
-                    );
-                    res = Some(self.base_prefix
-                        .add_nibble(self.cursor.bits, self.cursor.len).into());
-                    trace!("found prefix {:?}", res);
-                }
-
-                // Determine when we're at the end of the bits applicable to
-                // this combo of this start_bit_span.
-                // bitspan offset: 
-                // self.start_bit_span.bits
-                // number of matches in this length:
-                // 1 << (self.cursor.len - self.start_bit_span.len)
-                let max_pos_offset =  
-                    self.start_bit_span.bits + 
-                    (1 << (self.cursor.len - self.start_bit_span.len)) - 1;
-
-                trace!("max_pos_offset {} > cursor bit_pos {}?", max_pos_offset, self.cursor.bits);
-                trace!("number of check bits in len {}", (1 << (self.cursor.len - self.start_bit_span.len)));
-
-                // case 1. At the beginning or inside a prefix-length.
-                if max_pos_offset > self.cursor.bits {
-                    self.cursor.bits += 1;
-                } 
-                // case 2. At the end of a prefix-lengths in this stride.
-                else if self.cursor.len < S::STRIDE_LEN {
-                    trace!("move len to {}", self.cursor.len + 1);
-                    self.start_bit_span.bits <<= 1;
-                    self.cursor.bits = self.start_bit_span.bits;
-                    self.cursor.len += 1;
-                }
-                // case 4. At the end of a prefix-length, but not at the end of the pfxbitarr.
-                else {
-                    self.start_bit_span.bits <<= 1;
-                    self.cursor.bits = self.start_bit_span.bits;
-                    self.cursor.len += 1;
-                    trace!("end of stride, next cursor bits {} len {}", self.cursor.bits, self.cursor.len);
-                    return res;
-                }
-
-                trace!("some res {:?}", res);
-                if res.is_some() { return res; }
+                return res;
             }
-        }    
+
+            trace!("some res {:?}", res);
+            if res.is_some() {
+                return res;
+            }
+        }
+    }
 }
 
 impl<AF: AddressFamily> NodeMoreSpecificsPrefixIter<AF, Stride3> {
