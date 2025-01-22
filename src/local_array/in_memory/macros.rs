@@ -194,6 +194,10 @@ macro_rules! impl_primitive_atomic_stride {
                     )
                 }
 
+                fn bit_pos_from_index(i: u8) -> $pfxsize {
+                    <$pfxsize>::try_from(1).unwrap().rotate_right(1) >> i
+                }
+
                 fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8 {
                     1 << (
                             <Self as Stride>::BITS - ((1 << len) - 1) as u8
