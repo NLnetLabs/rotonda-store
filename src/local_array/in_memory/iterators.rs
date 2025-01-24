@@ -357,7 +357,7 @@ impl<
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
                             next_ptr,
-                            BitSpan::new(0, 0),
+                            BitSpan { bits: 0, len: 1 },
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
@@ -370,7 +370,7 @@ impl<
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 0),
+                                BitSpan::new(0, 1),
                                 false,
                             )
                             .wrap();
@@ -380,7 +380,7 @@ impl<
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
                             next_ptr,
-                            BitSpan::new(0, 0),
+                            BitSpan { bits: 0, len: 1 },
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
@@ -393,7 +393,7 @@ impl<
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 0),
+                                BitSpan::new(0, 1),
                                 false,
                             )
                             .wrap();
@@ -403,7 +403,7 @@ impl<
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
                             next_ptr,
-                            BitSpan::new(0, 0),
+                            BitSpan { bits: 0, len: 1 },
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
@@ -416,7 +416,7 @@ impl<
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 0),
+                                BitSpan::new(0, 1),
                                 false,
                             )
                             .wrap();
@@ -575,7 +575,8 @@ impl<
             // Our current prefix iterator for this node is done, look for
             // the next pfx iterator of the next child node in the current
             // ptr iterator.
-            trace!("start first ptr_iter");
+            trace!("resume ptr iterator {:?}", self.cur_ptr_iter);
+
             let mut next_ptr = self.cur_ptr_iter.next();
 
             // Our current ptr iterator is also done, maybe we have a parent
@@ -593,6 +594,7 @@ impl<
 
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
+                    trace!("let's retriev node {}", next_ptr);
                     self.store.retrieve_node(next_ptr)
                 } else {
                     self.store.retrieve_node_for_mui(
@@ -609,7 +611,7 @@ impl<
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
                             next_ptr,
-                            BitSpan::new(0, 0),
+                            BitSpan { bits: 0, len: 0 },
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
@@ -622,7 +624,7 @@ impl<
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 0),
+                                BitSpan::new(0, 1),
                                 false,
                             )
                             .wrap();
@@ -632,7 +634,7 @@ impl<
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
                             next_ptr,
-                            BitSpan::new(0, 0),
+                            BitSpan { bits: 0, len: 0 },
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
@@ -645,7 +647,7 @@ impl<
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 0),
+                                BitSpan::new(0, 1),
                                 false,
                             )
                             .wrap();
@@ -655,7 +657,7 @@ impl<
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
                             next_ptr,
-                            BitSpan::new(0, 0),
+                            BitSpan { bits: 0, len: 0 },
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
@@ -668,7 +670,7 @@ impl<
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 0),
+                                BitSpan::new(0, 1),
                                 false,
                             )
                             .wrap();
@@ -957,6 +959,8 @@ impl<
                                 true,
                             ),
                         );
+                        trace!("---------------------");
+                        trace!("start iterating nodes");
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride4(
                             n.more_specific_ptr_iter(
                                 start_node_id,
@@ -1055,6 +1059,14 @@ impl<
                         );
                     }
                     SizedStrideRef::Stride4(n) => {
+                        trace!(
+                            "ALTERNATIVE {:#?}",
+                            n.add_more_specifics_at(
+                                start_bit_span.bits,
+                                start_bit_span.len,
+                                start_node_id
+                            )
+                        );
                         cur_pfx_iter = SizedPrefixIter::Stride4(
                             n.more_specific_pfx_iter(
                                 start_node_id,

@@ -187,7 +187,7 @@ macro_rules! impl_primitive_atomic_stride {
                 const STRIDE_LEN: u8 = $len;
 
                 fn get_bit_pos(nibble: u32, len: u8) -> $pfxsize {
-                    // trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
+                    trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
                     1 << (
                             <Self as Stride>::BITS - ((1 << len) - 1) as u8
                             - nibble as u8 - 1
@@ -196,6 +196,29 @@ macro_rules! impl_primitive_atomic_stride {
 
                 fn bit_pos_from_index(i: u8) -> $pfxsize {
                     <$pfxsize>::try_from(1).unwrap().rotate_right(1) >> i
+                }
+
+                fn ptr_bit_pos_from_index(i: u8) -> $ptrsize {
+                    // trace!("pfx {} ptr {} strlen {}",
+                    // <$pfxsize>::BITS, <$ptrsize>::BITS, Self::STRIDE_LEN);
+                    <$ptrsize>::try_from(1).unwrap().rotate_right(1)
+                        >> (i + 1)
+                }
+
+                fn cursor_from_bit_span(bs: BitSpan) -> u8 {
+                    Self::get_bit_pos(bs.bits, bs.len)
+                    .leading_zeros() as u8 - 1
+                }
+
+                // Ptrbitarr searches are only done in the last half of
+                // the bitarray, in the len = S::STRIDE_LEN part. We need a
+                // complete BitSpan still to figure when to stop.
+                fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8 {
+                    let p = Self::get_bit_pos(bs.bits << (4 - bs.len), 4)
+                        .leading_zeros() as u8;
+                    trace!("bs in {:?}", bs);
+                    trace!("pos {}", p);
+                    p
                 }
 
                 fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8 {

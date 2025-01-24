@@ -6,6 +6,7 @@ use std::sync::atomic::{
 };
 
 use crate::af::Zero;
+use crate::local_array::bit_span::BitSpan;
 use crate::synth_int::AtomicU128;
 use crate::{impl_primitive_atomic_stride, AddressFamily};
 
@@ -466,7 +467,7 @@ impl From<(Result<u64, u64>, Result<u64, u64>)> for CasResult<u128> {
         }
     }
 }
-pub trait Stride:
+pub(crate) trait Stride:
     Sized
     + Debug
     + Eq
@@ -521,6 +522,14 @@ where
     fn bit_pos_from_index(
         i: u8,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+
+    fn ptr_bit_pos_from_index(
+        i: u8,
+    ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
+
+    fn cursor_from_bit_span(bs: BitSpan) -> u8;
+
+    fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8;
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding prefix in
