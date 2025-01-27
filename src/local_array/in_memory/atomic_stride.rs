@@ -40,7 +40,9 @@ where
         + Zero
         + PartialOrd
         + std::ops::BitAnd<Output = Self::InnerType>
-        + std::ops::BitOr<Output = Self::InnerType>;
+        + std::ops::BitOr<Output = Self::InnerType>
+        + std::ops::BitXor<Output = Self::InnerType>
+        + num_traits::PrimInt;
 
     fn new() -> Self;
     fn inner(self) -> Self::InnerType;
@@ -530,6 +532,15 @@ where
     fn cursor_from_bit_span(bs: BitSpan) -> u8;
 
     fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8;
+
+    fn ptr_range(
+        ptrbitarr: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::
+            InnerType,
+        range: BitSpan,
+    ) -> (
+        <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+        u8,
+    );
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding prefix in

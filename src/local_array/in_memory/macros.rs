@@ -210,6 +210,28 @@ macro_rules! impl_primitive_atomic_stride {
                     .leading_zeros() as u8 - 1
                 }
 
+                fn ptr_range(
+                    ptrbitarr: $ptrsize,
+                    bs: BitSpan
+                ) -> ($ptrsize, u8) {
+                    let start: u8 = (bs.bits << (4 - bs.len)) as u8;
+                    let stop: u8 = start + (1 << (4 - bs.len));
+                    let mask: $ptrsize = (
+                        (((1_u32 << (stop as u32 - start as u32)) - 1)
+                             as u32
+                    )
+                        .rotate_right(stop as u32) >> 16)
+                        .try_into()
+                        .unwrap();
+                    trace!("- mask      {:032b}", mask);
+                    trace!("- ptrbitarr {:032b}", ptrbitarr);
+                    trace!("- shl bitar {:032b}", ptrbitarr & mask);
+
+                    // if ptrbitarr & mask == <$ptrsize>::zero() { panic!("stop"); }
+
+                    (ptrbitarr & mask, start as u8)
+                }
+
                 // Ptrbitarr searches are only done in the last half of
                 // the bitarray, in the len = S::STRIDE_LEN part. We need a
                 // complete BitSpan still to figure when to stop.

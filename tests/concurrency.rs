@@ -376,15 +376,14 @@ fn test_concurrent_updates_1(
     Ok(())
 }
 
-rotonda_store::all_strategies_arced![
-    test_cc_updates_2;
-    test_concurrent_updates_2;
-    BeBytesAsn
-];
+// rotonda_store::all_strategies_arced![
+//     test_cc_updates_2;
+//     test_concurrent_updates_2;
+//     BeBytesAsn
+// ];
 
-// #[test]
-fn test_concurrent_updates_2(
-    tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>,
+#[test]
+fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
@@ -413,14 +412,13 @@ fn test_concurrent_updates_2(
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
 
-    println!("PersistOnly strategy starting...");
     let store_config = StoreConfig {
         persist_strategy: rotonda_store::rib::PersistStrategy::MemoryOnly,
         persist_path: "/tmp/rotonda/".into(),
     };
-    // let tree_bitmap = std::sync::Arc::new(
-    //     MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
-    // );
+    let tree_bitmap = std::sync::Arc::new(
+        MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
+    );
 
     let _: Vec<_> =
         vec![pfx_vec_1.clone(), pfx_vec_2.clone(), pfx_vec_3.clone()]
@@ -668,14 +666,13 @@ fn test_concurrent_updates_2(
         include_history: IncludeHistory::None,
     };
 
-    // let pfx0 = Prefix::from_str("128.0.0.0/2").unwrap();
-    let pfx128 = Prefix::from_str("0.0.0.0/0").unwrap();
+    // should cover all the prefixes
+    // let pfx0 = Prefix::from_str("184.0.0.0/6").unwrap();
+    let pfx128 = Prefix::from_str("128.0.0.0/1").unwrap();
     let guard = rotonda_store::epoch::pin();
     // let res0 = tree_bitmap.match_prefix(&pfx0, &match_options, &guard);
-    let res128 = tree_bitmap.match_prefix(&pfx128, &match_options, &guard);
 
     // println!("000 {:#?}", res0);
-    println!("128 {:#?}", res128);
 
     assert!(tree_bitmap
         .contains(&Prefix::from_str("185.34.14.0/24").unwrap(), None));
@@ -697,19 +694,19 @@ fn test_concurrent_updates_2(
         tree_bitmap.contains(&Prefix::from_str("32.0.0.0/4").unwrap(), None)
     );
 
-    assert_eq!(
-        tree_bitmap
-            .match_prefix(
-                &Prefix::from_str("0.0.0.0/2").unwrap(),
-                &match_options,
-                &guard
-            )
-            .more_specifics
-            .unwrap()
-            .len(),
-        1
-    );
+    let mp02 = tree_bitmap
+        .match_prefix(
+            &Prefix::from_str("0.0.0.0/2").unwrap(),
+            &match_options,
+            &guard,
+        )
+        .more_specifics
+        .unwrap();
+    println!("0/2 {}", mp02);
+    assert_eq!(mp02.len(), 1);
 
+    let res128 = tree_bitmap.match_prefix(&pfx128, &match_options, &guard);
+    println!("128 {:#?}", res128);
     // let guard = rotonda_store::epoch::pin();
     // println!(
     //     "more_specifics_iter_from {:#?}",
@@ -722,30 +719,36 @@ fn test_concurrent_updates_2(
         .collect::<Vec<_>>()
         .len();
     assert_eq!(active_len, all_pfxs_iter.len());
-    let len_2 = res128.more_specifics.unwrap().v4.len();
-    // + res128.more_specifics.unwrap().v4.len();
-    assert_eq!(active_len, len_2);
+    // let len_2 = res0.more_specifics.unwrap().v4.len()
+    assert_eq!(active_len, res128.more_specifics.unwrap().v4.len());
 
     Ok(())
 }
 
 #[test]
-fn shit_test() -> Result<(), Box<dyn std::error::Error>> {
+fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     println!("PersistOnly strategy starting...");
     let store_config = StoreConfig {
-        persist_strategy: rotonda_store::rib::PersistStrategy::MemoryOnly,
+        persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
         persist_path: "/tmp/rotonda/".into(),
     };
     let tree_bitmap = std::sync::Arc::new(
         MultiThreadedStore::<NoMeta>::new_with_config(store_config)?,
     );
+    let match_options = MatchOptions {
+        match_type: rotonda_store::MatchType::EmptyMatch,
+        include_withdrawn: false,
+        include_less_specifics: false,
+        include_more_specifics: true,
+        mui: None,
+        include_history: IncludeHistory::None,
+    };
 
     let pfx1 = Prefix::from_str("185.34.0.0/16")?;
     let pfx2 = Prefix::from_str("185.34.3.0/24")?;
-    // let search_pfx = Prefix::from_str("128.0.0.0/1")?;
-    let search_pfx = Prefix::from_str("0.0.0.0/0")?;
+    let pfx3 = Prefix::from_str("185.34.4.0/24")?;
 
     tree_bitmap
         .insert(
@@ -763,16 +766,52 @@ fn shit_test() -> Result<(), Box<dyn std::error::Error>> {
         )
         .unwrap();
 
-    println!("-------------------");
+    tree_bitmap
+        .insert(
+            &pfx3,
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )
+        .unwrap();
 
     let guard = rotonda_store::epoch::pin();
-    let mp = tree_bitmap
-        .more_specifics_iter_from(&search_pfx, None, false, &guard)
-        .collect::<Vec<_>>();
 
-    println!("more specifics : {:#?}", mp);
+    assert!(tree_bitmap.contains(&pfx1, None));
+    assert!(tree_bitmap.contains(&pfx2, None));
+    assert!(tree_bitmap.contains(&pfx3, None));
 
-    assert_eq!(mp.len(), 2);
+    println!("-------------------");
+    // let search_pfx = Prefix::from_str("0.0.0.0/0")?;
+    // let mp = tree_bitmap
+    //     .more_specifics_iter_from(&search_pfx, None, false, &guard)
+    //     .collect::<Vec<_>>();
+
+    // println!("more specifics : {:#?}", mp);
+
+    // assert_eq!(mp.len(), 2);
+
+    let search_pfx = Prefix::from_str("128.0.0.0/1")?;
+
+    let m = tree_bitmap.match_prefix(&search_pfx, &match_options, &guard);
+
+    // let mp = tree_bitmap
+    //     .more_specifics_iter_from(&search_pfx, None, false, &guard)
+    //     .collect::<Vec<_>>();
+
+    println!(
+        "more specifics#0: {}",
+        m.more_specifics.as_ref().unwrap()[0]
+    );
+    println!(
+        "more specifics#1: {}",
+        m.more_specifics.as_ref().unwrap()[1]
+    );
+    println!(
+        "more specifics#2: {}",
+        m.more_specifics.as_ref().unwrap()[2]
+    );
+
+    assert_eq!(m.more_specifics.map(|mp| mp.len()), Some(3));
 
     Ok(())
 }

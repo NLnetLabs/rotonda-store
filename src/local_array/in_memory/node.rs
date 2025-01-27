@@ -1,4 +1,4 @@
-use std::ops::Shr;
+use num_traits::PrimInt;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
 
@@ -140,19 +140,18 @@ where
         base_prefix: StrideNodeId<AF>,
         start_bs: BitSpan,
     ) -> NodeMoreSpecificChildIter<AF, S> {
-        let cursor = if start_bs.len == 0 {
-            15
-        } else {
-            S::ptr_cursor_from_bit_span(start_bs)
-        };
+        let ptrbitarr = self.ptrbitarr.load();
+        let (bitrange, start_cursor) = S::ptr_range(ptrbitarr, start_bs);
+
         trace!("now we're really starting!");
         trace!("start_bs {:?}", start_bs);
-        trace!("start cursor {}", cursor);
+        trace!("ptrbitarr {:032b}", ptrbitarr);
+        // trace!("start cursor {}", start_cursor);
         NodeMoreSpecificChildIter::<AF, S> {
-            ptrbitarr: self.ptrbitarr.load(),
+            bitrange,
             base_prefix,
             start_bs,
-            cursor,
+            start_cursor,
         }
     }
 
@@ -837,9 +836,9 @@ type PtrBitArr<S> = <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
-    ptrbitarr: PtrBitArr<S>,
+    bitrange: PtrBitArr<S>,
     start_bs: BitSpan,
-    cursor: u8,
+    start_cursor: u8,
 }
 
 impl<AF: AddressFamily, S: Stride> std::iter::Iterator
@@ -847,65 +846,92 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
 {
     type Item = StrideNodeId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.ptrbitarr == PtrBitArr::<S>::zero() {
+        if self.bitrange == PtrBitArr::<S>::zero() {
             trace!("empty ptrbitarr. This iterator is done.");
             return None;
         }
 
-        let stop = <u8>::min(
-            (1 << (S::STRIDE_LEN - self.start_bs.len)) + self.cursor,
-            S::BITS - 2,
-        );
+        let cursor = self.bitrange.leading_zeros() as u8 + 15;
+        // let cursor = <u8>::max(
+        //     self.start_cursor,
+        //     self.ptrbitarr.leading_zeros() as u8 + 15,
+        // );
+
+        // let stop = <u8>::min(
+        //     (1 << (S::STRIDE_LEN - self.start_bs.len)) + cursor,
+        //     S::BITS - 2,
+        // );
+        trace!("LZCNT {}", self.bitrange.leading_zeros());
+
+        // if self.bitrange.leading_zeros() == 0 {
+        //     trace!("bitrange   {:032b}", self.bitrange);
+        //     panic!("empty bitrange. This iterator is done.");
+        //     return None;
+        // }
 
         trace!(
             "base_prefix {}, start bit span {:?} start-stop cursor {}-{}",
             self.base_prefix,
             self.start_bs,
-            self.cursor,
-            stop
+            self.start_cursor,
+            <u8>::min(
+                (1 << (S::STRIDE_LEN - self.start_bs.len))
+                    + self.start_cursor,
+                S::BITS - 2
+            )
         );
-        trace!("ptrbitarr {:032b}", self.ptrbitarr);
 
-        while self.cursor <= stop {
-            let bs = BitSpan::from_bit_pos_index(self.cursor);
-            // let bit_pos = S::get_bit_pos(self.cursor as u32, S::STRIDE_LEN);
-            let bit_pos = S::ptr_bit_pos_from_index(self.cursor);
+        trace!("bitrange  {:032b}", self.bitrange);
 
-            if log_enabled!(log::Level::Trace) {
-                trace!(
-                    "{:02}: {:05b} {:032b} bit_span: {:04b} ({:02}) (len: {})",
-                    self.cursor,
-                    self.cursor - 1,
-                    bit_pos,
-                    bs.bits,
-                    bs.bits,
-                    bs.len
-                );
-            }
+        // if cursor > stop {
+        //     trace!("ptrbitarr iterator done.");
+        //     return None;
+        // }
 
-            // if bs.bits.count_ones() == bs.len as u32 {
-            //     self.cursor += (self.start_bs.bits
-            //         << (bs.len - self.start_bs.len))
-            //         as u8;
-            // }
+        self.bitrange = self.bitrange ^ S::ptr_bit_pos_from_index(cursor);
 
-            if self.ptrbitarr & bit_pos > PtrBitArr::<S>::zero() {
-                self.cursor += 1;
-                trace!(
-                    ">> found node with more specific prefixes for
+        trace!("mask      {:032b}", S::ptr_bit_pos_from_index(cursor));
+        trace!("next br   {:032b}", self.bitrange);
+
+        // while self.cursor <= stop {
+        // let bit_pos = S::get_bit_pos(self.cursor as u32, S::STRIDE_LEN);
+
+        let bs = BitSpan::from_bit_pos_index(cursor);
+        if log_enabled!(log::Level::Trace) {
+            let bit_pos = S::ptr_bit_pos_from_index(cursor);
+            trace!(
+                "{:02}: {:05b} {:032b} bit_span: {:04b} ({:02}) (len: {})",
+                cursor,
+                cursor - 1,
+                bit_pos,
+                bs.bits,
+                bs.bits,
+                bs.len
+            );
+            trace!(
+                ">> found node with more specific prefixes for
                     base prefix {:?} bit span {:?} (cursor {})",
-                    self.base_prefix,
-                    bs,
-                    self.cursor
-                );
-                let pfx = self.base_prefix.add_nibble(bs.bits, S::STRIDE_LEN);
-                return Some(pfx);
-            }
-            self.cursor += 1;
+                self.base_prefix,
+                bs,
+                cursor
+            );
         }
 
-        trace!("ptrbitarr iterator done.");
-        None
+        // if bs.bits.count_ones() == bs.len as u32 {
+        //     self.cursor += (self.start_bs.bits
+        //         << (bs.len - self.start_bs.len))
+        //         as u8;
+        // }
+
+        // if self.ptrbitarr & bit_pos > PtrBitArr::<S>::zero() {
+        // self.cursor += 1;
+        let pfx = self.base_prefix.add_nibble(bs.bits, S::STRIDE_LEN);
+        Some(pfx)
+        // }
+        // self.cursor += 1;
+        // }
+
+        // None
     }
 }
 
