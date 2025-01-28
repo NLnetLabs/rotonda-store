@@ -652,7 +652,9 @@ impl<
                     if log_enabled!(log::Level::Debug) {
                         debug!(
                             "{} store: Create new prefix record",
-                            std::thread::current().name().unwrap_or("unnamed-thread")
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread")
                         );
                     }
 
@@ -678,7 +680,9 @@ impl<
                     if log_enabled!(log::Level::Debug) {
                         debug!(
                         "{} store: Found existing prefix record for {}/{}",
-                        std::thread::current().name().unwrap_or("unnamed-thread"),
+                        std::thread::current()
+                            .name()
+                            .unwrap_or("unnamed-thread"),
                         prefix.get_net(),
                         prefix.get_len()
                     );
@@ -718,7 +722,7 @@ impl<
             self.non_recursive_retrieve_prefix_mut(prefix);
 
         if !exists {
-            return Err(PrefixStoreError::StoreNotReadyError);
+            return Err(PrefixStoreError::PrefixNotFound);
         }
 
         stored_prefix.record_map.mark_as_withdrawn_for_mui(mui);
@@ -737,7 +741,7 @@ impl<
             self.non_recursive_retrieve_prefix_mut(prefix);
 
         if !exists {
-            return Err(PrefixStoreError::StoreNotReadyError);
+            return Err(PrefixStoreError::PrefixNotFound);
         }
 
         stored_prefix.record_map.mark_as_active_for_mui(mui);
