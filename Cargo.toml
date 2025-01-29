@@ -20,7 +20,7 @@ version = "0.4.1"
 edition = "2021"
 authors = ["NLnet Labs <routing-team@nlnetlabs.nl>"]
 license = "BSD-3-Clause"
-rust-version = "1.80"
+rust-version = "1.82"
 
 [dependencies]
 crossbeam-epoch = "^0.9"
@@ -49,3 +49,12 @@ default = []
 [[bin]]
 name = "cli"
 required-features = ["cli"]
+
+[lints.clippy]
+needless_lifetimes = "allow"
+extra_unused_lifetimes = "allow"
+empty_line_after_outer_attr = "allow"
+empty_line_after_doc_comments = "allow"
+
+[lints.rust]
+elided_named_lifetimes = "allow"
