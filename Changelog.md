@@ -1,14 +1,12 @@
 # Change Log
 
-## Unreleased new version
+## 0.4.1
 
-Release yyyy-mm-yy.
-
-Breaking changes
-
-New
+Release 2025-01-29.
 
 Bug fixes
+
+* Incorrect Error message in case the status of a prefix was modified without it actually existing in the store, is now fixed. It was `StoreNotReady`, it has been changed to `PrefixNotFound`.
 
 ## 0.4.0
 
