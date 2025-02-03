@@ -1,3 +1,4 @@
+use inetnum::addr::Prefix;
 use num_traits::PrimInt;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
@@ -123,12 +124,15 @@ where
         start_bs: BitSpan,
         include_withdrawn: bool,
     ) -> NodeMoreSpecificsPrefixIter<AF, S> {
-        assert!(start_bs.len > 0);
+        // assert!(start_bs.len > 0);
+        let pfxbitarr = self.pfxbitarr.load();
+        trace!("pfxbitarr {:032b}", pfxbitarr);
         NodeMoreSpecificsPrefixIter::<AF, S> {
-            pfxbitarr: self.pfxbitarr.load(),
+            pfxbitarr,
             base_prefix,
+            bs: start_bs,
             start_bs,
-            cursor: S::cursor_from_bit_span(start_bs),
+            // cursor: S::cursor_from_bit_span(start_bs),
             include_withdrawn: false,
         }
     }
@@ -427,7 +431,10 @@ where
         (
             // The identifier of the node that has children of the next
             // stride.
-            Some(base_prefix.add_nibble(nibble, nibble_len)),
+            Some(base_prefix.add_bit_span(BitSpan {
+                bits: nibble,
+                len: nibble_len,
+            })),
             found_pfx,
         )
     }
@@ -658,7 +665,10 @@ where
             > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero(
             )
         {
-            found_child = Some(base_prefix.add_nibble(nibble, nibble_len));
+            found_child = Some(base_prefix.add_bit_span(BitSpan {
+                bits: nibble,
+                len: nibble_len,
+            }));
         }
 
         if let Some(child) = found_child {
@@ -695,13 +705,17 @@ where
                 if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
                 {
                     found_children_with_more_specifics.push(
-                    base_prefix.add_nibble(ms_nibble, ms_nibble_len)
+                    base_prefix.add_bit_span(BitSpan {
+                        bits: ms_nibble, len: ms_nibble_len})
                     );
                 }
 
                 if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
                     found_more_specifics_vec.push(
-                        base_prefix.add_nibble(ms_nibble, ms_nibble_len).into()                    )
+                        base_prefix.add_bit_span(BitSpan {
+                            bits: ms_nibble,
+                            len: ms_nibble_len
+                        }).into())
                 }
             }
         }
@@ -752,10 +766,13 @@ where
 // child pfxs len      /27-29 /30-32
 // child Nodes len     /29    /32
 
+type PtrBitArr<S> = <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
+type PfxBitArr<S> = <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeChildIter<AF: AddressFamily, S: Stride> {
     base_prefix: StrideNodeId<AF>,
-    ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+    ptrbitarr: PtrBitArr<S>,
     bit_span: BitSpan, // start with 0
     _af: PhantomData<AF>,
 }
@@ -774,11 +791,14 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
             // becomes 0000 0000 0000 1100, then it will iterate over
             // ...1100,...1101,...1110,...1111
             let bit_pos = S::get_bit_pos(cursor, S::STRIDE_LEN);
-            if (S::into_stride_size(self.ptrbitarr) & bit_pos) >
-                <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+            if (S::into_stride_size(self.ptrbitarr) & bit_pos)
+                > PfxBitArr::<S>::zero()
             {
                 self.bit_span.bits = cursor + 1;
-                return Some(self.base_prefix.add_nibble(cursor, S::STRIDE_LEN));
+                return Some(self.base_prefix.add_bit_span(BitSpan {
+                    bits: cursor,
+                    len: S::STRIDE_LEN,
+                }));
             }
         }
         None
@@ -831,7 +851,6 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
 // above example is therefore 1 << (5 - 4) = 2. Remember that a ptrbitarr
 // holds only one stride size (the largest for its stride size), so we're
 // done now.
-type PtrBitArr<S> = <<S as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
@@ -925,7 +944,10 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
 
         // if self.ptrbitarr & bit_pos > PtrBitArr::<S>::zero() {
         // self.cursor += 1;
-        let pfx = self.base_prefix.add_nibble(bs.bits, S::STRIDE_LEN);
+        let pfx = self.base_prefix.add_bit_span(BitSpan {
+            bits: bs.bits,
+            len: S::STRIDE_LEN,
+        });
         Some(pfx)
         // }
         // self.cursor += 1;
@@ -1136,7 +1158,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
             if self.pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize
                 as AtomicBitmap>::InnerType::zero() {
                 let bs = BitSpan::from_bit_pos_index(i);
-                return Some(self.base_prefix.add_nibble(bs.bits, bs.len).into());
+                return Some(self.base_prefix.add_bit_span(bs).into());
             }
         }
 
@@ -1195,8 +1217,6 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
 // the bit_span { bits: 2, len: 3 }, a.k.a. 0010 << 1. But now we will have
 // to go over a different amount of 1 << (5 - 4) = 2 iterations to reap the
 // next bit_spans of 0010 0 and 0010 1.
-type PfxBitArr<S> = <<S as super::atomic_stride::Stride>::AtomicPfxSize as super::atomic_stride::AtomicBitmap>::InnerType;
-
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // immutables
     base_prefix: StrideNodeId<AF>,
@@ -1205,8 +1225,9 @@ pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // technically, (it needs resetting the current state to it after each
     // prefix-length), but we'll keep the start-length as well for clarity
     // and increment it on a different field ('cur_len').
+    bs: BitSpan,
     start_bs: BitSpan,
-    cursor: u8,
+    // cursor: u8,
     include_withdrawn: bool,
 }
 
@@ -1224,42 +1245,106 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
 
         trace!(
             "ms prefix iterator start_bs {:?} start cursor {}",
-            self.start_bs,
-            self.cursor
+            self.bs,
+            S::cursor_from_bit_span(self.bs)
         );
-        trace!("pfxbitarr  {:064b}", self.pfxbitarr);
+        trace!("pfx {:032b}", self.pfxbitarr);
 
-        while self.cursor < S::BITS - 1 {
-            let res = BitSpan::from_bit_pos_index(self.cursor);
-            let bit_pos = S::bit_pos_from_index(self.cursor);
+        while S::cursor_from_bit_span(self.bs) < 31 {
+            if self.bs.len > 4 {
+                trace!(
+                    "all bits have been scanned. This is iterator is done."
+                );
+                return None;
+            }
 
             if log_enabled!(log::Level::Trace) {
+                let cursor = S::cursor_from_bit_span(self.bs);
                 trace!(
-                    "{:02}: {:06b} {:064b} bit_span: {:05b} (len: {})",
-                    self.cursor,
-                    self.cursor - 1,
-                    S::bit_pos_from_index(self.cursor),
-                    res.bits,
-                    res.len
+                    "{:02}: {:032b} bit_span: {:05b} (len: {})",
+                    cursor,
+                    S::get_bit_pos(self.bs.bits, self.bs.len),
+                    self.bs.bits,
+                    self.bs.len
                 );
             }
 
-            if res.bits.count_ones() == res.len as u32 {
-                self.cursor += (self.start_bs.bits
-                    << (res.len - self.start_bs.len))
-                    as u8;
-            }
-
+            let bit_pos = S::get_bit_pos(self.bs.bits, self.bs.len);
             if self.pfxbitarr & bit_pos > PfxBitArr::<S>::zero() {
-                self.cursor += 1;
-                trace!("found more specific prefix for bit span {:?}", res);
-                return Some(
-                    self.base_prefix.add_nibble(res.bits, res.len).into(),
-                );
+                let prefix_id: PrefixId<AF> = self
+                    .base_prefix
+                    .add_bit_span(BitSpan::from_bit_pos_index(
+                        bit_pos.leading_zeros() as u8,
+                    ))
+                    .into();
+                if log_enabled!(log::Level::Trace) {
+                    trace!(
+                        "found more specific prefix {}",
+                        Prefix::from(prefix_id)
+                    );
+                }
+                if self.bs.bits + 1
+                    < self.start_bs.bits
+                        + (1 << (self.bs.len - self.start_bs.len))
+                {
+                    self.bs = BitSpan {
+                        bits: self.bs.bits + 1,
+                        len: self.bs.len,
+                    };
+                } else {
+                    self.start_bs.bits <<= 1;
+                    self.bs = BitSpan {
+                        bits: self.start_bs.bits,
+                        len: self.bs.len + 1,
+                    };
+                }
+                return Some(prefix_id);
             }
-            self.cursor += 1;
-        }
 
+            if self.bs.bits + 1
+                < self.start_bs.bits
+                    + (1 << (self.bs.len - self.start_bs.len))
+            {
+                self.bs = BitSpan {
+                    bits: self.bs.bits + 1,
+                    len: self.bs.len,
+                };
+            } else {
+                self.start_bs.bits <<= 1;
+                self.bs = BitSpan {
+                    bits: self.start_bs.bits,
+                    len: self.bs.len + 1,
+                };
+            }
+        }
+        // while self.cursor < S::BITS - 1 {
+        //     let res = BitSpan::from_bit_pos_index(self.cursor);
+        //     let bit_pos = S::bit_pos_from_index(self.cursor);
+
+        //     if log_enabled!(log::Level::Trace) {
+        //         trace!(
+        //             "{:02}: {:06b} {:064b} bit_span: {:05b} (len: {})",
+        //             self.cursor,
+        //             self.cursor - 1,
+        //             S::bit_pos_from_index(self.cursor),
+        //             res.bits,
+        //             res.len
+        //         );
+        //     }
+
+        //     if res.bits.count_ones() == res.len as u32 {
+        //         self.cursor += (self.start_bs.bits
+        //             << (res.len - self.start_bs.len))
+        //             as u8;
+        //     }
+
+        //     if self.pfxbitarr & bit_pos > PfxBitArr::<S>::zero() {
+        //         self.cursor += 1;
+        //         trace!("found more specific prefix for bit span {:?}", res);
+        //         return Some(self.base_prefix.add_bit_span(res).into());
+        //     }
+        //     self.cursor += 1;
+        // }
         trace!("pfxbitarr iterator done.");
         None
     }
@@ -1493,76 +1578,66 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 //--------------------- Per-Stride-Node-Id Type -----------------------------
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct StrideNodeId<AF: AddressFamily>(Option<(AF, u8)>);
+pub struct StrideNodeId<AF: AddressFamily> {
+    addr_bits: AF,
+    len: u8,
+}
 
 impl<AF: AddressFamily> StrideNodeId<AF> {
-    pub fn empty() -> Self {
-        Self(None)
-    }
-
-    pub fn dangerously_new_with_id_as_is(addr_bits: AF, len: u8) -> Self {
-        Self(Some((addr_bits, len)))
+    pub(crate) fn dangerously_new_with_id_as_is(
+        addr_bits: AF,
+        len: u8,
+    ) -> Self {
+        Self { addr_bits, len }
     }
 
     #[inline]
-    pub fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
-        Self(Some((addr_bits.truncate_to_len(len), len)))
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.0.is_none()
+    pub(crate) fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
+        Self {
+            addr_bits: addr_bits.truncate_to_len(len),
+            len,
+        }
     }
 
     pub fn get_id(&self) -> (AF, u8) {
-        self.0.unwrap()
+        (self.addr_bits, self.len)
     }
-    pub fn get_len(&self) -> u8 {
-        self.0.unwrap().1
+
+    pub(crate) fn get_len(&self) -> u8 {
+        self.len
     }
     pub fn set_len(mut self, len: u8) -> Self {
-        self.0.as_mut().unwrap().1 = len;
+        self.len = len;
         self
     }
 
-    pub fn add_to_len(mut self, len: u8) -> Self {
-        self.0.as_mut().unwrap().1 += len;
+    pub(crate) fn add_to_len(mut self, len: u8) -> Self {
+        self.len += len;
         self
     }
 
     #[inline]
-    pub fn truncate_to_len(self) -> Self {
-        let (addr_bits, len) = self.0.unwrap();
-        StrideNodeId::new_with_cleaned_id(addr_bits, len)
+    pub(crate) fn truncate_to_len(self) -> Self {
+        StrideNodeId::new_with_cleaned_id(self.addr_bits, self.len)
     }
 
     // clean out all bits that are set beyond the len. This function should
     // be used before doing any ORing to add a nibble.
     #[inline]
-    pub fn unwrap_with_cleaned_id(&self) -> (AF, u8) {
-        let (addr_bits, len) = self.0.unwrap();
-        (addr_bits.truncate_to_len(len), len)
+    pub(crate) fn with_cleaned_id(&self) -> (AF, u8) {
+        (self.addr_bits.truncate_to_len(self.len), self.len)
     }
 
-    pub fn add_nibble(&self, nibble: u32, nibble_len: u8) -> Self {
-        let (addr_bits, len) = self.unwrap_with_cleaned_id();
-        let res = addr_bits.add_nibble(len, nibble, nibble_len);
-        Self(Some(res))
-    }
-
-    pub fn into_inner(self) -> Option<(AF, u8)> {
-        self.0
+    pub(crate) fn add_bit_span(&self, bs: BitSpan) -> Self {
+        let (addr_bits, len) = self.with_cleaned_id();
+        let res = addr_bits.add_bit_span(len, bs);
+        res.into()
     }
 }
 
 impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            self.0
-                .map(|x| format!("{}-{}", x.0, x.1))
-                .unwrap_or_else(|| "-".to_string())
-        )
+        write!(f, "{}-{}", self.addr_bits, self.len)
     }
 }
 
@@ -1570,7 +1645,15 @@ impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
     for PrefixId<AF>
 {
     fn from(id: StrideNodeId<AF>) -> Self {
-        let (addr_bits, len) = id.0.unwrap();
-        PrefixId::new(addr_bits, len)
+        PrefixId::new(id.addr_bits, id.len)
+    }
+}
+
+impl<AF: AddressFamily> From<(AF, u8)> for StrideNodeId<AF> {
+    fn from(value: (AF, u8)) -> Self {
+        StrideNodeId {
+            addr_bits: value.0,
+            len: value.1,
+        }
     }
 }

@@ -1,3 +1,5 @@
+use crate::local_array::bit_span::BitSpan;
+
 //------------ AddressFamily (trait) ----------------------------------------
 /// The address family of an IP address as a Trait.
 ///
@@ -34,7 +36,7 @@ pub trait AddressFamily:
     fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
 
     /// Treat self as a prefix and append the given nibble to it.
-    fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8);
+    fn add_bit_span(self, len: u8, bs: BitSpan) -> (Self, u8);
 
     fn truncate_to_len(self, len: u8) -> Self;
 
@@ -118,9 +120,9 @@ impl AddressFamily for IPv4 {
     /// let nibble = 0b1100110_u32;                             // 7-bit nibble
     /// let (new_prefix, new_len) = prefix.add_nibble(30, nibble, 7);
     /// ```
-    fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (u32, u8) {
-        let res = self | (nibble << (32 - len - nibble_len) as usize);
-        (res, len + nibble_len)
+    fn add_bit_span(self, len: u8, bs: BitSpan) -> (u32, u8) {
+        let res = self | (bs.bits << (32 - len - bs.len) as usize);
+        (res, len + bs.len)
     }
 
     fn from_ipaddr(addr: std::net::IpAddr) -> u32 {
@@ -210,10 +212,9 @@ impl AddressFamily for IPv6 {
     /// let nibble = 0xF00FF00F_u32;                            // 32-bit nibble
     /// let (new_prefix, new_len) = prefix.add_nibble(112, nibble, 32);
     /// ```
-    fn add_nibble(self, len: u8, nibble: u32, nibble_len: u8) -> (Self, u8) {
-        let res =
-            self | ((nibble as u128) << (128 - len - nibble_len) as usize);
-        (res, len + nibble_len)
+    fn add_bit_span(self, len: u8, bs: BitSpan) -> (Self, u8) {
+        let res = self | ((bs.bits as u128) << (128 - len - bs.len) as usize);
+        (res, len + bs.len)
     }
 
     fn truncate_to_len(self, len: u8) -> Self {

@@ -117,6 +117,7 @@ where
                 None
             },
             more_specifics: if options.include_more_specifics {
+                trace!("more specifics requested. acquiring...");
                 Some(
                     self.more_specific_prefix_iter_from(
                         if let Some(pfx) = stored_prefix {

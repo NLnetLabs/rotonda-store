@@ -1,6 +1,8 @@
 #[cfg(test)]
 use std::error::Error;
 
+use crate::local_array::bit_span::BitSpan;
+
 //------------ AddressFamily bit flippers -----------------------------------
 #[test]
 fn test_af_1() -> Result<(), Box<dyn Error>> {
@@ -22,7 +24,10 @@ fn test_af_1() -> Result<(), Box<dyn Error>> {
             base_prefix.get_id().0.truncate_to_len(28),
             28
         )
-        .add_nibble(0b0101, 4)
+        .add_bit_span(BitSpan {
+            bits: 0b0101,
+            len: 4
+        })
         .get_id()
         .0,
         0b1111_1111_1111_1111_1111_1111_1111_0101
@@ -46,11 +51,24 @@ fn test_af_2() -> Result<(), Box<dyn Error>> {
     );
 
     assert_eq!(
-        nu_prefix.add_nibble(0b1010, 4).get_id().0,
+        nu_prefix
+            .add_bit_span(BitSpan {
+                bits: 0b1010,
+                len: 4
+            })
+            .get_id()
+            .0,
         0b1111_1111_1010_0000_0000_0000_0000_0000
     );
     assert_eq!(
-        nu_prefix.truncate_to_len().add_nibble(0b1010, 4).get_id().0,
+        nu_prefix
+            .truncate_to_len()
+            .add_bit_span(BitSpan {
+                bits: 0b1010,
+                len: 4
+            })
+            .get_id()
+            .0,
         0b1111_1111_1010_0000_0000_0000_0000_0000
     );
 

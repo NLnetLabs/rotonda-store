@@ -82,21 +82,7 @@ where
             );
 
         QueryResult {
-            // prefix: if let Some(pfx) = prefix_id {
-            //     Prefix::new(
-            //         pfx.prefix.get_net().into_ipaddr(),
-            //         pfx.prefix.get_len(),
-            //     )
-            //     .ok()
-            // } else {
-            //     None
-            // },
             prefix,
-            // prefix_meta: prefix_id.record_map.get_filtered_records(
-            //     mui,
-            //     include_withdrawn,
-            //     self.in_memory_tree.withdrawn_muis_bmin(guard),
-            // ),
             prefix_meta: prefix
                 .map(|_pfx| {
                     self.get_value(prefix_id, mui, include_withdrawn, guard)

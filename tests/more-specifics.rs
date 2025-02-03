@@ -71,68 +71,99 @@ fn test_more_specifics() -> Result<(), Box<dyn Error>> {
 
     // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
     let guard = &epoch::pin();
-    for spfx in &[
+    for (i, spfx) in &[
         (
-            &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 23),
-            None,
-            // These are the indexes to pfxs.2 vec.
-            // These are all supposed to show up in the result.
-            vec![
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-                18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-            ],
-        ),
-        (
-            &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24),
-            Some(Prefix::new(
-                std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
-                24,
-            )?),
-            // These are the indexes to pfxs.2 vec.
-            // These are all supposed to show up in the result.
-            vec![
-                1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-                18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-            ],
-        ),
-        (
-            &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 25),
-            Some(Prefix::new(
-                std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
-                25,
-            )?),
-            vec![3, 4, 7, 8, 9, 14, 15, 16, 17, 18, 19],
-        ),
-        (
-            &Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 26),
-            Some(Prefix::new(
-                std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
-                26,
-            )?),
-            vec![7, 8, 14, 15, 16, 17],
-        ),
-        (
-            &Prefix::new(
-                std::net::Ipv4Addr::new(130, 55, 240, 192).into(),
-                26,
+            0,
+            (
+                &Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    23,
+                ),
+                None,
+                // These are the indexes to pfxs.2 vec.
+                // These are all supposed to show up in the result.
+                vec![
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+                ],
             ),
-            Some(Prefix::new(
-                std::net::Ipv4Addr::new(130, 55, 240, 192).into(),
-                26,
-            )?),
-            vec![12, 13, 24, 25, 26, 27],
         ),
         (
-            &Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 0),
-            None,
-            // These are the indexes to pfxs.2 vec.
-            // These are all supposed to show up in the result.
-            vec![
-                0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17,
-                18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
-            ],
+            1,
+            (
+                &Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    24,
+                ),
+                Some(Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    24,
+                )?),
+                // These are the indexes to pfxs.2 vec.
+                // These are all supposed to show up in the result.
+                vec![
+                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+                ],
+            ),
+        ),
+        (
+            2,
+            (
+                &Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    25,
+                ),
+                Some(Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    25,
+                )?),
+                vec![3, 4, 7, 8, 9, 14, 15, 16, 17, 18, 19],
+            ),
+        ),
+        (
+            3,
+            (
+                &Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    26,
+                ),
+                Some(Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 0).into(),
+                    26,
+                )?),
+                vec![7, 8, 14, 15, 16, 17],
+            ),
+        ),
+        (
+            4,
+            (
+                &Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 192).into(),
+                    26,
+                ),
+                Some(Prefix::new(
+                    std::net::Ipv4Addr::new(130, 55, 240, 192).into(),
+                    26,
+                )?),
+                vec![12, 13, 24, 25, 26, 27],
+            ),
+        ),
+        (
+            5,
+            (
+                &Prefix::new(std::net::Ipv4Addr::new(0, 0, 0, 0).into(), 0),
+                None,
+                // These are the indexes to pfxs.2 vec.
+                // These are all supposed to show up in the result.
+                vec![
+                    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                    17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27,
+                ],
+            ),
         ),
     ] {
+        println!("round {}", i);
         println!("search for: {}", (*spfx.0)?);
         let found_result = tree_bitmap.match_prefix(
             &spfx.0.unwrap(),
@@ -146,16 +177,62 @@ fn test_more_specifics() -> Result<(), Box<dyn Error>> {
             },
             guard,
         );
-        println!("em/m-s: {:#?}", found_result);
+        // println!("em/m-s: {:#?}", found_result);
+        //
+        println!("search prefix: {}", spfx.0.unwrap());
+        if let Some(pfx) = found_result.clone().prefix {
+            println!("found prefix: {}", pfx);
+        } else {
+            println!("no found prefix");
+        }
+
+        for (i, p) in found_result
+            .clone()
+            .more_specifics
+            .unwrap()
+            .v4
+            .iter()
+            .enumerate()
+            .map(|(i, p)| (i, p.prefix))
+        {
+            println!("ms {}: {}", i, p);
+        }
+
+        println!("--");
+        println!("all prefixes");
+
+        for (i, p) in tree_bitmap
+            .prefixes_iter_v4()
+            .enumerate()
+            .map(|(i, p)| (i, p.prefix))
+        {
+            println!("ms {}: {}", i, p);
+        }
 
         assert!(tree_bitmap.contains(&pfxs[25].unwrap(), None));
         assert!(tree_bitmap.contains(&pfxs[26].unwrap(), None));
         assert!(tree_bitmap.contains(&pfxs[27].unwrap(), None));
-        let ms2 = tree_bitmap.more_specifics_keys_from(&spfx.0.unwrap());
-        println!("ms2 {:#?}", ms2);
-        let more_specifics = found_result.more_specifics.unwrap();
+        // let mut ms2 = tree_bitmap.more_specifics_keys_from(&spfx.0.unwrap());
+        // println!("ms2 {:#?}", ms2);
+        // println!("ms2 len {}", ms2.len());
+        // ms2.dedup();
+        // println!("ms2 deduped {}", ms2.len());
+        let more_specifics = found_result
+            .more_specifics
+            .unwrap()
+            .iter()
+            .filter(|p| p.prefix != spfx.0.unwrap())
+            .collect::<Vec<_>>();
+
+        println!(
+            "{:?}",
+            more_specifics
+                .iter()
+                .find(|ms| ms.prefix == spfx.0.unwrap())
+        );
         assert_eq!(found_result.prefix, spfx.1);
 
+        println!("round {}", i);
         assert_eq!(&more_specifics.len(), &spfx.2.len());
 
         for i in spfx.2.iter() {

@@ -44,18 +44,37 @@ mod tests {
 
         // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
         let guard = &epoch::pin();
-        for spfx in &[
+        for (r, spfx) in &[
             (
-                &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9),
-                &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 9), // 0
-                vec![0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13],
+                0,
+                (
+                    &Prefix::new(
+                        std::net::Ipv4Addr::new(17, 0, 0, 0).into(),
+                        9,
+                    ),
+                    &Prefix::new(
+                        std::net::Ipv4Addr::new(17, 0, 0, 0).into(),
+                        9,
+                    ), // 0
+                    vec![0, 1, 2, 3, 4, 6, 7, 9, 10, 11, 12, 13],
+                ),
             ),
             (
-                &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 8),
-                &Prefix::new(std::net::Ipv4Addr::new(17, 0, 0, 0).into(), 8), // 0
-                vec![0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13],
+                1,
+                (
+                    &Prefix::new(
+                        std::net::Ipv4Addr::new(17, 0, 0, 0).into(),
+                        8,
+                    ),
+                    &Prefix::new(
+                        std::net::Ipv4Addr::new(17, 0, 0, 0).into(),
+                        8,
+                    ), // 0
+                    vec![0, 1, 2, 3, 4, 6, 7, 8, 9, 10, 11, 12, 13],
+                ),
             ),
         ] {
+            println!("start round {}", r);
             println!("search for: {:?}", spfx.0);
             let found_result = tree_bitmap.match_prefix(
                 &spfx.0.unwrap(),
@@ -71,7 +90,12 @@ mod tests {
             );
             println!("em/m-s: {:#?}", found_result);
 
-            let more_specifics = found_result.more_specifics.unwrap();
+            let more_specifics = found_result
+                .more_specifics
+                .unwrap()
+                .iter()
+                .filter(|p| p.prefix != spfx.0.unwrap())
+                .collect::<Vec<_>>();
 
             assert_eq!(found_result.prefix.unwrap(), spfx.1.unwrap());
             assert_eq!(&more_specifics.len(), &spfx.2.len());
@@ -83,6 +107,7 @@ mod tests {
                     more_specifics.iter().find(|pfx| pfx.prefix == pfxs[*i]);
                 assert!(result_pfx.is_some());
             }
+            println!("end round {}", r);
             println!("-----------");
         }
         Ok(())
@@ -154,7 +179,12 @@ mod tests {
             );
             println!("em/m-s: {}", found_result);
 
-            let more_specifics = found_result.more_specifics.unwrap();
+            let more_specifics = found_result
+                .more_specifics
+                .unwrap()
+                .iter()
+                .filter(|p| p.prefix != spfx.0.unwrap())
+                .collect::<Vec<_>>();
 
             assert_eq!(
                 found_result.prefix.unwrap(),

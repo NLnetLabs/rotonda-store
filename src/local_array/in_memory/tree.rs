@@ -189,6 +189,7 @@ use crate::prefix_record::Meta;
 use crate::prelude::multi::{NodeSet, PrefixId};
 use crossbeam_epoch::{Atomic, Guard};
 use crossbeam_utils::Backoff;
+use inetnum::addr::Prefix;
 use log::{debug, error, log_enabled, trace};
 use roaring::RoaringBitmap;
 
@@ -983,7 +984,13 @@ impl<
                 // GOTCHA!
                 // Our search-prefix is stored here, so we're returning
                 // it, so its PrefixRecord can be updated by the caller.
-                trace!("found requested prefix {:?}", search_prefix_id);
+                if log_enabled!(log::Level::Trace) {
+                    trace!(
+                        "found requested prefix {} ({:?})",
+                        Prefix::from(search_prefix_id),
+                        search_prefix_id
+                    );
+                }
                 return stored_prefix;
             } else {
                 // A Collision. Follow the chain.
@@ -1027,7 +1034,13 @@ impl<
 
             if let Some(stored_prefix) = prefix_set.0.get(index) {
                 if id == stored_prefix.get_prefix_id() {
-                    trace!("found requested prefix {:?}", id);
+                    if log_enabled!(log::Level::Trace) {
+                        trace!(
+                            "found requested prefix {} ({:?})",
+                            Prefix::from(id),
+                            id
+                        );
+                    }
                     parents[level as usize] = Some((prefix_set, index));
                     return (
                         Some(stored_prefix),
@@ -1072,6 +1085,11 @@ impl<
         &self,
         prefix: &PrefixId<AF>,
     ) -> (StrideNodeId<AF>, BitSpan) {
+        trace!(
+            "prefix id bits: {:032b} len: {}",
+            prefix.get_net(),
+            prefix.get_len()
+        );
         let mut acc = 0;
         for i in self.get_stride_sizes() {
             acc += *i;
@@ -1098,6 +1116,50 @@ impl<
             }
         }
         panic!("prefix length for {:?} is too long", prefix);
+    }
+
+    pub(crate) fn get_node_and_span_for_ms_prefix(
+        &self,
+        prefix: &PrefixId<AF>,
+    ) -> (StrideNodeId<AF>, BitSpan, BitSpan) {
+        trace!(
+            "prefix id bits: {:032b} len: {}",
+            prefix.get_net(),
+            prefix.get_len()
+        );
+        let (cur_node, cur_bs) = self.get_node_id_for_prefix(prefix);
+        // let ms_bits = cur_bs.bits << 1;
+        // let ms_len = cur_bs.len + 1;
+
+        // if ms_len > 4 {
+        //     panic!("ms_len > 4 {}", ms_len);
+        // }
+        // if ms_len > 4 {
+        //     return (
+        //         cur_node.add_bit_span(cur_bs),
+        //         BitSpan { bits: 0, len: 0 },
+        //         BitSpan { bits: 0, len: 0 },
+        //     );
+        // };
+
+        (
+            cur_node, cur_bs,
+            cur_bs, // BitSpan {
+                   //     bits: ms_bits,
+                   //     len: ms_len,
+                   // },
+        )
+        // (
+        //     cur_node,
+        //     BitSpan {
+        //         bits: cur_bs.bits,
+        //         len: cur_bs.len,
+        //     },
+        //     BitSpan {
+        //         bits: cur_bs.bits,
+        //         len: cur_bs.len,
+        //     },
+        // )
     }
     // ------- THE HASHING FUNCTION -----------------------------------------
 
@@ -1178,17 +1240,17 @@ impl<
             0
         };
         let this_level = <PB>::get_bits_for_len(id.get_len(), level);
-        trace!(
-            "bits division {}; no of bits {}",
-            this_level,
-            this_level - last_level
-        );
-        trace!(
-            "calculated index ({} << {}) >> {}",
-            id.get_net(),
-            last_level,
-            ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
-        );
+        // trace!(
+        //     "bits division {}; no of bits {}",
+        //     this_level,
+        //     this_level - last_level
+        // );
+        // trace!(
+        //     "calculated index ({} << {}) >> {}",
+        //     id.get_net(),
+        //     last_level,
+        //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
+        // );
         // HASHING FUNCTION
         ((id.get_net() << last_level)
             >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))

@@ -87,7 +87,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                 // END OF THE LENGTH
 
                 // This length is done too, go to the next length
-                trace!("next length {}", self.cur_len + 1);
+                // trace!("next length {}", self.cur_len + 1);
                 self.cur_len += 1;
 
                 // a new length, a new life reset the level depth and cursor,
@@ -117,7 +117,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
                     // END OF THE LENGTH
 
                     // This length is done too, go to the next length
-                    trace!("next length {}", self.cur_len);
+                    // trace!("next length {}", self.cur_len);
                     self.cur_len += 1;
 
                     // a new length, a new life reset the level depth and
@@ -459,7 +459,7 @@ pub(crate) struct MoreSpecificPrefixIter<
     store: &'a TreeBitMap<AF, M, NB, PB>,
     cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
-    start_bit_span: BitSpan,
+    // start_bit_span: BitSpan,
     // skip_self: bool,
     parent_and_position: Vec<SizedNodeMoreSpecificIter<AF>>,
     // If specified, we're only iterating over records for this mui.
@@ -615,16 +615,16 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!(
-                            "next stride new iterator stride 3 {:?} start \
-                        bit_span {:?}",
-                            self.cur_ptr_iter,
-                            self.start_bit_span
-                        );
+                        // trace!(
+                        //     "next stride new iterator stride 3 {:?} start \
+                        // bit_span {:?}",
+                        //     self.cur_ptr_iter,
+                        //     self.start_bit_span
+                        // );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 1),
+                                BitSpan::new(0, 0),
                                 false,
                             )
                             .wrap();
@@ -640,14 +640,13 @@ impl<
 
                         trace!(
                             "next stride new iterator stride 4 {:?} start \
-                        bit_span {:?}",
+                        bit_span 0 0",
                             self.cur_ptr_iter,
-                            self.start_bit_span
                         );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 1),
+                                BitSpan::new(0, 0),
                                 false,
                             )
                             .wrap();
@@ -661,16 +660,16 @@ impl<
                         );
                         self.cur_ptr_iter = ptr_iter.wrap();
 
-                        trace!(
-                            "next stride new iterator stride 5 {:?} start \
-                        bit_span {:?}",
-                            self.cur_ptr_iter,
-                            self.start_bit_span
-                        );
+                        // trace!(
+                        //     "next stride new iterator stride 5 {:?} start \
+                        // bit_span {:?}",
+                        //     self.cur_ptr_iter,
+                        //     self.start_bit_span
+                        // );
                         self.cur_pfx_iter = next_node
                             .more_specific_pfx_iter(
                                 next_ptr,
-                                BitSpan::new(0, 1),
+                                BitSpan::new(0, 0),
                                 false,
                             )
                             .wrap();
@@ -758,7 +757,7 @@ impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
             if this_level == 0 {
                 // END OF THE LENGTH
                 // This length is done too, go to the next length
-                trace!("next length {}", self.cur_len + 1);
+                // trace!("next length {}", self.cur_len + 1);
                 self.cur_len -= 1;
 
                 // a new length, a new life
@@ -897,10 +896,9 @@ impl<
             None
         } else {
             // calculate the node start_prefix_id lives in.
-            let (start_node_id, start_bit_span) =
-                self.get_node_id_for_prefix(&start_prefix_id);
+            let (start_node_id, start_ptr_span, start_pfx_span) =
+                self.get_node_and_span_for_ms_prefix(&start_prefix_id);
             trace!("start node {}", start_node_id);
-
             trace!(
                 "start prefix id {:032b} (len {})",
                 start_prefix_id.get_net(),
@@ -913,10 +911,18 @@ impl<
                 start_node_id.get_len()
             );
             trace!(
-                "start bit span  {:032b} {}",
-                start_bit_span,
-                start_bit_span.bits
+                "start pfx bit span  {:08b} {} len {}",
+                start_pfx_span.bits,
+                start_pfx_span.bits,
+                start_pfx_span.len
             );
+            trace!(
+                "start ptr bit span  {:08b} {} len {}",
+                start_ptr_span.bits,
+                start_ptr_span.bits,
+                start_ptr_span.len
+            );
+
             let cur_pfx_iter: SizedPrefixIter<AF>;
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
@@ -932,30 +938,22 @@ impl<
                         cur_pfx_iter = SizedPrefixIter::Stride3(
                             n.more_specific_pfx_iter(
                                 start_node_id,
-                                start_bit_span,
+                                start_pfx_span,
                                 true,
                             ),
                         );
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
                             n.more_specific_ptr_iter(
                                 start_node_id,
-                                start_bit_span,
+                                start_ptr_span,
                             ),
                         );
                     }
                     SizedStrideRef::Stride4(n) => {
-                        trace!(
-                            "ALTERNATIVE {:#?}",
-                            n.add_more_specifics_at(
-                                start_bit_span.bits,
-                                start_bit_span.len,
-                                start_node_id
-                            )
-                        );
                         cur_pfx_iter = SizedPrefixIter::Stride4(
                             n.more_specific_pfx_iter(
                                 start_node_id,
-                                start_bit_span,
+                                start_pfx_span,
                                 true,
                             ),
                         );
@@ -964,7 +962,7 @@ impl<
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride4(
                             n.more_specific_ptr_iter(
                                 start_node_id,
-                                start_bit_span,
+                                start_ptr_span,
                             ),
                         );
                     }
@@ -972,14 +970,14 @@ impl<
                         cur_pfx_iter = SizedPrefixIter::Stride5(
                             n.more_specific_pfx_iter(
                                 start_node_id,
-                                start_bit_span,
+                                start_pfx_span,
                                 true,
                             ),
                         );
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(
                             n.more_specific_ptr_iter(
                                 start_node_id,
-                                start_bit_span,
+                                start_ptr_span,
                             ),
                         );
                     }
@@ -991,7 +989,7 @@ impl<
                     store: self,
                     cur_pfx_iter,
                     cur_ptr_iter,
-                    start_bit_span,
+                    // start_bit_span,
                     parent_and_position: vec![],
                     global_withdrawn_bmin,
                     include_withdrawn,
@@ -1032,10 +1030,11 @@ impl<
                 start_node_id.get_len()
             );
             trace!(
-                "start bit span  {:032b} {}",
+                "start bit span  {:08b} {}",
                 start_bit_span,
                 start_bit_span.bits
             );
+
             let cur_pfx_iter: SizedPrefixIter<AF>;
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
 
