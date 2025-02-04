@@ -1,5 +1,6 @@
 use inetnum::addr::Prefix;
 use num_traits::PrimInt;
+use std::arch::x86_64::_mm_addsub_ps;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
 
@@ -125,14 +126,12 @@ where
         include_withdrawn: bool,
     ) -> NodeMoreSpecificsPrefixIter<AF, S> {
         // assert!(start_bs.len > 0);
-        let pfxbitarr = self.pfxbitarr.load();
+        let mut pfxbitarr = self.pfxbitarr.load();
         trace!("pfxbitarr {:032b}", pfxbitarr);
+        pfxbitarr = S::ms_pfx_mask(pfxbitarr, start_bs);
         NodeMoreSpecificsPrefixIter::<AF, S> {
             pfxbitarr,
             base_prefix,
-            bs: start_bs,
-            start_bs,
-            // cursor: S::cursor_from_bit_span(start_bs),
             include_withdrawn: false,
         }
     }
@@ -150,7 +149,6 @@ where
         trace!("now we're really starting!");
         trace!("start_bs {:?}", start_bs);
         trace!("ptrbitarr {:032b}", ptrbitarr);
-        // trace!("start cursor {}", start_cursor);
         NodeMoreSpecificChildIter::<AF, S> {
             bitrange,
             base_prefix,
@@ -1167,6 +1165,27 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
     }
 }
 
+pub const fn ms_prefix_mask_arr(bs: BitSpan) -> u32 {
+    [
+        0b_01111111111111111111111111111110, // bits = 0, len = 0
+        0b_01011001111000011111111000000000, // bits = 0, len = 1
+        0b_00100110000111100000000111111110, // bits = 1, len = 1
+        0b_00010001100000011110000000000000, // bits = 0, len = 2
+        0b_00001000011000000001111000000000, // bits = 1, len = 2
+        0b_00000100000110000000000111100000, // bits = 2, len = 2
+        0b_00000010000001100000000000011110, // bits = 3, len = 2
+        0b_00000001000000011000000000000000, // bits = 0, len = 3
+        0b_00000000100000000110000000000000, // bits = 1, len = 3
+        0b_00000000010000000001100000000000, // bits = 2, len = 3
+        0b_00000000001000000000011000000000, // bits = 3, len = 3
+        0b_00000000000100000000000110000000, // bits = 4, len = 3
+        0b_00000000000010000000000001100000, // bits = 5, len = 3
+        0b_00000000000001000000000000011000, // bits = 6, len = 3
+        0b_00000000000000100000000000000110, // bits = 7, len = 3
+        0b_00000000000000000000000000000000, // padding
+    ][(1 << bs.len) - 1 + bs.bits as usize]
+}
+
 // Creates an Iterator that returns all prefixes that exist in a node that
 // are a more-specific prefix of the `base_prefix` + `start_bit_span`.
 //
@@ -1225,9 +1244,7 @@ pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
     // technically, (it needs resetting the current state to it after each
     // prefix-length), but we'll keep the start-length as well for clarity
     // and increment it on a different field ('cur_len').
-    bs: BitSpan,
-    start_bs: BitSpan,
-    // cursor: u8,
+    // bs: BitSpan,
     include_withdrawn: bool,
 }
 
@@ -1243,110 +1260,95 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
             return None;
         }
 
+        let cursor = self.pfxbitarr.leading_zeros() as u8;
+        let bs = BitSpan::from_bit_pos_index(cursor);
         trace!(
             "ms prefix iterator start_bs {:?} start cursor {}",
-            self.bs,
-            S::cursor_from_bit_span(self.bs)
+            bs,
+            S::cursor_from_bit_span(bs)
         );
         trace!("pfx {:032b}", self.pfxbitarr);
+        let bit_pos = S::get_bit_pos(bs.bits, bs.len);
+        let prefix_id: PrefixId<AF> = self
+            .base_prefix
+            .add_bit_span(BitSpan::from_bit_pos_index(
+                bit_pos.leading_zeros() as u8,
+            ))
+            .into();
+        self.pfxbitarr = self.pfxbitarr ^ S::bit_pos_from_index(cursor);
+        Some(prefix_id)
 
-        while S::cursor_from_bit_span(self.bs) < 31 {
-            if self.bs.len > 4 {
-                trace!(
-                    "all bits have been scanned. This is iterator is done."
-                );
-                return None;
-            }
-
-            if log_enabled!(log::Level::Trace) {
-                let cursor = S::cursor_from_bit_span(self.bs);
-                trace!(
-                    "{:02}: {:032b} bit_span: {:05b} (len: {})",
-                    cursor,
-                    S::get_bit_pos(self.bs.bits, self.bs.len),
-                    self.bs.bits,
-                    self.bs.len
-                );
-            }
-
-            let bit_pos = S::get_bit_pos(self.bs.bits, self.bs.len);
-            if self.pfxbitarr & bit_pos > PfxBitArr::<S>::zero() {
-                let prefix_id: PrefixId<AF> = self
-                    .base_prefix
-                    .add_bit_span(BitSpan::from_bit_pos_index(
-                        bit_pos.leading_zeros() as u8,
-                    ))
-                    .into();
-                if log_enabled!(log::Level::Trace) {
-                    trace!(
-                        "found more specific prefix {}",
-                        Prefix::from(prefix_id)
-                    );
-                }
-                if self.bs.bits + 1
-                    < self.start_bs.bits
-                        + (1 << (self.bs.len - self.start_bs.len))
-                {
-                    self.bs = BitSpan {
-                        bits: self.bs.bits + 1,
-                        len: self.bs.len,
-                    };
-                } else {
-                    self.start_bs.bits <<= 1;
-                    self.bs = BitSpan {
-                        bits: self.start_bs.bits,
-                        len: self.bs.len + 1,
-                    };
-                }
-                return Some(prefix_id);
-            }
-
-            if self.bs.bits + 1
-                < self.start_bs.bits
-                    + (1 << (self.bs.len - self.start_bs.len))
-            {
-                self.bs = BitSpan {
-                    bits: self.bs.bits + 1,
-                    len: self.bs.len,
-                };
-            } else {
-                self.start_bs.bits <<= 1;
-                self.bs = BitSpan {
-                    bits: self.start_bs.bits,
-                    len: self.bs.len + 1,
-                };
-            }
-        }
-        // while self.cursor < S::BITS - 1 {
-        //     let res = BitSpan::from_bit_pos_index(self.cursor);
-        //     let bit_pos = S::bit_pos_from_index(self.cursor);
+        // while S::cursor_from_bit_span(self.bs) < 31 {
+        //     if self.bs.len > 4 {
+        //         trace!(
+        //             "all bits have been scanned. This is iterator is done."
+        //         );
+        //         return None;
+        //     }
 
         //     if log_enabled!(log::Level::Trace) {
+        //         let cursor = S::cursor_from_bit_span(self.bs);
         //         trace!(
-        //             "{:02}: {:06b} {:064b} bit_span: {:05b} (len: {})",
-        //             self.cursor,
-        //             self.cursor - 1,
-        //             S::bit_pos_from_index(self.cursor),
-        //             res.bits,
-        //             res.len
+        //             "{:02}: {:032b} bit_span: {:05b} (len: {})",
+        //             cursor,
+        //             S::get_bit_pos(self.bs.bits, self.bs.len),
+        //             self.bs.bits,
+        //             self.bs.len
         //         );
         //     }
 
-        //     if res.bits.count_ones() == res.len as u32 {
-        //         self.cursor += (self.start_bs.bits
-        //             << (res.len - self.start_bs.len))
-        //             as u8;
+        //     let bit_pos = S::get_bit_pos(self.bs.bits, self.bs.len);
+        //     if self.pfxbitarr & bit_pos > PfxBitArr::<S>::zero() {
+        //         let prefix_id: PrefixId<AF> = self
+        //             .base_prefix
+        //             .add_bit_span(BitSpan::from_bit_pos_index(
+        //                 bit_pos.leading_zeros() as u8,
+        //             ))
+        //             .into();
+
+        //         if log_enabled!(log::Level::Trace) {
+        //             trace!(
+        //                 "found more specific prefix {}",
+        //                 Prefix::from(prefix_id)
+        //             );
+        //         }
+
+        //         if self.bs.bits + 1
+        //             < self.start_bs.bits
+        //                 + (1 << (self.bs.len - self.start_bs.len))
+        //         {
+        //             self.bs = BitSpan {
+        //                 bits: self.bs.bits + 1,
+        //                 len: self.bs.len,
+        //             };
+        //         } else {
+        //             self.start_bs.bits <<= 1;
+        //             self.bs = BitSpan {
+        //                 bits: self.start_bs.bits,
+        //                 len: self.bs.len + 1,
+        //             };
+        //         }
+        //         return Some(prefix_id);
         //     }
 
-        //     if self.pfxbitarr & bit_pos > PfxBitArr::<S>::zero() {
-        //         self.cursor += 1;
-        //         trace!("found more specific prefix for bit span {:?}", res);
-        //         return Some(self.base_prefix.add_bit_span(res).into());
+        //     if self.bs.bits + 1
+        //         < self.start_bs.bits
+        //             + (1 << (self.bs.len - self.start_bs.len))
+        //     {
+        //         self.bs = BitSpan {
+        //             bits: self.bs.bits + 1,
+        //             len: self.bs.len,
+        //         };
+        //     } else {
+        //         self.start_bs.bits <<= 1;
+        //         self.bs = BitSpan {
+        //             bits: self.start_bs.bits,
+        //             len: self.bs.len + 1,
+        //         };
         //     }
-        //     self.cursor += 1;
         // }
-        trace!("pfxbitarr iterator done.");
-        None
+        // trace!("pfxbitarr iterator done.");
+        // None
     }
 }
 

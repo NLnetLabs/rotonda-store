@@ -232,6 +232,16 @@ macro_rules! impl_primitive_atomic_stride {
                     (ptrbitarr & mask, start as u8)
                 }
 
+                fn ms_pfx_mask(
+                    pfxbitarr: $pfxsize,
+                    bs: BitSpan
+                ) -> $pfxsize {
+                    <$pfxsize>::try_from(
+                        $crate::local_array::in_memory::node::
+                        ms_prefix_mask_arr(bs) & pfxbitarr as u32
+                    ).unwrap()
+                }
+
                 // Ptrbitarr searches are only done in the last half of
                 // the bitarray, in the len = S::STRIDE_LEN part. We need a
                 // complete BitSpan still to figure when to stop.

@@ -542,6 +542,11 @@ where
         u8,
     );
 
+    fn ms_pfx_mask(
+        pfxbitarr: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
+        range: BitSpan,
+    ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding prefix in
     // the pfx_vec.
