@@ -9,20 +9,6 @@ impl BitSpan {
         Self { bits, len }
     }
 
-    // Increment the bit span by one and calculate the new length.
-    #[allow(dead_code)]
-    pub(crate) fn inc(&mut self) {
-        self.bits += 1;
-        self.len =
-            <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn set_len_to_bits(&mut self) {
-        self.len =
-            <u8>::max(self.len, (32 - self.bits.leading_zeros()) as u8);
-    }
-
     // Deep, dark, black magic. Calculate the bit span from the index in a
     // bitarr. This is used by iterators, so they can have one sequential i
     // loop, that goes over all positions in a bitarr by its indexes.
@@ -37,6 +23,13 @@ impl BitSpan {
             bits: bits - ((1 << i as u32) - 1),
             len: i,
         }
+    }
+
+    pub(crate) fn check(&self) -> bool {
+        println!("check bit span: {:?}", self);
+        self.len < 5
+            && self.bits < 16
+            && (self.bits << (32 - self.len)) >> (32 - self.len) == self.bits
     }
 }
 

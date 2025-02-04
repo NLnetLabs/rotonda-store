@@ -1,6 +1,4 @@
-use inetnum::addr::Prefix;
 use num_traits::PrimInt;
-use std::arch::x86_64::_mm_addsub_ps;
 use std::sync::atomic::{AtomicU16, AtomicU32, AtomicU64, AtomicU8};
 use std::{fmt::Debug, marker::PhantomData};
 

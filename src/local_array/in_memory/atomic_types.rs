@@ -28,7 +28,7 @@ use super::tree::{Stride, Stride3, Stride4, Stride5};
 // ----------- Node related structs -----------------------------------------
 
 #[derive(Debug)]
-pub struct StoredNode<AF, S>
+pub(crate) struct StoredNode<AF, S>
 where
     Self: Sized,
     S: Stride,
@@ -41,17 +41,16 @@ where
     pub(crate) node_set: NodeSet<AF, S>,
 }
 
-#[allow(clippy::type_complexity)]
 #[derive(Debug)]
-pub struct NodeSet<AF: AddressFamily, S: Stride>(
-    pub OnceBoxSlice<StoredNode<AF, S>>,
+pub(crate) struct NodeSet<AF: AddressFamily, S: Stride>(
+    OnceBoxSlice<StoredNode<AF, S>>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
-    pub RwLock<RoaringBitmap>,
+    RwLock<RoaringBitmap>,
 );
 
 impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
-    pub fn init(p2_size: u8) -> Self {
+    pub(crate) fn init(p2_size: u8) -> Self {
         if log_enabled!(log::Level::Debug) {
             debug!(
                 "{} store: creating space for {} nodes",
@@ -63,7 +62,11 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         NodeSet(OnceBoxSlice::new(p2_size), RoaringBitmap::new().into())
     }
 
-    pub fn update_rbm_index(
+    pub(crate) fn rbm(&self) -> &RwLock<RoaringBitmap> {
+        &self.1
+    }
+
+    pub(crate) fn update_rbm_index(
         &self,
         multi_uniq_id: u32,
     ) -> Result<(u32, bool), crate::prelude::multi::PrefixStoreError>
@@ -78,7 +81,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         Ok((try_count, !absent))
     }
 
-    pub fn remove_from_rbm_index(
+    pub(crate) fn remove_from_rbm_index(
         &self,
         multi_uniq_id: u32,
         _guard: &crate::epoch::Guard,
@@ -93,6 +96,10 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         rbm.remove(multi_uniq_id);
 
         Ok(try_count)
+    }
+
+    pub(crate) fn read(&self) -> &OnceBoxSlice<StoredNode<AF, S>> {
+        &self.0
     }
 }
 

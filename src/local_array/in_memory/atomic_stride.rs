@@ -30,7 +30,7 @@ impl<InnerType> CasResult<InnerType> {
     }
 }
 
-pub trait AtomicBitmap
+pub(crate) trait AtomicBitmap
 where
     Self: From<Self::InnerType>,
 {
