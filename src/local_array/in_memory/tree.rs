@@ -184,9 +184,9 @@
 // produce a fix for it).
 
 use crate::local_array::bit_span::BitSpan;
-use crate::local_array::in_memory::atomic_types::StoredNode;
+use crate::local_array::in_memory::atomic_types::{NodeSet, StoredNode};
 use crate::prefix_record::Meta;
-use crate::prelude::multi::{NodeSet, PrefixId};
+use crate::prelude::multi::PrefixId;
 use crossbeam_epoch::{Atomic, Guard};
 use crossbeam_utils::Backoff;
 use inetnum::addr::Prefix;

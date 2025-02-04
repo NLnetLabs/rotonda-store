@@ -444,11 +444,8 @@ impl<
                     trace!("let's retriev node {}", next_ptr);
                     self.store.retrieve_node(next_ptr)
                 } else {
-                    self.store.retrieve_node_for_mui(
-                        next_ptr,
-                        self.mui.unwrap(),
-                        // self.guard,
-                    )
+                    self.store
+                        .retrieve_node_for_mui(next_ptr, self.mui.unwrap())
                 };
 
                 match node {
@@ -472,7 +469,6 @@ impl<
                             .more_specific_pfx_iter(
                                 next_ptr,
                                 BitSpan::new(0, 0),
-                                false,
                             )
                             .wrap();
                     }
@@ -494,7 +490,6 @@ impl<
                             .more_specific_pfx_iter(
                                 next_ptr,
                                 BitSpan::new(0, 0),
-                                false,
                             )
                             .wrap();
                     }
@@ -517,7 +512,6 @@ impl<
                             .more_specific_pfx_iter(
                                 next_ptr,
                                 BitSpan::new(0, 0),
-                                false,
                             )
                             .wrap();
                     }
@@ -786,7 +780,6 @@ impl<
                             n.more_specific_pfx_iter(
                                 start_node_id,
                                 start_pfx_span,
-                                true,
                             ),
                         );
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
@@ -801,7 +794,6 @@ impl<
                             n.more_specific_pfx_iter(
                                 start_node_id,
                                 start_pfx_span,
-                                true,
                             ),
                         );
                         trace!("---------------------");
@@ -818,7 +810,6 @@ impl<
                             n.more_specific_pfx_iter(
                                 start_node_id,
                                 start_pfx_span,
-                                true,
                             ),
                         );
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(

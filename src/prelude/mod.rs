@@ -17,7 +17,7 @@ pub mod multi {
 
     pub use crate::local_array::errors::PrefixStoreError;
     pub use crate::local_array::in_memory::atomic_types::{
-        NodeBuckets, NodeSet, PrefixBuckets, PrefixSet,
+        NodeBuckets, PrefixBuckets, PrefixSet,
     };
     pub use crate::local_array::in_memory::iterators;
     pub use crate::local_array::in_memory::node::StrideNodeId;

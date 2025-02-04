@@ -23,7 +23,7 @@ macro_rules! impl_search_level {
                     // };
                     // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                    match nodes.0.get(index) {
+                    match nodes.read().get(index) {
                         None => None,
                         Some(stored_node) => {
                             let StoredNode { node_id, node, node_set, .. } = stored_node;
@@ -80,7 +80,7 @@ macro_rules! impl_search_level_for_mui {
                     // };
                     // let this_node = stored_node.load(Ordering::Acquire, guard);
 
-                    match nodes.0.get(index) {
+                    match nodes.read().get(index) {
                         None => None,
                         Some(this_node) => {
                             let StoredNode { node_id, node, node_set, .. } = this_node;
@@ -89,7 +89,7 @@ macro_rules! impl_search_level_for_mui {
                             // stored in this node, meaning the mui does not
                             // appear anywhere in the sub-tree formed from
                             // this node.
-                            let bmin = node_set.1.read().unwrap(); // load(Ordering::Acquire, guard).deref()
+                            let bmin = node_set.rbm().read().unwrap(); // load(Ordering::Acquire, guard).deref()
                             if !bmin.contains($mui) {
                                 return None;
                             }
@@ -155,7 +155,7 @@ macro_rules! retrieve_node_mut_closure {
                 let index = Self::hash_node_id($id, level);
                 let node;
 
-                match nodes.0.get(index) {
+                match nodes.read().get(index) {
                     // This arm only ever gets called in multi-threaded code
                     // where our thread (running this code *now*), andgot ahead
                     // of another thread: After the other thread created the
@@ -172,7 +172,7 @@ macro_rules! retrieve_node_mut_closure {
                         let node_set = NodeSet::init(next_level - this_level);
 
                         // See if we can create the node
-                        (node, _) = nodes.0.get_or_init(index, || StoredNode {
+                        (node, _) = nodes.read().get_or_init(index, || StoredNode {
                             node_id: $id,
                             node: TreeBitMapNode::new(),
                             node_set
@@ -263,7 +263,7 @@ macro_rules! store_node_closure {
                 // HASHING FUNCTION
                 let index = Self::hash_node_id($id, level);
 
-                match nodes.0.get(index) {
+                match nodes.read().get(index) {
                     None => {
                         // No node exists, so we create one here.
                         let next_level = <NB as NodeBuckets<AF>>::len_to_store_bits($id.get_id().1, level + 1);
@@ -287,7 +287,7 @@ macro_rules! store_node_closure {
                         let ptrbitarr = new_node.ptrbitarr.load();
                         let pfxbitarr = new_node.pfxbitarr.load();
 
-                        let (stored_node, its_us) = nodes.0.get_or_init(
+                        let (stored_node, its_us) = nodes.read().get_or_init(
                             index,
                             || StoredNode {
                                 node_id: $id,

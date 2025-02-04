@@ -72,7 +72,6 @@ where
         } else {
             None
         };
-        // let prefix = result.0;
         let more_specifics_vec =
             self.in_memory_tree.more_specific_prefix_iter_from(
                 prefix_id,
@@ -137,13 +136,13 @@ where
         }
     }
 
-    pub fn more_specifics_keys_from(
-        &self,
-        prefix_id: PrefixId<AF>,
-    ) -> impl Iterator<Item = PrefixId<AF>> + '_ {
-        self.in_memory_tree
-            .more_specific_prefix_only_iter_from(prefix_id)
-    }
+    // pub fn more_specifics_keys_from(
+    //     &self,
+    //     prefix_id: PrefixId<AF>,
+    // ) -> impl Iterator<Item = PrefixId<AF>> + '_ {
+    //     self.in_memory_tree
+    //         .more_specific_prefix_iter_from(prefix_id)
+    // }
 
     pub fn more_specifics_iter_from(
         &'a self,
