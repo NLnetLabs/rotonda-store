@@ -1,4 +1,15 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
+mod common {
+    use std::io::Write;
+
+    pub fn init() {
+        let _ = env_logger::builder()
+            .format(|buf, record| writeln!(buf, "{}", record.args()))
+            .is_test(true)
+            .try_init();
+    }
+}
+
 mod tests {
     use inetnum::addr::Prefix;
     use rotonda_store::{
@@ -10,6 +21,8 @@ mod tests {
     #[test]
     fn test_more_specifics_without_less_specifics(
     ) -> Result<(), Box<dyn Error>> {
+        crate::common::init();
+
         let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18)?, // 0
@@ -75,7 +88,7 @@ mod tests {
             ),
         ] {
             println!("start round {}", r);
-            println!("search for: {:?}", spfx.0);
+            println!("search for: {}", spfx.0.unwrap());
             let found_result = tree_bitmap.match_prefix(
                 &spfx.0.unwrap(),
                 &MatchOptions {
@@ -116,6 +129,8 @@ mod tests {
     #[test]
     fn test_more_specifics_with_less_specifics() -> Result<(), Box<dyn Error>>
     {
+        crate::common::init;
+
         let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18), // 0

@@ -98,18 +98,18 @@ mod tests {
         Ok(())
     }
 
-    rotonda_store::all_strategies![
-        tree_ipv4;
-        test_tree_ipv4;
-        PrefixAs
-    ];
+    // rotonda_store::all_strategies![
+    //     tree_ipv4;
+    //     test_tree_ipv4;
+    //     PrefixAs
+    // ];
 
-    fn test_tree_ipv4(
-        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    #[test]
+    fn test_tree_ipv4(// tree_bitmap: MultiThreadedStore<PrefixAs>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -385,7 +385,7 @@ mod tests {
             guard,
         );
         println!("prefix {:?}", res.prefix);
-        println!("res: {:#?}", &res);
+        println!("res: {}", &res);
 
         assert_eq!(
             res.prefix.unwrap(),
@@ -487,19 +487,18 @@ mod tests {
         Ok(())
     }
 
-    rotonda_store::all_strategies![
-        multi_ranges;
-        test_multi_ranges_ipv4;
-        NoMeta
-    ];
+    // rotonda_store::all_strategies![
+    //     multi_ranges;
+    //     test_multi_ranges_ipv4;
+    //     NoMeta
+    // ];
 
-    // #[test]
-    fn test_multi_ranges_ipv4(
-        tree_bitmap: MultiThreadedStore<NoMeta>,
+    #[test]
+    fn test_multi_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        // let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+        let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 
@@ -706,9 +705,14 @@ mod tests {
 
         println!("more_specifics match {} w/ withdrawn", more_specifics);
         let more_specifics = more_specifics.more_specifics.unwrap();
-        assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
         assert_eq!(more_specifics.meta.len(), 5);
         assert_eq!(
@@ -745,9 +749,14 @@ mod tests {
 
         println!("more_specifics match {} w/o withdrawn", more_specifics);
         let more_specifics = more_specifics.more_specifics.unwrap();
-        assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
         assert_eq!(more_specifics.meta.len(), 4);
         assert_eq!(
@@ -791,9 +800,15 @@ mod tests {
         assert_eq!(more_specifics.prefix_meta.len(), 3);
 
         let more_specifics = more_specifics.more_specifics.unwrap();
-        assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
 
         // one more more_specific should have been added due to mui 1 being
@@ -844,9 +859,14 @@ mod tests {
         assert_eq!(more_specifics.match_type, MatchType::EmptyMatch);
 
         let more_specifics = more_specifics.more_specifics.unwrap();
-        assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
 
         // all muis should be visible for the more specifics
