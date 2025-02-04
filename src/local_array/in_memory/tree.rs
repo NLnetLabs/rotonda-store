@@ -1118,49 +1118,6 @@ impl<
         panic!("prefix length for {:?} is too long", prefix);
     }
 
-    pub(crate) fn get_node_and_span_for_ms_prefix(
-        &self,
-        prefix: &PrefixId<AF>,
-    ) -> (StrideNodeId<AF>, BitSpan, BitSpan) {
-        trace!(
-            "prefix id bits: {:032b} len: {}",
-            prefix.get_net(),
-            prefix.get_len()
-        );
-        let (cur_node, cur_bs) = self.get_node_id_for_prefix(prefix);
-        // let ms_bits = cur_bs.bits << 1;
-        // let ms_len = cur_bs.len + 1;
-
-        // if ms_len > 4 {
-        //     panic!("ms_len > 4 {}", ms_len);
-        // }
-        // if ms_len > 4 {
-        //     return (
-        //         cur_node.add_bit_span(cur_bs),
-        //         BitSpan { bits: 0, len: 0 },
-        //         BitSpan { bits: 0, len: 0 },
-        //     );
-        // };
-
-        (
-            cur_node, cur_bs,
-            cur_bs, // BitSpan {
-                   //     bits: ms_bits,
-                   //     len: ms_len,
-                   // },
-        )
-        // (
-        //     cur_node,
-        //     BitSpan {
-        //         bits: cur_bs.bits,
-        //         len: cur_bs.len,
-        //     },
-        //     BitSpan {
-        //         bits: cur_bs.bits,
-        //         len: cur_bs.len,
-        //     },
-        // )
-    }
     // ------- THE HASHING FUNCTION -----------------------------------------
 
     // Ok, so hashing is really hard, but we're keeping it simple, and

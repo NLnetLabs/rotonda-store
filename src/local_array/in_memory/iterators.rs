@@ -737,8 +737,8 @@ impl<
             None
         } else {
             // calculate the node start_prefix_id lives in.
-            let (start_node_id, start_ptr_span, start_pfx_span) =
-                self.get_node_and_span_for_ms_prefix(&start_prefix_id);
+            let (start_node_id, start_bs) =
+                self.get_node_id_for_prefix(&start_prefix_id);
             trace!("start node {}", start_node_id);
             trace!(
                 "start prefix id {:032b} (len {})",
@@ -753,15 +753,15 @@ impl<
             );
             trace!(
                 "start pfx bit span  {:08b} {} len {}",
-                start_pfx_span.bits,
-                start_pfx_span.bits,
-                start_pfx_span.len
+                start_bs.bits,
+                start_bs.bits,
+                start_bs.len
             );
             trace!(
                 "start ptr bit span  {:08b} {} len {}",
-                start_ptr_span.bits,
-                start_ptr_span.bits,
-                start_ptr_span.len
+                start_bs.bits,
+                start_bs.bits,
+                start_bs.len
             );
 
             let cur_pfx_iter: SizedPrefixIter<AF>;
@@ -777,46 +777,28 @@ impl<
                 match node {
                     SizedStrideRef::Stride3(n) => {
                         cur_pfx_iter = SizedPrefixIter::Stride3(
-                            n.more_specific_pfx_iter(
-                                start_node_id,
-                                start_pfx_span,
-                            ),
+                            n.more_specific_pfx_iter(start_node_id, start_bs),
                         );
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
-                            n.more_specific_ptr_iter(
-                                start_node_id,
-                                start_ptr_span,
-                            ),
+                            n.more_specific_ptr_iter(start_node_id, start_bs),
                         );
                     }
                     SizedStrideRef::Stride4(n) => {
                         cur_pfx_iter = SizedPrefixIter::Stride4(
-                            n.more_specific_pfx_iter(
-                                start_node_id,
-                                start_pfx_span,
-                            ),
+                            n.more_specific_pfx_iter(start_node_id, start_bs),
                         );
                         trace!("---------------------");
                         trace!("start iterating nodes");
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride4(
-                            n.more_specific_ptr_iter(
-                                start_node_id,
-                                start_ptr_span,
-                            ),
+                            n.more_specific_ptr_iter(start_node_id, start_bs),
                         );
                     }
                     SizedStrideRef::Stride5(n) => {
                         cur_pfx_iter = SizedPrefixIter::Stride5(
-                            n.more_specific_pfx_iter(
-                                start_node_id,
-                                start_pfx_span,
-                            ),
+                            n.more_specific_pfx_iter(start_node_id, start_bs),
                         );
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(
-                            n.more_specific_ptr_iter(
-                                start_node_id,
-                                start_ptr_span,
-                            ),
+                            n.more_specific_ptr_iter(start_node_id, start_bs),
                         );
                     }
                 };
