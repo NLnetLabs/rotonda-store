@@ -9,11 +9,11 @@ use std::fs::File;
 use std::net::{IpAddr, Ipv4Addr};
 use std::process;
 
-#[create_store((
-    ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
-    ([3, 4, 5, 4], 16, 29)
-))]
-struct MyStore<PrefixAs>;
+// #[create_store((
+//     ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
+//     ([3, 4, 5, 4], 16, 29)
+// ))]
+// struct MyStore<PrefixAs>;
 
 fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
     match env::args_os().nth(1) {

@@ -7,11 +7,11 @@ use std::error::Error;
 use std::fs::File;
 use std::process;
 
-#[create_store((
-    ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
-    ([3, 4, 5, 4], 17, 29)
-))]
-struct MyStore;
+// #[create_store((
+//     ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
+//     ([3, 4, 5, 4], 17, 29)
+// ))]
+// struct MyStore;
 
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
