@@ -52,7 +52,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         for n in 1..6 {
             let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
             let config = StoreConfig::default();
-            let tree_bitmap = MyStore::<PrefixAs>::new_with_config(config)?;
+            let tree_bitmap =
+                MultiThreadedStore::<PrefixAs>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);
