@@ -3,7 +3,7 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use inetnum::addr::Prefix;
-use log::{info, trace};
+use log::info;
 
 use crossbeam_epoch::{self as epoch};
 use epoch::{Guard, Owned};
@@ -698,17 +698,6 @@ impl<
                     .unwrap_or_default(),
             )
         })
-
-        // let pt_iter = match self.config.persist_strategy {
-        //     PersistStrategy::PersistOnly => {
-        //         self.persist_tree.as_ref().map(|t| t.prefixes_iter())
-        //     }
-        //     _ => None,
-        // }
-        // .into_iter()
-        // .flatten();
-
-        // in_mem_iter.chain(pt_iter)
     }
 
     //-------- Persistence ---------------------------------------------------
@@ -717,38 +706,38 @@ impl<
         self.config.persist_strategy
     }
 
-    pub fn get_records_for_prefix(
-        &self,
-        prefix: &Prefix,
-        mui: Option<u32>,
-        include_withdrawn: bool,
-    ) -> Vec<PublicRecord<M>> {
-        trace!("get records for prefix in the right store");
-        let guard = epoch::pin();
-        match self.persist_strategy() {
-            PersistStrategy::PersistOnly => self
-                .persist_tree
-                .as_ref()
-                .map(|tree| {
-                    tree.get_records_for_prefix(
-                        PrefixId::from(*prefix),
-                        mui,
-                        include_withdrawn,
-                        self.in_memory_tree.withdrawn_muis_bmin(&guard),
-                    )
-                })
-                .unwrap_or_default(),
-            _ => self
-                .prefix_cht
-                .get_records_for_prefix(
-                    PrefixId::from(*prefix),
-                    mui,
-                    include_withdrawn,
-                    self.in_memory_tree.withdrawn_muis_bmin(&guard),
-                )
-                .unwrap_or_default(),
-        }
-    }
+    // pub fn get_records_for_prefix(
+    //     &self,
+    //     prefix: &Prefix,
+    //     mui: Option<u32>,
+    //     include_withdrawn: bool,
+    // ) -> Vec<PublicRecord<M>> {
+    //     trace!("get records for prefix in the right store");
+    //     let guard = epoch::pin();
+    //     match self.persist_strategy() {
+    //         PersistStrategy::PersistOnly => self
+    //             .persist_tree
+    //             .as_ref()
+    //             .map(|tree| {
+    //                 tree.get_records_for_prefix(
+    //                     PrefixId::from(*prefix),
+    //                     mui,
+    //                     include_withdrawn,
+    //                     self.in_memory_tree.withdrawn_muis_bmin(&guard),
+    //                 )
+    //             })
+    //             .unwrap_or_default(),
+    //         _ => self
+    //             .prefix_cht
+    //             .get_records_for_prefix(
+    //                 PrefixId::from(*prefix),
+    //                 mui,
+    //                 include_withdrawn,
+    //                 self.in_memory_tree.withdrawn_muis_bmin(&guard),
+    //             )
+    //             .unwrap_or_default(),
+    //     }
+    // }
 
     pub fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {
         if let Some(p) = &self.persist_tree {

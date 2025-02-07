@@ -1,11 +1,11 @@
 #[cfg(test)]
 use std::error::Error;
 
-use crate::local_array::bit_span::BitSpan;
-
 //------------ AddressFamily bit flippers -----------------------------------
+
 #[test]
 fn test_af_1() -> Result<(), Box<dyn Error>> {
+    use crate::local_array::bit_span::BitSpan;
     use crate::prelude::multi::StrideNodeId;
     use crate::AddressFamily;
     use crate::IPv4;
@@ -38,6 +38,7 @@ fn test_af_1() -> Result<(), Box<dyn Error>> {
 
 #[test]
 fn test_af_2() -> Result<(), Box<dyn Error>> {
+    use crate::local_array::bit_span::BitSpan;
     use crate::prelude::multi::StrideNodeId;
     use crate::IPv4;
 

@@ -38,204 +38,6 @@ use crate::{
 use inetnum::addr::Prefix;
 use log::{log_enabled, trace};
 
-// ----------- PrefixIter ---------------------------------------------------
-
-// Iterator over all the prefixes in the storage. This Iterator does *not* use
-// the tree, it iterates over all the length arrays in the CustomAllocStorage.
-
-// pub(crate) struct PrefixIter<
-//     'a,
-//     AF: AddressFamily + 'a,
-//     M: Meta + 'a,
-//     PB: PrefixBuckets<AF, M>,
-// > {
-//     prefixes: &'a PB,
-//     cur_len: u8,
-//     cur_bucket: &'a PrefixSet<AF, M>,
-//     cur_level: u8,
-//     // level depth of IPv4 as defined in rotonda-macros/maps.rs Option(parent,
-//     // cursor position at the parent) 32 is the max number of levels in IPv6,
-//     // which is the max number of of both IPv4 and IPv6.
-//     parents: [Option<(&'a PrefixSet<AF, M>, usize)>; 32],
-//     cursor: usize,
-// }
-
-// impl<'a, AF: AddressFamily + 'a, M: Meta + 'a, PB: PrefixBuckets<AF, M>>
-//     Iterator for PrefixIter<'a, AF, M, PB>
-// {
-//     type Item = (inetnum::addr::Prefix, Vec<PublicRecord<M>>);
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         trace!(
-//             "starting next loop for level {} cursor {} (len {})",
-//             self.cur_level,
-//             self.cursor,
-//             self.cur_len
-//         );
-
-//         loop {
-//             if self.cur_len > AF::BITS {
-//                 // This is the end, my friend
-//                 trace!("reached max length {}, returning None", self.cur_len);
-//                 return None;
-//             }
-
-//             if PB::get_bits_for_len(self.cur_len, self.cur_level) == 0 {
-//                 // END OF THE LENGTH
-
-//                 // This length is done too, go to the next length
-//                 // trace!("next length {}", self.cur_len + 1);
-//                 self.cur_len += 1;
-
-//                 // a new length, a new life reset the level depth and cursor,
-//                 // but also empty all the parents
-//                 self.cur_level = 0;
-//                 self.cursor = 0;
-//                 self.parents = [None; 32];
-
-//                 // let's continue, get the prefixes for the next length
-//                 self.cur_bucket =
-//                     self.prefixes.get_root_prefix_set(self.cur_len);
-//                 continue;
-//             }
-//             let bucket_size = 1_usize
-//                 << (if self.cur_level > 0 {
-//                     PB::get_bits_for_len(self.cur_len, self.cur_level)
-//                         - PB::get_bits_for_len(
-//                             self.cur_len,
-//                             self.cur_level - 1,
-//                         )
-//                 } else {
-//                     PB::get_bits_for_len(self.cur_len, self.cur_level)
-//                 });
-
-//             if self.cursor >= bucket_size {
-//                 if self.cur_level == 0 {
-//                     // END OF THE LENGTH
-
-//                     // This length is done too, go to the next length
-//                     // trace!("next length {}", self.cur_len);
-//                     self.cur_len += 1;
-
-//                     // a new length, a new life reset the level depth and
-//                     // cursor, but also empty all the parents
-//                     self.cur_level = 0;
-//                     self.cursor = 0;
-//                     self.parents = [None; 32];
-
-//                     if self.cur_len > AF::BITS {
-//                         // This is the end, my friend
-//                         return None;
-//                     }
-
-//                     // let's continue, get the prefixes for the next length
-//                     self.cur_bucket =
-//                         self.prefixes.get_root_prefix_set(self.cur_len);
-//                 } else {
-//                     // END OF THIS BUCKET GO BACK UP ONE LEVEL
-
-//                     // The level is done, but the length isn't Go back up one
-//                     // level and continue
-//                     match self.parents[self.cur_level as usize] {
-//                         Some(parent) => {
-//                             // There is a parent, go back up. Since we're
-//                             // doing depth-first we have to check if there's a
-//                             // prefix directly at the parent and return that.
-//                             self.cur_level -= 1;
-
-//                             // move the current bucket to the parent and move
-//                             // the cursor position where we left off. The next
-//                             // run of the loop will read it.
-//                             self.cur_bucket = parent.0;
-//                             self.cursor = parent.1 + 1;
-
-//                             continue;
-//                         }
-//                         None => {
-//                             trace!(
-//                                 "c {} lvl {} len {}",
-//                                 self.cursor,
-//                                 self.cur_level,
-//                                 self.cur_len
-//                             );
-//                             panic!(
-//                                 "Where do we belong? Where do we come from?"
-//                             );
-//                         }
-//                     };
-//                 }
-//             };
-
-//             // we're somewhere in the PrefixSet iteration, read the next
-//             // StoredPrefix. We are doing depth-first iteration, so we check
-//             // for a child first and descend into that if it exists.
-
-//             if let Some(s_pfx) = self.cur_bucket.get_by_index(self.cursor) {
-//                 // DEPTH FIRST ITERATION
-//                 match s_pfx.get_next_bucket() {
-//                     Some(bucket) => {
-//                         // DESCEND ONe LEVEL There's a child here, descend into
-//                         // it, but... trace!("C. got next bucket {:?}", bucket);
-
-//                         // save our parent and cursor position first, and then..
-//                         self.parents[(self.cur_level + 1) as usize] =
-//                             Some((self.cur_bucket, self.cursor));
-
-//                         // move to the next bucket,
-//                         self.cur_bucket = bucket;
-
-//                         // increment the level and reset the cursor.
-//                         self.cur_level += 1;
-//                         self.cursor = 0;
-
-//                         // If there's a child here there MUST be a prefix here,
-//                         // as well.
-//                         // if let Some(meta) =
-//                         //     s_pfx.get_stored_prefix(self.guard).map(|p| {
-//                         //         if log_enabled!(log::Level::Trace) {
-//                         //             // There's a prefix here, that's the next one
-//                         //             trace!("D. found prefix {:?}", p.prefix);
-//                         //         }
-//                         //         p.record_map.as_records()
-//                         //     })
-//                         // {
-//                         return Some((
-//                             s_pfx.get_prefix_id().into(),
-//                             s_pfx.record_map.as_records(),
-//                         ));
-//                         // } else {
-//                         //     panic!(
-//                         //         "No prefix here, but there's a child here?"
-//                         //     );
-//                         // }
-//                     }
-//                     None => {
-//                         // No reference to another PrefixSet, all that's left, is
-//                         // checking for a prefix at the current cursor position.
-//                         // if let Some(meta) =
-//                         //     s_pfx.get_stored_prefix(self.guard).map(|p| {
-//                         //         // There's a prefix here, that's the next one
-//                         //         if log_enabled!(log::Level::Debug) {
-//                         //             debug!("E. found prefix {:?}", p.prefix);
-//                         //         }
-//                         //         p.record_map.as_records()
-//                         //     })
-//                         // {
-//                         self.cursor += 1;
-//                         return Some((
-//                             s_pfx.get_prefix_id().into(),
-//                             s_pfx.record_map.as_records(),
-//                         ));
-//                         // }
-//                     }
-//                 };
-//             } else {
-//                 self.cursor += 1;
-//             }
-//         }
-//     }
-// }
-
 // ----------- Sized Wrappers -----------------------------------------------
 
 // These are enums to abstract over the Stride Size of the iterators. Each
@@ -296,32 +98,16 @@ impl<AF: AddressFamily> SizedPrefixIter<AF> {
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    // M: Meta,
     NB: NodeBuckets<AF>,
-    // PB: PrefixBuckets<AF, M>,
 > {
     tree: &'a TreeBitMap<AF, NB>,
     cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
     cur_pfx_iter: SizedPrefixIter<AF>,
-    // start_bit_span: BitSpan,
-    // skip_self: bool,
     parent_and_position: Vec<SizedNodeMoreSpecificIter<AF>>,
-    // If specified, we're only iterating over records for this mui.
-    // mui: Option<u32>,
-    // This is the tree-wide index of withdrawn muis, used to rewrite the
-    // statuses of these records, or filter them out.
-    // global_withdrawn_bmin: &'a RoaringBitmap,
-    // Whether we should filter out the withdrawn records in the search result
-    // include_withdrawn: bool,
 }
 
-impl<
-        'a,
-        AF: AddressFamily + 'a,
-        // M: Meta,
-        NB: NodeBuckets<AF>,
-        // PB: PrefixBuckets<AF, M>,
-    > Iterator for MoreSpecificPrefixIter<'a, AF, NB>
+impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
+    for MoreSpecificPrefixIter<'a, AF, NB>
 {
     type Item = PrefixId<AF>;
 
@@ -334,87 +120,6 @@ impl<
 
             if next_pfx.is_some() {
                 return next_pfx;
-                // If we have a mui, we have to deal slightly different with
-                // the records: There can only be one record for a (prefix,
-                // mui) combination, and the record may be filtered out by the
-                // global status of the mui, or its local status. In that case
-                // we don't return here (because that would result in a Prefix
-                // with an empty record vec).
-                // next_pfx
-                // if let Some(mui) = self.mui {
-                //     if let Some(p) = self
-                //         .store
-                //         .non_recursive_retrieve_prefix(
-                //             next_pfx.unwrap_or_else(|| {
-                //                 panic!(
-                //                 "BOOM! More-specific prefix {:?} disappeared \
-                //                 from the store",
-                //                 next_pfx
-                //             )
-                //             }),
-                //         )
-                //         .0
-                //     {
-                //         // We may either have to rewrite the local status with
-                //         // the provided global status OR we may have to omit
-                //         // all of the records with either global of local
-                //         // withdrawn status.
-                //         if self.include_withdrawn {
-                //             if let Some(rec) = p
-                //                 .record_map
-                //                 .get_record_for_mui_with_rewritten_status(
-                //                     mui,
-                //                     self.global_withdrawn_bmin,
-                //                     RouteStatus::Withdrawn,
-                //                 )
-                //             {
-                //                 return Some((p.prefix, vec![rec]));
-                //             }
-                //         } else if let Some(rec) = p
-                //             .record_map
-                //             .get_record_for_mui(mui, self.include_withdrawn)
-                //         {
-                //             return Some((p.prefix, vec![rec]));
-                //         }
-                //     };
-                // } else {
-                //     return self
-                //         .store
-                //         .non_recursive_retrieve_prefix(
-                //             next_pfx.unwrap_or_else(|| {
-                //                 panic!(
-                //                 "BOOM! More-specific prefix {:?} disappeared \
-                //                 from the store",
-                //                 next_pfx
-                //             )
-                //             }),
-                //             // self.guard,
-                //         )
-                //         .0
-                //         .map(|p| {
-                //             // Just like the mui specific records, we may have
-                //             // to either rewrite the local status (if the user
-                //             // wants the withdrawn records) or omit them.
-                //             if self.include_withdrawn {
-                //                 (
-                //                     p.prefix,
-                //                     p.record_map
-                //                         .as_records_with_rewritten_status(
-                //                             self.global_withdrawn_bmin,
-                //                             RouteStatus::Withdrawn,
-                //                         ),
-                //                 )
-                //             } else {
-                //                 (
-                //                     p.prefix,
-                //                     p.record_map
-                //                         .as_active_records_not_in_bmin(
-                //                             self.global_withdrawn_bmin,
-                //                         ),
-                //                 )
-                //             }
-                //         });
-                // }
             }
 
             // Our current prefix iterator for this node is done, look for
@@ -438,13 +143,7 @@ impl<
             }
 
             if let Some(next_ptr) = next_ptr {
-                // let node = if self.mui.is_none() {
-                //     trace!("let's retriev node {}", next_ptr);
                 let node = self.tree.retrieve_node(next_ptr);
-                // } else {
-                //     self.store
-                //         .retrieve_node_for_mui(next_ptr, self.mui.unwrap())
-                // };
 
                 match node {
                     Some(SizedStrideRef::Stride3(next_node)) => {
@@ -594,151 +293,6 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> Iterator
         }
     }
 }
-// loop {
-//     if self.cur_len == 0 {
-//         // This is the end, my friend
-//         trace!("reached min length {}, returning None", self.cur_len);
-//         return None;
-//     }
-
-//     // shave a bit of the current prefix.
-//     trace!(
-//         "truncate to len {} (level {})",
-//         self.cur_len,
-//         self.cur_level
-//     );
-//     self.cur_prefix_id = PrefixId::new(
-//         self.cur_prefix_id.get_net().truncate_to_len(self.cur_len),
-//         self.cur_len,
-//     );
-
-//     let last_level = if self.cur_level > 0 {
-//         PB::get_bits_for_len(self.cur_len, self.cur_level - 1)
-//     } else {
-//         0
-//     };
-
-//     let this_level =
-//         PB::get_bits_for_len(self.cur_len, self.cur_level);
-
-//     // NOT THE HASHING FUNCTION
-//     let index = ((self.cur_prefix_id.get_net() << last_level)
-//         >> ((AF::BITS - (this_level - last_level)) % AF::BITS))
-//         .dangerously_truncate_to_u32()
-//         as usize;
-
-//     if this_level == 0 {
-//         // END OF THE LENGTH
-//         // This length is done too, go to the next length
-//         // trace!("next length {}", self.cur_len + 1);
-//         self.cur_len -= 1;
-
-//         // a new length, a new life
-//         // reset the level depth and cursor,
-//         // but also empty all the parents
-//         self.cur_level = 0;
-//         // self.parents = [None; 26];
-
-//         // let's continue, get the prefixes for the next length
-//         self.cur_bucket =
-//             self.prefixes.get_root_prefix_set(self.cur_len);
-//         continue;
-//     }
-
-//     // LEVEL DEPTH ITERATION
-//     if let Some(stored_prefix) = self.cur_bucket.get_by_index(index) {
-//         // if let Some(stored_prefix) =
-//         // s_pfx.get_stored_prefix(self.guard)
-//         // {
-//         // trace!("get_record {:?}", stored_prefix.record_map);
-//         // let pfx_rec = if let Some(mui) = self.mui {
-//         // We don't have to check for the appearance of We may
-//         // either have to rewrite the local status with the
-//         // provided global status OR we may have to omit all of
-//         // the records with either global of local withdrawn
-//         // status.
-//         // if self.include_withdrawn {
-//         // let pfx_rec = stored_prefix
-//         //     .record_map
-//         //     .get_record_for_mui_with_rewritten_status(
-//         //         mui,
-//         //         self.global_withdrawn_bmin,
-//         //         RouteStatus::Withdrawn,
-//         //     )
-//         //     .into_iter()
-//         //     .collect();
-//         // } else {
-//         let pfx_rec = stored_prefix
-//             .record_map
-//             .get_record_for_mui(mui, self.include_withdrawn)
-//             .into_iter()
-//             .collect();
-//         // }
-//         // } else {
-//         // Just like the mui specific records, we may have
-//         // to either rewrite the local status (if the user
-//         // wants the withdrawn records) or omit them.
-//         //     if self.include_withdrawn {
-//         //         stored_prefix
-//         //             .record_map
-//         //             .as_records_with_rewritten_status(
-//         //                 self.global_withdrawn_bmin,
-//         //                 RouteStatus::Withdrawn,
-//         //             )
-//         //     } else {
-//         //         stored_prefix
-//         //             .record_map
-//         //             .as_active_records_not_in_bmin(
-//         //                 self.global_withdrawn_bmin,
-//         //             )
-//         //     }
-//         // };
-//         // There is a prefix here, but we need to check if it's
-//         // the right one.
-//         if self.cur_prefix_id == stored_prefix.prefix {
-//             trace!("found requested prefix {:?}", self.cur_prefix_id);
-//             self.cur_len -= 1;
-//             self.cur_level = 0;
-//             self.cur_bucket =
-//                 self.prefixes.get_root_prefix_set(self.cur_len);
-//             return if !pfx_rec.is_empty() {
-//                 Some((stored_prefix.prefix, pfx_rec))
-//             } else {
-//                 None
-//             };
-//         };
-//         // Advance to the next level or the next len.
-//         match stored_prefix
-//             .next_bucket.is_empty()
-//             // .0
-//             // .load(Ordering::SeqCst, self.guard)
-//             // .is_null()
-//         {
-//             // No child here, move one length down.
-//             true => {
-//                 self.cur_len -= 1;
-//                 self.cur_level = 0;
-//                 self.cur_bucket =
-//                     self.prefixes.get_root_prefix_set(self.cur_len);
-//             }
-//             // There's a child, move a level up and set the child
-//             // as current. Length remains the same.
-//             false => {
-//                 self.cur_bucket = &stored_prefix.next_bucket;
-//                 self.cur_level += 1;
-//             }
-//         };
-//     } else {
-//         trace!("no prefix at this level. Move one down.");
-//         self.cur_len -= 1;
-//         self.cur_level = 0;
-//         self.cur_bucket =
-//             self.prefixes.get_root_prefix_set(self.cur_len);
-//     }
-//     // }
-// }
-//     }
-// }
 
 // ----------- Iterator initialization methods for Rib -----------------------
 
@@ -758,9 +312,6 @@ impl<
     pub fn more_specific_prefix_iter_from(
         &'a self,
         start_prefix_id: PrefixId<AF>,
-        // mui: Option<u32>,
-        // include_withdrawn: bool,
-        // guard: &'a Guard,
     ) -> impl Iterator<Item = PrefixId<AF>> + 'a {
         trace!("more specifics for {:?}", start_prefix_id);
 
@@ -798,12 +349,7 @@ impl<
 
             let cur_pfx_iter: SizedPrefixIter<AF>;
             let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
-
-            // let node = if let Some(mui) = mui {
-            // self.retrieve_node_for_mui(start_node_id, mui)
-            // } else {
             let node = self.retrieve_node(start_node_id);
-            // };
 
             if let Some(node) = node {
                 match node {
@@ -835,16 +381,11 @@ impl<
                     }
                 };
 
-                // let global_withdrawn_bmin = self.withdrawn_muis_bmin(guard);
-
                 Some(MoreSpecificPrefixIter {
                     tree: self,
                     cur_pfx_iter,
                     cur_ptr_iter,
                     parent_and_position: vec![],
-                    // global_withdrawn_bmin,
-                    // include_withdrawn,
-                    // mui,
                 })
             } else {
                 None
@@ -859,46 +400,17 @@ impl<
     pub fn less_specific_prefix_iter(
         &'a self,
         start_prefix_id: PrefixId<AF>,
-        // Indicate whether we want to return only records for a specific mui,
-        // None indicates returning all records for a prefix.
-        // mui: Option<u32>,
-        // include_withdrawn: bool,
-        // guard: &'a Guard,
     ) -> impl Iterator<Item = PrefixId<AF>> + 'a {
         if log_enabled!(log::Level::Trace) {
             trace!("less specifics for {}", Prefix::from(start_prefix_id));
             trace!("level {}, len {}", 0, start_prefix_id.get_len());
         }
 
-        // We could just let the /0 prefix search the tree and have it return
-        // an empty iterator, but to avoid having to read out the root node
-        // for this prefix, we'll just return an empty iterator. None can be
-        // turned into an Iterator!
-        // if start_prefix_id.get_len() < 1 {
-        //     None
-        // } else {
-        // let cur_len = start_prefix_id.get_len() - 1;
-        // let cur_bucket = self.prefix_store.get_root_prefix_set(cur_len);
-        // let global_withdrawn_bmin = self.withdrawn_muis_bmin(guard);
-
-        // Some(
-
         LessSpecificPrefixIter {
-            // prefixes: &self.prefix_buckets,
             tree: self,
             prefix: start_prefix_id,
-            // cur_len,
-            // cur_bucket,
             cur_level: start_prefix_id.get_len(),
-            // cur_prefix_id: start_prefix_id,
-            // mui,
-            // global_withdrawn_bmin,
-            // include_withdrawn,
         }
-        //     })
-        // }
-        // .into_iter()
-        // .flatten()
     }
 
     pub fn longest_matching_prefix(

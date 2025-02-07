@@ -187,7 +187,6 @@ use crate::local_array::bit_span::BitSpan;
 use crate::local_array::in_memory::atomic_types::{NodeSet, StoredNode};
 use crate::prelude::multi::PrefixId;
 use crossbeam_epoch::{Atomic, Guard};
-use inetnum::addr::Prefix;
 use log::{debug, error, log_enabled, trace};
 use roaring::RoaringBitmap;
 
@@ -390,176 +389,198 @@ impl<
         }
     }
 
-    pub fn prefix_exists_legacy(&self, prefix_id: PrefixId<AF>) -> bool {
-        // if prefix_id.get_len() == 0 {
-        //     return self.update_default_route_prefix_meta(mui);
-        // }
-        trace!("exists {}?", Prefix::from(prefix_id));
-        if prefix_id.get_len() == 0 {
-            return false;
-        }
-
-        let mut stride_end: u8 = 0;
-        let mut cur_i = self.get_root_node_id();
-        let mut level: u8 = 0;
-
-        loop {
-            let stride = self.get_stride_sizes()[level as usize];
-            stride_end += stride;
-            trace!("stride end {}", stride_end);
-            assert!(stride_end <= AF::BITS);
-            let nibble_len = if prefix_id.get_len() < stride_end {
-                stride + prefix_id.get_len() - stride_end
-            } else {
-                stride
-            };
-
-            let nibble = AF::get_nibble(
-                prefix_id.get_net(),
-                stride_end - stride,
-                nibble_len,
-            );
-            let stride_start = stride_end - stride;
-
-            let node_result = match self.retrieve_node(cur_i) {
-                Some(node) => match node {
-                    SizedStrideRef::Stride3(n) => {
-                        let (child_node, found) = n.prefix_exists_in_stride(
-                            prefix_id,
-                            nibble,
-                            nibble_len,
-                            stride_start,
-                        );
-                        if found {
-                            return true;
-                        } else {
-                            child_node
-                        }
-                    }
-                    SizedStrideRef::Stride4(n) => {
-                        let (child_node, found) = n.prefix_exists_in_stride(
-                            prefix_id,
-                            nibble,
-                            nibble_len,
-                            stride_start,
-                        );
-                        if found {
-                            return true;
-                        } else {
-                            child_node
-                        }
-                    }
-                    SizedStrideRef::Stride5(n) => {
-                        let (child_node, found) = n.prefix_exists_in_stride(
-                            prefix_id,
-                            nibble,
-                            nibble_len,
-                            stride_start,
-                        );
-                        if found {
-                            return true;
-                        } else {
-                            child_node
-                        }
-                    }
-                },
-                None => {
-                    return false;
-                }
-            };
-
-            if let Some(next_id) = node_result {
-                cur_i = next_id;
-                level += 1;
-                continue;
-            }
-
-            return false;
-        }
-    }
-
     pub fn prefix_exists_for_mui(
         &self,
         prefix_id: PrefixId<AF>,
         mui: u32,
     ) -> bool {
-        // if prefix_id.get_len() == 0 {
-        //     return self.update_default_route_prefix_meta(mui);
-        // }
+        trace!("pe exists {:?}?", prefix_id);
+        let (node_id, bs) = self.get_node_id_for_prefix(&prefix_id);
 
-        let mut stride_end: u8 = 0;
-        let mut cur_i = self.get_root_node_id();
-        let mut level: u8 = 0;
-
-        loop {
-            let stride = self.get_stride_sizes()[level as usize];
-            stride_end += stride;
-            let nibble_len = if prefix_id.get_len() < stride_end {
-                stride + prefix_id.get_len() - stride_end
-            } else {
-                stride
-            };
-
-            let nibble = AF::get_nibble(
-                prefix_id.get_net(),
-                stride_end - stride,
-                nibble_len,
-            );
-            let stride_start = stride_end - stride;
-
-            let node_result = match self.retrieve_node_for_mui(cur_i, mui) {
-                Some(node) => match node {
-                    SizedStrideRef::Stride3(n) => {
-                        let (child_node, found) = n.prefix_exists_in_stride(
-                            prefix_id,
-                            nibble,
-                            nibble_len,
-                            stride_start,
-                        );
-                        if found {
-                            return true;
-                        } else {
-                            child_node
-                        }
-                    }
-                    SizedStrideRef::Stride4(n) => {
-                        let (child_node, found) = n.prefix_exists_in_stride(
-                            prefix_id,
-                            nibble,
-                            nibble_len,
-                            stride_start,
-                        );
-                        if found {
-                            return true;
-                        } else {
-                            child_node
-                        }
-                    }
-                    SizedStrideRef::Stride5(n) => {
-                        let (child_node, found) = n.prefix_exists_in_stride(
-                            prefix_id,
-                            nibble,
-                            nibble_len,
-                            stride_start,
-                        );
-                        if found {
-                            return true;
-                        } else {
-                            child_node
-                        }
-                    }
-                },
-                None => {
-                    return false;
-                }
-            };
-
-            if let Some(next_id) = node_result {
-                cur_i = next_id;
-                level += 1;
+        match self.retrieve_node_for_mui(node_id, mui) {
+            Some(SizedStrideRef::Stride4(n)) => {
+                let pfxbitarr = n.pfxbitarr.load();
+                pfxbitarr & Stride4::get_bit_pos(bs.bits, bs.len) > 0
+            }
+            None => false,
+            Some(n) => {
+                panic!(
+                    "unsupported stride length: {:?} node_id {}",
+                    n, node_id
+                );
             }
         }
     }
+    // pub fn prefix_exists_legacy(&self, prefix_id: PrefixId<AF>) -> bool {
+    //     // if prefix_id.get_len() == 0 {
+    //     //     return self.update_default_route_prefix_meta(mui);
+    //     // }
+    //     trace!("exists {}?", Prefix::from(prefix_id));
+    //     if prefix_id.get_len() == 0 {
+    //         return false;
+    //     }
+
+    //     let mut stride_end: u8 = 0;
+    //     let mut cur_i = self.get_root_node_id();
+    //     let mut level: u8 = 0;
+
+    //     loop {
+    //         let stride = self.get_stride_sizes()[level as usize];
+    //         stride_end += stride;
+    //         trace!("stride end {}", stride_end);
+    //         assert!(stride_end <= AF::BITS);
+    //         let nibble_len = if prefix_id.get_len() < stride_end {
+    //             stride + prefix_id.get_len() - stride_end
+    //         } else {
+    //             stride
+    //         };
+
+    //         let nibble = AF::get_nibble(
+    //             prefix_id.get_net(),
+    //             stride_end - stride,
+    //             nibble_len,
+    //         );
+    //         let stride_start = stride_end - stride;
+
+    //         let node_result = match self.retrieve_node(cur_i) {
+    //             Some(node) => match node {
+    //                 SizedStrideRef::Stride3(n) => {
+    //                     let (child_node, found) = n.prefix_exists_in_stride(
+    //                         prefix_id,
+    //                         nibble,
+    //                         nibble_len,
+    //                         stride_start,
+    //                     );
+    //                     if found {
+    //                         return true;
+    //                     } else {
+    //                         child_node
+    //                     }
+    //                 }
+    //                 SizedStrideRef::Stride4(n) => {
+    //                     let (child_node, found) = n.prefix_exists_in_stride(
+    //                         prefix_id,
+    //                         nibble,
+    //                         nibble_len,
+    //                         stride_start,
+    //                     );
+    //                     if found {
+    //                         return true;
+    //                     } else {
+    //                         child_node
+    //                     }
+    //                 }
+    //                 SizedStrideRef::Stride5(n) => {
+    //                     let (child_node, found) = n.prefix_exists_in_stride(
+    //                         prefix_id,
+    //                         nibble,
+    //                         nibble_len,
+    //                         stride_start,
+    //                     );
+    //                     if found {
+    //                         return true;
+    //                     } else {
+    //                         child_node
+    //                     }
+    //                 }
+    //             },
+    //             None => {
+    //                 return false;
+    //             }
+    //         };
+
+    //         if let Some(next_id) = node_result {
+    //             cur_i = next_id;
+    //             level += 1;
+    //             continue;
+    //         }
+
+    //         return false;
+    //     }
+    // }
+
+    // pub fn prefix_exists_for_mui(
+    //     &self,
+    //     prefix_id: PrefixId<AF>,
+    //     mui: u32,
+    // ) -> bool {
+    //     // if prefix_id.get_len() == 0 {
+    //     //     return self.update_default_route_prefix_meta(mui);
+    //     // }
+
+    //     let mut stride_end: u8 = 0;
+    //     let mut cur_i = self.get_root_node_id();
+    //     let mut level: u8 = 0;
+
+    //     loop {
+    //         let stride = self.get_stride_sizes()[level as usize];
+    //         stride_end += stride;
+    //         let nibble_len = if prefix_id.get_len() < stride_end {
+    //             stride + prefix_id.get_len() - stride_end
+    //         } else {
+    //             stride
+    //         };
+
+    //         let nibble = AF::get_nibble(
+    //             prefix_id.get_net(),
+    //             stride_end - stride,
+    //             nibble_len,
+    //         );
+    //         let stride_start = stride_end - stride;
+
+    //         let node_result = match self.retrieve_node_for_mui(cur_i, mui) {
+    //             Some(node) => match node {
+    //                 SizedStrideRef::Stride3(n) => {
+    //                     let (child_node, found) = n.prefix_exists_in_stride(
+    //                         prefix_id,
+    //                         nibble,
+    //                         nibble_len,
+    //                         stride_start,
+    //                     );
+    //                     if found {
+    //                         return true;
+    //                     } else {
+    //                         child_node
+    //                     }
+    //                 }
+    //                 SizedStrideRef::Stride4(n) => {
+    //                     let (child_node, found) = n.prefix_exists_in_stride(
+    //                         prefix_id,
+    //                         nibble,
+    //                         nibble_len,
+    //                         stride_start,
+    //                     );
+    //                     if found {
+    //                         return true;
+    //                     } else {
+    //                         child_node
+    //                     }
+    //                 }
+    //                 SizedStrideRef::Stride5(n) => {
+    //                     let (child_node, found) = n.prefix_exists_in_stride(
+    //                         prefix_id,
+    //                         nibble,
+    //                         nibble_len,
+    //                         stride_start,
+    //                     );
+    //                     if found {
+    //                         return true;
+    //                     } else {
+    //                         child_node
+    //                     }
+    //                 }
+    //             },
+    //             None => {
+    //                 return false;
+    //             }
+    //         };
+
+    //         if let Some(next_id) = node_result {
+    //             cur_i = next_id;
+    //             level += 1;
+    //         }
+    //     }
+    // }
 
     // Yes, we're hating this. But, the root node has no room for a serial of
     // the prefix 0/0 (the default route), which doesn't even matter, unless,
