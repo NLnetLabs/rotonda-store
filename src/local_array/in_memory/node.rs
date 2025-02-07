@@ -455,52 +455,52 @@ where
     //     )
     // }
 
-    pub(crate) fn prefix_exists_in_stride(
-        &'_ self,
-        search_pfx: PrefixId<AF>,
-        nibble: u32,
-        nibble_len: u8,
-        start_bit: u8,
-    ) -> (Option<StrideNodeId<AF>>, bool) {
-        let pfxbitarr = self.pfxbitarr.load();
-        let ptrbitarr = self.ptrbitarr.load();
-        // This is an exact match, so we're only considering the position of
-        // the full nibble.
-        let bit_pos = S::get_bit_pos(nibble, nibble_len);
-        let mut found_pfx = false;
-        let mut found_child = None;
+    // pub(crate) fn prefix_exists_in_stride(
+    //     &'_ self,
+    //     search_pfx: PrefixId<AF>,
+    //     nibble: u32,
+    //     nibble_len: u8,
+    //     start_bit: u8,
+    // ) -> (Option<StrideNodeId<AF>>, bool) {
+    //     let pfxbitarr = self.pfxbitarr.load();
+    //     let ptrbitarr = self.ptrbitarr.load();
+    //     // This is an exact match, so we're only considering the position of
+    //     // the full nibble.
+    //     let bit_pos = S::get_bit_pos(nibble, nibble_len);
+    //     let mut found_pfx = false;
+    //     let mut found_child = None;
 
-        // Is this the last nibble?
-        // Otherwise we're not looking for a prefix (exact matching only
-        // lives at last nibble)
-        match search_pfx.get_len() <= start_bit + nibble_len {
-            // We're at the last nibble.
-            true => {
-                // Check for an actual prefix at the right position, i.e.
-                // consider the complete nibble.
-                if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
-                    found_pfx = true;
-                }
-            }
-            // We're not at the last nibble.
-            false => {
-                // Check for a child node at the right position, i.e.
-                // consider the complete nibble.
-                if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
-                {
-                    found_child = Some(
-                        StrideNodeId::new_with_cleaned_id(search_pfx.get_net(), start_bit + nibble_len)
-                    );
-                }
-            }
-        }
+    //     // Is this the last nibble?
+    //     // Otherwise we're not looking for a prefix (exact matching only
+    //     // lives at last nibble)
+    //     match search_pfx.get_len() <= start_bit + nibble_len {
+    //         // We're at the last nibble.
+    //         true => {
+    //             // Check for an actual prefix at the right position, i.e.
+    //             // consider the complete nibble.
+    //             if pfxbitarr & bit_pos > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero() {
+    //                 found_pfx = true;
+    //             }
+    //         }
+    //         // We're not at the last nibble.
+    //         false => {
+    //             // Check for a child node at the right position, i.e.
+    //             // consider the complete nibble.
+    //             if (S::into_stride_size(ptrbitarr) & bit_pos) > <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType::zero()
+    //             {
+    //                 found_child = Some(
+    //                     StrideNodeId::new_with_cleaned_id(search_pfx.get_net(), start_bit + nibble_len)
+    //                 );
+    //             }
+    //         }
+    //     }
 
-        (
-            found_child, /* The node that has children in the next stride, if
-                         any */
-            found_pfx, /* The exactly matching prefix, if any */
-        )
-    }
+    //     (
+    //         found_child, /* The node that has children in the next stride, if
+    //                      any */
+    //         found_pfx, /* The exactly matching prefix, if any */
+    //     )
+    // }
 
     // This function looks for the exactly matching prefix in the provided
     // nibble, just like the one above, but this *does* iterate over all the
