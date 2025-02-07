@@ -60,6 +60,8 @@ mod tests {
 
     #[test]
     fn test_insert_extremes_ipv6() -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+
         let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(),
@@ -90,14 +92,17 @@ mod tests {
             },
             guard,
         );
-        println!("prefix: {:?}", &expect_pfx);
-        println!("result: {:#?}", &res);
+        println!("prefix: {}", &expect_pfx.unwrap());
+        println!("result: {}", &res);
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
 
         let max_pfx = Prefix::new_relaxed(
-            std::net::Ipv6Addr::new(255, 255, 255, 255, 255, 255, 255, 255)
-                .into(),
+            std::net::Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                0xffff,
+            )
+            .into(),
             128,
         );
 
@@ -108,11 +113,15 @@ mod tests {
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
-            std::net::Ipv6Addr::new(255, 255, 255, 255, 255, 255, 255, 255)
-                .into(),
+            std::net::Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                0xffff,
+            )
+            .into(),
             128,
         );
 
+        println!("done inserting...");
         let guard = &epoch::pin();
         let res = trie.match_prefix(
             &expect_pfx?,
@@ -289,7 +298,7 @@ mod tests {
         }
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter() {
+        for pfx in tree_bitmap.prefixes_iter(guard) {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,
@@ -562,7 +571,7 @@ mod tests {
         // };
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter() {
+        for pfx in tree_bitmap.prefixes_iter(guard) {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,

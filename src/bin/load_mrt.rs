@@ -596,8 +596,10 @@ fn main() {
         println!("\nverifying disk persistence...");
         let mut max_len = 0;
         for pfx in persisted_prefixes {
-            let values =
-                store.unwrap().get_records_for_prefix(&pfx, None, false);
+            let values = store
+                .unwrap()
+                .get_records_for_prefix(&pfx, None, false)
+                .unwrap();
             if values.is_empty() {
                 eprintln!("Found empty prefix on disk");
                 eprintln!("prefix: {}", pfx);
@@ -605,8 +607,10 @@ fn main() {
             }
             if values.len() > max_len {
                 max_len = values.len();
-                let recs =
-                    store.unwrap().get_records_for_prefix(&pfx, None, false);
+                let recs = store
+                    .unwrap()
+                    .get_records_for_prefix(&pfx, None, false)
+                    .unwrap();
                 println!("LEN {} prefix: {}", max_len, pfx);
                 for rec in recs {
                     let pa = OwnedPathAttributes::from((

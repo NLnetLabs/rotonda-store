@@ -354,7 +354,7 @@ mod tests {
         // };
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter() {
+        for pfx in tree_bitmap.prefixes_iter(guard) {
             // let pfx_nm = pfx.strip_meta();
             let res = tree_bitmap.match_prefix(
                 &pfx.prefix,
@@ -368,7 +368,8 @@ mod tests {
                 },
                 guard,
             );
-            println!("{}", pfx);
+            println!("PFX {}", pfx);
+            println!("RES {}", res);
             assert_eq!(res.prefix.unwrap(), pfx.prefix);
         }
 
@@ -389,10 +390,7 @@ mod tests {
 
         assert_eq!(
             res.prefix.unwrap(),
-            Prefix::new_relaxed(
-                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                23
-            )?
+            Prefix::new(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 23)?
         );
 
         let less_specifics = res.less_specifics.unwrap();
@@ -634,9 +632,9 @@ mod tests {
 
         println!("all records");
 
-        let all_recs = tree_bitmap.prefixes_iter();
+        let all_recs = tree_bitmap.prefixes_iter(guard);
 
-        for rec in tree_bitmap.prefixes_iter().collect::<Vec<_>>() {
+        for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
             println!("{}", rec);
         }
 
@@ -648,14 +646,14 @@ mod tests {
         assert_eq!(wd_2_rec.len(), 1);
         assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
 
-        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
+        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
             r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
         });
         println!("mui_2_recs prefixes_iter");
         for rec in mui_2_recs {
             println!("{} {:#?}", rec.0, rec.1);
         }
-        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
+        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
             r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
         });
 
@@ -704,13 +702,15 @@ mod tests {
         );
 
         println!("more_specifics match {} w/ withdrawn", more_specifics);
+
+        let guard = &rotonda_store::epoch::pin();
+        for p in tree_bitmap.prefixes_iter_v4(guard) {
+            println!("{}", p);
+        }
+
         let more_specifics = more_specifics.more_specifics.unwrap();
-        let ms_v4 = more_specifics
-            .v4
-            .iter()
-            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
-            .collect::<Vec<_>>();
-        assert_eq!(more_specifics.len(), 2);
+        let ms_v4 = more_specifics.v4.iter().collect::<Vec<_>>();
+        assert_eq!(more_specifics.len(), 1);
         assert_eq!(ms_v4.len(), 1);
         let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
@@ -754,7 +754,7 @@ mod tests {
             .iter()
             .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(more_specifics.len(), 1);
         assert_eq!(ms_v4.len(), 1);
         let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
@@ -806,7 +806,7 @@ mod tests {
             .iter()
             .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(more_specifics.len(), 1);
         assert_eq!(ms_v4.len(), 1);
         let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
@@ -864,7 +864,7 @@ mod tests {
             .iter()
             .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
             .collect::<Vec<_>>();
-        assert_eq!(more_specifics.len(), 2);
+        assert_eq!(more_specifics.len(), 1);
         assert_eq!(ms_v4.len(), 1);
         let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);

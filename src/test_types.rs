@@ -13,7 +13,6 @@ impl AsRef<[u8]> for BeBytesAsn {
 
 impl From<Vec<u8>> for BeBytesAsn {
     fn from(value: Vec<u8>) -> Self {
-        println!("value {:#?}", value);
         if let Some(value) = value.first_chunk::<4>() {
             Self(*value)
         } else {
@@ -33,7 +32,7 @@ impl Meta for BeBytesAsn {
 
 impl std::fmt::Display for BeBytesAsn {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        write!(f, "AS{:?}", self.0)
+        write!(f, "AS{}", <u32>::from_le_bytes(self.0))
     }
 }
 

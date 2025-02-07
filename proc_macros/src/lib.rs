@@ -888,25 +888,6 @@ pub fn create_store(
                 }
             }
 
-            // pub fn more_specifics_keys_from(&'a self,
-            //     search_pfx: &Prefix,
-            // ) -> Vec<Prefix> {
-
-            //     match search_pfx.addr() {
-            //         std::net::IpAddr::V4(addr) => self
-            //             .v4
-            //             .more_specifics_keys_from(PrefixId::from(*search_pfx)
-            //             ).map(|p| Prefix::from(p)).collect(),
-            //         std::net::IpAddr::V6(addr) => self
-            //             .v6
-            //             .more_specifics_keys_from(
-            //                 PrefixId::<IPv6>::from(
-            //                     *search_pfx
-            //                 ),
-            //             ).map(|p| Prefix::from(p)).collect()
-            //     }
-            // }
-
             /// Return a `QuerySet` that contains all the less-specific
             /// prefixes of the `search_pfx` in the store, including the
             /// meta-data of these prefixes.
@@ -1007,7 +988,6 @@ pub fn create_store(
                             (
                                 Some(self
                                     .v4
-                                    // .in_memory_tree
                                     .less_specifics_iter_from(
                                         PrefixId::<IPv4>::new(
                                             addr.into(),
@@ -1027,7 +1007,6 @@ pub fn create_store(
                                 None,
                                 Some(self
                                     .v6
-                                    // .in_memory_tree
                                     .less_specifics_iter_from(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
@@ -1042,7 +1021,11 @@ pub fn create_store(
                             )
                         }
                     };
-                    left.into_iter().flatten().chain(right.into_iter().flatten())
+
+                    left
+                        .into_iter()
+                        .flatten()
+                        .chain(right.into_iter().flatten())
                 }
 
             /// Returns an iterator over all the more-specifics prefixes
@@ -1096,42 +1079,30 @@ pub fn create_store(
                 include_withdrawn: bool,
                 guard: &'a Guard,
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-
-                let (left, right) = match search_pfx.addr() {
-                    std::net::IpAddr::V4(addr) => {
-
-                        if mui.is_some_and(
-                            |m| { self.v6.mui_is_withdrawn(m, guard) }) {
-                                (None, None)
-                        } else {
-                            (Some(self
-                                .v4
-                                // .in_memory_tree
-                                // .more_specific_prefix_iter_from(
-                                .more_specifics_iter_from(
-                                    PrefixId::<IPv4>::new(
-                                        addr.into(),
-                                        search_pfx.len(),
-                                    ),
-                                    mui,
-                                    include_withdrawn,
-                                    guard
-                                ).map(|p| PrefixRecord::from(p))
-                            ),
-                            None)
+                    let (left, right) = match search_pfx.addr() {
+                        std::net::IpAddr::V4(addr) => {
+                            (
+                                Some(self
+                                    .v4
+                                    .more_specifics_iter_from(
+                                        PrefixId::<IPv4>::new(
+                                            addr.into(),
+                                            search_pfx.len(),
+                                        ),
+                                        mui,
+                                        include_withdrawn,
+                                        guard
+                                    )
+                                    .map(|p| PrefixRecord::from(p))
+                                ),
+                                None
+                            )
                         }
-                    }
-                    std::net::IpAddr::V6(addr) => {
-
-                        if mui.is_some_and(
-                            |m| { self.v6.mui_is_withdrawn(m, guard) }) {
-                                (None, None)
-                        } else {
+                        std::net::IpAddr::V6(addr) => {
                             (
                                 None,
                                 Some(self
                                     .v6
-                                    // .in_memory_tree
                                     .more_specifics_iter_from(
                                         PrefixId::<IPv6>::new(
                                             addr.into(),
@@ -1140,13 +1111,17 @@ pub fn create_store(
                                         mui,
                                         include_withdrawn,
                                         guard
-                                    ).map(|p| PrefixRecord::from(p))
+                                    )
+                                    .map(|p| PrefixRecord::from(p))
                                 )
                             )
                         }
-                    }
-                };
-                left.into_iter().flatten().chain(right.into_iter().flatten())
+                    };
+
+                    left
+                        .into_iter()
+                        .flatten()
+                        .chain(right.into_iter().flatten())
             }
 
             pub fn iter_records_for_mui_v4(
@@ -1161,9 +1136,7 @@ pub fn create_store(
                     None
                 } else {
                     Some(
-                        self
-                            .v4
-                            // .in_memory_tree
+                        self.v4
                             .more_specifics_iter_from(
                                 PrefixId::<IPv4>::new(
                                     0,
@@ -1190,7 +1163,6 @@ pub fn create_store(
                 } else {
                     Some(
                         self.v6
-                            // .in_memory_tree
                             .more_specifics_iter_from(
                                 PrefixId::<IPv6>::new(
                                     0,
@@ -1286,11 +1258,12 @@ pub fn create_store(
             /// ```
             pub fn prefixes_iter(
                 &'a self,
+                guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.prefixes_iter()
+                self.v4.prefixes_iter(guard)
                     .map(|p| PrefixRecord::from(p))
                     .chain(
-                        self.v6.prefixes_iter()
+                        self.v6.prefixes_iter(guard)
                         .map(|p| PrefixRecord::from(p))
                     )
             }
@@ -1337,8 +1310,9 @@ pub fn create_store(
             /// ```
             pub fn prefixes_iter_v4(
                 &'a self,
+                guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v4.prefixes_iter()
+                self.v4.prefixes_iter(guard)
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1384,8 +1358,9 @@ pub fn create_store(
             /// ```
             pub fn prefixes_iter_v6(
                 &'a self,
+                guard: &'a Guard
             ) -> impl Iterator<Item=PrefixRecord<M>> + 'a {
-                self.v6.prefixes_iter()
+                self.v6.prefixes_iter(guard)
                     .map(|p| PrefixRecord::from(p))
             }
 
@@ -1664,21 +1639,25 @@ pub fn create_store(
             }
 
             pub fn get_records_for_prefix(
-                &self, prefix: &Prefix,
+                &self,
+                prefix: &Prefix,
                 mui: Option<u32>,
                 include_withdrawn: bool
-            ) ->
-                Vec<Record<M>> {
+            ) -> Option<Vec<Record<M>>> {
+                let guard = &epoch::pin();
+
                 match prefix.is_v4() {
-                    true => self.v4.get_records_for_prefix(
-                        prefix,
+                    true => self.v4.get_value(
+                        PrefixId::<IPv4>::from(*prefix),
                         mui,
-                        include_withdrawn
+                        include_withdrawn,
+                        guard
                     ),
-                    false => self.v6.get_records_for_prefix(
-                        prefix,
+                    false => self.v6.get_value(
+                        PrefixId::<IPv6>::from(*prefix),
                         mui,
-                        include_withdrawn
+                        include_withdrawn,
+                        guard
                     )
                 }
             }

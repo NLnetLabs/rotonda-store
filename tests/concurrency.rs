@@ -67,6 +67,7 @@ fn test_concurrent_updates_1(
     // let store = std::sync::Arc::new(
     //     MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
     // );
+    let guard = &rotonda_store::epoch::pin();
 
     let mui_data_1 = MuiData {
         mui: 1,
@@ -127,7 +128,8 @@ fn test_concurrent_updates_1(
 
     println!("COUNT {:?}", tree_bitmap.prefixes_count());
 
-    let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
+    let all_pfxs_iter = tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>();
+    println!("all_pfxs_iter {:#?}", all_pfxs_iter);
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
 
@@ -347,7 +349,10 @@ fn test_concurrent_updates_1(
 
     println!(
         "prefixes_iter {:#?}",
-        tree_bitmap.as_ref().prefixes_iter().collect::<Vec<_>>()
+        tree_bitmap
+            .as_ref()
+            .prefixes_iter(guard)
+            .collect::<Vec<_>>()
     );
 
     let match_options = MatchOptions {
@@ -363,7 +368,8 @@ fn test_concurrent_updates_1(
         let guard = rotonda_store::epoch::pin();
         let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
         assert_eq!(res.prefix, Some(pfx));
-        println!("PFX {:?}", res);
+        println!("strategy {:?}", tree_bitmap.persist_strategy());
+        println!("PFX {}", res);
         assert_eq!(
             res.prefix_meta
                 .iter()
@@ -419,6 +425,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
     let tree_bitmap = std::sync::Arc::new(
         MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
     );
+    let guard = &rotonda_store::epoch::pin();
 
     let _: Vec<_> =
         vec![pfx_vec_1.clone(), pfx_vec_2.clone(), pfx_vec_3.clone()]
@@ -461,10 +468,10 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
 
     println!(
         "prefixes_iter#1 :{:#?}",
-        tree_bitmap.prefixes_iter().collect::<Vec<_>>()
+        tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>()
     );
 
-    let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
+    let all_pfxs_iter = tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>();
 
     let pfx = Prefix::from_str("185.33.0.0/16").unwrap();
     assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
@@ -666,6 +673,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         include_history: IncludeHistory::None,
     };
 
+    println!("strategy {:?}", tree_bitmap.persist_strategy());
     // should cover all the prefixes
     // let pfx0 = Prefix::from_str("184.0.0.0/6").unwrap();
     let pfx128 = Prefix::from_str("128.0.0.0/1").unwrap();

@@ -224,7 +224,7 @@ impl AddressFamily for IPv6 {
                 (self >> ((128 - len) as usize)) << (128 - len) as usize
             }
             128 => self,
-            _ => panic!("Can't truncate to more than 128 bits"),
+            len => panic!("Can't truncate to more than 128 bits: {}", len),
         }
     }
 

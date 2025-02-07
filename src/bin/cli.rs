@@ -104,28 +104,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match cmd.to_string().as_ref() {
                             "p" => match line.chars().as_str() {
                                 "p4" => {
-                                    tree_bitmap.prefixes_iter_v4().for_each(
-                                        |pfx| {
+                                    tree_bitmap
+                                        .prefixes_iter_v4(guard)
+                                        .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        },
-                                    );
+                                        });
                                     println!(
                                         "ipv4 prefixes :\t{}",
                                         tree_bitmap.prefixes_v4_count()
                                     );
                                 }
                                 "p6" => {
-                                    tree_bitmap.prefixes_iter_v6().for_each(
-                                        |pfx| {
+                                    tree_bitmap
+                                        .prefixes_iter_v6(guard)
+                                        .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        },
-                                    );
+                                        });
                                     println!(
                                         "ipv6 prefixes :\t{}",
                                         tree_bitmap.prefixes_v6_count()
@@ -140,14 +140,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         "ipv6 prefixes :\t{}",
                                         tree_bitmap.prefixes_v6_count()
                                     );
-                                    tree_bitmap.prefixes_iter().for_each(
-                                        |pfx| {
+                                    tree_bitmap
+                                        .prefixes_iter(guard)
+                                        .for_each(|pfx| {
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        },
-                                    );
+                                        });
                                     println!(
                                         "total prefixes :\t{}",
                                         tree_bitmap.prefixes_count()

@@ -202,13 +202,14 @@ fn test_more_specifics() -> Result<(), Box<dyn Error>> {
         println!("all prefixes");
 
         for (i, p) in tree_bitmap
-            .prefixes_iter_v4()
+            .prefixes_iter_v4(guard)
             .enumerate()
             .map(|(i, p)| (i, p.prefix))
         {
             println!("ms {}: {}", i, p);
         }
 
+        println!("25 {}", pfxs[25].unwrap());
         assert!(tree_bitmap.contains(&pfxs[25].unwrap(), None));
         assert!(tree_bitmap.contains(&pfxs[26].unwrap(), None));
         assert!(tree_bitmap.contains(&pfxs[27].unwrap(), None));
@@ -225,7 +226,7 @@ fn test_more_specifics() -> Result<(), Box<dyn Error>> {
             .collect::<Vec<_>>();
 
         println!(
-            "{:?}",
+            ">> {:?}",
             more_specifics
                 .iter()
                 .find(|ms| ms.prefix == spfx.0.unwrap())
@@ -233,6 +234,7 @@ fn test_more_specifics() -> Result<(), Box<dyn Error>> {
         assert_eq!(found_result.prefix, spfx.1);
 
         println!("round {}", i);
+        println!("{:?}", tree_bitmap.persist_strategy());
         assert_eq!(&more_specifics.len(), &spfx.2.len());
 
         for i in spfx.2.iter() {
