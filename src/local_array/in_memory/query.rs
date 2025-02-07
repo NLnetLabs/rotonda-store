@@ -12,133 +12,178 @@ use crate::{MatchOptions, MatchType};
 
 use super::super::in_memory::tree::Stride;
 use super::super::types::PrefixId;
-use super::atomic_types::{NodeBuckets, PrefixBuckets};
+use super::atomic_types::NodeBuckets;
 use super::node::StrideNodeId;
 use super::tree::TreeBitMap;
 
-impl<AF, M, NB, PB> TreeBitMap<AF, M, NB, PB>
+impl<AF, NB> TreeBitMap<AF, NB>
 where
     AF: AddressFamily,
-    M: Meta,
     NB: NodeBuckets<AF>,
-    PB: PrefixBuckets<AF, M>,
 {
-    pub(crate) fn match_prefix<'a>(
-        &'a self,
+    pub(crate) fn match_prefix(
+        &self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
-        guard: &'a Guard,
-    ) -> FamilyQueryResult<AF, M> {
-        // `non_recursive_retrieve_prefix` returns an exact match only, so no
-        // longest matching prefix!
-        let withdrawn_muis_bmin = self.withdrawn_muis_bmin(guard);
-        let mut stored_prefix =
-            self.non_recursive_retrieve_prefix(search_pfx).0.map(|pfx| {
-                (
-                    pfx.prefix,
-                    if !options.include_withdrawn {
-                        // Filter out all the withdrawn records, both
-                        // with globally withdrawn muis, and with local
-                        // statuses
-                        // set to Withdrawn.
-                        pfx.record_map
-                            .get_filtered_records(
-                                options.mui,
-                                options.include_withdrawn,
-                                withdrawn_muis_bmin,
-                            )
-                            .into_iter()
-                            .collect()
-                    } else {
-                        // Do no filter out any records, but do rewrite
-                        // the local statuses of the records with muis
-                        // that appear in the specified bitmap index.
-                        pfx.record_map.as_records_with_rewritten_status(
-                            withdrawn_muis_bmin,
-                            RouteStatus::Withdrawn,
-                        )
-                    },
-                )
-            });
+    ) -> TreeQueryResult<AF> {
+        let mut ls_pfxs = None;
+        let mut ms_pfxs = None;
+        let lm_pfx = self.longest_matching_prefix(search_pfx);
 
-        // Check if we have an actual exact match, if not then fetch the
-        // first lesser-specific with the greatest length, that's the Longest
-        // matching prefix, but only if the user requested a longest match or
-        // empty match.
-        let match_type = match (&options.match_type, &stored_prefix) {
-            // we found an exact match, we don't need to do anything.
-            (_, Some((_pfx, meta))) if !meta.is_empty() => {
-                MatchType::ExactMatch
-            }
-            // we didn't find an exact match, but the user requested it
-            // so we need to find the longest matching prefix.
-            (MatchType::LongestMatch | MatchType::EmptyMatch, _) => {
-                stored_prefix = self
-                    .less_specific_prefix_iter(
-                        search_pfx,
-                        options.mui,
-                        options.include_withdrawn,
-                        guard,
-                    )
-                    .max_by(|p0, p1| p0.0.get_len().cmp(&p1.0.get_len()));
-                if stored_prefix.is_some() {
-                    MatchType::LongestMatch
+        let (prefix, match_type) = match options.match_type {
+            MatchType::ExactMatch => {
+                if let Some(p) = lm_pfx {
+                    if p == search_pfx {
+                        (lm_pfx, MatchType::ExactMatch)
+                    } else {
+                        (None, MatchType::EmptyMatch)
+                    }
                 } else {
-                    MatchType::EmptyMatch
+                    (None, MatchType::EmptyMatch)
                 }
             }
-            // We got an empty match, but the user requested an exact match,
-            // even so, we're going to look for more and/or less specifics if
-            // the user asked for it.
-            (MatchType::ExactMatch, _) => MatchType::EmptyMatch,
+            _ => (lm_pfx, MatchType::LongestMatch),
         };
 
-        FamilyQueryResult {
-            prefix: stored_prefix.as_ref().map(|sp| sp.0),
-            prefix_meta: stored_prefix
-                .as_ref()
-                .map(|pfx| pfx.1.clone())
-                .unwrap_or_default(),
-            less_specifics: if options.include_less_specifics {
-                Some(
-                    self.less_specific_prefix_iter(
-                        if let Some(ref pfx) = stored_prefix {
-                            pfx.0
-                        } else {
-                            search_pfx
-                        },
-                        options.mui,
-                        options.include_withdrawn,
-                        guard,
-                    )
-                    .collect::<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>(),
-                )
-            } else {
-                None
-            },
-            more_specifics: if options.include_more_specifics {
-                trace!("more specifics requested. acquiring...");
-                Some(
-                    self.more_specific_prefix_iter_from(
-                        if let Some(pfx) = stored_prefix {
-                            pfx.0
-                        } else {
-                            search_pfx
-                        },
-                        options.mui,
-                        options.include_withdrawn,
-                        guard,
-                    )
+        if options.include_less_specifics {
+            ls_pfxs = Some(
+                self.less_specific_prefix_iter(search_pfx)
                     .collect::<Vec<_>>(),
-                )
-                // The user requested more specifics, but there aren't any, so
-                // we need to return an empty vec, not a None.
-            } else {
-                None
-            },
+            )
+        }
+
+        if options.include_more_specifics {
+            ms_pfxs = Some(
+                self.more_specific_prefix_iter_from(search_pfx)
+                    .filter(|p| p != &search_pfx)
+                    .collect::<Vec<_>>(),
+            );
+        }
+
+        TreeQueryResult {
             match_type,
+            prefix,
+            less_specifics: ls_pfxs,
+            more_specifics: ms_pfxs,
         }
     }
+
+    // pub(crate) fn match_prefix<'a>(
+    //     &'a self,
+    //     search_pfx: PrefixId<AF>,
+    //     options: &MatchOptions,
+    //     guard: &'a Guard,
+    // ) -> FamilyQueryResult<AF, M> {
+    //     // `non_recursive_retrieve_prefix` returns an exact match only, so no
+    //     // longest matching prefix!
+    //     let withdrawn_muis_bmin = self.withdrawn_muis_bmin(guard);
+    //     let mut stored_prefix =
+    //         self.non_recursive_retrieve_prefix(search_pfx).0.map(|pfx| {
+    //             (
+    //                 pfx.prefix,
+    //                 if !options.include_withdrawn {
+    //                     // Filter out all the withdrawn records, both
+    //                     // with globally withdrawn muis, and with local
+    //                     // statuses
+    //                     // set to Withdrawn.
+    //                     pfx.record_map
+    //                         .get_filtered_records(
+    //                             options.mui,
+    //                             options.include_withdrawn,
+    //                             withdrawn_muis_bmin,
+    //                         )
+    //                         .into_iter()
+    //                         .collect()
+    //                 } else {
+    //                     // Do no filter out any records, but do rewrite
+    //                     // the local statuses of the records with muis
+    //                     // that appear in the specified bitmap index.
+    //                     pfx.record_map.as_records_with_rewritten_status(
+    //                         withdrawn_muis_bmin,
+    //                         RouteStatus::Withdrawn,
+    //                     )
+    //                 },
+    //             )
+    //         });
+
+    //     // Check if we have an actual exact match, if not then fetch the
+    //     // first lesser-specific with the greatest length, that's the Longest
+    //     // matching prefix, but only if the user requested a longest match or
+    //     // empty match.
+    //     let match_type = match (&options.match_type, &stored_prefix) {
+    //         // we found an exact match, we don't need to do anything.
+    //         (_, Some((_pfx, meta))) if !meta.is_empty() => {
+    //             MatchType::ExactMatch
+    //         }
+    //         // we didn't find an exact match, but the user requested it
+    //         // so we need to find the longest matching prefix.
+    //         (MatchType::LongestMatch | MatchType::EmptyMatch, _) => {
+    //             stored_prefix = self
+    //                 .less_specific_prefix_iter(
+    //                     search_pfx,
+    //                     options.mui,
+    //                     options.include_withdrawn,
+    //                     guard,
+    //                 )
+    //                 .max_by(|p0, p1| p0.0.get_len().cmp(&p1.0.get_len()));
+    //             if stored_prefix.is_some() {
+    //                 MatchType::LongestMatch
+    //             } else {
+    //                 MatchType::EmptyMatch
+    //             }
+    //         }
+    //         // We got an empty match, but the user requested an exact match,
+    //         // even so, we're going to look for more and/or less specifics if
+    //         // the user asked for it.
+    //         (MatchType::ExactMatch, _) => MatchType::EmptyMatch,
+    //     };
+
+    //     FamilyQueryResult {
+    //         prefix: stored_prefix.as_ref().map(|sp| sp.0),
+    //         prefix_meta: stored_prefix
+    //             .as_ref()
+    //             .map(|pfx| pfx.1.clone())
+    //             .unwrap_or_default(),
+    //         less_specifics: if options.include_less_specifics {
+    //             Some(
+    //                 self.less_specific_prefix_iter(
+    //                     if let Some(ref pfx) = stored_prefix {
+    //                         pfx.0
+    //                     } else {
+    //                         search_pfx
+    //                     },
+    //                     options.mui,
+    //                     options.include_withdrawn,
+    //                     guard,
+    //                 )
+    //                 .collect::<Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>>(),
+    //             )
+    //         } else {
+    //             None
+    //         },
+    //         more_specifics: if options.include_more_specifics {
+    //             trace!("more specifics requested. acquiring...");
+    //             Some(
+    //                 self.more_specific_prefix_iter_from(
+    //                     if let Some(pfx) = stored_prefix {
+    //                         pfx.0
+    //                     } else {
+    //                         search_pfx
+    //                     },
+    //                     options.mui,
+    //                     options.include_withdrawn,
+    //                     guard,
+    //                 )
+    //                 .collect::<Vec<_>>(),
+    //             )
+    //             // The user requested more specifics, but there aren't any, so
+    //             // we need to return an empty vec, not a None.
+    //         } else {
+    //             None
+    //         },
+    //         match_type,
+    //     }
+    // }
 
     // This function assembles all entries in the `pfx_vec` of all child nodes
     // of the `start_node` into one vec, starting from itself and then

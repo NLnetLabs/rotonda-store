@@ -3,12 +3,13 @@ use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use inetnum::addr::Prefix;
-use log::info;
+use log::{info, trace};
 
 use crossbeam_epoch::{self as epoch};
 use epoch::{Guard, Owned};
 
 use crate::local_array::in_memory::tree::TreeBitMap;
+use crate::local_array::prefix_cht::cht::PrefixCHT;
 use crate::local_array::types::PrefixId;
 use crate::prelude::multi::RouteStatus;
 use crate::stats::CreatedNodes;
@@ -225,7 +226,8 @@ pub struct Rib<
     const KEY_SIZE: usize,
 > {
     pub config: StoreConfig,
-    pub in_memory_tree: TreeBitMap<AF, M, NB, PB>,
+    pub(crate) in_memory_tree: TreeBitMap<AF, NB>,
+    pub(crate) prefix_cht: PrefixCHT<AF, M, PB>,
     #[cfg(feature = "persist")]
     pub(in crate::local_array) persist_tree:
         Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
@@ -265,10 +267,11 @@ impl<
 
         let store = Rib {
             config,
-            in_memory_tree: TreeBitMap::<AF, M, NB, PB>::new()?,
+            in_memory_tree: TreeBitMap::<AF, NB>::new()?,
             persist_tree,
             // withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
+            prefix_cht: PrefixCHT::<AF, M, PB>::new(),
         };
 
         Ok(store)
@@ -316,7 +319,7 @@ impl<
                 if let Some(persist_tree) = &self.persist_tree {
                     persist_tree.persist_record(prefix, &record);
 
-                    self.in_memory_tree
+                    self.prefix_cht
                         .upsert_prefix(
                             prefix,
                             record,
@@ -329,7 +332,7 @@ impl<
                 }
             }
             PersistStrategy::PersistHistory => self
-                .in_memory_tree
+                .prefix_cht
                 .upsert_prefix(prefix, record, update_path_selections, guard)
                 .map(|(report, old_rec)| {
                     if let Some(rec) = old_rec {
@@ -343,7 +346,7 @@ impl<
                     report
                 }),
             PersistStrategy::MemoryOnly => self
-                .in_memory_tree
+                .prefix_cht
                 .upsert_prefix(prefix, record, update_path_selections, guard)
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
@@ -387,9 +390,8 @@ impl<
     ) -> Result<(), PrefixStoreError> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
-                let (stored_prefix, exists) = self
-                    .in_memory_tree
-                    .non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) =
+                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
@@ -428,9 +430,8 @@ impl<
             }
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
-                let (stored_prefix, exists) = self
-                    .in_memory_tree
-                    .non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) =
+                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
                     return Err(PrefixStoreError::StoreNotReadyError);
@@ -482,9 +483,8 @@ impl<
     ) -> Result<(), PrefixStoreError> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
-                let (stored_prefix, exists) = self
-                    .in_memory_tree
-                    .non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) =
+                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
@@ -528,9 +528,8 @@ impl<
             }
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
-                let (stored_prefix, exists) = self
-                    .in_memory_tree
-                    .non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) =
+                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
@@ -688,19 +687,28 @@ impl<
         }
     }
 
-    pub fn prefixes_iter(
-        &self,
-    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + '_ {
-        let pt_iter =
-            if self.config.persist_strategy == PersistStrategy::WriteAhead {
-                None
-            } else {
-                self.persist_tree.as_ref().map(|t| t.prefixes_iter())
-            }
-            .into_iter()
-            .flatten();
+    pub fn prefixes_iter<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
+        self.in_memory_tree.prefixes_iter().map(|p| {
+            (
+                p,
+                self.get_value(p.into(), None, true, guard)
+                    .unwrap_or_default(),
+            )
+        })
 
-        self.in_memory_tree.prefixes_iter().chain(pt_iter)
+        // let pt_iter = match self.config.persist_strategy {
+        //     PersistStrategy::PersistOnly => {
+        //         self.persist_tree.as_ref().map(|t| t.prefixes_iter())
+        //     }
+        //     _ => None,
+        // }
+        // .into_iter()
+        // .flatten();
+
+        // in_mem_iter.chain(pt_iter)
     }
 
     //-------- Persistence ---------------------------------------------------
@@ -715,16 +723,30 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
     ) -> Vec<PublicRecord<M>> {
-        if let Some(p) = &self.persist_tree {
-            let guard = epoch::pin();
-            p.get_records_for_prefix(
-                PrefixId::from(*prefix),
-                mui,
-                include_withdrawn,
-                self.in_memory_tree.withdrawn_muis_bmin(&guard),
-            )
-        } else {
-            vec![]
+        trace!("get records for prefix in the right store");
+        let guard = epoch::pin();
+        match self.persist_strategy() {
+            PersistStrategy::PersistOnly => self
+                .persist_tree
+                .as_ref()
+                .map(|tree| {
+                    tree.get_records_for_prefix(
+                        PrefixId::from(*prefix),
+                        mui,
+                        include_withdrawn,
+                        self.in_memory_tree.withdrawn_muis_bmin(&guard),
+                    )
+                })
+                .unwrap_or_default(),
+            _ => self
+                .prefix_cht
+                .get_records_for_prefix(
+                    PrefixId::from(*prefix),
+                    mui,
+                    include_withdrawn,
+                    self.in_memory_tree.withdrawn_muis_bmin(&guard),
+                )
+                .unwrap_or_default(),
         }
     }
 

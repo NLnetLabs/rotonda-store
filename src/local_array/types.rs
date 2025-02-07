@@ -1,3 +1,5 @@
+use log::trace;
+
 use crate::AddressFamily;
 
 use super::errors::PrefixStoreError;
@@ -71,6 +73,24 @@ impl<AF: AddressFamily> PrefixId<AF> {
         Self {
             net: self.net,
             len: self.len + 1,
+        }
+    }
+
+    pub fn truncate_to_len(self, len: u8) -> Self {
+        trace!("orig {:032b}", self.net);
+        trace!(
+            "new  {:032b}",
+            self.net >> (AF::BITS - len) << (AF::BITS - len)
+        );
+        trace!(
+            "truncate to net {} len {}",
+            self.net >> (AF::BITS - len) << (AF::BITS - len),
+            len
+        );
+        Self {
+            // net: (self.net >> (AF::BITS - len)) << (AF::BITS - len),
+            net: self.net.truncate_to_len(len),
+            len,
         }
     }
 

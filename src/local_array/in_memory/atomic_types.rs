@@ -371,15 +371,17 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
 
-        record_map.get(&mui).and_then(|r| {
-            if include_withdrawn {
-                Some(PublicRecord::from((mui, r)))
-            } else if r.route_status() == RouteStatus::Active {
-                Some(PublicRecord::from((mui, r)))
-            } else {
-                None
-            }
-        })
+        record_map
+            .get(&mui)
+            .and_then(|r| -> Option<PublicRecord<M>> {
+                if include_withdrawn
+                    || r.route_status() == RouteStatus::Active
+                {
+                    Some(PublicRecord::from((mui, r)))
+                } else {
+                    None
+                }
+            })
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
@@ -412,6 +414,22 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         })
     }
 
+    pub fn get_filtered_record_for_mui(
+        &self,
+        mui: u32,
+        include_withdrawn: bool,
+        bmin: &RoaringBitmap,
+    ) -> Option<PublicRecord<M>> {
+        match include_withdrawn {
+            false => self.get_record_for_mui(mui, include_withdrawn),
+            true => self.get_record_for_mui_with_rewritten_status(
+                mui,
+                bmin,
+                RouteStatus::Withdrawn,
+            ),
+        }
+    }
+
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
     pub fn get_filtered_records(
@@ -419,13 +437,32 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         mui: Option<u32>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Vec<PublicRecord<M>> {
+    ) -> Option<Vec<PublicRecord<M>>> {
         if let Some(mui) = mui {
-            self.get_record_for_mui(mui, include_withdrawn)
-                .into_iter()
-                .collect()
+            self.get_filtered_record_for_mui(mui, include_withdrawn, bmin)
+                .map(|r| vec![r])
         } else {
-            self.as_active_records_not_in_bmin(bmin)
+            match include_withdrawn {
+                false => {
+                    let recs = self.as_active_records_not_in_bmin(bmin);
+                    if recs.is_empty() {
+                        None
+                    } else {
+                        Some(recs)
+                    }
+                }
+                true => {
+                    let recs = self.as_records_with_rewritten_status(
+                        bmin,
+                        RouteStatus::Withdrawn,
+                    );
+                    if recs.is_empty() {
+                        None
+                    } else {
+                        Some(recs)
+                    }
+                }
+            }
         }
     }
 

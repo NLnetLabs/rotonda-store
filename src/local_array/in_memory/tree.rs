@@ -185,10 +185,8 @@
 
 use crate::local_array::bit_span::BitSpan;
 use crate::local_array::in_memory::atomic_types::{NodeSet, StoredNode};
-use crate::prefix_record::Meta;
 use crate::prelude::multi::PrefixId;
 use crossbeam_epoch::{Atomic, Guard};
-use crossbeam_utils::Backoff;
 use inetnum::addr::Prefix;
 use log::{debug, error, log_enabled, trace};
 use roaring::RoaringBitmap;
@@ -198,14 +196,12 @@ use std::sync::atomic::{
 };
 use std::{fmt::Debug, marker::PhantomData};
 
-use super::atomic_types::{
-    MultiMapValue, NodeBuckets, PrefixBuckets, PrefixSet, StoredPrefix,
-};
+use super::atomic_types::NodeBuckets;
 use crate::af::AddressFamily;
-use crate::rib::{Counters, UpsertReport};
+use crate::rib::Counters;
 use crate::{
     impl_search_level, impl_search_level_for_mui, insert_match,
-    retrieve_node_mut_closure, store_node_closure, PublicRecord,
+    retrieve_node_mut_closure, store_node_closure,
 };
 
 use super::super::errors::PrefixStoreError;
@@ -222,33 +218,33 @@ use ansi_term::Colour;
 #[derive(Debug)]
 pub struct TreeBitMap<
     AF: AddressFamily,
-    M: Meta,
+    // M: Meta,
     NB: NodeBuckets<AF>,
-    PB: PrefixBuckets<AF, M>,
+    // PB: PrefixBuckets<AF, M>,
 > {
     pub(crate) node_buckets: NB,
-    pub(crate) prefix_buckets: PB,
+    // pub(crate) prefix_buckets: PB,
     pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
     _af: PhantomData<AF>,
-    _m: PhantomData<M>,
+    // _m: PhantomData<M>,
 }
 
 impl<
         AF: AddressFamily,
-        M: Meta,
+        // M: Meta,
         NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, M>,
-    > TreeBitMap<AF, M, NB, PB>
+        // PB: PrefixBuckets<AF, M>,
+    > TreeBitMap<AF, NB>
 {
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let tree_bitmap = Self {
             node_buckets: NodeBuckets::init(),
-            prefix_buckets: PB::init(),
+            // prefix_buckets: PB::init(),
             withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             _af: PhantomData,
-            _m: PhantomData,
+            // _m: PhantomData,
         };
 
         let root_node = match Self::get_first_stride_size() {
@@ -376,9 +372,32 @@ impl<
     }
 
     pub fn prefix_exists(&self, prefix_id: PrefixId<AF>) -> bool {
+        trace!("pe exists {:?}?", prefix_id);
+        let (node_id, bs) = self.get_node_id_for_prefix(&prefix_id);
+
+        match self.retrieve_node(node_id) {
+            Some(SizedStrideRef::Stride4(n)) => {
+                let pfxbitarr = n.pfxbitarr.load();
+                pfxbitarr & Stride4::get_bit_pos(bs.bits, bs.len) > 0
+            }
+            None => false,
+            Some(n) => {
+                panic!(
+                    "unsupported stride length: {:?} node_id {}",
+                    n, node_id
+                );
+            }
+        }
+    }
+
+    pub fn prefix_exists_legacy(&self, prefix_id: PrefixId<AF>) -> bool {
         // if prefix_id.get_len() == 0 {
         //     return self.update_default_route_prefix_meta(mui);
         // }
+        trace!("exists {}?", Prefix::from(prefix_id));
+        if prefix_id.get_len() == 0 {
+            return false;
+        }
 
         let mut stride_end: u8 = 0;
         let mut cur_i = self.get_root_node_id();
@@ -387,6 +406,8 @@ impl<
         loop {
             let stride = self.get_stride_sizes()[level as usize];
             stride_end += stride;
+            trace!("stride end {}", stride_end);
+            assert!(stride_end <= AF::BITS);
             let nibble_len = if prefix_id.get_len() < stride_end {
                 stride + prefix_id.get_len() - stride_end
             } else {
@@ -450,7 +471,10 @@ impl<
             if let Some(next_id) = node_result {
                 cur_i = next_id;
                 level += 1;
+                continue;
             }
+
+            return false;
         }
     }
 
@@ -535,86 +559,6 @@ impl<
                 level += 1;
             }
         }
-    }
-
-    pub(crate) fn upsert_prefix(
-        &self,
-        prefix: PrefixId<AF>,
-        record: PublicRecord<M>,
-        update_path_selections: Option<M::TBI>,
-        guard: &Guard,
-    ) -> Result<(UpsertReport, Option<MultiMapValue<M>>), PrefixStoreError>
-    {
-        let mut prefix_is_new = true;
-        let mut mui_is_new = true;
-
-        let (mui_count, cas_count) =
-            match self.non_recursive_retrieve_prefix_mut(prefix) {
-                // There's no StoredPrefix at this location yet. Create a new
-                // PrefixRecord and try to store it in the empty slot.
-                (stored_prefix, false) => {
-                    if log_enabled!(log::Level::Debug) {
-                        debug!(
-                            "{} store: Create new prefix record",
-                            std::thread::current()
-                                .name()
-                                .unwrap_or("unnamed-thread")
-                        );
-                    }
-
-                    let (mui_count, retry_count) =
-                        stored_prefix.record_map.upsert_record(record)?;
-
-                    // See if someone beat us to creating the record.
-                    if mui_count.is_some() {
-                        mui_is_new = false;
-                        prefix_is_new = false;
-                    }
-
-                    (mui_count, retry_count)
-                }
-                // There already is a StoredPrefix with a record at this
-                // location.
-                (stored_prefix, true) => {
-                    if log_enabled!(log::Level::Debug) {
-                        debug!(
-                        "{} store: Found existing prefix record for {}/{}",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread"),
-                        prefix.get_net(),
-                        prefix.get_len()
-                    );
-                    }
-                    prefix_is_new = false;
-
-                    // Update the already existing record_map with our
-                    // caller's record.
-                    stored_prefix.set_ps_outdated(guard)?;
-
-                    let (mui_count, retry_count) =
-                        stored_prefix.record_map.upsert_record(record)?;
-                    mui_is_new = mui_count.is_none();
-
-                    if let Some(tbi) = update_path_selections {
-                        stored_prefix
-                            .calculate_and_store_best_backup(&tbi, guard)?;
-                    }
-
-                    (mui_count, retry_count)
-                }
-            };
-
-        let count = mui_count.as_ref().map(|m| m.1).unwrap_or(1);
-        Ok((
-            UpsertReport {
-                prefix_new: prefix_is_new,
-                cas_count,
-                mui_new: mui_is_new,
-                mui_count: count,
-            },
-            mui_count.map(|m| m.0),
-        ))
     }
 
     // Yes, we're hating this. But, the root node has no room for a serial of
@@ -912,155 +856,6 @@ impl<
         self.counters.get_nodes_count()
     }
 
-    // This function is used by the upsert_prefix function above.
-    //
-    // We're using a Chained Hash Table and this function returns one of:
-    // - a StoredPrefix that already exists for this search_prefix_id
-    // - the Last StoredPrefix in the chain.
-    // - an error, if no StoredPrefix whatsoever can be found in the store.
-    //
-    // The error condition really shouldn't happen, because that basically
-    // means the root node for that particular prefix length doesn't exist.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn non_recursive_retrieve_prefix_mut(
-        &self,
-        search_prefix_id: PrefixId<AF>,
-    ) -> (&StoredPrefix<AF, M>, bool) {
-        trace!("non_recursive_retrieve_prefix_mut_with_guard");
-        let mut prefix_set = self
-            .prefix_buckets
-            .get_root_prefix_set(search_prefix_id.get_len());
-        let mut level: u8 = 0;
-
-        trace!("root prefix_set {:?}", prefix_set);
-        loop {
-            // HASHING FUNCTION
-            let index = TreeBitMap::<AF, M, NB, PB>::hash_prefix_id(
-                search_prefix_id,
-                level,
-            );
-
-            // probe the slot with the index that's the result of the hashing.
-            let stored_prefix = match prefix_set.0.get(index) {
-                Some(p) => {
-                    trace!("prefix set found.");
-                    (p, true)
-                }
-                None => {
-                    // We're at the end of the chain and haven't found our
-                    // search_prefix_id anywhere. Return the end-of-the-chain
-                    // StoredPrefix, so the caller can attach a new one.
-                    trace!(
-                        "no record. returning last found record in level
-                        {}, with index {}.",
-                        level,
-                        index
-                    );
-                    let index = TreeBitMap::<AF, M, NB, PB>::hash_prefix_id(
-                        search_prefix_id,
-                        level,
-                    );
-                    trace!("calculate next index {}", index);
-                    let var_name = (
-                        prefix_set
-                            .0
-                            .get_or_init(index, || {
-                                StoredPrefix::new::<PB>(
-                                    PrefixId::new(
-                                        search_prefix_id.get_net(),
-                                        search_prefix_id.get_len(),
-                                    ),
-                                    level,
-                                )
-                            })
-                            .0,
-                        false,
-                    );
-                    var_name
-                }
-            };
-
-            if search_prefix_id == stored_prefix.0.prefix {
-                // GOTCHA!
-                // Our search-prefix is stored here, so we're returning
-                // it, so its PrefixRecord can be updated by the caller.
-                if log_enabled!(log::Level::Trace) {
-                    trace!(
-                        "found requested prefix {} ({:?})",
-                        Prefix::from(search_prefix_id),
-                        search_prefix_id
-                    );
-                }
-                return stored_prefix;
-            } else {
-                // A Collision. Follow the chain.
-                level += 1;
-                prefix_set = &stored_prefix.0.next_bucket;
-                continue;
-            }
-        }
-    }
-
-    // This function is used by the match_prefix, and [more|less]_specifics
-    // public methods on the TreeBitMap (indirectly).
-    #[allow(clippy::type_complexity)]
-    pub fn non_recursive_retrieve_prefix(
-        &self,
-        id: PrefixId<AF>,
-    ) -> (
-        Option<&StoredPrefix<AF, M>>,
-        Option<(
-            PrefixId<AF>,
-            u8,
-            &PrefixSet<AF, M>,
-            [Option<(&PrefixSet<AF, M>, usize)>; 32],
-            usize,
-        )>,
-    ) {
-        let mut prefix_set =
-            self.prefix_buckets.get_root_prefix_set(id.get_len());
-        let mut parents = [None; 32];
-        let mut level: u8 = 0;
-        let backoff = Backoff::new();
-
-        loop {
-            // The index of the prefix in this array (at this len and
-            // level) is calculated by performing the hash function
-            // over the prefix.
-
-            // HASHING FUNCTION
-            let index =
-                TreeBitMap::<AF, M, NB, PB>::hash_prefix_id(id, level);
-
-            if let Some(stored_prefix) = prefix_set.0.get(index) {
-                if id == stored_prefix.get_prefix_id() {
-                    if log_enabled!(log::Level::Trace) {
-                        trace!(
-                            "found requested prefix {} ({:?})",
-                            Prefix::from(id),
-                            id
-                        );
-                    }
-                    parents[level as usize] = Some((prefix_set, index));
-                    return (
-                        Some(stored_prefix),
-                        Some((id, level, prefix_set, parents, index)),
-                    );
-                };
-
-                // Advance to the next level.
-                prefix_set = &stored_prefix.next_bucket;
-                level += 1;
-                backoff.spin();
-                continue;
-            }
-
-            trace!("no prefix found for {:?}", id);
-            parents[level as usize] = Some((prefix_set, index));
-            return (None, Some((id, level, prefix_set, parents, index)));
-        }
-    }
-
     pub fn get_prefixes_count(&self) -> usize {
         self.counters.get_prefixes_count().iter().sum()
     }
@@ -1188,31 +983,6 @@ impl<
             >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
             .dangerously_truncate_to_u32() as usize
     }
-
-    pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
-        // And, this is all of our hashing function.
-        let last_level = if level > 0 {
-            <PB>::get_bits_for_len(id.get_len(), level - 1)
-        } else {
-            0
-        };
-        let this_level = <PB>::get_bits_for_len(id.get_len(), level);
-        // trace!(
-        //     "bits division {}; no of bits {}",
-        //     this_level,
-        //     this_level - last_level
-        // );
-        // trace!(
-        //     "calculated index ({} << {}) >> {}",
-        //     id.get_net(),
-        //     last_level,
-        //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
-        // );
-        // HASHING FUNCTION
-        ((id.get_net() << last_level)
-            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
-            .dangerously_truncate_to_u32() as usize
-    }
 }
 
 // Partition for stride 4
@@ -1250,10 +1020,10 @@ impl<
 #[cfg(feature = "cli")]
 impl<
         AF: AddressFamily,
-        M: Meta,
+        // M: Meta,
         NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, M>,
-    > std::fmt::Display for TreeBitMap<AF, M, NB, PB>
+        // PB: PrefixBuckets<AF, M>,
+    > std::fmt::Display for TreeBitMap<AF, NB>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(_f, "{} prefixes created", self.get_prefixes_count())?;

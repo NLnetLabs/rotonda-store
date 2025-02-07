@@ -1,5 +1,6 @@
 pub(crate) mod in_memory;
 pub(crate) mod persist;
+pub(crate) mod prefix_cht;
 mod tests;
 
 pub(crate) mod bit_span;
