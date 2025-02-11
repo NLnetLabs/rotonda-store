@@ -231,8 +231,6 @@ pub struct Rib<
     #[cfg(feature = "persist")]
     pub(in crate::local_array) persist_tree:
         Option<PersistTree<AF, PREFIX_SIZE, KEY_SIZE>>,
-    // Global Roaring BitMap INdex that stores MUIs.
-    // pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
 }
 
@@ -245,7 +243,7 @@ impl<
         const KEY_SIZE: usize,
     > Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
 {
-    pub fn new(
+    pub(crate) fn new(
         config: StoreConfig,
     ) -> Result<
         Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>,
@@ -269,7 +267,6 @@ impl<
             config,
             in_memory_tree: TreeBitMap::<AF, NB>::new()?,
             persist_tree,
-            // withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             prefix_cht: PrefixCHT::<AF, M, PB>::new(),
         };
@@ -277,7 +274,7 @@ impl<
         Ok(store)
     }
 
-    pub fn insert(
+    pub(crate) fn insert(
         &self,
         prefix: PrefixId<AF>,
         record: PublicRecord<M>,
@@ -286,22 +283,23 @@ impl<
         let guard = &epoch::pin();
         self.in_memory_tree
             .set_prefix_exists(prefix, record.multi_uniq_id)
-            .and_then(|c1| {
+            .and_then(|(retry_count, exists)| {
                 self.upsert_prefix(
                     prefix,
                     record,
                     update_path_selections,
                     guard,
                 )
-                .map(|mut c| {
-                    if c.prefix_new {
-                        self.counters.inc_prefixes_count(prefix.get_len());
-                    }
-                    if c.mui_new {
+                .map(|mut report| {
+                    if report.mui_new {
                         self.counters.inc_routes_count();
                     }
-                    c.cas_count += c1.0 as usize;
-                    c
+                    report.cas_count += retry_count as usize;
+                    if !exists {
+                        self.counters.inc_prefixes_count(prefix.get_len());
+                        report.prefix_new = true;
+                    }
+                    report
                 })
             })
     }
@@ -499,7 +497,6 @@ impl<
                 if let Some(record) = p_tree
                     .get_most_recent_record_for_prefix_mui::<M>(prefix, mui)
                 {
-                    // for s in stored_prefixes {
                     let new_key: [u8; KEY_SIZE] = PersistTree::<
                         AF,
                         PREFIX_SIZE,

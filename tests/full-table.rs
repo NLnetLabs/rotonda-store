@@ -52,8 +52,16 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
+    rotonda_store::all_strategies![
+        full_table_1;
+        test_full_table_from_csv;
+        AsnList
+    ];
+
+    // #[test]
+    fn test_full_table_from_csv(
+        tree_bitmap: MultiThreadedStore<AsnList>,
+    ) -> Result<(), Box<dyn Error>> {
         // These constants are all contingent on the exact csv file,
         // being loaded!
 
@@ -102,7 +110,7 @@ mod tests {
         ];
         for _strides in strides_vec.iter().enumerate() {
             let mut pfxs: Vec<PrefixRecord<AsnList>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<AsnList>::try_default()?;
+            // let tree_bitmap = MultiThreadedStore::<AsnList>::try_default()?;
             // .with_user_data("Testing".to_string());
 
             if let Err(err) = load_prefixes(&mut pfxs) {

@@ -1,7 +1,4 @@
-use std::{
-    str::FromStr,
-    sync::{atomic::Ordering, Arc},
-};
+use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{

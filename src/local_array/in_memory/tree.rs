@@ -191,13 +191,13 @@ use log::{debug, error, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 use std::sync::atomic::{
-    AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
+    AtomicBool, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
 };
 use std::{fmt::Debug, marker::PhantomData};
 
 use super::atomic_types::NodeBuckets;
 use crate::af::AddressFamily;
-use crate::rib::Counters;
+use crate::rib::{Counters, UpsertReport};
 use crate::{
     impl_search_level, impl_search_level_for_mui, insert_match,
     retrieve_node_mut_closure, store_node_closure,
@@ -215,35 +215,22 @@ use ansi_term::Colour;
 //--------------------- TreeBitMap ------------------------------------------
 
 #[derive(Debug)]
-pub struct TreeBitMap<
-    AF: AddressFamily,
-    // M: Meta,
-    NB: NodeBuckets<AF>,
-    // PB: PrefixBuckets<AF, M>,
-> {
+pub struct TreeBitMap<AF: AddressFamily, NB: NodeBuckets<AF>> {
     pub(crate) node_buckets: NB,
-    // pub(crate) prefix_buckets: PB,
     pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
+    default_route_exists: AtomicBool,
     _af: PhantomData<AF>,
-    // _m: PhantomData<M>,
 }
 
-impl<
-        AF: AddressFamily,
-        // M: Meta,
-        NB: NodeBuckets<AF>,
-        // PB: PrefixBuckets<AF, M>,
-    > TreeBitMap<AF, NB>
-{
+impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let tree_bitmap = Self {
             node_buckets: NodeBuckets::init(),
-            // prefix_buckets: PB::init(),
             withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
+            default_route_exists: AtomicBool::new(false),
             _af: PhantomData,
-            // _m: PhantomData,
         };
 
         let root_node = match Self::get_first_stride_size() {
@@ -279,15 +266,31 @@ impl<
         Ok(tree_bitmap)
     }
 
+    // Sets the bit for the requested prefix to 1 in the corresponding
+    // pfxbitarr in the tree.
+    //
+    // returns a Result over a tuple of (retry_count, existed), where
+    // `retry_count` is the accumulated number of times all the atomic
+    // operations involved had to be retried.
     pub(crate) fn set_prefix_exists(
         &self,
         pfx: PrefixId<AF>,
         mui: u32,
-        // update_path_selections: Option<M::TBI>,
     ) -> Result<(u32, bool), PrefixStoreError> {
         if pfx.get_len() == 0 {
-            return self.update_default_route_prefix_meta(mui);
-            // return Ok(res);
+            let prefix_new =
+                !self.default_route_exists.swap(true, Ordering::Acquire);
+            return self
+                .update_default_route_prefix_meta(mui)
+                .map(|(rc, _mui_exists)| (rc, !prefix_new));
+            // return self.update_default_route_prefix_meta(mui).map(
+            //     |(rc, mui_exists)| UpsertReport {
+            //         cas_count: rc as usize,
+            //         prefix_new,
+            //         mui_new: !mui_exists,
+            //         mui_count: 0,
+            //     },
+            // );
         }
 
         let mut stride_end: u8 = 0;
@@ -311,7 +314,6 @@ impl<
             );
             let is_last_stride = pfx.get_len() <= stride_end;
             let stride_start = stride_end - stride;
-            // let back_off = crossbeam_utils::Backoff::new();
 
             // insert_match! returns the node_id of the next node to be
             // traversed. It was created if it did not exist.
@@ -324,9 +326,6 @@ impl<
                 is_last_stride;
                 pfx;
                 mui;
-                // record;
-                // perform an update for the paths in this record
-                // update_path_selections;
                 // the length at the start of the stride a.k.a. start_bit
                 stride_start;
                 stride;
@@ -1039,12 +1038,8 @@ impl<
 
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
-impl<
-        AF: AddressFamily,
-        // M: Meta,
-        NB: NodeBuckets<AF>,
-        // PB: PrefixBuckets<AF, M>,
-    > std::fmt::Display for TreeBitMap<AF, NB>
+impl<AF: AddressFamily, NB: NodeBuckets<AF>> std::fmt::Display
+    for TreeBitMap<AF, NB>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(_f, "{} prefixes created", self.get_prefixes_count())?;

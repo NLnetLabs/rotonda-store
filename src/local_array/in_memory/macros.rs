@@ -126,9 +126,6 @@ macro_rules! insert_match {
                                     ))
                                 },
                                 (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                    $self.counters.inc_prefixes_count(
-                                        $pfx.get_len()
-                                    );
                                     break (
                                         $acc_retry_count +
                                         local_retry_count +

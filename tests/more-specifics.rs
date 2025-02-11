@@ -16,11 +16,19 @@ mod common {
     }
 }
 
-#[test]
-fn test_more_specifics() -> Result<(), Box<dyn Error>> {
+rotonda_store::all_strategies![
+    test_ms_1;
+    test_more_specifics;
+    PrefixAs
+];
+
+// #[test]
+fn test_more_specifics(
+    tree_bitmap: MultiThreadedStore<PrefixAs>,
+) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
     let pfxs = vec![
         Prefix::new(std::net::Ipv4Addr::new(130, 55, 240, 0).into(), 24), // 0
         //
