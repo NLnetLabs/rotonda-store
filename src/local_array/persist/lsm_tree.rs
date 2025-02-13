@@ -71,7 +71,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 // get the records from the persist store for the (prefix,
                 // mui) tuple only.
                 let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
-                (*self.tree.prefix(prefix_b))
+                (*self.tree.prefix(prefix_b, None, None))
                     .into_iter()
                     .map(|kv| {
                         let kv = kv.unwrap();
@@ -96,7 +96,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             (None, true) => {
                 // get all records for this prefix
                 let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
-                (*self.tree.prefix(prefix_b))
+                (*self.tree.prefix(prefix_b, None, None))
                     .into_iter()
                     .map(|kv| {
                         let kv = kv.unwrap();
@@ -121,7 +121,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
             (None, false) => {
                 // get all records for this prefix
                 let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
-                (*self.tree.prefix(prefix_b))
+                (*self.tree.prefix(prefix_b, None, None))
                     .into_iter()
                     .filter_map(|kv| {
                         let kv = kv.unwrap();
@@ -149,7 +149,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
                 // get the records from the persist store for the (prefix,
                 // mui) tuple only.
                 let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
-                (*self.tree.prefix(prefix_b))
+                (*self.tree.prefix(prefix_b, None, None))
                     .into_iter()
                     .filter_map(|kv| {
                         let kv = kv.unwrap();
@@ -233,7 +233,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     ) -> Option<PublicRecord<M>> {
         let key_b = Self::prefix_mui_persistence_key(prefix, mui);
 
-        (*self.tree.prefix(key_b))
+        (*self.tree.prefix(key_b, None, None))
             .into_iter()
             .map(|kv| {
                 let kv = kv.unwrap();
@@ -257,7 +257,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
     ) -> Vec<(Vec<u8>, PublicRecord<M>)> {
         let key_b = Self::prefix_mui_persistence_key(prefix, mui);
 
-        (*self.tree.prefix(key_b))
+        (*self.tree.prefix(key_b, None, None))
             .into_iter()
             .map(|kv| {
                 let kv = kv.unwrap();
@@ -290,7 +290,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         let start = PrefixId::new(prefix.get_net(), len);
         let end: [u8; PREFIX_SIZE] = start.inc_len().to_len_first_bytes();
 
-        self.tree.range(start.to_len_first_bytes()..end)
+        self.tree.range(start.to_len_first_bytes()..end, None, None)
     }
 
     // fn enrich_prefix<M: Meta>(
@@ -613,7 +613,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
         &'a self,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
         PersistedPrefixIter::<AF, M, PREFIX_SIZE, KEY_SIZE> {
-            tree_iter: self.tree.iter(),
+            tree_iter: self.tree.iter(None, None),
             cur_rec: None,
             _af: PhantomData,
             _m: PhantomData,
