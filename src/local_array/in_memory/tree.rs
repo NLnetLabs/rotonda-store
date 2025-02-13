@@ -921,9 +921,11 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                     // which will panic in debug mode (undefined behaviour
                     // in prod).
                     BitSpan::new(
-                        ((prefix.get_net() << node_len).checked_shr_or_zero(
-                            (AF::BITS - (prefix.get_len() - node_len)).into(),
-                        ))
+                        ((prefix.get_net() << node_len.into())
+                            .checked_shr_or_zero(
+                                (AF::BITS - (prefix.get_len() - node_len))
+                                    .into(),
+                            ))
                         .dangerously_truncate_to_u32(),
                         prefix.get_len() - node_len,
                     ),
@@ -999,9 +1001,9 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
         // );
         // HASHING FUNCTION
-        ((id.get_id().0 << last_level)
-            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
-            .dangerously_truncate_to_u32() as usize
+        ((id.get_id().0 << last_level.into())
+            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS).into())
+        .dangerously_truncate_to_u32() as usize
     }
 }
 

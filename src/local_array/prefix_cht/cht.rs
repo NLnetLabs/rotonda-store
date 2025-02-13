@@ -322,8 +322,8 @@ impl<AF: AddressFamily, M: Meta, PB: PrefixBuckets<AF, M>>
         //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
         // );
         // HASHING FUNCTION
-        ((id.get_net() << last_level)
-            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS))
-            .dangerously_truncate_to_u32() as usize
+        ((id.get_net() << last_level.into())
+            >> ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS).into())
+        .dangerously_truncate_to_u32() as usize
     }
 }

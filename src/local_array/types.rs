@@ -80,11 +80,11 @@ impl<AF: AddressFamily> PrefixId<AF> {
         trace!("orig {:032b}", self.net);
         trace!(
             "new  {:032b}",
-            self.net >> (AF::BITS - len) << (AF::BITS - len)
+            self.net >> (AF::BITS - len).into() << (AF::BITS - len).into()
         );
         trace!(
             "truncate to net {} len {}",
-            self.net >> (AF::BITS - len) << (AF::BITS - len),
+            self.net >> (AF::BITS - len).into() << (AF::BITS - len).into(),
             len
         );
         Self {

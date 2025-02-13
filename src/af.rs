@@ -14,12 +14,13 @@ pub trait AddressFamily:
     + std::fmt::Display
     + From<u32>
     + From<u16>
+    + From<u8>
     + Eq
     + std::ops::BitAnd<Output = Self>
     + std::ops::BitOr<Output = Self>
-    + std::ops::Shr<u8, Output = Self>
+    + std::ops::Shr<Self, Output = Self>
     + std::ops::Shl<Output = Self>
-    + std::ops::Shl<u8, Output = Self>
+    + std::ops::Shl<Self, Output = Self>
     + std::ops::Sub<Output = Self>
     + Zero
     + Copy
