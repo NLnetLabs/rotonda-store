@@ -17,10 +17,18 @@ mod tests {
         prelude::*,
     };
 
-    #[test]
-    fn test_arbitrary_insert_ipv6() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
+    rotonda_store::all_strategies![
+        tests_ipv6;
+        test_arbitrary_insert_ipv6;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_arbitrary_insert_ipv6(
+        trie: MultiThreadedStore<NoMeta>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+        // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
         let guard = &epoch::pin();
         let a_pfx = Prefix::new_relaxed(
             ("2001:67c:1bfc::").parse::<std::net::Ipv6Addr>()?.into(),
@@ -58,11 +66,19 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_insert_extremes_ipv6() -> Result<(), Box<dyn std::error::Error>> {
+    rotonda_store::all_strategies![
+        tests_ipv6_2;
+        test_insert_extremes_ipv6;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_insert_extremes_ipv6(
+        trie: MultiThreadedStore<NoMeta>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
+        // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(),
             1,
@@ -140,15 +156,23 @@ mod tests {
         Ok(())
     }
 
+    rotonda_store::all_strategies![
+        max_levels;
+        test_max_levels;
+        PrefixAs
+    ];
+
     // This test aims to fill all the levels available in the PrefixBuckets
     // mapping. This tests the prefix-length-to-bucket-sizes-per-storage-
     // level mapping, most notably if the exit condition is met (a zero at
     // the end of a prefix-length array).
-    #[test]
-    fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
+    // #[test]
+    fn test_max_levels(
+        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // 0-7
             Prefix::new_relaxed(
@@ -319,9 +343,17 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_tree_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    rotonda_store::all_strategies![
+        tree_ipv6_2;
+        test_tree_ipv6;
+        PrefixAs
+    ];
+
+    // #[test]
+    fn test_tree_ipv6(
+        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u128.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -638,10 +670,18 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    rotonda_store::all_strategies![
+        ranges_ipv4;
+        test_ranges_ipv4;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_ranges_ipv4(
+        tree_bitmap: MultiThreadedStore<NoMeta>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+            // let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
