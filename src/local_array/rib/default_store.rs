@@ -1,6 +1,7 @@
 use crate::local_array::in_memory::atomic_types::NodeSet;
 use crate::prelude::multi::*;
 use crate::prelude::*;
+use rand::prelude::*;
 
 // The default stride sizes for IPv4, IPv6, resp.
 #[create_store((

@@ -558,7 +558,14 @@ pub fn create_store(
                     mut config: StoreConfig
                 ) -> Result<Self, Box<dyn std::error::Error>> {
 
-                let uuid = Uuid::new_v4();
+                let rng = rand::rng();
+                let uuid: String = rng
+                    .sample_iter(
+                        rand::distr::Alphanumeric
+                    )
+                    .take(12)
+                    .map(|b| char::from(b))
+                    .collect();
                 let mut config_v4 = config.clone();
                 let mut config_v6 = config.clone();
 

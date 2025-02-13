@@ -1,5 +1,4 @@
 pub use crate::{AddressFamily, IPv4, IPv6};
-pub use uuid::Uuid;
 
 pub use crate::prefix_record::{Meta, PublicPrefixRecord as PrefixRecord};
 pub use crate::stride::{Stride3, Stride4, Stride5};
