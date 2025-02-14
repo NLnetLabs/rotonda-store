@@ -1,5 +1,6 @@
 pub use crate::{AddressFamily, IPv4, IPv6};
 
+pub use crate::af::IntoIpAddr;
 pub use crate::prefix_record::{Meta, PublicPrefixRecord as PrefixRecord};
 pub use crate::stride::{Stride3, Stride4, Stride5};
 pub use crate::{IncludeHistory, MatchOptions, MatchType, QueryResult};
@@ -7,6 +8,7 @@ pub use inetnum::addr::Prefix;
 
 pub mod multi {
     pub use crate::MultiThreadedStore;
+
     pub use std::sync::atomic::Ordering;
 
     pub use rotonda_macros::create_store;

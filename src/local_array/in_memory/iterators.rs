@@ -426,7 +426,10 @@ impl<
 
     // Iterator over all the prefixes in the in_memory store.
     pub fn prefixes_iter(&'a self) -> impl Iterator<Item = Prefix> + 'a {
-        self.more_specific_prefix_iter_from(PrefixId::new(AF::zero(), 0))
-            .map(Prefix::from)
+        self.more_specific_prefix_iter_from(PrefixId::new(
+            AF::new(0_u32.into()),
+            0,
+        ))
+        .map(Prefix::from)
     }
 }

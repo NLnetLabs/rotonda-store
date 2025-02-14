@@ -1,4 +1,5 @@
 use log::trace;
+use zerocopy::TryFromBytes;
 
 use crate::AddressFamily;
 
@@ -45,16 +46,28 @@ impl TryFrom<u8> for RouteStatus {
 }
 
 //------------ PrefixId ------------------------------------------------------
-
-#[derive(Hash, Eq, PartialEq, Debug, Copy, Clone)]
+#[derive(
+    Hash,
+    Eq,
+    PartialEq,
+    Debug,
+    Copy,
+    Clone,
+    zerocopy::TryFromBytes,
+    zerocopy::IntoBytes,
+    zerocopy::KnownLayout,
+    zerocopy::Immutable,
+    zerocopy::Unaligned,
+)]
+#[repr(C)]
 pub struct PrefixId<AF: AddressFamily> {
-    net: AF,
     len: u8,
+    net: AF,
 }
 
 impl<AF: AddressFamily> PrefixId<AF> {
     pub fn new(net: AF, len: u8) -> Self {
-        PrefixId { net, len }
+        PrefixId { len, net }
     }
 
     pub fn get_net(&self) -> AF {
@@ -77,16 +90,16 @@ impl<AF: AddressFamily> PrefixId<AF> {
     }
 
     pub fn truncate_to_len(self, len: u8) -> Self {
-        trace!("orig {:032b}", self.net);
-        trace!(
-            "new  {:032b}",
-            self.net >> (AF::BITS - len).into() << (AF::BITS - len).into()
-        );
-        trace!(
-            "truncate to net {} len {}",
-            self.net >> (AF::BITS - len).into() << (AF::BITS - len).into(),
-            len
-        );
+        // trace!("orig {:032b}", self.net);
+        // trace!(
+        //     "new  {:032b}",
+        //     self.net >> (AF::BITS - len).into() << (AF::BITS - len).into()
+        // );
+        // trace!(
+        //     "truncate to net {} len {}",
+        //     self.net >> (AF::BITS - len).into() << (AF::BITS - len).into(),
+        //     len
+        // );
         Self {
             // net: (self.net >> (AF::BITS - len)) << (AF::BITS - len),
             net: self.net.truncate_to_len(len),
@@ -110,7 +123,14 @@ impl<AF: AddressFamily> PrefixId<AF> {
 impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     fn from(value: inetnum::addr::Prefix) -> Self {
         Self {
-            net: AF::from_ipaddr(value.addr()),
+            net: match value.addr() {
+                std::net::IpAddr::V4(addr) => {
+                    *AF::try_ref_from_bytes(&addr.octets()).unwrap()
+                }
+                std::net::IpAddr::V6(addr) => {
+                    *AF::try_ref_from_bytes(&addr.octets()).unwrap()
+                }
+            },
             len: value.len(),
         }
     }
@@ -127,8 +147,16 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<[u8; PREFIX_SIZE]>
 {
     fn from(value: [u8; PREFIX_SIZE]) -> Self {
         Self {
-            net: u32::from_be_bytes(*value.last_chunk::<4>().unwrap()).into(),
+            net: *AF::try_ref_from_bytes(&value.as_slice()[1..]).unwrap(),
             len: value[0],
         }
+    }
+}
+
+impl<'a, AF: AddressFamily, const PREFIX_SIZE: usize>
+    From<&'a [u8; PREFIX_SIZE]> for &'a PrefixId<AF>
+{
+    fn from(value: &'a [u8; PREFIX_SIZE]) -> Self {
+        PrefixId::try_ref_from_bytes(value.as_slice()).unwrap()
     }
 }

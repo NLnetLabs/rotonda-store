@@ -10,7 +10,7 @@ fn test_af_1() -> Result<(), Box<dyn Error>> {
     use crate::AddressFamily;
     use crate::IPv4;
 
-    let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111;
+    let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111.into();
     let base_prefix =
         StrideNodeId::dangerously_new_with_id_as_is(bit_addr, 32);
 
@@ -42,7 +42,7 @@ fn test_af_2() -> Result<(), Box<dyn Error>> {
     use crate::prelude::multi::StrideNodeId;
     use crate::IPv4;
 
-    let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111;
+    let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111.into();
     let nu_prefix = StrideNodeId::dangerously_new_with_id_as_is(bit_addr, 8);
 
     assert_eq!(nu_prefix.get_id().0, bit_addr);

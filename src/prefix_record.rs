@@ -6,6 +6,7 @@ use crate::af::AddressFamily;
 use crate::local_array::types::RouteStatus;
 use crate::prelude::multi::PrefixId;
 use inetnum::addr::Prefix;
+use zerocopy::{NetworkEndian, U128, U32};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -72,8 +73,8 @@ where
     AF: AddressFamily,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        (self.net >> (AF::BITS - self.len).into())
-            .cmp(&(other.net >> ((AF::BITS - other.len) % 32).into()))
+        (self.net >> AF::from_u8(AF::BITS - self.len))
+            .cmp(&(other.net >> AF::from_u8((AF::BITS - other.len) % 32)))
     }
 }
 
@@ -83,8 +84,8 @@ where
     AF: AddressFamily,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.net >> (AF::BITS - self.len).into()
-            == other.net >> ((AF::BITS - other.len) % 32).into()
+        self.net >> AF::from_u8(AF::BITS - self.len)
+            == other.net >> AF::from_u8((AF::BITS - other.len) % 32)
     }
 }
 
@@ -95,8 +96,9 @@ where
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(
-            (self.net >> (AF::BITS - self.len).into())
-                .cmp(&(other.net >> ((AF::BITS - other.len) % 32).into())),
+            (self.net >> AF::from_u8(AF::BITS - self.len)).cmp(
+                &(other.net >> AF::from_u8((AF::BITS - other.len) % 32)),
+            ),
         )
     }
 }
@@ -159,7 +161,11 @@ impl<M: Meta> From<PublicPrefixSingleRecord<M>>
 {
     fn from(record: PublicPrefixSingleRecord<M>) -> Self {
         Self {
-            net: crate::IPv4::from_ipaddr(record.prefix.addr()),
+            net: if let std::net::IpAddr::V4(ip) = record.prefix.addr() {
+                U32::<NetworkEndian>::from(ip.octets())
+            } else {
+                0.into()
+            },
             len: record.prefix.len(),
             meta: record.meta,
         }
@@ -171,7 +177,11 @@ impl<M: Meta> From<PublicPrefixSingleRecord<M>>
 {
     fn from(record: PublicPrefixSingleRecord<M>) -> Self {
         Self {
-            net: crate::IPv6::from_ipaddr(record.prefix.addr()),
+            net: if let std::net::IpAddr::V6(ip) = record.prefix.addr() {
+                U128::<NetworkEndian>::from(ip.octets())
+            } else {
+                0.into()
+            },
             len: record.prefix.len(),
             meta: record.meta,
         }

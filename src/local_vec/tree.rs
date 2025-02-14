@@ -479,18 +479,18 @@ impl<Store: StorageBackend> std::fmt::Display for TreeBitMap<Store> {
         writeln!(_f, "prefix vec size {}", self.store.get_prefixes_len())?;
         writeln!(_f, "finished building tree...")?;
         writeln!(_f, "{:?} nodes created", total_nodes)?;
-        writeln!(
-            _f,
-            "size of node: {} bytes",
-            std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
-        )?;
-        writeln!(
-            _f,
-            "memory used by nodes: {}kb",
-            self.store.get_nodes_len()
-                * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
-                / 1024
-        )?;
+        // writeln!(
+        //     _f,
+        //     "size of node: {} bytes",
+        //     std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
+        // )?;
+        // writeln!(
+        //     _f,
+        //     "memory used by nodes: {}kb",
+        //     self.store.get_nodes_len()
+        //         * std::mem::size_of::<SizedStrideNode<u32, InMemNodeId>>()
+        //         / 1024
+        // )?;
 
         writeln!(_f, "stride division {:?}", self.strides)?;
         for s in &self.stats {
