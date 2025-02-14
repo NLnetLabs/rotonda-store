@@ -45,6 +45,7 @@ serde = "1.0.216"
 serde_derive = "1.0.216"
 serde_json = "1.0.133"
 num-traits = "0.2.19"
+zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [dev-dependencies]
 csv         = { version = "1" }
