@@ -1,4 +1,5 @@
 use log::trace;
+use rotonda_store::rib::MemoryOnlyConfig;
 use std::thread;
 use std::time::Duration;
 
@@ -14,7 +15,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    let tree_bitmap =
+        MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
     // let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let mut pfx_int = 0_u32;
@@ -28,7 +30,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name(1_u8.to_string())
         .spawn(move || -> Result<(), Box<dyn std::error::Error + Send>> {
             // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
 
             println!("park thread {}", 1);
             thread::park();
@@ -41,7 +43,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let pfx = Prefix::new_relaxed(pfx_int.into_ipaddr(), 32);
                 // x += 1;
                 // print!("{}-", i);
-                let asn: u32 = rng.gen();
+                let asn: u32 = rng.random();
                 match tree_bitmap.insert(
                     &pfx.unwrap(),
                     Record::new(

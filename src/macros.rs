@@ -51,25 +51,24 @@ macro_rules! all_strategies {
         $(
             #[test]
             fn $fn_name() -> Result<(), Box<dyn std::error::Error>> {
+                use rotonda_store::prelude::multi::*;
                 //------- Default (MemoryOnly)
-
-                println!("default strategy starting...");
+                println!("MemoryOnly strategy starting...");
                 let tree_bitmap =
-                    MultiThreadedStore::<$ty>::try_default()?;
+                    MultiThreadedStore::<$ty, MemoryOnlyConfig>::try_default()?;
 
                 $test_name(tree_bitmap)?;
 
                 //------- PersistOnly
 
                 println!("PersistOnly strategy starting...");
-                let store_config = StoreConfig {
-                    persist_strategy:
-                        rotonda_store::rib::PersistStrategy::PersistOnly,
-                    persist_path: "/tmp/rotonda/".into(),
-                };
+                let mut store_config = PersistOnlyConfig::default();
+                store_config.set_persist_path(
+                    "/tmp/rotonda/".into()
+                );
 
                 let tree_bitmap = MultiThreadedStore::<
-                    $ty,
+                    $ty, PersistOnlyConfig
                 >::new_with_config(
                     store_config
                 )?;
@@ -79,14 +78,14 @@ macro_rules! all_strategies {
                 //------- PersistHistory
 
                 println!("PersistHistory strategy starting...");
-                let store_config = StoreConfig {
-                    persist_strategy:
-                        rotonda_store::rib::PersistStrategy::PersistHistory,
-                    persist_path: "/tmp/rotonda/".into(),
-                };
+                let mut store_config = PersistHistoryConfig::default();
+                store_config.set_persist_path(
+                    "/tmp/rotonda/".into()
+                );
 
                 let tree_bitmap = MultiThreadedStore::<
                     $ty,
+                    PersistHistoryConfig
                 >::new_with_config(
                     store_config
                 )?;
@@ -96,14 +95,15 @@ macro_rules! all_strategies {
                 //------- WriteAhead
 
                 println!("WriteAhead strategy starting...");
-                let store_config = StoreConfig {
-                    persist_strategy:
-                        rotonda_store::rib::PersistStrategy::WriteAhead,
-                    persist_path: "/tmp/rotonda/".into(),
-                };
+
+                let mut store_config = WriteAheadConfig::default();
+                store_config.set_persist_path(
+                    "/tmp/rotonda/".into()
+                );
 
                 let tree_bitmap = MultiThreadedStore::<
                     $ty,
+                    WriteAheadConfig
                 >::new_with_config(
                     store_config
                 )?;

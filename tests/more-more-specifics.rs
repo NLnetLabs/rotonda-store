@@ -5,7 +5,9 @@ use std::error::Error;
 use inetnum::addr::Prefix;
 
 use rotonda_store::{
-    meta_examples::PrefixAs, prelude::multi::RouteStatus, rib::StoreConfig,
+    meta_examples::PrefixAs,
+    prelude::multi::RouteStatus,
+    rib::{Config, MemoryOnlyConfig},
     IncludeHistory, MatchOptions, MatchType, MultiThreadedStore,
     PublicRecord as Record,
 };
@@ -27,8 +29,8 @@ rotonda_store::all_strategies![
 ];
 
 // #[test]
-fn test_more_specifics_without_less_specifics(
-    tree_bitmap: MultiThreadedStore<PrefixAs>,
+fn test_more_specifics_without_less_specifics<C: Config>(
+    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -127,7 +129,8 @@ fn test_more_specifics_without_less_specifics(
 fn test_more_specifics_with_less_specifics() -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    let tree_bitmap =
+        MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new(std::net::Ipv4Addr::new(17, 0, 64, 0).into(), 18), // 0
         Prefix::new(std::net::Ipv4Addr::new(17, 0, 109, 0).into(), 24), // 1

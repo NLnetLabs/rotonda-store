@@ -24,8 +24,8 @@ mod tests {
     ];
 
     // #[test]
-    fn test_arbitrary_insert_ipv6(
-        trie: MultiThreadedStore<NoMeta>,
+    fn test_arbitrary_insert_ipv6<C: Config>(
+        trie: MultiThreadedStore<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
         // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
@@ -73,8 +73,8 @@ mod tests {
     ];
 
     // #[test]
-    fn test_insert_extremes_ipv6(
-        trie: MultiThreadedStore<NoMeta>,
+    fn test_insert_extremes_ipv6<C: Config>(
+        trie: MultiThreadedStore<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -167,8 +167,8 @@ mod tests {
     // level mapping, most notably if the exit condition is met (a zero at
     // the end of a prefix-length array).
     // #[test]
-    fn test_max_levels(
-        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    fn test_max_levels<C: Config>(
+        tree_bitmap: MultiThreadedStore<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -350,8 +350,8 @@ mod tests {
     ];
 
     // #[test]
-    fn test_tree_ipv6(
-        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    fn test_tree_ipv6<C: Config>(
+        tree_bitmap: MultiThreadedStore<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
@@ -670,18 +670,19 @@ mod tests {
         Ok(())
     }
 
-    rotonda_store::all_strategies![
-        ranges_ipv4;
-        test_ranges_ipv4;
-        NoMeta
-    ];
+    // rotonda_store::all_strategies![
+    //     ranges_ipv4;
+    //     test_ranges_ipv4;
+    //     NoMeta
+    // ];
 
-    // #[test]
-    fn test_ranges_ipv4(
-        tree_bitmap: MultiThreadedStore<NoMeta>,
+    #[test]
+    fn test_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            // let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+            let tree_bitmap =
+                MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default(
+                )?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()

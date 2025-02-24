@@ -6,7 +6,10 @@ use crate::af::AddressFamily;
 use crate::local_array::types::RouteStatus;
 use crate::prelude::multi::PrefixId;
 use inetnum::addr::Prefix;
-use zerocopy::{NetworkEndian, U128, U32};
+use zerocopy::{
+    Immutable, IntoBytes, KnownLayout, NetworkEndian, TryFromBytes,
+    Unaligned, U128, U32,
+};
 
 //------------ InternalPrefixRecord -----------------------------------------
 
@@ -269,6 +272,44 @@ impl<M: std::fmt::Display> std::fmt::Display for PublicRecord<M> {
             "{{ mui: {}, ltime: {}, status: {}, meta: {} }}",
             self.multi_uniq_id, self.ltime, self.status, self.meta
         )
+    }
+}
+
+#[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
+#[repr(C, packed)]
+pub struct ZeroCopyRecord<AF: AddressFamily> {
+    pub prefix: PrefixId<AF>,
+    pub multi_uniq_id: u32,
+    pub ltime: u64,
+    pub status: RouteStatus,
+    pub meta: [u8],
+}
+
+impl<AF: AddressFamily + std::fmt::Display> std::fmt::Display
+    for ZeroCopyRecord<AF>
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mui = self.multi_uniq_id;
+        let ltime = self.ltime;
+        write!(
+            f,
+            "{{ mui: {}, ltime: {}, status: {}, meta: {:?} }}",
+            mui, ltime, self.status, &self.meta
+        )
+    }
+}
+
+#[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
+#[repr(C, packed)]
+pub struct ValueHeader {
+    pub ltime: u64,
+    pub status: RouteStatus,
+}
+
+impl std::fmt::Display for ValueHeader {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let ltime = self.ltime;
+        write!(f, "{{ ltime: {}, status: {} }}", ltime, self.status,)
     }
 }
 

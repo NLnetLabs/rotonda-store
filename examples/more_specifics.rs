@@ -3,11 +3,12 @@ use rotonda_store::prelude::multi::*;
 use rotonda_store::prelude::*;
 
 use inetnum::addr::Prefix;
-use rotonda_store::AddressFamily;
+use rotonda_store::rib::MemoryOnlyConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // type StoreType = InMemStorage<u32, PrefixAs>;
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    let tree_bitmap =
+        MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

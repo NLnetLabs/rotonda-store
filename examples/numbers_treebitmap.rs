@@ -1,6 +1,7 @@
 use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::multi::*;
 use rotonda_store::prelude::*;
+use rotonda_store::rib::MemoryOnlyConfig;
 
 use std::env;
 use std::error::Error;
@@ -62,9 +63,8 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     for _strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-        let config = StoreConfig::default();
         let tree_bitmap =
-            MultiThreadedStore::<PrefixAs>::new_with_config(config)?;
+            MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

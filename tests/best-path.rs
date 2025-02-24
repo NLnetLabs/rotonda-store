@@ -1,10 +1,11 @@
 use inetnum::addr::Prefix;
 use inetnum::asn::Asn;
+use log::trace;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::Record;
 use rotonda_store::prelude::multi::RouteStatus;
+use rotonda_store::rib::MemoryOnlyConfig;
 use rotonda_store::rib::PersistStrategy;
-use rotonda_store::rib::StoreConfig;
 use rotonda_store::IncludeHistory;
 use rotonda_store::MatchOptions;
 use rotonda_store::Meta;
@@ -74,17 +75,13 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
-    let store_config = StoreConfig {
-        persist_strategy: PersistStrategy::MemoryOnly,
-        persist_path: "/tmp/rotonda/".into(),
-    };
-
     let tree_bitmap =
         std::sync::Arc::new(std::sync::Arc::new(MultiThreadedStore::<
             Ipv4Route,
-        >::new_with_config(
-            store_config
-        )?));
+            MemoryOnlyConfig,
+        >::try_default()?));
+
+    trace!("Done creating tree...");
 
     let pfx = Prefix::from_str("185.34.0.0/16")?;
     let mut asns = [
@@ -175,7 +172,10 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
             Ipv4Route(mui, pa_map.clone(), tbi),
         );
         tree_bitmap.insert(&pfx, rec, None)?;
+        trace!("inserted {}", pfx);
     }
+
+    trace!("done inserting prefixes...");
 
     let res = tree_bitmap.match_prefix(
         &pfx,

@@ -2,6 +2,7 @@
 use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::multi::*;
 use rotonda_store::prelude::*;
+use rotonda_store::rib::MemoryOnlyConfig;
 
 use std::error::Error;
 use std::fs::File;
@@ -51,9 +52,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("[");
         for n in 1..6 {
             let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let config = StoreConfig::default();
+            let config = MemoryOnlyConfig;
             let tree_bitmap =
-                MultiThreadedStore::<PrefixAs>::new_with_config(config)?;
+                MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);

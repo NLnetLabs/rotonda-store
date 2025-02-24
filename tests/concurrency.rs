@@ -2,9 +2,11 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    meta_examples::NoMeta, prelude::multi::RouteStatus, rib::StoreConfig,
-    test_types::BeBytesAsn, IncludeHistory, MatchOptions, MultiThreadedStore,
-    PublicRecord as Record,
+    meta_examples::NoMeta,
+    prelude::multi::RouteStatus,
+    rib::{Config, MemoryOnlyConfig},
+    test_types::BeBytesAsn,
+    IncludeHistory, MatchOptions, MultiThreadedStore, PublicRecord as Record,
 };
 
 mod common {
@@ -24,8 +26,8 @@ rotonda_store::all_strategies![
     BeBytesAsn
 ];
 
-fn test_concurrent_updates_1(
-    tree_bitmap: MultiThreadedStore<BeBytesAsn>,
+fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
+    tree_bitmap: MultiThreadedStore<BeBytesAsn, C>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
@@ -415,13 +417,10 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
 
-    let store_config = StoreConfig {
-        persist_strategy: rotonda_store::rib::PersistStrategy::MemoryOnly,
-        persist_path: "/tmp/rotonda/".into(),
-    };
-    let tree_bitmap = std::sync::Arc::new(
-        MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
-    );
+    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<
+        BeBytesAsn,
+        MemoryOnlyConfig,
+    >::try_default()?);
     let guard = &rotonda_store::epoch::pin();
 
     let _: Vec<_> =
@@ -735,13 +734,10 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     println!("PersistOnly strategy starting...");
-    let store_config = StoreConfig {
-        persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
-        persist_path: "/tmp/rotonda/".into(),
-    };
-    let tree_bitmap = std::sync::Arc::new(
-        MultiThreadedStore::<NoMeta>::new_with_config(store_config)?,
-    );
+    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<
+        NoMeta,
+        MemoryOnlyConfig,
+    >::try_default()?);
     let match_options = MatchOptions {
         match_type: rotonda_store::MatchType::EmptyMatch,
         include_withdrawn: false,

@@ -1,12 +1,14 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
 use log::trace;
+use zerocopy::TryFromBytes;
 
 use crate::af::AddressFamily;
 use crate::local_array::in_memory::atomic_types::{
     NodeBuckets, PrefixBuckets,
 };
-use crate::rib::{PersistStrategy, Rib};
+use crate::prefix_record::ZeroCopyRecord;
+use crate::rib::{Config, PersistStrategy, Rib};
 use crate::PublicRecord;
 use inetnum::addr::Prefix;
 
@@ -15,15 +17,17 @@ use crate::{Meta, QueryResult};
 use crate::{MatchOptions, MatchType};
 
 use super::errors::PrefixStoreError;
+use super::persist::lsm_tree::KeySize;
 use super::types::PrefixId;
 
 //------------ Prefix Matching ----------------------------------------------
 
-impl<'a, AF, M, NB, PB, const PREFIX_SIZE: usize, const KEY_SIZE: usize>
-    Rib<AF, M, NB, PB, PREFIX_SIZE, KEY_SIZE>
+impl<'a, AF, M, K, NB, PB, C: Config, const KEY_SIZE: usize>
+    Rib<AF, M, K, NB, PB, C, KEY_SIZE>
 where
     AF: AddressFamily,
     M: Meta,
+    K: KeySize<AF, KEY_SIZE>,
     NB: NodeBuckets<AF>,
     PB: PrefixBuckets<AF, M>,
 {
@@ -36,13 +40,33 @@ where
     ) -> Option<Vec<PublicRecord<M>>> {
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
-                self.persist_tree.as_ref().map(|tree| {
+                trace!("get value from persist_store for {:?}", prefix_id);
+                self.persist_tree.as_ref().and_then(|tree| {
                     tree.get_records_for_prefix(
                         prefix_id,
                         mui,
                         include_withdrawn,
                         self.in_memory_tree.withdrawn_muis_bmin(guard),
                     )
+                    .map(|v| {
+                        v.iter()
+                            .map(|bytes| {
+                                let record: &ZeroCopyRecord<AF> =
+                                    ZeroCopyRecord::try_ref_from_bytes(bytes)
+                                        .unwrap();
+                                PublicRecord::<M> {
+                                    multi_uniq_id: record.multi_uniq_id,
+                                    ltime: record.ltime,
+                                    status: record.status,
+                                    meta: <Vec<u8>>::from(
+                                        record.meta.as_ref(),
+                                    )
+                                    .into(),
+                                }
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .ok()
                 })
             }
             _ => self.prefix_cht.get_records_for_prefix(
@@ -148,28 +172,28 @@ where
         })
         .into_iter()
         .flatten()
-        .chain(
-            (if mui.is_some_and(|m| {
-                self.config.persist_strategy == PersistStrategy::WriteAhead
-                    || (!include_withdrawn && self.mui_is_withdrawn(m, guard))
-            }) {
-                None
-            } else {
-                let global_withdrawn_bmin =
-                    self.in_memory_tree.withdrawn_muis_bmin(guard);
-                self.persist_tree.as_ref().map(|persist_tree| {
-                    persist_tree.more_specific_prefix_iter_from(
-                        prefix_id,
-                        vec![],
-                        mui,
-                        global_withdrawn_bmin,
-                        include_withdrawn,
-                    )
-                })
-            })
-            .into_iter()
-            .flatten(),
-        )
+        // .chain(
+        //     (if mui.is_some_and(|m| {
+        //         self.config.persist_strategy == PersistStrategy::WriteAhead
+        //             || (!include_withdrawn && self.mui_is_withdrawn(m, guard))
+        //     }) {
+        //         None
+        //     } else {
+        //         let global_withdrawn_bmin =
+        //             self.in_memory_tree.withdrawn_muis_bmin(guard);
+        //         self.persist_tree.as_ref().map(|persist_tree| {
+        //             persist_tree.more_specific_prefix_iter_from(
+        //                 prefix_id,
+        //                 vec![],
+        //                 mui,
+        //                 global_withdrawn_bmin,
+        //                 include_withdrawn,
+        //             )
+        //         })
+        //     })
+        //     .into_iter()
+        //     .flatten(),
+        // )
     }
 
     pub(crate) fn less_specifics_iter_from(

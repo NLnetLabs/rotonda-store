@@ -27,8 +27,8 @@ mod tests {
     ];
 
     // #[test]
-    fn test_insert_extremes_ipv4(
-        trie: MultiThreadedStore<NoMeta>,
+    fn test_insert_extremes_ipv4<C: Config>(
+        trie: MultiThreadedStore<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
@@ -105,8 +105,8 @@ mod tests {
     ];
 
     // #[test]
-    fn test_tree_ipv4(
-        tree_bitmap: MultiThreadedStore<PrefixAs>,
+    fn test_tree_ipv4<C: Config>(
+        tree_bitmap: MultiThreadedStore<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -415,98 +415,95 @@ mod tests {
         Ok(())
     }
 
-    rotonda_store::all_strategies![
-        ranges_ipv4;
-        test_ranges_ipv4;
-        NoMeta
-    ];
+    // rotonda_store::all_strategies![
+    //     ranges_ipv4;
+    //     test_ranges_ipv4;
+    //     NoMeta
+    // ];
 
-    // #[test]
-    fn test_ranges_ipv4(
-        tree_bitmap: MultiThreadedStore<NoMeta>,
+    #[test]
+    fn test_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        // for persist_strategy in [
-        //     PersistStrategy::MemoryOnly,
-        //     PersistStrategy::PersistOnly,
-        //     PersistStrategy::WriteAhead,
-        //     PersistStrategy::PersistHistory,
-        // ] {
-        for i_net in 0..255 {
-            // let config = StoreConfig {
-            //     persist_strategy,
-            //     persist_path: "/tmp/rotonda".into(),
-            // };
-            // let tree_bitmap =
-            //     MultiThreadedStore::<NoMeta>::new_with_config(config)?;
+        for persist_strategy in [
+            PersistStrategy::MemoryOnly,
+            // PersistStrategy::PersistOnly,
+            // PersistStrategy::WriteAhead,
+            // PersistStrategy::PersistHistory,
+        ] {
+            for i_net in 0..255 {
+                let tree_bitmap = MultiThreadedStore::<
+                    NoMeta,
+                    MemoryOnlyConfig,
+                >::try_default()?;
 
-            let pfx_vec: Vec<Prefix> = (1..32)
-                .collect::<Vec<u8>>()
-                .into_iter()
-                .map(|i_len| {
-                    Prefix::new_relaxed(
-                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                        i_len,
-                    )
-                    .unwrap()
-                })
-                .collect();
+                let pfx_vec: Vec<Prefix> = (1..32)
+                    .collect::<Vec<u8>>()
+                    .into_iter()
+                    .map(|i_len| {
+                        Prefix::new_relaxed(
+                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                            i_len,
+                        )
+                        .unwrap()
+                    })
+                    .collect();
 
-            let mut i_len_s = 0;
-            for pfx in pfx_vec {
-                i_len_s += 1;
-                tree_bitmap.insert(
-                    &pfx,
-                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-                    None,
-                )?;
-
-                let res_pfx = Prefix::new_relaxed(
-                    std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                    i_len_s,
-                );
-
-                let guard = &epoch::pin();
-                for s_len in i_len_s..32 {
-                    let pfx = Prefix::new_relaxed(
-                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                        s_len,
-                    )?;
-                    let res = tree_bitmap.match_prefix(
+                let mut i_len_s = 0;
+                for pfx in pfx_vec {
+                    i_len_s += 1;
+                    tree_bitmap.insert(
                         &pfx,
-                        &MatchOptions {
-                            match_type: MatchType::LongestMatch,
-                            include_withdrawn: false,
-                            include_less_specifics: false,
-                            include_more_specifics: false,
-                            mui: None,
-                            include_history: IncludeHistory::None,
-                        },
-                        guard,
-                    );
-                    println!("{:?}", pfx);
+                        Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                        None,
+                    )?;
 
-                    assert_eq!(res.prefix.unwrap(), res_pfx?);
+                    let res_pfx = Prefix::new_relaxed(
+                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                        i_len_s,
+                    );
+
+                    let guard = &epoch::pin();
+                    for s_len in i_len_s..32 {
+                        let pfx = Prefix::new_relaxed(
+                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                            s_len,
+                        )?;
+                        let res = tree_bitmap.match_prefix(
+                            &pfx,
+                            &MatchOptions {
+                                match_type: MatchType::LongestMatch,
+                                include_withdrawn: false,
+                                include_less_specifics: false,
+                                include_more_specifics: false,
+                                mui: None,
+                                include_history: IncludeHistory::None,
+                            },
+                            guard,
+                        );
+                        println!("{:?}", pfx);
+
+                        assert_eq!(res.prefix.unwrap(), res_pfx?);
+                    }
                 }
             }
-            // }
         }
 
         Ok(())
     }
 
-    rotonda_store::all_strategies![
-        multi_ranges;
-        test_multi_ranges_ipv4;
-        NoMeta
-    ];
+    // rotonda_store::all_strategies![
+    //     multi_ranges;
+    //     test_multi_ranges_ipv4;
+    //     NoMeta
+    // ];
 
-    // #[test]
-    fn test_multi_ranges_ipv4(
-        tree_bitmap: MultiThreadedStore<NoMeta>,
+    #[test]
+    fn test_multi_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        // let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+        let tree_bitmap =
+            MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 

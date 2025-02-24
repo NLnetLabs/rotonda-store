@@ -28,7 +28,7 @@ pub fn stride_sizes(
         _ => panic!("Expected Adress Family Type"),
     };
 
-    let prefix_size = match attrs
+    let _prefix_size = match attrs
         .get(2)
         .unwrap_or_else(|| panic!("Missing Prefix Size for Address Family"))
     {
@@ -42,6 +42,22 @@ pub fn stride_sizes(
     {
         syn::Expr::Lit(l) => l,
         l => panic!("Expected Key Size for Address Family, got {:?}", l),
+    };
+
+    // let _config = match attrs
+    //     .get(4)
+    //     .unwrap_or_else(|| panic!("Missing config type for store"))
+    // {
+    //     syn::Expr::Path(p) => p,
+    //     p => panic!("Expected Config type, got {:?}", p),
+    // };
+
+    let key_type = match attrs
+        .get(4)
+        .unwrap_or_else(|| panic!("Missing Key Type for Persist Strategy"))
+    {
+        syn::Expr::Path(l) => l,
+        l => panic!("Expected Key type for Persist Strategy, got {:?}", l),
     };
 
     let prefixes_all_len;
@@ -327,7 +343,7 @@ pub fn stride_sizes(
     };
 
     let type_alias = quote! {
-        type #type_name<M> = Rib<#ip_af, M, #buckets_name<#ip_af>, #prefixes_buckets_name<#ip_af, M>, #prefix_size, #key_size>;
+        type #type_name<M, C> = Rib<#ip_af, M, #key_type<#ip_af>, #buckets_name<#ip_af>, #prefixes_buckets_name<#ip_af, M>, C, #key_size>;
     };
 
     let result = quote! {
@@ -403,7 +419,7 @@ pub fn create_store(
     struct_def: TokenStream,
 ) -> TokenStream {
     let struct_def = parse_macro_input!(struct_def as syn::ItemStruct);
-    let store_name = &struct_def.ident;
+    let rib_name = &struct_def.ident;
 
     let attr = parse_macro_input!(attr as syn::ExprTuple);
     let attrs = attr.elems.iter().collect::<Vec<_>>();
@@ -451,18 +467,34 @@ pub fn create_store(
         panic!("Expected Prefix Size for IPv6, got {:?}", tuple_6.attrs)
     });
 
-    let strides4_name = format_ident!("{}IPv4", store_name);
-    let strides6_name = format_ident!("{}IPv6", store_name);
+    // let config_type4 = tuple_4.elems.get(3).unwrap_or_else(|| {
+    //     panic!("Expected config type for IPv4, got {:?}", tuple_4.attrs)
+    // });
+
+    // let config_type6 = tuple_6.elems.get(3).unwrap_or_else(|| {
+    //     panic!("Expected config type for IPv6, got {:?}", tuple_6.attrs)
+    // });
+
+    let key_type4 = tuple_4.elems.get(3).unwrap_or_else(|| {
+        panic!("Expected Key Type, got {:?}", tuple_4.elems)
+    });
+
+    let key_type6 = tuple_6.elems.get(3).unwrap_or_else(|| {
+        panic!("Expected Key Type, got {:?}", tuple_6.elems)
+    });
+
+    let ipv4_rib_name = format_ident!("{}IPv4", rib_name);
+    let ipv6_rib_name = format_ident!("{}IPv6", rib_name);
 
     let create_strides = quote! {
         use ::std::marker::PhantomData;
         use ::inetnum::addr::Prefix;
 
-        #[stride_sizes((IPv4, #strides4, #key_size4, #prefix_size4))]
-        struct #strides4_name;
+        #[stride_sizes((IPv4, #strides4, #key_size4, #prefix_size4, #key_type4))]
+        struct #ipv4_rib_name;
 
-        #[stride_sizes((IPv6, #strides6, #key_size6, #prefix_size6))]
-        struct #strides6_name;
+        #[stride_sizes((IPv6, #strides6, #key_size6, #prefix_size6, #key_type6))]
+        struct #ipv6_rib_name;
     };
 
     let store = quote! {
@@ -492,17 +524,19 @@ pub fn create_store(
         ///
         /// This way the store can hold RIBs for multiple peers in one
         /// data-structure.
-        pub struct #store_name<
-            M: Meta
+        pub struct #rib_name<
+            M: Meta,
+            C: Config
         > {
-            v4: #strides4_name<M>,
-            v6: #strides6_name<M>,
-            config: StoreConfig
+            v4: #ipv4_rib_name<M, C>,
+            v6: #ipv6_rib_name<M, C>,
+            config: C
         }
 
         impl<
-                M: Meta
-            > #store_name<M>
+                M: Meta,
+                C: Config
+            > #rib_name<M, C>
         {
             /// Creates a new empty store with a tree for IPv4 and on for IPv6.
             ///
@@ -555,7 +589,7 @@ pub fn create_store(
             ///      }).map(|t| t.join()).collect();
             /// ```
             pub fn new_with_config(
-                    mut config: StoreConfig
+                    mut config: C
                 ) -> Result<Self, Box<dyn std::error::Error>> {
 
                 let rng = rand::rng();
@@ -569,22 +603,83 @@ pub fn create_store(
                 let mut config_v4 = config.clone();
                 let mut config_v6 = config.clone();
 
-                config_v4.persist_path = format!(
-                    "{}/{}/ipv4/", config_v4.persist_path, uuid);
+                if let Some(path) = config_v4.persist_path() {
+                    let pp = format!("{}/{}/ipv4/", path, uuid);
+                    config_v4.set_persist_path(pp);
+                };
 
-                config_v6.persist_path = format!(
-                    "{}/{}/ipv6/", config.persist_path, uuid);
+                if let Some(path) = config_v6.persist_path() {
+                    config_v6.set_persist_path(
+                        format!("{}/{}/ipv6/", path, uuid)
+                    );
+                }
 
                 Ok(Self {
-                    v4: #strides4_name::new(config_v4)?,
-                    v6: #strides6_name::new(config_v6)?,
+                    v4: #ipv4_rib_name::new(config_v4)?,
+                    v6: #ipv6_rib_name::new(config_v6)?,
                     config
                 })
             }
+
+            // pub fn new_with_short_key_persist(
+            //         mut config: StoreConfig
+            //     ) -> Result<Self, Box<dyn std::error::Error>> {
+
+            //     let rng = rand::rng();
+            //     let uuid: String = rng
+            //         .sample_iter(
+            //             rand::distr::Alphanumeric
+            //         )
+            //         .take(12)
+            //         .map(|b| char::from(b))
+            //         .collect();
+            //     let mut config_v4 = config.clone();
+            //     let mut config_v6 = config.clone();
+
+            //     config_v4.persist_path = format!(
+            //         "{}/{}/ipv4/", config_v4.persist_path, uuid);
+
+            //     config_v6.persist_path = format!(
+            //         "{}/{}/ipv6/", config.persist_path, uuid);
+
+            //     Ok(Self {
+            //         v4: #ipv4_rib_name::new_short_key(config_v4)?,
+            //         v6: #ipv6_rib_name::new_short_key(config_v6)?,
+            //         config
+            //     })
+            // }
+
+            // pub fn new_with_long_key_persist(
+            //         mut config: StoreConfig
+            //     ) -> Result<Self, Box<dyn std::error::Error>> {
+
+            //     let rng = rand::rng();
+            //     let uuid: String = rng
+            //         .sample_iter(
+            //             rand::distr::Alphanumeric
+            //         )
+            //         .take(12)
+            //         .map(|b| char::from(b))
+            //         .collect();
+            //     let mut config_v4 = config.clone();
+            //     let mut config_v6 = config.clone();
+
+            //     config_v4.persist_path = format!(
+            //         "{}/{}/ipv4/", config_v4.persist_path, uuid);
+
+            //     config_v6.persist_path = format!(
+            //         "{}/{}/ipv6/", config.persist_path, uuid);
+
+            //     Ok(Self {
+            //         v4: #ipv4_rib_name::new_long_key(config_v4)?,
+            //         v6: #ipv6_rib_name::new_long_key(config_v6)?,
+            //         config
+            //     })
+            // }
         }
 
-        impl<'a, M: Meta,
-            > #store_name<M>
+        impl<'a, M: Meta, C: Config
+            > #rib_name<M, C>
         {
             /// Search for and return one or more prefixes that match the
             ///given  `search_pfx` argument.   The search will return a
@@ -696,7 +791,8 @@ pub fn create_store(
                     std::net::IpAddr::V4(addr) => {
                         self.v4.match_prefix(
                             PrefixId::<IPv4>::new(
-                                addr.into(),
+                                <IPv4 as AddressFamily>::
+                                    from_ipaddr(addr),
                                 search_pfx.len(),
                             ),
                             options,
@@ -706,7 +802,8 @@ pub fn create_store(
                     std::net::IpAddr::V6(addr) => {
                         self.v6.match_prefix(
                             PrefixId::<IPv6>::new(
-                                addr.into(),
+                                <IPv6 as AddressFamily>::
+                                    from_ipaddr(addr),
                                 search_pfx.len(),
                             ),
                             options,
@@ -761,14 +858,16 @@ pub fn create_store(
                 match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => self.v4.best_path(
                         PrefixId::<IPv4>::new(
-                            addr.into(),
-                            search_pfx.len()
+                            <IPv4 as AddressFamily>::
+                                from_ipaddr(addr),
+                            search_pfx.len(),
                         ),
                         guard
                     ),
                     std::net::IpAddr::V6(addr) => self.v6.best_path(
                         PrefixId::<IPv6>::new(
-                            addr.into(),
+                            <IPv6 as AddressFamily>::
+                                from_ipaddr(addr),
                             search_pfx.len(),
                         ),
                         guard
@@ -800,7 +899,8 @@ pub fn create_store(
                     std::net::IpAddr::V4(addr) => self.v4
                         .calculate_and_store_best_and_backup_path(
                             PrefixId::<IPv4>::new(
-                                addr.into(),
+                                <IPv4 as AddressFamily>::
+                                    from_ipaddr(addr),
                                 search_pfx.len(),
                             ),
                             tbi,
@@ -809,7 +909,8 @@ pub fn create_store(
                     std::net::IpAddr::V6(addr) => self.v6
                         .calculate_and_store_best_and_backup_path(
                             PrefixId::<IPv6>::new(
-                                addr.into(),
+                                <IPv6 as AddressFamily>::
+                                    from_ipaddr(addr),
                                 search_pfx.len(),
                             ),
                             tbi,
@@ -836,7 +937,8 @@ pub fn create_store(
                     std::net::IpAddr::V4(addr) => self.v4
                         .is_ps_outdated(
                             PrefixId::<IPv4>::new(
-                                addr.into(),
+                                <IPv4 as AddressFamily>::
+                                    from_ipaddr(addr),
                                 search_pfx.len(),
                             ),
                             guard
@@ -844,7 +946,8 @@ pub fn create_store(
                     std::net::IpAddr::V6(addr) => self.v6
                         .is_ps_outdated(
                             PrefixId::<IPv6>::new(
-                                addr.into(),
+                                <IPv6 as AddressFamily>::
+                                    from_ipaddr(addr),
                                 search_pfx.len(),
                             ),
                             guard
@@ -876,7 +979,8 @@ pub fn create_store(
                 match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => self.v4.more_specifics_from(
                         PrefixId::<IPv4>::new(
-                            addr.into(),
+                            <IPv4 as AddressFamily>::
+                                from_ipaddr(addr),
                             search_pfx.len(),
                         ),
                         mui,
@@ -885,7 +989,8 @@ pub fn create_store(
                     ),
                     std::net::IpAddr::V6(addr) => self.v6.more_specifics_from(
                         PrefixId::<IPv6>::new(
-                            addr.into(),
+                            <IPv6 as AddressFamily>::
+                                from_ipaddr(addr),
                             search_pfx.len(),
                         ),
                         mui,
@@ -919,7 +1024,8 @@ pub fn create_store(
                 match search_pfx.addr() {
                     std::net::IpAddr::V4(addr) => self.v4.less_specifics_from(
                         PrefixId::<IPv4>::new(
-                            addr.into(),
+                            <IPv4 as AddressFamily>::
+                                from_ipaddr(addr),
                             search_pfx.len(),
                         ),
                         mui,
@@ -928,7 +1034,8 @@ pub fn create_store(
                     ),
                     std::net::IpAddr::V6(addr) => self.v6.less_specifics_from(
                         PrefixId::<IPv6>::new(
-                            addr.into(),
+                            <IPv6 as AddressFamily>::
+                                from_ipaddr(addr),
                             search_pfx.len(),
                         ),
                         mui,
@@ -997,7 +1104,8 @@ pub fn create_store(
                                     .v4
                                     .less_specifics_iter_from(
                                         PrefixId::<IPv4>::new(
-                                            addr.into(),
+                                            <IPv4 as AddressFamily>::
+                                                from_ipaddr(addr),
                                             search_pfx.len(),
                                         ),
                                         mui,
@@ -1016,7 +1124,8 @@ pub fn create_store(
                                     .v6
                                     .less_specifics_iter_from(
                                         PrefixId::<IPv6>::new(
-                                            addr.into(),
+                                            <IPv6 as AddressFamily>::
+                                                from_ipaddr(addr),
                                             search_pfx.len(),
                                         ),
                                         mui,
@@ -1093,7 +1202,8 @@ pub fn create_store(
                                     .v4
                                     .more_specifics_iter_from(
                                         PrefixId::<IPv4>::new(
-                                            addr.into(),
+                                            <IPv4 as AddressFamily>::
+                                                from_ipaddr(addr),
                                             search_pfx.len(),
                                         ),
                                         mui,
@@ -1112,7 +1222,8 @@ pub fn create_store(
                                     .v6
                                     .more_specifics_iter_from(
                                         PrefixId::<IPv6>::new(
-                                            addr.into(),
+                                            <IPv6 as AddressFamily>::
+                                                from_ipaddr(addr),
                                             search_pfx.len(),
                                         ),
                                         mui,
@@ -1146,7 +1257,7 @@ pub fn create_store(
                         self.v4
                             .more_specifics_iter_from(
                                 PrefixId::<IPv4>::new(
-                                    0,
+                                    <IPv4 as AddressFamily>::zero(),
                                     0,
                                 ),
                                 Some(mui),
@@ -1172,7 +1283,7 @@ pub fn create_store(
                         self.v6
                             .more_specifics_iter_from(
                                 PrefixId::<IPv6>::new(
-                                    0,
+                                    <IPv6 as AddressFamily>::zero(),
                                     0,
                                 ),
                                 Some(mui),

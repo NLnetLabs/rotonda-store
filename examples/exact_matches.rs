@@ -1,10 +1,12 @@
 use rotonda_store::meta_examples::NoMeta;
 use rotonda_store::prelude::multi::*;
+use rotonda_store::rib::MemoryOnlyConfig;
 use rotonda_store::{prelude::*, IncludeHistory};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
-    let tree_bitmap = MultiThreadedStore::<NoMeta>::try_default()?;
+    let tree_bitmap =
+        MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

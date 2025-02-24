@@ -3,13 +3,15 @@ use log::trace;
 use rotonda_store::meta_examples::PrefixAs;
 use rotonda_store::prelude::multi::*;
 use rotonda_store::prelude::*;
+use rotonda_store::rib::MemoryOnlyConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    let tree_bitmap =
+        MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
     // let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let pfx = Prefix::new_relaxed(

@@ -1,5 +1,6 @@
 #![cfg(feature = "cli")]
 use ansi_term::Colour;
+use rotonda_store::rib::MemoryOnlyConfig;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -66,7 +67,8 @@ fn load_prefixes(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
+    let tree_bitmap =
+        MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);

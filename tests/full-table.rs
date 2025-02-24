@@ -59,8 +59,8 @@ mod tests {
     ];
 
     // #[test]
-    fn test_full_table_from_csv(
-        tree_bitmap: MultiThreadedStore<AsnList>,
+    fn test_full_table_from_csv<C: Config>(
+        tree_bitmap: MultiThreadedStore<AsnList, C>,
     ) -> Result<(), Box<dyn Error>> {
         // These constants are all contingent on the exact csv file,
         // being loaded!

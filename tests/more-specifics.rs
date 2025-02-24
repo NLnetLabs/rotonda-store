@@ -23,8 +23,8 @@ rotonda_store::all_strategies![
 ];
 
 // #[test]
-fn test_more_specifics(
-    tree_bitmap: MultiThreadedStore<PrefixAs>,
+fn test_more_specifics<C: Config>(
+    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 

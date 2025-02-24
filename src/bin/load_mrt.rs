@@ -1,3 +1,7 @@
+use rotonda_store::rib::MemoryOnlyConfig;
+use rotonda_store::rib::PersistHistoryConfig;
+use rotonda_store::rib::PersistOnlyConfig;
+use rotonda_store::rib::WriteAheadConfig;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::message::update_builder::StandardCommunitiesList;
 use std::collections::BTreeSet;
@@ -14,8 +18,8 @@ use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
 use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::{MultiThreadedStore, RouteStatus};
+use rotonda_store::rib::Config;
 use rotonda_store::rib::PersistStrategy;
-use rotonda_store::rib::StoreConfig;
 use rotonda_store::rib::UpsertReport;
 use rotonda_store::PublicRecord;
 use routecore::bgp::message::PduParseInfo;
@@ -170,8 +174,8 @@ struct Cli {
     persist_strategy: Option<String>,
 }
 
-fn insert<T: rotonda_store::Meta>(
-    store: &MultiThreadedStore<T>,
+fn insert<C: Config, T: rotonda_store::Meta>(
+    store: &MultiThreadedStore<T, C>,
     prefix: &Prefix,
     mui: u32,
     ltime: u64,
@@ -209,16 +213,16 @@ fn par_load_prefixes(
     if shuffle {
         let t_s = Instant::now();
         eprint!("shuffling prefixes... ");
-        prefixes.shuffle(&mut rand::thread_rng());
+        prefixes.shuffle(&mut rand::rng());
         eprintln!("done! took {}ms", t_s.elapsed().as_millis());
     }
 
     prefixes
 }
 
-fn mt_parse_and_insert_table(
+fn mt_parse_and_insert_table<C: Config + Sync>(
     tables: TableDumpIterator<&[u8]>,
-    store: Option<&MultiThreadedStore<PaBytes>>,
+    store: Option<&MultiThreadedStore<PaBytes, C>>,
     ltime: u64,
 ) -> (UpsertCounters, Vec<Prefix>) {
     let persist_strategy =
@@ -328,9 +332,9 @@ fn mt_parse_and_insert_table(
     counters
 }
 
-fn st_parse_and_insert_table(
+fn st_parse_and_insert_table<C: Config>(
     entries: RibEntryIterator<&[u8]>,
-    store: Option<&MultiThreadedStore<PaBytes>>,
+    store: Option<&MultiThreadedStore<PaBytes, C>>,
     ltime: u64,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
@@ -359,9 +363,9 @@ fn st_parse_and_insert_table(
     counters
 }
 
-fn mt_prime_store(
+fn mt_prime_store<C: Config + Sync>(
     prefixes: &Vec<(Prefix, u16)>,
-    store: &MultiThreadedStore<PaBytes>,
+    store: &MultiThreadedStore<PaBytes, C>,
 ) -> UpsertCounters {
     let t0 = std::time::Instant::now();
 
@@ -392,9 +396,9 @@ fn mt_prime_store(
     counters
 }
 
-fn st_prime_store(
+fn st_prime_store<C: Config>(
     prefixes: &Vec<(Prefix, u16)>,
-    store: &MultiThreadedStore<PaBytes>,
+    store: &MultiThreadedStore<PaBytes, C>,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
 
@@ -414,54 +418,26 @@ fn st_prime_store(
     counters
 }
 
-fn main() {
-    let mut store_config = StoreConfig {
-        persist_strategy: PersistStrategy::PersistHistory,
-        persist_path: "/tmp/rotonda/".into(),
-    };
+type Stores<C> = Vec<MultiThreadedStore<PaBytes, C>>;
 
-    let args = Cli::parse();
-
-    let t_total = Instant::now();
-
-    let mut global_counters = UpsertCounters::default();
-    let mut mib_total: usize = 0;
-    let mut inner_stores = vec![];
-    let mut persisted_prefixes = BTreeSet::new();
-
-    store_config.persist_strategy = match &args.persist_strategy {
-        Some(a) if a == &"memory_only".to_string() => {
-            PersistStrategy::MemoryOnly
-        }
-        Some(a) if a == &"write_ahead".to_string() => {
-            PersistStrategy::WriteAhead
-        }
-        Some(a) if a == &"persist_only".to_string() => {
-            PersistStrategy::PersistOnly
-        }
-        Some(a) if a == &"persist_history".to_string() => {
-            PersistStrategy::PersistHistory
-        }
-        None => PersistStrategy::PersistHistory,
-        Some(a) => {
-            eprintln!("Unknown persist strategy: {}", a);
-            return;
-        }
-    };
-
-    // Create all the stores necessary, and if at least one is created, create
-    // a reference to the first one.
-    let mut store = match &args {
+// Create all the stores necessary, and if at least one is created, create
+// a reference to the first one.
+fn create_stores<'a, C: Config + Sync>(
+    stores: &'a mut Stores<C>,
+    args: &'a Cli,
+    store_config: C,
+) -> Option<&'a MultiThreadedStore<PaBytes, C>> {
+    match &args {
         a if a.single_store && a.parse_only => {
             eprintln!(
                 "Can't combine --parse-only and --single-store. 
                 Make up your mind."
             );
-            return;
+            None
         }
         a if a.single_store => {
-            inner_stores.push(
-                MultiThreadedStore::<PaBytes>::new_with_config(
+            stores.push(
+                MultiThreadedStore::<PaBytes, C>::new_with_config(
                     store_config.clone(),
                 )
                 .unwrap(),
@@ -470,7 +446,9 @@ fn main() {
                 "created a single-store with strategy: {:?}\n",
                 store_config
             );
-            Some(&inner_stores[0])
+
+            exec_for_store(Some(&stores[0]), stores, args);
+            Some(&stores[0])
         }
         a if a.parse_only => {
             println!("No store created (parse only)");
@@ -478,15 +456,27 @@ fn main() {
         }
         _ => {
             for _ in &args.mrt_files {
-                inner_stores.push(
-                    MultiThreadedStore::<PaBytes>::try_default().unwrap(),
+                stores.push(
+                    MultiThreadedStore::<PaBytes, C>::try_default().unwrap(),
                 );
             }
-            println!("Number of created stores: {}", inner_stores.len());
+            println!("Number of created stores: {}", stores.len());
             println!("store config: {:?}", store_config);
-            Some(&inner_stores[0])
+            exec_for_store(Some(&stores[0]), stores, args);
+            Some(&stores[0])
         }
-    };
+    }
+}
+
+fn exec_for_store<'a, C: Config + Sync>(
+    mut store: Option<&'a MultiThreadedStore<PaBytes, C>>,
+    inner_stores: &'a Stores<C>,
+    args: &'a Cli,
+) {
+    let mut global_counters = UpsertCounters::default();
+    let mut mib_total: usize = 0;
+    let mut persisted_prefixes = BTreeSet::new();
+    let t_total = Instant::now();
 
     // Loop over all the mrt-files specified as arguments
     for (f_index, mrtfile) in args.mrt_files.iter().enumerate() {
@@ -640,4 +630,107 @@ fn main() {
             })
         }
     }
+}
+
+fn main() {
+    let args = Cli::parse();
+
+    // let t_total = Instant::now();
+
+    // let mut global_counters = UpsertCounters::default();
+    // let mut mib_total: usize = 0;
+    // let mut persisted_prefixes = BTreeSet::new();
+
+    match &args.persist_strategy {
+        Some(a) if a == &"memory_only".to_string() => {
+            let mut store_config = MemoryOnlyConfig;
+            store_config.set_persist_path("/tmp/rotonda/".into());
+            let mut inner_stores: Stores<MemoryOnlyConfig> = vec![];
+            create_stores::<MemoryOnlyConfig>(
+                &mut inner_stores,
+                &args,
+                store_config,
+            );
+        }
+        Some(a) if a == &"write_ahead".to_string() => {
+            let mut store_config = WriteAheadConfig::default();
+            store_config.set_persist_path("/tmp/rotonda/".into());
+            let mut inner_stores: Stores<WriteAheadConfig> = vec![];
+            create_stores::<WriteAheadConfig>(
+                &mut inner_stores,
+                &args,
+                store_config,
+            );
+        }
+        Some(a) if a == &"persist_only".to_string() => {
+            let mut store_config = PersistOnlyConfig::default();
+            store_config.set_persist_path("/tmp/rotonda/".into());
+            let mut inner_stores: Stores<PersistOnlyConfig> = vec![];
+            create_stores::<PersistOnlyConfig>(
+                &mut inner_stores,
+                &args,
+                store_config,
+            );
+        }
+        Some(a) if a == &"persist_history".to_string() => {
+            let mut store_config = PersistHistoryConfig::default();
+            store_config.set_persist_path("/tmp/rotonda/".into());
+            let mut inner_stores: Stores<PersistHistoryConfig> = vec![];
+            create_stores::<PersistHistoryConfig>(
+                &mut inner_stores,
+                &args,
+                store_config,
+            );
+        }
+        None => {
+            let mut store_config = PersistHistoryConfig::default();
+            store_config.set_persist_path("/tmp/rotonda/".into());
+            let mut inner_stores: Stores<PersistHistoryConfig> = vec![];
+            create_stores::<PersistHistoryConfig>(
+                &mut inner_stores,
+                &args,
+                store_config,
+            );
+        }
+        Some(a) => {
+            eprintln!("Unknown persist strategy: {}", a);
+        }
+    }
+
+    // let mut store = match &args {
+    //     a if a.single_store && a.parse_only => {
+    //         eprintln!(
+    //             "Can't combine --parse-only and --single-store.
+    //             Make up your mind."
+    //         );
+    //         return;
+    //     }
+    //     a if a.single_store => {
+    //         inner_stores.push(
+    //             MultiThreadedStore::<PaBytes, C>::new_with_config(
+    //                 store_config.clone(),
+    //             )
+    //             .unwrap(),
+    //         );
+    //         println!(
+    //             "created a single-store with strategy: {:?}\n",
+    //             store_config
+    //         );
+    //         Some(&inner_stores[0])
+    //     }
+    //     a if a.parse_only => {
+    //         println!("No store created (parse only)");
+    //         None
+    //     }
+    //     _ => {
+    //         for _ in &args.mrt_files {
+    //             inner_stores.push(
+    //                 MultiThreadedStore::<PaBytes>::try_default().unwrap(),
+    //             );
+    //         }
+    //         println!("Number of created stores: {}", inner_stores.len());
+    //         println!("store config: {:?}", store_config);
+    //         Some(&inner_stores[0])
+    //     }
+    // };
 }

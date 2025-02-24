@@ -3,9 +3,12 @@ use std::{sync::Arc, thread};
 use rotonda_store::meta_examples::NoMeta;
 use rotonda_store::prelude::multi::*;
 use rotonda_store::prelude::*;
+use rotonda_store::rib::MemoryOnlyConfig;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::try_default()?);
+    let tree_bitmap = Arc::new(
+        MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?,
+    );
 
     let _: Vec<_> = (0..16)
         .map(|i: i32| {

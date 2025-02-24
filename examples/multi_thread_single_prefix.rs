@@ -1,6 +1,7 @@
 use log::trace;
 
 use rotonda_store::prelude::multi::*;
+use rotonda_store::rib::MemoryOnlyConfig;
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
@@ -16,8 +17,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap =
-        Arc::new(MultiThreadedStore::<PrefixAs>::try_default()?);
+    let tree_bitmap = Arc::new(MultiThreadedStore::<
+        PrefixAs,
+        MemoryOnlyConfig,
+    >::try_default()?);
 
     let pfx = Prefix::new_relaxed(
         0b1111_1111_1111_1111_1111_1111_1111_1111_u32.into_ipaddr(),
@@ -31,7 +34,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .name(i.to_string())
             .spawn(
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                    let mut rng = rand::thread_rng();
+                    let mut rng = rand::rng();
 
                     println!("park thread {}", i);
                     thread::park();
@@ -42,7 +45,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     loop {
                         let guard = &crossbeam_epoch::pin();
                         while x < 10_000 {
-                            let asn = PrefixAs::new_from_u32(rng.gen());
+                            let asn = PrefixAs::new_from_u32(rng.random());
                             match tree_bitmap.insert(
                                 &pfx.unwrap(),
                                 Record::new(0, 0, RouteStatus::Active, asn),

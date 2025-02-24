@@ -1,15 +1,28 @@
 use log::trace;
-use zerocopy::TryFromBytes;
+use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 
 use crate::AddressFamily;
 
 use super::errors::PrefixStoreError;
 
-#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    PartialEq,
+    Eq,
+    TryFromBytes,
+    KnownLayout,
+    Immutable,
+    Unaligned,
+    IntoBytes,
+)]
+#[repr(u8)]
 pub enum RouteStatus {
-    Active,
-    InActive,
-    Withdrawn,
+    Active = 1,
+    InActive = 2,
+    Withdrawn = 3,
 }
 
 impl std::fmt::Display for RouteStatus {

@@ -22,13 +22,17 @@ pub mod multi {
     };
     pub use crate::local_array::in_memory::iterators;
     pub use crate::local_array::in_memory::node::StrideNodeId;
+    pub use crate::local_array::persist::lsm_tree::KeySize;
+    pub use crate::local_array::rib::rib::{
+        MemoryOnlyConfig, PersistHistoryConfig, PersistOnlyConfig,
+        WriteAheadConfig,
+    };
     pub use crate::local_array::types::{PrefixId, RouteStatus};
     pub use crate::prefix_record::PublicRecord as Record;
 
     pub use crate::rib::Rib;
     pub use crate::rib::{
-        PersistStrategy, StoreConfig, StoreStats, UpsertCounters,
-        UpsertReport,
+        Config, PersistStrategy, StoreStats, UpsertCounters, UpsertReport,
     };
 
     pub use routecore::bgp::path_selection::TiebreakerInfo;
