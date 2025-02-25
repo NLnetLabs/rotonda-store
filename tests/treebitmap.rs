@@ -14,6 +14,7 @@ mod tests {
     use std::str::FromStr;
 
     use inetnum::addr::Prefix;
+    use log::trace;
     use rotonda_store::{
         meta_examples::{NoMeta, PrefixAs},
         prelude::multi::*,
@@ -415,75 +416,72 @@ mod tests {
         Ok(())
     }
 
-    // rotonda_store::all_strategies![
-    //     ranges_ipv4;
-    //     test_ranges_ipv4;
-    //     NoMeta
-    // ];
+    rotonda_store::all_strategies![
+        ranges_ipv4;
+        test_ranges_ipv4;
+        NoMeta
+    ];
 
-    #[test]
-    fn test_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
+    // #[test]
+    fn test_ranges_ipv4<C: Config>(
+        _tree_bitmap: MultiThreadedStore<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        for persist_strategy in [
-            PersistStrategy::MemoryOnly,
-            // PersistStrategy::PersistOnly,
-            // PersistStrategy::WriteAhead,
-            // PersistStrategy::PersistHistory,
-        ] {
-            for i_net in 0..255 {
-                let tree_bitmap = MultiThreadedStore::<
-                    NoMeta,
-                    MemoryOnlyConfig,
-                >::try_default()?;
+        // for persist_strategy in [
+        //     PersistStrategy::MemoryOnly,
+        //     // PersistStrategy::PersistOnly,
+        //     // PersistStrategy::WriteAhead,
+        //     // PersistStrategy::PersistHistory,
 
-                let pfx_vec: Vec<Prefix> = (1..32)
-                    .collect::<Vec<u8>>()
-                    .into_iter()
-                    .map(|i_len| {
-                        Prefix::new_relaxed(
-                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                            i_len,
-                        )
-                        .unwrap()
-                    })
-                    .collect();
+        for i_net in 0..255 {
+            let tree_bitmap = MultiThreadedStore::<NoMeta, C>::try_default()?;
 
-                let mut i_len_s = 0;
-                for pfx in pfx_vec {
-                    i_len_s += 1;
-                    tree_bitmap.insert(
-                        &pfx,
-                        Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-                        None,
-                    )?;
-
-                    let res_pfx = Prefix::new_relaxed(
+            let pfx_vec: Vec<Prefix> = (1..32)
+                .collect::<Vec<u8>>()
+                .into_iter()
+                .map(|i_len| {
+                    Prefix::new_relaxed(
                         std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                        i_len_s,
+                        i_len,
+                    )
+                    .unwrap()
+                })
+                .collect();
+
+            let mut i_len_s = 0;
+            for pfx in pfx_vec {
+                i_len_s += 1;
+                tree_bitmap.insert(
+                    &pfx,
+                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                    None,
+                )?;
+
+                let res_pfx = Prefix::new_relaxed(
+                    std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                    i_len_s,
+                );
+
+                let guard = &epoch::pin();
+                for s_len in i_len_s..32 {
+                    let pfx = Prefix::new_relaxed(
+                        std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
+                        s_len,
+                    )?;
+                    let res = tree_bitmap.match_prefix(
+                        &pfx,
+                        &MatchOptions {
+                            match_type: MatchType::LongestMatch,
+                            include_withdrawn: false,
+                            include_less_specifics: false,
+                            include_more_specifics: false,
+                            mui: None,
+                            include_history: IncludeHistory::None,
+                        },
+                        guard,
                     );
+                    println!("{:?}", pfx);
 
-                    let guard = &epoch::pin();
-                    for s_len in i_len_s..32 {
-                        let pfx = Prefix::new_relaxed(
-                            std::net::Ipv4Addr::new(i_net, 0, 0, 0).into(),
-                            s_len,
-                        )?;
-                        let res = tree_bitmap.match_prefix(
-                            &pfx,
-                            &MatchOptions {
-                                match_type: MatchType::LongestMatch,
-                                include_withdrawn: false,
-                                include_less_specifics: false,
-                                include_more_specifics: false,
-                                mui: None,
-                                include_history: IncludeHistory::None,
-                            },
-                            guard,
-                        );
-                        println!("{:?}", pfx);
-
-                        assert_eq!(res.prefix.unwrap(), res_pfx?);
-                    }
+                    assert_eq!(res.prefix.unwrap(), res_pfx?);
                 }
             }
         }
@@ -491,19 +489,20 @@ mod tests {
         Ok(())
     }
 
-    // rotonda_store::all_strategies![
-    //     multi_ranges;
-    //     test_multi_ranges_ipv4;
-    //     NoMeta
-    // ];
+    rotonda_store::all_strategies![
+        multi_ranges;
+        test_multi_ranges_ipv4;
+        NoMeta
+    ];
 
-    #[test]
-    fn test_multi_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
+    // #[test]
+    fn test_multi_ranges_ipv4<C: Config>(
+        tree_bitmap: MultiThreadedStore<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap =
-            MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?;
+        // let tree_bitmap =
+        //     MultiThreadedStore::<NoMeta, PersistOnlyConfig>::try_default()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 
@@ -898,9 +897,10 @@ mod tests {
 
         //----------------------
 
+        trace!("less_specifics match w/o withdrawn #4");
         // Change the requested prefix to the more specific from the former
         // queries.
-        let less_specifics = tree_bitmap.match_prefix(
+        let query = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/17")?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
@@ -913,17 +913,21 @@ mod tests {
             guard,
         );
 
-        println!("less_specifics match w/o withdrawn #4 {}", less_specifics);
+        trace!("{:#?}", query);
 
-        assert_eq!(less_specifics.prefix_meta.len(), 5);
+        assert_eq!(query.prefix_meta.len(), 5);
 
-        let less_specifics = less_specifics.less_specifics.unwrap();
+        let less_specifics = query.less_specifics.unwrap();
+
         // All records for the less specific /16 are withdrawn, so this should
         // be empty.
         assert!(less_specifics.is_empty());
 
         //--------------------
 
+        println!("less_specifics match w/o withdrawn #5");
+
+        trace!("mark {} as active", wd_pfx);
         tree_bitmap.mark_mui_as_active_for_prefix(&wd_pfx, 5, 1)?;
 
         let less_specifics = tree_bitmap.match_prefix(
@@ -938,8 +942,8 @@ mod tests {
             },
             guard,
         );
-        println!("more_specifics match w/o withdrawn #5 {}", less_specifics);
         let less_specifics = less_specifics.less_specifics.unwrap();
+        println!("{:#?}", less_specifics);
 
         assert_eq!(less_specifics.v4.len(), 1);
         let less_specifics = &less_specifics.v4[0];
