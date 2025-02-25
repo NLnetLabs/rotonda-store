@@ -257,3 +257,49 @@ fn test_more_specifics<C: Config>(
     }
     Ok(())
 }
+
+rotonda_store::all_strategies![
+    test_b_1;
+    test_brunos_more_specifics;
+    PrefixAs
+];
+
+fn test_brunos_more_specifics<C: Config>(
+    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+) -> Result<(), Box<dyn Error>> {
+    tree_bitmap.insert(
+        &Prefix::new(std::net::Ipv4Addr::new(168, 181, 224, 0).into(), 22)
+            .unwrap(),
+        Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(666)),
+        None,
+    )?;
+    tree_bitmap.insert(
+        &Prefix::new(std::net::Ipv4Addr::new(168, 181, 120, 0).into(), 24)?,
+        Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(666)),
+        None,
+    )?;
+    tree_bitmap.insert(
+        &Prefix::new(std::net::Ipv4Addr::new(168, 181, 121, 0).into(), 24)
+            .unwrap(),
+        Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(666)),
+        None,
+    )?;
+
+    let guard = &epoch::pin();
+    let found_result = tree_bitmap.match_prefix(
+        &Prefix::new(std::net::Ipv4Addr::new(168, 181, 224, 0).into(), 22)
+            .unwrap(),
+        &MatchOptions {
+            match_type: MatchType::ExactMatch,
+            include_withdrawn: false,
+            include_less_specifics: false,
+            include_more_specifics: true,
+            mui: None,
+            include_history: IncludeHistory::None,
+        },
+        guard,
+    );
+
+    assert!(found_result.more_specifics.unwrap().is_empty());
+    Ok(())
+}
