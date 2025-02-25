@@ -66,7 +66,6 @@ where
                             })
                             .collect::<Vec<_>>()
                     })
-                    .ok()
                 })
             }
             _ => self.prefix_cht.get_records_for_prefix(

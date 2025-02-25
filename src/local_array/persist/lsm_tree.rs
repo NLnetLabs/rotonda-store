@@ -3,6 +3,7 @@
 use std::marker::PhantomData;
 use std::path::Path;
 
+use inetnum::addr::Prefix;
 use log::trace;
 use lsm_tree::{AbstractTree, KvPair};
 use roaring::RoaringBitmap;
@@ -269,7 +270,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         withdrawn_muis_bmin: &RoaringBitmap,
-    ) -> lsm_tree::Result<Vec<Vec<u8>>> {
+    ) -> Option<Vec<Vec<u8>>> {
         match (mui, include_withdrawn) {
             // Specific mui, include withdrawn routes
             (Some(mui), true) => {
@@ -297,9 +298,19 @@ impl<
                             bytes
                         })
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
                     .into_iter()
-                    .collect()
+                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .ok()
+                    .and_then(
+                        |recs| {
+                            if recs.is_empty() {
+                                None
+                            } else {
+                                Some(recs)
+                            }
+                        },
+                    )
             }
             // Al muis, include withdrawn routes
             (None, true) => {
@@ -340,9 +351,19 @@ impl<
                             bytes
                         })
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
                     .into_iter()
-                    .collect()
+                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .ok()
+                    .and_then(
+                        |recs| {
+                            if recs.is_empty() {
+                                None
+                            } else {
+                                Some(recs)
+                            }
+                        },
+                    )
             }
             // All muis, exclude withdrawn routes
             (None, false) => {
@@ -359,22 +380,48 @@ impl<
                             //         bytes.as_mut_bytes(),
                             //     )
                             //     .unwrap();
-                            let key = K::header_mut(&mut bytes[..KEY_SIZE]);
+                            let header =
+                                K::header_mut(&mut bytes[..KEY_SIZE]);
                             // If mui is in the global withdrawn muis table,
                             // then skip this record
-                            if key.status == RouteStatus::Withdrawn
+                            trace!("header {}", Prefix::from(header.prefix));
+                            trace!(
+                                "status {}",
+                                header.status == RouteStatus::Withdrawn
+                            );
+                            if header.status == RouteStatus::Withdrawn
                                 || withdrawn_muis_bmin
-                                    .contains(key.mui.into())
+                                    .contains(header.mui.into())
                             {
+                                trace!(
+                                    "NOT returning {} {}",
+                                    Prefix::from(header.prefix),
+                                    header.mui
+                                );
                                 return None;
                             }
+                            trace!(
+                                "RETURNING {} {}",
+                                Prefix::from(header.prefix),
+                                header.mui
+                            );
                             Some(bytes)
                         })
                         .transpose()
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
                     .into_iter()
-                    .collect()
+                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .ok()
+                    .and_then(
+                        |recs| {
+                            if recs.is_empty() {
+                                None
+                            } else {
+                                Some(recs)
+                            }
+                        },
+                    )
             }
             // Specific mui, exclude withdrawn routes
             (Some(mui), false) => {
@@ -416,9 +463,19 @@ impl<
                         })
                         .transpose()
                     })
-                    .collect::<Vec<_>>()
+                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
                     .into_iter()
-                    .collect()
+                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .ok()
+                    .and_then(
+                        |recs| {
+                            if recs.is_empty() {
+                                None
+                            } else {
+                                Some(recs)
+                            }
+                        },
+                    )
             }
         }
 
@@ -809,7 +866,7 @@ impl<
         header: ValueHeader,
         record_b: &[u8],
     ) {
-        let record = ZeroCopyRecord::<AF>::try_ref_from_prefix(&record_b)
+        let record = ZeroCopyRecord::<AF>::try_ref_from_prefix(record_b)
             .unwrap()
             .0;
         let key = ShortKey::from((record.prefix, record.multi_uniq_id));
