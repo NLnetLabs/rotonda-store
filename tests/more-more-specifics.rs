@@ -5,9 +5,7 @@ use std::error::Error;
 use inetnum::addr::Prefix;
 
 use rotonda_store::{
-    meta_examples::PrefixAs,
-    prelude::multi::RouteStatus,
-    rib::{Config, MemoryOnlyConfig},
+    meta_examples::PrefixAs, prelude::multi::RouteStatus, rib::Config,
     IncludeHistory, MatchOptions, MatchType, MultiThreadedStore,
     PublicRecord as Record,
 };

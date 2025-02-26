@@ -17,9 +17,6 @@ use crate::{
 };
 
 #[cfg(feature = "cli")]
-use crate::node_id::InMemNodeId;
-
-#[cfg(feature = "cli")]
 use ansi_term::Colour;
 
 #[derive(Debug)]

@@ -43,17 +43,6 @@ pub trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
         Self::try_ref_from_bytes(bytes.as_bytes())
     }
 
-    // fn as_key_size_bytes(&self) -> [u8; KEY_SIZE] {
-    //     *self.as_bytes().first_chunk::<KEY_SIZE>().unwrap()
-    // }
-
-    fn new_write_key(
-        prefix_id: PrefixId<AF>,
-        mui: u32,
-        ltime: u64,
-        status: RouteStatus,
-    ) -> [u8; KEY_SIZE];
-
     fn header(bytes: &[u8]) -> &LongKey<AF> {
         LongKey::try_ref_from_bytes(bytes.as_bytes()).unwrap()
     }
@@ -70,76 +59,6 @@ pub trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
         trace!("short key {:?}", s_b);
         ShortKey::try_ref_from_prefix(bytes).unwrap().0
     }
-    // fn persistence_key(
-    //     // PREFIX_SIZE bytes
-    //     prefix_id: PrefixId<AF>,
-    //     // 4 bytes
-    //     mui: u32,
-    //     // 8 bytes
-    //     ltime: u64,
-    //     // 1 byte
-    //     status: RouteStatus,
-    // ) -> [u8; KEY_SIZE] {
-    //     assert!(KEY_SIZE > PREFIX_SIZE);
-    //     let key = &mut [0_u8; KEY_SIZE];
-
-    //     // prefix 5 or 17 bytes
-    //     *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() =
-    //         prefix_id.to_len_first_bytes();
-
-    //     // mui 4 bytes
-    //     *key[PREFIX_SIZE..PREFIX_SIZE + 4]
-    //         .first_chunk_mut::<4>()
-    //         .unwrap() = mui.to_le_bytes();
-
-    //     // ltime 8 bytes
-    //     *key[PREFIX_SIZE + 4..PREFIX_SIZE + 12]
-    //         .first_chunk_mut::<8>()
-    //         .unwrap() = ltime.to_le_bytes();
-
-    //     // status 1 byte
-    //     key[PREFIX_SIZE + 12] = status.into();
-
-    //     *key
-    // }
-
-    // fn prefix_mui_persistence_key(
-    //     prefix_id: PrefixId<AF>,
-    //     mui: u32,
-    // ) -> Vec<u8> {
-    //     let mut key = vec![0; PREFIX_SIZE + 4];
-    //     // prefix 5 or 17 bytes
-    //     *key.first_chunk_mut::<PREFIX_SIZE>().unwrap() =
-    //         prefix_id.to_len_first_bytes();
-
-    //     // mui 4 bytes
-    //     *key[PREFIX_SIZE..PREFIX_SIZE + 4]
-    //         .first_chunk_mut::<4>()
-    //         .unwrap() = mui.to_le_bytes();
-
-    //     key
-    // }
-
-    // fn parse_key(bytes: &[u8]) -> (PrefixId<AF>, u32, u64, RouteStatus) {
-    //     (
-    //         // prefix 5 or 17 bytes
-    //         PrefixId::from(*bytes.first_chunk::<PREFIX_SIZE>().unwrap()),
-    //         // mui 4 bytes
-    //         u32::from_le_bytes(
-    //             *bytes[PREFIX_SIZE..PREFIX_SIZE + 4]
-    //                 .first_chunk::<4>()
-    //                 .unwrap(),
-    //         ),
-    //         // ltime 8 bytes
-    //         u64::from_le_bytes(
-    //             *bytes[PREFIX_SIZE + 4..PREFIX_SIZE + 12]
-    //                 .first_chunk::<8>()
-    //                 .unwrap(),
-    //         ),
-    //         // status 1 byte
-    //         RouteStatus::try_from(bytes[PREFIX_SIZE + 12]).unwrap(),
-    //     )
-    // }
 }
 
 #[derive(Debug, KnownLayout, Immutable, FromBytes, Unaligned, IntoBytes)]
@@ -161,26 +80,26 @@ pub struct ShortKey<AF: AddressFamily> {
 )]
 #[repr(C)]
 pub struct LongKey<AF: AddressFamily> {
-    prefix: PrefixId<AF>,
-    mui: U32<NativeEndian>,
-    ltime: U64<NativeEndian>,
-    status: RouteStatus,
-}
+    prefix: PrefixId<AF>,     // 4 or 16
+    mui: U32<NativeEndian>,   // 4
+    ltime: U64<NativeEndian>, // 8
+    status: RouteStatus,      // 1
+} // 17 or 29
 
 impl<AF: AddressFamily, const KEY_SIZE: usize> KeySize<AF, KEY_SIZE>
     for ShortKey<AF>
 {
-    fn new_write_key(
-        prefix: PrefixId<AF>,
-        mui: u32,
-        _ltime: u64,
-        _status: RouteStatus,
-    ) -> [u8; KEY_SIZE] {
-        *Self::from((prefix, mui))
-            .as_bytes()
-            .first_chunk::<KEY_SIZE>()
-            .unwrap()
-    }
+    // fn new_write_key(
+    //     prefix: PrefixId<AF>,
+    //     mui: u32,
+    //     _ltime: u64,
+    //     _status: RouteStatus,
+    // ) -> [u8; KEY_SIZE] {
+    //     *Self::from((prefix, mui))
+    //         .as_bytes()
+    //         .first_chunk::<KEY_SIZE>()
+    //         .unwrap()
+    // }
 }
 
 impl<AF: AddressFamily> From<(PrefixId<AF>, u32)> for ShortKey<AF> {
@@ -195,17 +114,17 @@ impl<AF: AddressFamily> From<(PrefixId<AF>, u32)> for ShortKey<AF> {
 impl<AF: AddressFamily, const KEY_SIZE: usize> KeySize<AF, KEY_SIZE>
     for LongKey<AF>
 {
-    fn new_write_key(
-        prefix: PrefixId<AF>,
-        mui: u32,
-        ltime: u64,
-        status: RouteStatus,
-    ) -> [u8; KEY_SIZE] {
-        *Self::from((prefix, mui, ltime, status))
-            .as_bytes()
-            .first_chunk::<KEY_SIZE>()
-            .unwrap()
-    }
+    // fn new_write_key(
+    //     prefix: PrefixId<AF>,
+    //     mui: u32,
+    //     ltime: u64,
+    //     status: RouteStatus,
+    // ) -> [u8; KEY_SIZE] {
+    //     *Self::from((prefix, mui, ltime, status))
+    //         .as_bytes()
+    //         .first_chunk::<KEY_SIZE>()
+    //         .unwrap()
+    // }
 }
 
 impl<AF: AddressFamily> From<(PrefixId<AF>, u32, u64, RouteStatus)>

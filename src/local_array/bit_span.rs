@@ -1,5 +1,5 @@
 #[derive(Copy, Clone, Debug)]
-pub(crate) struct BitSpan {
+pub struct BitSpan {
     pub bits: u32,
     pub len: u8,
 }

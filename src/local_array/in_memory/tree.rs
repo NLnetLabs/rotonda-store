@@ -197,7 +197,7 @@ use std::{fmt::Debug, marker::PhantomData};
 
 use super::atomic_types::NodeBuckets;
 use crate::af::AddressFamily;
-use crate::rib::{Counters, UpsertReport};
+use crate::rib::Counters;
 use crate::{
     impl_search_level, impl_search_level_for_mui, insert_match,
     retrieve_node_mut_closure, store_node_closure,

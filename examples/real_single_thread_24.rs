@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let thread = std::thread::Builder::new()
         .name(1_u8.to_string())
         .spawn(move || -> Result<(), Box<dyn std::error::Error + Send>> {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
 
             println!("park thread {}", 1);
             thread::park();
@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let pfx = Prefix::new_relaxed(pfx_int.into_ipaddr(), 32);
 
                 print!("{}-", pfx_int);
-                let asn: u32 = rng.gen();
+                let asn: u32 = rng.random();
                 match tree_bitmap
                     .insert(&pfx.unwrap(), PrefixAs::new_from_u32(asn))
                 {

@@ -45,17 +45,12 @@ where
         + num_traits::PrimInt;
 
     fn new() -> Self;
-    fn inner(self) -> Self::InnerType;
-    fn is_set(&self, index: usize) -> bool;
     fn compare_exchange(
         &self,
         current: Self::InnerType,
         new: Self::InnerType,
     ) -> CasResult<Self::InnerType>;
     fn load(&self) -> Self::InnerType;
-    fn to_u64(&self) -> u64;
-    fn to_u32(&self) -> u32;
-    fn set(&self, value: Self::InnerType);
     fn merge_with(&self, node: Self::InnerType) {
         let mut spinwait = SpinWait::new();
         let current = self.load();
@@ -83,12 +78,7 @@ impl AtomicBitmap for AtomicStride2 {
     fn new() -> Self {
         AtomicStride2(AtomicU8::new(0))
     }
-    fn inner(self) -> Self::InnerType {
-        self.0.into_inner()
-    }
-    fn is_set(&self, bit: usize) -> bool {
-        self.load() & (1 << bit) != 0
-    }
+
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -101,20 +91,9 @@ impl AtomicBitmap for AtomicStride2 {
             Ordering::Relaxed,
         ))
     }
+
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::SeqCst)
-    }
-
-    fn set(&self, value: Self::InnerType) {
-        self.0.store(value, Ordering::Relaxed);
-    }
-
-    fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::SeqCst) as u32
-    }
-
-    fn to_u64(&self) -> u64 {
-        self.0.load(Ordering::SeqCst) as u64
     }
 }
 
@@ -140,12 +119,6 @@ impl AtomicBitmap for AtomicStride3 {
     fn new() -> Self {
         AtomicStride3(AtomicU16::new(0))
     }
-    fn inner(self) -> Self::InnerType {
-        self.0.into_inner()
-    }
-    fn is_set(&self, bit: usize) -> bool {
-        self.load() & (1 << bit) != 0
-    }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -161,18 +134,6 @@ impl AtomicBitmap for AtomicStride3 {
 
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::Relaxed)
-    }
-
-    fn set(&self, value: Self::InnerType) {
-        self.0.store(value, Ordering::Relaxed);
-    }
-
-    fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::Relaxed) as u32
-    }
-
-    fn to_u64(&self) -> u64 {
-        self.0.load(Ordering::Relaxed) as u64
     }
 }
 
@@ -198,12 +159,6 @@ impl AtomicBitmap for AtomicStride4 {
     fn new() -> Self {
         AtomicStride4(AtomicU32::new(0))
     }
-    fn inner(self) -> Self::InnerType {
-        self.0.into_inner()
-    }
-    fn is_set(&self, bit: usize) -> bool {
-        self.load() & (1 << bit) != 0
-    }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -218,18 +173,6 @@ impl AtomicBitmap for AtomicStride4 {
     }
     fn load(&self) -> Self::InnerType {
         self.0.load(Ordering::Relaxed)
-    }
-
-    fn set(&self, value: Self::InnerType) {
-        self.0.store(value, Ordering::Relaxed);
-    }
-
-    fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::Relaxed)
-    }
-
-    fn to_u64(&self) -> u64 {
-        self.0.load(Ordering::Relaxed) as u64
     }
 }
 
@@ -254,12 +197,6 @@ impl AtomicBitmap for AtomicStride5 {
     fn new() -> Self {
         AtomicStride5(AtomicU64::new(0))
     }
-    fn inner(self) -> Self::InnerType {
-        self.0.into_inner()
-    }
-    fn is_set(&self, bit: usize) -> bool {
-        self.load() & (1 << bit) != 0
-    }
     fn compare_exchange(
         &self,
         current: Self::InnerType,
@@ -273,18 +210,6 @@ impl AtomicBitmap for AtomicStride5 {
         ))
     }
     fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
-    }
-
-    fn set(&self, value: Self::InnerType) {
-        self.0.store(value, Ordering::Relaxed);
-    }
-
-    fn to_u32(&self) -> u32 {
-        self.0.load(Ordering::SeqCst) as u32
-    }
-
-    fn to_u64(&self) -> u64 {
         self.0.load(Ordering::SeqCst)
     }
 }
@@ -310,18 +235,6 @@ impl AtomicBitmap for AtomicStride6 {
 
     fn new() -> Self {
         AtomicStride6(AtomicU128::new(0))
-    }
-    fn inner(self) -> Self::InnerType {
-        let hi = self.0 .0.into_inner().to_be_bytes();
-        let lo = self.0 .1.into_inner().to_be_bytes();
-
-        u128::from_be_bytes([
-            hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
-            lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
-        ])
-    }
-    fn is_set(&self, bit: usize) -> bool {
-        self.load() & (1 << bit) != 0
     }
     fn compare_exchange(
         &self,
@@ -355,18 +268,6 @@ impl AtomicBitmap for AtomicStride6 {
             hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
             lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
         ])
-    }
-
-    fn set(&self, _value: Self::InnerType) {
-        todo!()
-    }
-
-    fn to_u32(&self) -> u32 {
-        unimplemented!()
-    }
-
-    fn to_u64(&self) -> u64 {
-        unimplemented!()
     }
 
     fn merge_with(&self, _node: Self::InnerType) {

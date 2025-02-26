@@ -5,7 +5,6 @@ use rotonda_store::prelude::multi::PrefixStoreError;
 use rotonda_store::prelude::multi::Record;
 use rotonda_store::prelude::multi::RouteStatus;
 use rotonda_store::rib::MemoryOnlyConfig;
-use rotonda_store::rib::PersistStrategy;
 use rotonda_store::IncludeHistory;
 use rotonda_store::MatchOptions;
 use rotonda_store::Meta;

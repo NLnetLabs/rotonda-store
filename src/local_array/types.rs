@@ -1,4 +1,3 @@
-use log::trace;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 
 use crate::AddressFamily;

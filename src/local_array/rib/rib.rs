@@ -10,7 +10,7 @@ use epoch::{Guard, Owned};
 use zerocopy::TryFromBytes;
 
 use crate::local_array::in_memory::tree::TreeBitMap;
-use crate::local_array::persist::lsm_tree::{KeySize, LongKey, ShortKey};
+use crate::local_array::persist::lsm_tree::KeySize;
 use crate::local_array::prefix_cht::cht::PrefixCHT;
 use crate::local_array::types::PrefixId;
 use crate::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -31,7 +31,6 @@ pub use crate::local_array::query;
 use crate::{IPv4, IPv6, Meta};
 
 use crate::AddressFamily;
-use zerocopy::IntoBytes;
 
 //------------ Config --------------------------------------------------------
 
@@ -673,7 +672,7 @@ impl<
                 // let stored_prefixes = p_tree
                 //     .get_records_with_keys_for_prefix_mui::<M>(prefix, mui)
 
-                if let Some(mut record_b) =
+                if let Some(record_b) =
                     p_tree.get_most_recent_record_for_prefix_mui(prefix, mui)
                 {
                     // let new_key: [u8; KEY_SIZE] = PersistTree::<

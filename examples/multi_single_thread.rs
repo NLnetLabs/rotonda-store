@@ -33,7 +33,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name(1_u8.to_string())
         .spawn(move || -> Result<(), Box<dyn std::error::Error + Send>> {
             // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
 
             println!("park thread {}", 1);
             thread::park();
@@ -44,7 +44,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 // x += 1;
                 // print!("{}-", i);
-                let asn: u32 = rng.gen();
+                let asn: u32 = rng.random();
                 match tree_bitmap.insert(
                     &pfx.unwrap(),
                     Record::new(
