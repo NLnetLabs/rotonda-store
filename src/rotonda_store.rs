@@ -17,7 +17,7 @@ pub const RECORDS_MAX_NUM: usize = 3;
 //------------ The publicly available Rotonda Stores ------------------------
 
 pub use crate::local_array::rib::DefaultStore as MultiThreadedStore;
-pub use crate::local_vec::store::Store as SingleThreadedStore;
+// pub use crate::local_vec::store::Store as SingleThreadedStore;
 
 //------------ Types for strides displaying/monitoring ----------------------
 

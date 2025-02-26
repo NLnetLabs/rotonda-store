@@ -54,7 +54,7 @@ pub trait AddressFamily:
     fn fmt_net(net: Self) -> String;
     // returns the specified nibble from `start_bit` to (and including)
     // `start_bit + len` and shifted to the right.
-    fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32;
+    fn into_bit_span(net: Self, start_bit: u8, len: u8) -> BitSpan;
 
     /// Treat self as a prefix and append the given nibble to it.
     fn add_bit_span(self, len: u8, bs: BitSpan) -> (Self, u8);
@@ -111,10 +111,13 @@ impl AddressFamily for IPv4 {
         std::net::Ipv4Addr::from(u32::from(net)).to_string()
     }
 
-    fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32 {
-        ((net << <U32<NetworkEndian>>::from(start_bit as u32))
-            >> <U32<NetworkEndian>>::from(((32 - len) % 32) as u32))
-        .into()
+    fn into_bit_span(net: Self, start_bit: u8, len: u8) -> BitSpan {
+        BitSpan {
+            bits: ((net << <U32<NetworkEndian>>::from(start_bit as u32))
+                >> <U32<NetworkEndian>>::from(((32 - len) % 32) as u32))
+            .into(),
+            len,
+        }
     }
 
     // You can't shift with the number of bits of self, so we'll just return
@@ -242,11 +245,14 @@ impl AddressFamily for IPv6 {
         std::net::Ipv6Addr::from(u128::from(net)).to_string()
     }
 
-    fn get_nibble(net: Self, start_bit: u8, len: u8) -> u32 {
-        u128::from(
-            (net << <U128<NetworkEndian>>::from(start_bit as u128))
-                >> (<U128<NetworkEndian>>::from(128 - len as u128) % 128),
-        ) as u32
+    fn into_bit_span(net: Self, start_bit: u8, len: u8) -> BitSpan {
+        BitSpan {
+            bits: u128::from(
+                (net << <U128<NetworkEndian>>::from(start_bit as u128))
+                    >> (<U128<NetworkEndian>>::from(128 - len as u128) % 128),
+            ) as u32,
+            len,
+        }
     }
 
     /// Treat self as a prefix and append the given nibble to it.

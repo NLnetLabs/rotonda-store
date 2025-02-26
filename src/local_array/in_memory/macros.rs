@@ -7,8 +7,9 @@ macro_rules! insert_match {
     (
         $self: ident;
         $guard: ident;
-        $nibble_len: expr;
-        $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
+        $bit_span: expr;
+        // $nibble_len: expr;
+        // $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
         $is_last_stride: expr;
         $pfx: ident; // the whole search prefix
         $mui: ident; // the reccord holding the metadata
@@ -55,8 +56,7 @@ macro_rules! insert_match {
                             // eval_node_or_prefix_at mutates the node to
                             // reflect changes in the ptrbitarr & pfxbitarr.
                             match current_node.eval_node_or_prefix_at(
-                                $nibble,
-                                $nibble_len,
+                                $bit_span,
                                 // All the bits of the search prefix, but with
                                 // a length set to the start of the current
                                 // stride.
@@ -80,7 +80,7 @@ macro_rules! insert_match {
                                     let new_id =
                                         StrideNodeId::new_with_cleaned_id(
                                             $pfx.get_net(),
-                                            $truncate_len + $nibble_len
+                                            $truncate_len + $bit_span.len
                                        );
 
                                     // store the new node in the in_memory
@@ -183,11 +183,11 @@ macro_rules! impl_primitive_atomic_stride {
                 const BITS: u8 = $bits;
                 const STRIDE_LEN: u8 = $len;
 
-                fn get_bit_pos(nibble: u32, len: u8) -> $pfxsize {
+                fn get_bit_pos(bs: BitSpan) -> $pfxsize {
                     // trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
                     1 << (
-                            <Self as Stride>::BITS - ((1 << len) - 1) as u8
-                            - nibble as u8 - 1
+                            <Self as Stride>::BITS - ((1 << bs.len) - 1) as u8
+                            - bs.bits as u8 - 1
                     )
                 }
 
@@ -203,7 +203,7 @@ macro_rules! impl_primitive_atomic_stride {
                 }
 
                 fn cursor_from_bit_span(bs: BitSpan) -> u8 {
-                    Self::get_bit_pos(bs.bits, bs.len)
+                    Self::get_bit_pos(bs)
                     .leading_zeros() as u8
                 }
 
@@ -242,13 +242,13 @@ macro_rules! impl_primitive_atomic_stride {
                 // Ptrbitarr searches are only done in the last half of
                 // the bitarray, in the len = S::STRIDE_LEN part. We need a
                 // complete BitSpan still to figure when to stop.
-                fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8 {
-                    let p = Self::get_bit_pos(bs.bits << (4 - bs.len), 4)
-                        .leading_zeros() as u8;
-                    trace!("bs in {:?}", bs);
-                    trace!("pos {}", p);
-                    p
-                }
+                // fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8 {
+                //     let p = Self::get_bit_pos(bs.bits << (4 - bs.len), 4)
+                //         .leading_zeros() as u8;
+                //     trace!("bs in {:?}", bs);
+                //     trace!("pos {}", p);
+                //     p
+                // }
 
                 fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8 {
                     1 << (
@@ -257,9 +257,9 @@ macro_rules! impl_primitive_atomic_stride {
                     )
                 }
 
-                fn get_pfx_index(nibble: u32, len: u8)
+                fn get_pfx_index(bs: BitSpan)
                 -> usize {
-                    (Self::get_bit_pos(nibble, len).leading_zeros() - 1) as usize
+                    (Self::get_bit_pos(bs).leading_zeros() - 1) as usize
 
                 }
 

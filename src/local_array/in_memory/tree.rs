@@ -283,14 +283,6 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             return self
                 .update_default_route_prefix_meta(mui)
                 .map(|(rc, _mui_exists)| (rc, !prefix_new));
-            // return self.update_default_route_prefix_meta(mui).map(
-            //     |(rc, mui_exists)| UpsertReport {
-            //         cas_count: rc as usize,
-            //         prefix_new,
-            //         mui_new: !mui_exists,
-            //         mui_count: 0,
-            //     },
-            // );
         }
 
         let mut stride_end: u8 = 0;
@@ -307,7 +299,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 stride
             };
 
-            let nibble = AF::get_nibble(
+            let bit_span = AF::into_bit_span(
                 pfx.get_net(),
                 stride_end - stride,
                 nibble_len,
@@ -315,28 +307,111 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             let is_last_stride = pfx.get_len() <= stride_end;
             let stride_start = stride_end - stride;
 
-            // insert_match! returns the node_id of the next node to be
-            // traversed. It was created if it did not exist.
-            let node_result = insert_match![
-                // applicable to the whole outer match in the macro
-                self;
-                guard;
-                nibble_len;
-                nibble;
-                is_last_stride;
-                pfx;
-                mui;
-                // the length at the start of the stride a.k.a. start_bit
-                stride_start;
-                stride;
-                cur_i;
-                level;
-                acc_retry_count;
-                // Strides to create match arm for; stats level
-                Stride3; 0,
-                Stride4; 1,
-                Stride5; 2
-            ];
+            // this counts the number of retry_count for this loop only,
+            // but ultimately we will return the accumulated count of all
+            // retry_count from this macro.
+            let node_result =
+                {
+                    let local_retry_count = 0;
+                    // retrieve_node_mut updates the bitmap index if
+                    // necessary.
+                    if let Some(current_node) =
+                        self.retrieve_node_mut(cur_i, mui)
+                    {
+                        match current_node {
+                            SizedStrideRef::Stride4(current_node) => {
+                                // eval_node_or_prefix_at mutates the node
+                                // to reflect changes in the ptrbitarr &
+                                // pfxbitarr.
+                                match current_node.eval_node_or_prefix_at(
+                        bit_span,
+                        // All the bits of the search prefix, but with
+                        // a length set to the start of the current
+                        // stride.
+                        StrideNodeId::dangerously_new_with_id_as_is(
+                            pfx.get_net(),
+                            stride_start,
+                        ),
+                        // the length of THIS stride
+                        stride,
+                        // the length of the next stride
+                        self.get_stride_sizes().get((level + 1) as usize),
+                        is_last_stride,
+                    ) {
+                        (NewNodeOrIndex::NewNode(n), retry_count) => {
+                            // Stride3 logs to stats[0], Stride4 logs
+                            // to stats[1], etc.
+                            // $self.stats[$stats_level].inc($level);
+
+                            // get a new identifier for the node we're
+                            // going to create.
+                            let new_id = StrideNodeId::new_with_cleaned_id(
+                                pfx.get_net(),
+                                stride_start + bit_span.len,
+                            );
+
+                            // store the new node in the in_memory
+                            // part of the RIB. It returns the created
+                            // id and the number of retries before
+                            // success.
+                            match self.store_node(new_id, mui, n) {
+                                Ok((node_id, s_retry_count)) => Ok((
+                                    node_id,
+                                    acc_retry_count
+                                        + s_retry_count
+                                        + retry_count,
+                                )),
+                                Err(err) => Err(err),
+                            }
+                        }
+                        (
+                            NewNodeOrIndex::ExistingNode(node_id),
+                            retry_count,
+                        ) => {
+                            if log_enabled!(log::Level::Trace)
+                                && local_retry_count > 0
+                            {
+                                trace!(
+                                    "{} contention: Node \
+                                             already exists {}",
+                                    std::thread::current()
+                                        .name()
+                                        .unwrap_or("unnamed-thread"),
+                                    node_id
+                                )
+                            }
+                            Ok((
+                                node_id,
+                                acc_retry_count
+                                    + local_retry_count
+                                    + retry_count,
+                            ))
+                        }
+                        (NewNodeOrIndex::NewPrefix, retry_count) => {
+                            break (
+                                acc_retry_count
+                                    + local_retry_count
+                                    + retry_count,
+                                false,
+                            )
+                        }
+                        (NewNodeOrIndex::ExistingPrefix, retry_count) => {
+                            break (
+                                acc_retry_count
+                                    + local_retry_count
+                                    + retry_count,
+                                true,
+                            )
+                        }
+                    } // end of eval_node_or_prefix_at
+                            }
+                            SizedStrideRef::Stride3(_) => todo!(),
+                            SizedStrideRef::Stride5(_) => todo!(),
+                        }
+                    } else {
+                        Err(PrefixStoreError::NodeCreationMaxRetryError)
+                    }
+                };
 
             match node_result {
                 Ok((next_id, retry_count)) => {
@@ -376,15 +451,12 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         match self.retrieve_node(node_id) {
             Some(SizedStrideRef::Stride4(n)) => {
                 let pfxbitarr = n.pfxbitarr.load();
-                pfxbitarr & Stride4::get_bit_pos(bs.bits, bs.len) > 0
+                pfxbitarr & Stride4::get_bit_pos(bs) > 0
+            }
+            Some(_) => {
+                panic!("bla");
             }
             None => false,
-            Some(n) => {
-                panic!(
-                    "unsupported stride length: {:?} node_id {}",
-                    n, node_id
-                );
-            }
         }
     }
 
@@ -399,15 +471,12 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         match self.retrieve_node_for_mui(node_id, mui) {
             Some(SizedStrideRef::Stride4(n)) => {
                 let pfxbitarr = n.pfxbitarr.load();
-                pfxbitarr & Stride4::get_bit_pos(bs.bits, bs.len) > 0
+                pfxbitarr & Stride4::get_bit_pos(bs) > 0
+            }
+            Some(_) => {
+                panic!("man o man");
             }
             None => false,
-            Some(n) => {
-                panic!(
-                    "unsupported stride length: {:?} node_id {}",
-                    n, node_id
-                );
-            }
         }
     }
     // pub fn prefix_exists_legacy(&self, prefix_id: PrefixId<AF>) -> bool {
@@ -612,20 +681,20 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         if let Some(root_node) =
             self.retrieve_node_mut(self.get_root_node_id(), mui)
         {
-            match root_node {
-                SizedStrideRef::Stride3(_) => self
-                    .node_buckets
-                    .get_store3(self.get_root_node_id())
-                    .update_rbm_index(mui),
-                SizedStrideRef::Stride4(_) => self
-                    .node_buckets
-                    .get_store4(self.get_root_node_id())
-                    .update_rbm_index(mui),
-                SizedStrideRef::Stride5(_) => self
-                    .node_buckets
-                    .get_store5(self.get_root_node_id())
-                    .update_rbm_index(mui),
-            }
+            // match root_node {
+            //     SizedStrideRef::Stride3(_) => self
+            //         .node_buckets
+            //         .get_store3(self.get_root_node_id())
+            //         .update_rbm_index(mui),
+            // SizedStrideRef::Stride4(_) => self
+            self.node_buckets
+                .get_store4(self.get_root_node_id())
+                .update_rbm_index(mui)
+            // SizedStrideRef::Stride5(_) => self
+            //     .node_buckets
+            //     .get_store5(self.get_root_node_id())
+            //     .update_rbm_index(mui),
+            // }
         } else {
             Err(PrefixStoreError::StoreNotReadyError)
         }
@@ -764,6 +833,282 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 self.node_buckets.get_store5(id),
                 0,
             ),
+        }
+    }
+
+    pub fn _new_retrieve_node_mut(
+        &self,
+        id: StrideNodeId<AF>,
+        mui: u32,
+    ) -> Option<&TreeBitMapNode<AF, Stride4>> {
+        // HASHING FUNCTION
+        let mut level = 0;
+        let mut node;
+        let mut nodes = self.node_buckets.get_store4(id);
+
+        loop {
+            let index = Self::hash_node_id(id, level);
+            match nodes.read().get(index) {
+                // This arm only ever gets called in multi-threaded code
+                // where our thread (running this code *now*), andgot
+                // ahead of another thread: After the other thread created
+                // the TreeBitMapNode first, it was overtaken by our
+                // thread running this method, so our thread enounters an
+                // empty node in the store.
+                None => {
+                    let this_level =
+                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            id.get_id().1,
+                            level,
+                        );
+                    let next_level =
+                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            id.get_id().1,
+                            level + 1,
+                        );
+                    let node_set = NodeSet::init(next_level - this_level);
+
+                    // See if we can create the node
+                    (node, _) =
+                        nodes.read().get_or_init(index, || StoredNode {
+                            node_id: id,
+                            node: TreeBitMapNode::new(),
+                            node_set,
+                        });
+
+                    // We may have lost, and a different node than we
+                    // intended could live here, if so go a level deeper
+                    if id == node.node_id {
+                        // Nope, its ours or at least the node we need.
+                        let _retry_count =
+                            node.node_set.update_rbm_index(mui).ok();
+
+                        return Some(&node.node);
+                    };
+                }
+                Some(this_node) => {
+                    node = this_node;
+                    if id == this_node.node_id {
+                        // YES, It's the one we're looking for!
+
+                        // Update the rbm_index in this node with the
+                        // multi_uniq_id that the caller specified. This
+                        // is the only atomic operation we need to do
+                        // here. The NodeSet that the index is attached
+                        // to, does not need to be written to, it's part
+                        // of a trie, so it just needs to "exist" (and it
+                        // already does).
+                        let retry_count =
+                            this_node.node_set.update_rbm_index(mui).ok();
+
+                        trace!("Retry_count rbm index {:?}", retry_count);
+                        trace!(
+                        "add multi uniq id to bitmap index {} for node {}",
+                        mui,
+                        this_node.node
+                    );
+                        return Some(&this_node.node);
+                    };
+                }
+            }
+            // It isn't ours. Move one level deeper.
+            level += 1;
+            match <NB as NodeBuckets<AF>>::len_to_store_bits(
+                id.get_id().1,
+                level,
+            ) {
+                // on to the next level!
+                next_bit_shift if next_bit_shift > 0 => {
+                    nodes = &node.node_set;
+                }
+                // There's no next level, we found nothing.
+                _ => return None,
+            }
+        }
+    }
+
+    pub fn _new_retrieve_node(
+        &self,
+        id: StrideNodeId<AF>,
+    ) -> Option<&TreeBitMapNode<AF, Stride4>> {
+        // HASHING FUNCTION
+        let mut level = 0;
+        let mut node;
+        let mut nodes = self.node_buckets.get_store4(id);
+
+        loop {
+            let index = Self::hash_node_id(id, level);
+            match nodes.read().get(index) {
+                // This arm only ever gets called in multi-threaded code
+                // where our thread (running this code *now*), andgot
+                // ahead of another thread: After the other thread created
+                // the TreeBitMapNode first, it was overtaken by our
+                // thread running this method, so our thread enounters an
+                // empty node in the store.
+                None => {
+                    let this_level =
+                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            id.get_id().1,
+                            level,
+                        );
+                    let next_level =
+                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            id.get_id().1,
+                            level + 1,
+                        );
+                    let node_set = NodeSet::init(next_level - this_level);
+
+                    // See if we can create the node
+                    (node, _) =
+                        nodes.read().get_or_init(index, || StoredNode {
+                            node_id: id,
+                            node: TreeBitMapNode::new(),
+                            node_set,
+                        });
+
+                    // We may have lost, and a different node than we
+                    // intended could live here, if so go a level deeper
+                    if id == node.node_id {
+                        // Nope, its ours or at least the node we need.
+
+                        return Some(&node.node);
+                    };
+                }
+                Some(this_node) => {
+                    node = this_node;
+                    if id == this_node.node_id {
+                        // YES, It's the one we're looking for!
+
+                        // Update the rbm_index in this node with the
+                        // multi_uniq_id that the caller specified. This
+                        // is the only atomic operation we need to do
+                        // here. The NodeSet that the index is attached
+                        // to, does not need to be written to, it's part
+                        // of a trie, so it just needs to "exist" (and it
+                        // already does).
+                        // let retry_count =
+                        //     this_node.node_set.update_rbm_index(mui).ok();
+
+                        //     trace!("Retry_count rbm index {:?}", retry_count);
+                        //     trace!(
+                        //     "add multi uniq id to bitmap index {} for node {}",
+                        //     mui,
+                        //     this_node.node
+                        // );
+                        return Some(&this_node.node);
+                    };
+                }
+            }
+            // It isn't ours. Move one level deeper.
+            level += 1;
+            match <NB as NodeBuckets<AF>>::len_to_store_bits(
+                id.get_id().1,
+                level,
+            ) {
+                // on to the next level!
+                next_bit_shift if next_bit_shift > 0 => {
+                    nodes = &node.node_set;
+                }
+                // There's no next level, we found nothing.
+                _ => return None,
+            }
+        }
+    }
+    pub fn _new_retrieve_node_for_mui(
+        &self,
+        id: StrideNodeId<AF>,
+        mui: u32,
+    ) -> Option<&TreeBitMapNode<AF, Stride4>> {
+        // HASHING FUNCTION
+        let mut level = 0;
+        let mut node;
+        let mut nodes = self.node_buckets.get_store4(id);
+
+        loop {
+            let index = Self::hash_node_id(id, level);
+            match nodes.read().get(index) {
+                // This arm only ever gets called in multi-threaded code
+                // where our thread (running this code *now*), andgot
+                // ahead of another thread: After the other thread created
+                // the TreeBitMapNode first, it was overtaken by our
+                // thread running this method, so our thread enounters an
+                // empty node in the store.
+                None => {
+                    let this_level =
+                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            id.get_id().1,
+                            level,
+                        );
+                    let next_level =
+                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                            id.get_id().1,
+                            level + 1,
+                        );
+                    let node_set = NodeSet::init(next_level - this_level);
+
+                    // See if we can create the node
+                    (node, _) =
+                        nodes.read().get_or_init(index, || StoredNode {
+                            node_id: id,
+                            node: TreeBitMapNode::new(),
+                            node_set,
+                        });
+
+                    // We may have lost, and a different node than we
+                    // intended could live here, if so go a level deeper
+                    if id == node.node_id {
+                        // Nope, its ours or at least the node we need.
+
+                        return Some(&node.node);
+                    };
+                }
+                Some(this_node) => {
+                    node = this_node;
+                    // early return if the mui is not in the index
+                    // stored in this node, meaning the mui does not
+                    // appear anywhere in the sub-tree formed from
+                    // this node.
+                    let bmin = nodes.rbm().read().unwrap();
+                    if !bmin.contains(mui) {
+                        return None;
+                    }
+
+                    if id == this_node.node_id {
+                        // YES, It's the one we're looking for!
+
+                        // Update the rbm_index in this node with the
+                        // multi_uniq_id that the caller specified. This
+                        // is the only atomic operation we need to do
+                        // here. The NodeSet that the index is attached
+                        // to, does not need to be written to, it's part
+                        // of a trie, so it just needs to "exist" (and it
+                        // already does).
+                        // let retry_count =
+                        //     this_node.node_set.update_rbm_index(mui).ok();
+
+                        //     trace!("Retry_count rbm index {:?}", retry_count);
+                        //     trace!(
+                        //     "add multi uniq id to bitmap index {} for node {}",
+                        //     mui,
+                        //     this_node.node
+                        // );
+                        return Some(&this_node.node);
+                    };
+                }
+            }
+            // It isn't ours. Move one level deeper.
+            level += 1;
+            match <NB as NodeBuckets<AF>>::len_to_store_bits(
+                id.get_id().1,
+                level,
+            ) {
+                // on to the next level!
+                next_bit_shift if next_bit_shift > 0 => {
+                    nodes = &node.node_set;
+                }
+                // There's no next level, we found nothing.
+                _ => return None,
+            }
         }
     }
 

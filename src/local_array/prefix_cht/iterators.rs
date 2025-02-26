@@ -11,7 +11,7 @@ use crate::{
     AddressFamily,
 };
 
-type Type<AF> = SizedNodeMoreSpecificIter<AF>;
+type Type<AF: AddressFamily> = SizedNodeMoreSpecificIter<AF>;
 
 pub(crate) struct MoreSpecificPrefixIter<
     'a,

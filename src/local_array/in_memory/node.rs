@@ -135,8 +135,9 @@ where
     // compare_exchange of both ptrbitarr and pfxbitarr.
     pub(crate) fn eval_node_or_prefix_at(
         &self,
-        nibble: u32,
-        nibble_len: u8,
+        bit_span: BitSpan,
+        // nibble: u32,
+        // nibble_len: u8,
         // all the bits of the search prefix, but with the length set to
         // the length of this stride. So bits are set beyond its length.
         base_prefix: StrideNodeId<AF>,
@@ -158,7 +159,7 @@ where
         let mut retry_count = 0;
         let ptrbitarr = self.ptrbitarr.load();
         let pfxbitarr = self.pfxbitarr.load();
-        let bit_pos = S::get_bit_pos(nibble, nibble_len);
+        let bit_pos = S::get_bit_pos(bit_span);
         let new_node: SizedStrideNode<AF>;
 
         // Check that we're not at the last stride (pfx.len <= stride_end),
@@ -1123,7 +1124,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
             S::cursor_from_bit_span(bs)
         );
         trace!("pfx {:032b}", self.pfxbitarr);
-        let bit_pos = S::get_bit_pos(bs.bits, bs.len);
+        let bit_pos = S::get_bit_pos(bs);
         let prefix_id: PrefixId<AF> = self
             .base_prefix
             .add_bit_span(BitSpan::from_bit_pos_index(

@@ -416,8 +416,7 @@ where
     // *both* the bitmap part, we're considering here *and* the position
     // relative to the nibble length offset in the bitmap.
     fn get_bit_pos(
-        nibble: u32,
-        len: u8,
+        bit_pos: BitSpan,
     ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
     fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8;
@@ -432,7 +431,7 @@ where
 
     fn cursor_from_bit_span(bs: BitSpan) -> u8;
 
-    fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8;
+    // fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8;
 
     fn ptr_range(
         ptrbitarr: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::
@@ -465,7 +464,7 @@ where
 
     // get_pfx_index only needs nibble and len for fixed-layout bitarrays,
     // since the index can be deducted from them.
-    fn get_pfx_index(nibble: u32, len: u8) -> usize;
+    fn get_pfx_index(bit_span: BitSpan) -> usize;
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding child node

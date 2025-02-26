@@ -80,11 +80,11 @@ pub struct ShortKey<AF: AddressFamily> {
 )]
 #[repr(C)]
 pub struct LongKey<AF: AddressFamily> {
-    prefix: PrefixId<AF>,     // 4 or 16
+    prefix: PrefixId<AF>,     // 1 + (4 or 16)
     mui: U32<NativeEndian>,   // 4
     ltime: U64<NativeEndian>, // 8
     status: RouteStatus,      // 1
-} // 17 or 29
+} // 18 or 30
 
 impl<AF: AddressFamily, const KEY_SIZE: usize> KeySize<AF, KEY_SIZE>
     for ShortKey<AF>

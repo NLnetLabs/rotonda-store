@@ -1,4 +1,5 @@
 use crate::impl_primitive_stride;
+use crate::local_array::bit_span::BitSpan;
 use crate::synth_int::{U256, U512};
 use std::fmt::{Binary, Debug};
 
@@ -34,7 +35,7 @@ pub trait Stride:
     // length, this follows from the fact that the `nibble` value represents
     // *both* the bitmap part, we're considering here *and* the position
     // relative to the nibble length offset in the bitmap.
-    fn get_bit_pos(nibble: u32, len: u8) -> Self;
+    fn get_bit_pos(bs: BitSpan) -> Self;
 
     // Clear the bitmap to the right of the pointer and count the number of ones.
     // This numbder represents the index to the corresponding prefix in the pfx_vec.
@@ -48,7 +49,7 @@ pub trait Stride:
     // `nibble`
     // The bit position relative to the offset for the nibble length, this index
     // is only used at the last (relevant) stride, so the offset is always 0.
-    fn get_pfx_index(bitmap: Self, nibble: u32, len: u8) -> usize;
+    fn get_pfx_index(bitmap: Self, bs: BitSpan) -> usize;
 
     // Clear the bitmap to the right of the pointer and count the number of ones.
     // This number represents the index to the corresponding child node in the ptr_vec.
@@ -97,15 +98,15 @@ impl Stride for Stride7 {
     const BITS: u8 = 255;
     const STRIDE_LEN: u8 = 7;
 
-    fn get_bit_pos(nibble: u32, len: u8) -> Self {
-        match 256 - ((1 << len) - 1) as u16 - nibble as u16 - 1 {
+    fn get_bit_pos(bs: BitSpan) -> Self {
+        match 256 - ((1 << bs.len) - 1) as u16 - bs.bits as u16 - 1 {
             n if n < 128 => U256(0, 1 << n),
             n => U256(1 << (n - 128), 0),
         }
     }
 
-    fn get_pfx_index(bitmap: Self, nibble: u32, len: u8) -> usize {
-        let n = 256 - ((1 << len) - 1) as u16 - nibble as u16 - 1;
+    fn get_pfx_index(bitmap: Self, bs: BitSpan) -> usize {
+        let n = 256 - ((1 << bs.len) - 1) as u16 - bs.bits as u16 - 1;
         match n {
             // if we move less than 128 bits to the right,
             // all of bitmap.0 and a part of bitmap.1 will be used for counting zeros
@@ -159,8 +160,8 @@ impl Stride for Stride8 {
     const BITS: u8 = 255; // bogus
     const STRIDE_LEN: u8 = 8;
 
-    fn get_bit_pos(nibble: u32, len: u8) -> Self {
-        match 512 - ((1 << len) - 1) as u16 - nibble as u16 - 1 {
+    fn get_bit_pos(bs: BitSpan) -> Self {
+        match 512 - ((1 << bs.len) - 1) as u16 - bs.bits as u16 - 1 {
             n if n < 128 => U512(0, 0, 0, 1 << n),
             n if n < 256 => U512(0, 0, 1 << (n - 128), 0),
             n if n < 384 => U512(0, 1 << (n - 256), 0, 0),
@@ -168,8 +169,8 @@ impl Stride for Stride8 {
         }
     }
 
-    fn get_pfx_index(bitmap: Self, nibble: u32, len: u8) -> usize {
-        let n = 512 - ((1 << len) - 1) as u16 - nibble as u16 - 1;
+    fn get_pfx_index(bitmap: Self, bs: BitSpan) -> usize {
+        let n = 512 - ((1 << bs.len) - 1) as u16 - bs.bits as u16 - 1;
         match n {
             // if we move less than 128 bits to the right, all of bitmap.2
             // and a part of bitmap.3 will be used for counting zeros.
