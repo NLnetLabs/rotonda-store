@@ -79,10 +79,13 @@ impl<
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
                     trace!("let's retriev node {}", next_ptr);
-                    self.store.retrieve_node(next_ptr)
+                    self.store
+                        .retrieve_node(next_ptr)
+                        .map(|n| SizedStrideRef::Stride4(n))
                 } else {
                     self.store
                         .retrieve_node_for_mui(next_ptr, self.mui.unwrap())
+                        .map(|n| SizedStrideRef::Stride4(n))
                 };
 
                 match node {

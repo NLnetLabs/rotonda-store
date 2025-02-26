@@ -310,20 +310,14 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             // this counts the number of retry_count for this loop only,
             // but ultimately we will return the accumulated count of all
             // retry_count from this macro.
-            let node_result =
+            let node_result = {
+                let local_retry_count = 0;
+                // retrieve_node_mut updates the bitmap index if
+                // necessary.
+                if let Some(current_node) = self.retrieve_node_mut(cur_i, mui)
                 {
-                    let local_retry_count = 0;
-                    // retrieve_node_mut updates the bitmap index if
-                    // necessary.
-                    if let Some(current_node) =
-                        self.retrieve_node_mut(cur_i, mui)
-                    {
-                        match current_node {
-                            SizedStrideRef::Stride4(current_node) => {
-                                // eval_node_or_prefix_at mutates the node
-                                // to reflect changes in the ptrbitarr &
-                                // pfxbitarr.
-                                match current_node.eval_node_or_prefix_at(
+                    // let current_node = current_node;
+                    match current_node.eval_node_or_prefix_at(
                         bit_span,
                         // All the bits of the search prefix, but with
                         // a length set to the start of the current
@@ -373,7 +367,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                             {
                                 trace!(
                                     "{} contention: Node \
-                                             already exists {}",
+                                                 already exists {}",
                                     std::thread::current()
                                         .name()
                                         .unwrap_or("unnamed-thread"),
@@ -403,15 +397,11 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                                 true,
                             )
                         }
-                    } // end of eval_node_or_prefix_at
-                            }
-                            SizedStrideRef::Stride3(_) => todo!(),
-                            SizedStrideRef::Stride5(_) => todo!(),
-                        }
-                    } else {
-                        Err(PrefixStoreError::NodeCreationMaxRetryError)
                     }
-                };
+                } else {
+                    return Err(PrefixStoreError::NodeCreationMaxRetryError);
+                }
+            };
 
             match node_result {
                 Ok((next_id, retry_count)) => {
@@ -449,12 +439,9 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         let (node_id, bs) = self.get_node_id_for_prefix(&prefix_id);
 
         match self.retrieve_node(node_id) {
-            Some(SizedStrideRef::Stride4(n)) => {
+            Some(n) => {
                 let pfxbitarr = n.pfxbitarr.load();
                 pfxbitarr & Stride4::get_bit_pos(bs) > 0
-            }
-            Some(_) => {
-                panic!("bla");
             }
             None => false,
         }
@@ -469,12 +456,9 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         let (node_id, bs) = self.get_node_id_for_prefix(&prefix_id);
 
         match self.retrieve_node_for_mui(node_id, mui) {
-            Some(SizedStrideRef::Stride4(n)) => {
+            Some(n) => {
                 let pfxbitarr = n.pfxbitarr.load();
                 pfxbitarr & Stride4::get_bit_pos(bs) > 0
-            }
-            Some(_) => {
-                panic!("man o man");
             }
             None => false,
         }
@@ -786,7 +770,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
     }
 
     #[allow(clippy::type_complexity)]
-    pub(crate) fn retrieve_node_mut(
+    pub(crate) fn _retrieve_node_mut(
         &self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
@@ -836,7 +820,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         }
     }
 
-    pub fn _new_retrieve_node_mut(
+    pub fn retrieve_node_mut(
         &self,
         id: StrideNodeId<AF>,
         mui: u32,
@@ -927,7 +911,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         }
     }
 
-    pub fn _new_retrieve_node(
+    pub fn retrieve_node(
         &self,
         id: StrideNodeId<AF>,
     ) -> Option<&TreeBitMapNode<AF, Stride4>> {
@@ -1014,7 +998,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             }
         }
     }
-    pub fn _new_retrieve_node_for_mui(
+    pub fn retrieve_node_for_mui(
         &self,
         id: StrideNodeId<AF>,
         mui: u32,
@@ -1063,12 +1047,13 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                     };
                 }
                 Some(this_node) => {
-                    node = this_node;
+                    // node = this_node;
                     // early return if the mui is not in the index
                     // stored in this node, meaning the mui does not
                     // appear anywhere in the sub-tree formed from
                     // this node.
-                    let bmin = nodes.rbm().read().unwrap();
+                    node = this_node;
+                    let bmin = this_node.node_set.rbm().read().unwrap();
                     if !bmin.contains(mui) {
                         return None;
                     }
@@ -1112,56 +1097,56 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         }
     }
 
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn retrieve_node(
-        &self,
-        id: StrideNodeId<AF>,
-    ) -> Option<SizedStrideRef<'_, AF>> {
-        struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
-            f: &'s dyn for<'a> Fn(
-                &SearchLevel<AF, S>,
-                &'a NodeSet<AF, S>,
-                u8,
-            )
-                -> Option<SizedStrideRef<'a, AF>>,
-        }
+    // #[allow(clippy::type_complexity)]
+    // pub(crate) fn retrieve_node(
+    //     &self,
+    //     id: StrideNodeId<AF>,
+    // ) -> Option<SizedStrideRef<'_, AF>> {
+    //     struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
+    //         f: &'s dyn for<'a> Fn(
+    //             &SearchLevel<AF, S>,
+    //             &'a NodeSet<AF, S>,
+    //             u8,
+    //         )
+    //             -> Option<SizedStrideRef<'a, AF>>,
+    //     }
 
-        let search_level_3 = impl_search_level![Stride3; id;];
-        let search_level_4 = impl_search_level![Stride4; id;];
-        let search_level_5 = impl_search_level![Stride5; id;];
+    //     let search_level_3 = impl_search_level![Stride3; id;];
+    //     let search_level_4 = impl_search_level![Stride4; id;];
+    //     let search_level_5 = impl_search_level![Stride5; id;];
 
-        if log_enabled!(log::Level::Trace) {
-            trace!(
-                "{} store: Retrieve node {} from l{}",
-                std::thread::current().name().unwrap_or("unnamed-thread"),
-                id,
-                id.get_id().1
-            );
-        }
+    //     if log_enabled!(log::Level::Trace) {
+    //         trace!(
+    //             "{} store: Retrieve node {} from l{}",
+    //             std::thread::current().name().unwrap_or("unnamed-thread"),
+    //             id,
+    //             id.get_id().1
+    //         );
+    //     }
 
-        match self.get_stride_for_id(id) {
-            3 => (search_level_3.f)(
-                &search_level_3,
-                self.node_buckets.get_store3(id),
-                0,
-            ),
-            4 => (search_level_4.f)(
-                &search_level_4,
-                self.node_buckets.get_store4(id),
-                0,
-            ),
-            _ => (search_level_5.f)(
-                &search_level_5,
-                self.node_buckets.get_store5(id),
-                0,
-            ),
-        }
-    }
+    //     match self.get_stride_for_id(id) {
+    //         3 => (search_level_3.f)(
+    //             &search_level_3,
+    //             self.node_buckets.get_store3(id),
+    //             0,
+    //         ),
+    //         4 => (search_level_4.f)(
+    //             &search_level_4,
+    //             self.node_buckets.get_store4(id),
+    //             0,
+    //         ),
+    //         _ => (search_level_5.f)(
+    //             &search_level_5,
+    //             self.node_buckets.get_store5(id),
+    //             0,
+    //         ),
+    //     }
+    // }
 
     // retrieve a node, but only if its bitmap index contains the specified
     // mui. Used for iterators per mui.
     #[allow(clippy::type_complexity)]
-    pub(crate) fn retrieve_node_for_mui(
+    pub(crate) fn _old_retrieve_node_for_mui(
         &self,
         id: StrideNodeId<AF>,
         // The mui that is tested to be present in the nodes bitmap index

@@ -146,30 +146,30 @@ impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
                 let node = self.tree.retrieve_node(next_ptr);
 
                 match node {
-                    Some(SizedStrideRef::Stride3(next_node)) => {
-                        // copy the current iterator into the parent vec and create
-                        // a new ptr iterator for this node
-                        self.parent_and_position.push(self.cur_ptr_iter);
-                        let ptr_iter = next_node.more_specific_ptr_iter(
-                            next_ptr,
-                            BitSpan { bits: 0, len: 0 },
-                        );
-                        self.cur_ptr_iter = ptr_iter.wrap();
+                    // Some(next_node) => {
+                    //     // copy the current iterator into the parent vec and create
+                    //     // a new ptr iterator for this node
+                    //     self.parent_and_position.push(self.cur_ptr_iter);
+                    //     let ptr_iter = next_node.more_specific_ptr_iter(
+                    //         next_ptr,
+                    //         BitSpan { bits: 0, len: 0 },
+                    //     );
+                    //     self.cur_ptr_iter = ptr_iter.wrap();
 
-                        // trace!(
-                        //     "next stride new iterator stride 3 {:?} start \
-                        // bit_span {:?}",
-                        //     self.cur_ptr_iter,
-                        //     self.start_bit_span
-                        // );
-                        self.cur_pfx_iter = next_node
-                            .more_specific_pfx_iter(
-                                next_ptr,
-                                BitSpan::new(0, 0),
-                            )
-                            .wrap();
-                    }
-                    Some(SizedStrideRef::Stride4(next_node)) => {
+                    //     // trace!(
+                    //     //     "next stride new iterator stride 3 {:?} start \
+                    //     // bit_span {:?}",
+                    //     //     self.cur_ptr_iter,
+                    //     //     self.start_bit_span
+                    //     // );
+                    //     self.cur_pfx_iter = next_node
+                    //         .more_specific_pfx_iter(
+                    //             next_ptr,
+                    //             BitSpan::new(0, 0),
+                    //         )
+                    //         .wrap();
+                    // }
+                    Some(next_node) => {
                         // create new ptr iterator for this node.
                         self.parent_and_position.push(self.cur_ptr_iter);
                         let ptr_iter = next_node.more_specific_ptr_iter(
@@ -190,28 +190,28 @@ impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
                             )
                             .wrap();
                     }
-                    Some(SizedStrideRef::Stride5(next_node)) => {
-                        // create new ptr iterator for this node.
-                        self.parent_and_position.push(self.cur_ptr_iter);
-                        let ptr_iter = next_node.more_specific_ptr_iter(
-                            next_ptr,
-                            BitSpan { bits: 0, len: 0 },
-                        );
-                        self.cur_ptr_iter = ptr_iter.wrap();
+                    // Some(SizedStrideRef::Stride5(next_node)) => {
+                    //     // create new ptr iterator for this node.
+                    //     self.parent_and_position.push(self.cur_ptr_iter);
+                    //     let ptr_iter = next_node.more_specific_ptr_iter(
+                    //         next_ptr,
+                    //         BitSpan { bits: 0, len: 0 },
+                    //     );
+                    //     self.cur_ptr_iter = ptr_iter.wrap();
 
-                        // trace!(
-                        //     "next stride new iterator stride 5 {:?} start \
-                        // bit_span {:?}",
-                        //     self.cur_ptr_iter,
-                        //     self.start_bit_span
-                        // );
-                        self.cur_pfx_iter = next_node
-                            .more_specific_pfx_iter(
-                                next_ptr,
-                                BitSpan::new(0, 0),
-                            )
-                            .wrap();
-                    }
+                    //     // trace!(
+                    //     //     "next stride new iterator stride 5 {:?} start \
+                    //     // bit_span {:?}",
+                    //     //     self.cur_ptr_iter,
+                    //     //     self.start_bit_span
+                    //     // );
+                    //     self.cur_pfx_iter = next_node
+                    //         .more_specific_pfx_iter(
+                    //             next_ptr,
+                    //             BitSpan::new(0, 0),
+                    //         )
+                    //         .wrap();
+                    // }
                     None => {
                         println!("no node here.");
                         return None;
@@ -353,15 +353,15 @@ impl<
 
             if let Some(node) = node {
                 match node {
-                    SizedStrideRef::Stride3(n) => {
-                        cur_pfx_iter = SizedPrefixIter::Stride3(
-                            n.more_specific_pfx_iter(start_node_id, start_bs),
-                        );
-                        cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
-                            n.more_specific_ptr_iter(start_node_id, start_bs),
-                        );
-                    }
-                    SizedStrideRef::Stride4(n) => {
+                    // SizedStrideRef::Stride3(n) => {
+                    //     cur_pfx_iter = SizedPrefixIter::Stride3(
+                    //         n.more_specific_pfx_iter(start_node_id, start_bs),
+                    //     );
+                    //     cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
+                    //         n.more_specific_ptr_iter(start_node_id, start_bs),
+                    //     );
+                    // }
+                    n => {
                         cur_pfx_iter = SizedPrefixIter::Stride4(
                             n.more_specific_pfx_iter(start_node_id, start_bs),
                         );
@@ -370,15 +370,14 @@ impl<
                         cur_ptr_iter = SizedNodeMoreSpecificIter::Stride4(
                             n.more_specific_ptr_iter(start_node_id, start_bs),
                         );
-                    }
-                    SizedStrideRef::Stride5(n) => {
-                        cur_pfx_iter = SizedPrefixIter::Stride5(
-                            n.more_specific_pfx_iter(start_node_id, start_bs),
-                        );
-                        cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(
-                            n.more_specific_ptr_iter(start_node_id, start_bs),
-                        );
-                    }
+                    } // SizedStrideRef::Stride5(n) => {
+                      //     cur_pfx_iter = SizedPrefixIter::Stride5(
+                      //         n.more_specific_pfx_iter(start_node_id, start_bs),
+                      //     );
+                      //     cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(
+                      //         n.more_specific_ptr_iter(start_node_id, start_bs),
+                      //     );
+                      // }
                 };
 
                 Some(MoreSpecificPrefixIter {
