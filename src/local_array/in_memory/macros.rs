@@ -1,163 +1,158 @@
-#[macro_export]
-// This macro expands into a match node {}
-// with match arms for all SizedStrideNode::Stride[3-8]
-// for use in insert()
-#[doc(hidden)]
-macro_rules! insert_match {
-    (
-        $self: ident;
-        $guard: ident;
-        $bit_span: expr;
-        // $nibble_len: expr;
-        // $nibble: expr; // nibble is a variable-length bitarray (1,2,4,8,etc)
-        $is_last_stride: expr;
-        $pfx: ident; // the whole search prefix
-        $mui: ident; // the reccord holding the metadata
-        // $update_path_selections: ident; // boolean indicate whether to update the path selections for this route
-        $truncate_len: ident; // the start of the length of this stride
-        $stride_len: ident; // the length of this stride
-        $cur_i: expr; // the id of the current node in this stride
-        $level: expr;
-        $acc_retry_count: expr;
-        // $enum: ident;
-        // The strides to generate match arms for,
-        // $variant is the name of the enum varian (Stride[3..8]) and
-        // $len is the index of the stats level, so 0..5
-        $( $variant: ident; $stats_level: expr ), *
-    ) => {
-        // Look up the current node in the store. This should never fail,
-        // since we're starting at the root node and retrieve that. If a node
-        // does not exist, it is created here. BUT, BUT, in a multi-threaded
-        // context, one thread creating the node may be outpaced by a thread
-        // reading the same node. Because the creation of a node actually
-        // consists of two independent atomic operations (first setting the
-        // right bit in the parent bitarray, second storing the node in the
-        // store with the meta-data), a thread creating a new node may have
-        // altered the parent bitarray, but not it didn't create the node
-        // in the store yet. The reading thread, however, saw the bit in the
-        // parent and wants to read the node in the store, but that doesn't
-        // exist yet. In that case, the reader thread needs to try again
-        // until it is actually created
+// #[macro_export]
+// // This macro expands into a match node {}
+// // with match arms for all SizedStrideNode::Stride[3-8]
+// // for use in insert()
+// #[doc(hidden)]
+// macro_rules! insert_match {
+//     (
+//         $self: ident;
+//         $guard: ident;
+//         $bit_span: expr;
+//         $is_last_stride: expr;
+//         $pfx: ident; // the whole search prefix
+//         $mui: ident; // the reccord holding the metadata
+//         $truncate_len: ident; // the start of the length of this stride
+//         $stride_len: ident; // the length of this stride
+//         $cur_i: expr; // the id of the current node in this stride
+//         $level: expr;
+//         $acc_retry_count: expr;
+//         // The strides to generate match arms for,
+//         // $variant is the name of the enum varian (Stride[3..8]) and
+//         // $len is the index of the stats level, so 0..5
+//         $( $variant: ident; $stats_level: expr ), *
+//     ) => {
+//         // Look up the current node in the store. This should never fail,
+//         // since we're starting at the root node and retrieve that. If a node
+//         // does not exist, it is created here. BUT, BUT, in a multi-threaded
+//         // context, one thread creating the node may be outpaced by a thread
+//         // reading the same node. Because the creation of a node actually
+//         // consists of two independent atomic operations (first setting the
+//         // right bit in the parent bitarray, second storing the node in the
+//         // store with the meta-data), a thread creating a new node may have
+//         // altered the parent bitarray, but not it didn't create the node
+//         // in the store yet. The reading thread, however, saw the bit in the
+//         // parent and wants to read the node in the store, but that doesn't
+//         // exist yet. In that case, the reader thread needs to try again
+//         // until it is actually created
 
-        // This macro counts the number of retries and adds that to the
-        // $acc_retry_count variable, to be used by the incorporating
-        // function.
-        {
-            // this counts the number of retry_count for this loop only,
-            // but ultimately we will return the accumulated count of all
-            // retry_count from this macro.
-            let local_retry_count = 0;
-            // retrieve_node_mut updates the bitmap index if necessary.
-            if let Some(current_node) = $self.retrieve_node_mut(
-                $cur_i, $mui) {
-                match current_node {
-                    $(
-                        SizedStrideRef::$variant(current_node) => {
-                            // eval_node_or_prefix_at mutates the node to
-                            // reflect changes in the ptrbitarr & pfxbitarr.
-                            match current_node.eval_node_or_prefix_at(
-                                $bit_span,
-                                // All the bits of the search prefix, but with
-                                // a length set to the start of the current
-                                // stride.
-                                StrideNodeId::dangerously_new_with_id_as_is(
-                                    $pfx.get_net(), $truncate_len),
-                                // the length of THIS stride
-                                $stride_len,
-                                // the length of the next stride
-                                $self
-                                    .get_stride_sizes()
-                                    .get(($level + 1) as usize),
-                                $is_last_stride,
-                            ) {
-                                (NewNodeOrIndex::NewNode(n), retry_count) => {
-                                    // Stride3 logs to stats[0], Stride4 logs
-                                    // to stats[1], etc.
-                                    // $self.stats[$stats_level].inc($level);
+//         // This macro counts the number of retries and adds that to the
+//         // $acc_retry_count variable, to be used by the incorporating
+//         // function.
+//         {
+//             // this counts the number of retry_count for this loop only,
+//             // but ultimately we will return the accumulated count of all
+//             // retry_count from this macro.
+//             let local_retry_count = 0;
+//             // retrieve_node_mut updates the bitmap index if necessary.
+//             if let Some(current_node) = $self.retrieve_node_mut(
+//                 $cur_i, $mui) {
+//                 match current_node {
+//                     $(
+//                         SizedStrideRef::$variant(current_node) => {
+//                             // eval_node_or_prefix_at mutates the node to
+//                             // reflect changes in the ptrbitarr & pfxbitarr.
+//                             match current_node.eval_node_or_prefix_at(
+//                                 $bit_span,
+//                                 // All the bits of the search prefix, but with
+//                                 // a length set to the start of the current
+//                                 // stride.
+//                                 StrideNodeId::dangerously_new_with_id_as_is(
+//                                     $pfx.get_net(), $truncate_len),
+//                                 // the length of THIS stride
+//                                 $stride_len,
+//                                 // the length of the next stride
+//                                 $self
+//                                     .get_stride_sizes()
+//                                     .get(($level + 1) as usize),
+//                                 $is_last_stride,
+//                             ) {
+//                                 (NewNodeOrIndex::NewNode(n), retry_count) => {
+//                                     // Stride3 logs to stats[0], Stride4 logs
+//                                     // to stats[1], etc.
+//                                     // $self.stats[$stats_level].inc($level);
 
-                                    // get a new identifier for the node we're
-                                    // going to create.
-                                    let new_id =
-                                        StrideNodeId::new_with_cleaned_id(
-                                            $pfx.get_net(),
-                                            $truncate_len + $bit_span.len
-                                       );
+//                                     // get a new identifier for the node we're
+//                                     // going to create.
+//                                     let new_id =
+//                                         StrideNodeId::new_with_cleaned_id(
+//                                             $pfx.get_net(),
+//                                             $truncate_len + $bit_span.len
+//                                        );
 
-                                    // store the new node in the in_memory
-                                    // part of the RIB. It returns the created
-                                    // id and the number of retries before
-                                    // success.
-                                    match $self.store_node(
-                                        new_id,
-                                        $mui, n
-                                    ) {
-                                        Ok((node_id, s_retry_count)) => {
-                                            Ok((
-                                                node_id,
-                                                $acc_retry_count +
-                                                s_retry_count +
-                                                retry_count
-                                            ))
-                                        },
-                                        Err(err) => {
-                                            Err(err)
-                                        }
-                                    }
-                                }
-                                (NewNodeOrIndex::ExistingNode(node_id),
-                                    retry_count
-                                ) => {
-                                    if log_enabled!(log::Level::Trace) {
-                                        if local_retry_count > 0 {
-                                            trace!("{} contention: Node \
-                                                 already exists {}",
-                                            std::thread::current()
-                                                .name()
-                                                .unwrap_or("unnamed-thread"),
-                                                node_id
-                                            )
-                                        }
-                                    }
-                                    Ok((
-                                        node_id,
-                                        $acc_retry_count +
-                                        local_retry_count +
-                                        retry_count
-                                    ))
-                                },
-                                (NewNodeOrIndex::NewPrefix, retry_count) => {
-                                    break (
-                                        $acc_retry_count +
-                                        local_retry_count +
-                                        retry_count,
-                                        false
-                                    )
+//                                     // store the new node in the in_memory
+//                                     // part of the RIB. It returns the created
+//                                     // id and the number of retries before
+//                                     // success.
+//                                     match $self.store_node(
+//                                         new_id,
+//                                         $mui, n
+//                                     ) {
+//                                         Ok((node_id, s_retry_count)) => {
+//                                             Ok((
+//                                                 node_id,
+//                                                 $acc_retry_count +
+//                                                 s_retry_count +
+//                                                 retry_count
+//                                             ))
+//                                         },
+//                                         Err(err) => {
+//                                             Err(err)
+//                                         }
+//                                     }
+//                                 }
+//                                 (NewNodeOrIndex::ExistingNode(node_id),
+//                                     retry_count
+//                                 ) => {
+//                                     if log_enabled!(log::Level::Trace) {
+//                                         if local_retry_count > 0 {
+//                                             trace!("{} contention: Node \
+//                                                  already exists {}",
+//                                             std::thread::current()
+//                                                 .name()
+//                                                 .unwrap_or("unnamed-thread"),
+//                                                 node_id
+//                                             )
+//                                         }
+//                                     }
+//                                     Ok((
+//                                         node_id,
+//                                         $acc_retry_count +
+//                                         local_retry_count +
+//                                         retry_count
+//                                     ))
+//                                 },
+//                                 (NewNodeOrIndex::NewPrefix, retry_count) => {
+//                                     break (
+//                                         $acc_retry_count +
+//                                         local_retry_count +
+//                                         retry_count,
+//                                         false
+//                                     )
 
-                                },
-                                (
-                                    NewNodeOrIndex::ExistingPrefix,
-                                     retry_count
-                                 ) =>
-                                     {
-                                    break (
-                                        $acc_retry_count +
-                                        local_retry_count +
-                                        retry_count,
-                                        true
-                                    )
+//                                 },
+//                                 (
+//                                     NewNodeOrIndex::ExistingPrefix,
+//                                      retry_count
+//                                  ) =>
+//                                      {
+//                                     break (
+//                                         $acc_retry_count +
+//                                         local_retry_count +
+//                                         retry_count,
+//                                         true
+//                                     )
 
-
-                                }
-                            }   // end of eval_node_or_prefix_at
-                        }
-                    )*,
-                }
-            } else {
-                Err(PrefixStoreError::NodeCreationMaxRetryError)
-            }
-        }
-    }
-}
+//                                 }
+//                             }   // end of eval_node_or_prefix_at
+//                         }
+//                     )*,
+//                 }
+//             } else {
+//                 Err(PrefixStoreError::NodeCreationMaxRetryError)
+//             }
+//         }
+//     }
+// }
 
 #[macro_export]
 // This macro only works for stride with bitmaps that are <= u128,

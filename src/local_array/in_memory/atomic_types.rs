@@ -23,7 +23,7 @@ use super::super::errors::PrefixStoreError;
 use super::atomic_stride;
 use super::node::{StrideNodeId, TreeBitMapNode};
 use super::oncebox::OnceBoxSlice;
-use super::tree::{Stride, Stride3, Stride4, Stride5};
+use super::tree::{Stride, Stride4};
 
 // ----------- Node related structs -----------------------------------------
 
@@ -254,14 +254,6 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
         )?;
 
         Ok(path_selection_muis)
-    }
-
-    pub(crate) fn get_next_bucket(&self) -> Option<&PrefixSet<AF, M>> {
-        if self.next_bucket.is_empty() {
-            None
-        } else {
-            Some(&self.next_bucket)
-        }
     }
 }
 
@@ -587,11 +579,11 @@ pub trait NodeBuckets<AF: AddressFamily> {
     fn len_to_store_bits(len: u8, level: u8) -> u8;
     fn get_stride_sizes(&self) -> &[u8];
     fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8;
-    fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
-    fn get_store4(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4>;
-    fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5>;
+    // fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
+    fn get_store(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4>;
+    // fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5>;
     fn get_strides_len() -> u8;
-    fn get_first_stride_size() -> u8;
+    // fn get_first_stride_size() -> u8;
 }
 
 pub trait PrefixBuckets<AF: AddressFamily, M: Meta>
@@ -623,16 +615,5 @@ pub struct PrefixSet<AF: AddressFamily, M: Meta>(
 impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
     pub fn init(p2_size: u8) -> Self {
         PrefixSet(OnceBoxSlice::new(p2_size))
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.0.is_null()
-    }
-
-    pub(crate) fn get_by_index(
-        &self,
-        index: usize,
-    ) -> Option<&StoredPrefix<AF, M>> {
-        self.0.get(index)
     }
 }

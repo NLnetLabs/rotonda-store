@@ -44,14 +44,6 @@ pub fn stride_sizes(
         l => panic!("Expected Key Size for Address Family, got {:?}", l),
     };
 
-    // let _config = match attrs
-    //     .get(4)
-    //     .unwrap_or_else(|| panic!("Missing config type for store"))
-    // {
-    //     syn::Expr::Path(p) => p,
-    //     p => panic!("Expected Config type, got {:?}", p),
-    // };
-
     let key_type = match attrs
         .get(4)
         .unwrap_or_else(|| panic!("Missing Key Type for Persist Strategy"))
@@ -145,7 +137,6 @@ pub fn stride_sizes(
         _ => panic!("Expected an array"),
     };
     let strides_len = attrs_s.elems.len() as u8;
-    let first_stride_size = &attrs_s.elems[0];
 
     for (len, stride) in attrs_s.elems.iter().enumerate() {
         strides_all_len.push(format_ident!("l{}", len));
@@ -280,38 +271,13 @@ pub fn stride_sizes(
                 }
             }
 
-            fn get_store3(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af, Stride3> {
-                match id.get_id().1 as usize {
-                    #( #strides_len3 => &self.#strides_len3_l, )*
-                    _ => panic!(
-                        "unexpected sub prefix length {} in stride size 3 ({})",
-                        id.get_id().1,
-                        id
-                    ),
-                }
-            }
-
-            fn get_store4(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af, Stride4> {
+            fn get_store(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af, Stride4> {
                 match id.get_id().1 as usize {
                     #( #strides_len4 => &self.#strides_len4_l, )*
                     // ex.:
                     // 10 => &self.l10,
                     _ => panic!(
                         "unexpected sub prefix length {} in stride size 4 ({})",
-                        id.get_id().1,
-                        id
-                    ),
-                }
-            }
-
-            fn get_store5(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af, Stride5> {
-                match id.get_id().1 as usize {
-                    #( #strides_len5 => &self.#strides_len5_l, )*
-                    // ex.:
-                    // 0 => &self.l0,
-                    // 5 => &self.l5,
-                    _ => panic!(
-                        "unexpected sub prefix length {} in stride size 5 ({})",
                         id.get_id().1,
                         id
                     ),
@@ -335,9 +301,9 @@ pub fn stride_sizes(
                 #strides_len
             }
 
-            fn get_first_stride_size() -> u8 {
-                #first_stride_size
-            }
+            // fn get_first_stride_size() -> u8 {
+            //     #first_stride_size
+            // }
         }
 
     };

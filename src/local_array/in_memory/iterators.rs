@@ -20,10 +20,8 @@
 // in the TreeBitMap.
 
 use crate::local_array::in_memory::atomic_types::NodeBuckets;
-use crate::local_array::in_memory::node::{SizedStrideRef, StrideNodeId};
-use crate::local_array::in_memory::tree::{
-    Stride3, Stride4, Stride5, TreeBitMap,
-};
+use crate::local_array::in_memory::tree::Stride4;
+use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::{
     af::AddressFamily,
     local_array::{
@@ -37,45 +35,6 @@ use crate::{
 
 use inetnum::addr::Prefix;
 use log::{log_enabled, trace};
-
-// ----------- Sized Wrappers -----------------------------------------------
-
-// These are enums to abstract over the Stride Size of the iterators. Each
-// iterator in here need to go over iterators that have different underlying
-// stride sizes. To facilitate this these wrapper enums exist.
-
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum SizedNodeMoreSpecificIter<AF: AddressFamily> {
-    Stride3(NodeMoreSpecificChildIter<AF, Stride3>),
-    Stride4(NodeMoreSpecificChildIter<AF, Stride4>),
-    Stride5(NodeMoreSpecificChildIter<AF, Stride5>),
-}
-
-impl<AF: AddressFamily> SizedNodeMoreSpecificIter<AF> {
-    pub(crate) fn next(&mut self) -> Option<StrideNodeId<AF>> {
-        match self {
-            SizedNodeMoreSpecificIter::Stride3(iter) => iter.next(),
-            SizedNodeMoreSpecificIter::Stride4(iter) => iter.next(),
-            SizedNodeMoreSpecificIter::Stride5(iter) => iter.next(),
-        }
-    }
-}
-
-pub(crate) enum SizedPrefixIter<AF: AddressFamily> {
-    Stride3(NodeMoreSpecificsPrefixIter<AF, Stride3>),
-    Stride4(NodeMoreSpecificsPrefixIter<AF, Stride4>),
-    Stride5(NodeMoreSpecificsPrefixIter<AF, Stride5>),
-}
-
-impl<AF: AddressFamily> SizedPrefixIter<AF> {
-    pub(crate) fn next(&mut self) -> Option<PrefixId<AF>> {
-        match self {
-            SizedPrefixIter::Stride3(iter) => iter.next(),
-            SizedPrefixIter::Stride4(iter) => iter.next(),
-            SizedPrefixIter::Stride5(iter) => iter.next(),
-        }
-    }
-}
 
 // ----------- MoreSpecificPrefixIter ------------------------------------
 
@@ -101,9 +60,9 @@ pub(crate) struct MoreSpecificPrefixIter<
     NB: NodeBuckets<AF>,
 > {
     tree: &'a TreeBitMap<AF, NB>,
-    cur_ptr_iter: SizedNodeMoreSpecificIter<AF>,
-    cur_pfx_iter: SizedPrefixIter<AF>,
-    parent_and_position: Vec<SizedNodeMoreSpecificIter<AF>>,
+    cur_ptr_iter: NodeMoreSpecificChildIter<AF, Stride4>,
+    cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF, Stride4>,
+    parent_and_position: Vec<NodeMoreSpecificChildIter<AF, Stride4>>,
 }
 
 impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
@@ -176,19 +135,17 @@ impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
                             next_ptr,
                             BitSpan { bits: 0, len: 0 },
                         );
-                        self.cur_ptr_iter = ptr_iter.wrap();
+                        self.cur_ptr_iter = ptr_iter;
 
                         trace!(
                             "next stride new iterator stride 4 {:?} start \
                         bit_span 0 0",
                             self.cur_ptr_iter,
                         );
-                        self.cur_pfx_iter = next_node
-                            .more_specific_pfx_iter(
-                                next_ptr,
-                                BitSpan::new(0, 0),
-                            )
-                            .wrap();
+                        self.cur_pfx_iter = next_node.more_specific_pfx_iter(
+                            next_ptr,
+                            BitSpan::new(0, 0),
+                        );
                     }
                     // Some(SizedStrideRef::Stride5(next_node)) => {
                     //     // create new ptr iterator for this node.
@@ -347,37 +304,19 @@ impl<
                 start_bs.len
             );
 
-            let cur_pfx_iter: SizedPrefixIter<AF>;
-            let cur_ptr_iter: SizedNodeMoreSpecificIter<AF>;
+            let cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF, Stride4>;
+            let cur_ptr_iter: NodeMoreSpecificChildIter<AF, Stride4>;
             let node = self.retrieve_node(start_node_id);
 
             if let Some(node) = node {
-                match node {
-                    // SizedStrideRef::Stride3(n) => {
-                    //     cur_pfx_iter = SizedPrefixIter::Stride3(
-                    //         n.more_specific_pfx_iter(start_node_id, start_bs),
-                    //     );
-                    //     cur_ptr_iter = SizedNodeMoreSpecificIter::Stride3(
-                    //         n.more_specific_ptr_iter(start_node_id, start_bs),
-                    //     );
-                    // }
-                    n => {
-                        cur_pfx_iter = SizedPrefixIter::Stride4(
-                            n.more_specific_pfx_iter(start_node_id, start_bs),
-                        );
-                        trace!("---------------------");
-                        trace!("start iterating nodes");
-                        cur_ptr_iter = SizedNodeMoreSpecificIter::Stride4(
-                            n.more_specific_ptr_iter(start_node_id, start_bs),
-                        );
-                    } // SizedStrideRef::Stride5(n) => {
-                      //     cur_pfx_iter = SizedPrefixIter::Stride5(
-                      //         n.more_specific_pfx_iter(start_node_id, start_bs),
-                      //     );
-                      //     cur_ptr_iter = SizedNodeMoreSpecificIter::Stride5(
-                      //         n.more_specific_ptr_iter(start_node_id, start_bs),
-                      //     );
-                      // }
+                let n = node;
+                {
+                    cur_pfx_iter =
+                        n.more_specific_pfx_iter(start_node_id, start_bs);
+                    trace!("---------------------");
+                    trace!("start iterating nodes");
+                    cur_ptr_iter =
+                        n.more_specific_ptr_iter(start_node_id, start_bs);
                 };
 
                 Some(MoreSpecificPrefixIter {

@@ -4,6 +4,8 @@ use crate::prelude::multi::*;
 use crate::prelude::*;
 use rand::prelude::*;
 
+pub const STRIDE_SIZE: u8 = 4;
+
 // The default stride sizes for IPv4, IPv6, resp.
 #[create_store((
     ([4, 4, 4, 4, 4, 4, 4, 4], 5, 18, LongKey),
