@@ -31,8 +31,7 @@ inetnum   = "0.1"
 log       = "^0.4"
 roaring 	= "0.10.3"
 rotonda-macros = { path = "proc_macros", version = "0.4.0" }
-routecore       = { version = "0.5", features = ["bgp", "bmp", "fsm", "serde", "mrt"] }
-
+routecore       = { git = "https://github.com/nlnetlabs/routecore", branch = "dev", version = "0.5.2-dev", features = ["bgp", "bmp", "fsm", "serde", "mrt"] }
 ansi_term   = { version = "0.12", optional = true }
 csv         = { version = "1", optional = true }
 rustyline   = { version = "13", optional = true }
