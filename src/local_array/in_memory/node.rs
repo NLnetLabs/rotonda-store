@@ -1,4 +1,5 @@
 use num_traits::PrimInt;
+use serde::de::value::U16Deserializer;
 use std::sync::atomic::{AtomicU16, AtomicU32};
 use std::{fmt::Debug, marker::PhantomData};
 
@@ -36,9 +37,12 @@ where
     S: Stride,
     AF: AddressFamily,
 {
-    pub ptrbitarr: <S as Stride>::AtomicPtrSize,
-    pub pfxbitarr: <S as Stride>::AtomicPfxSize,
+    // pub ptrbitarr: <S as Stride>::AtomicPtrSize,
+    pub ptrbitarr: AtomicStride3,
+    // pub pfxbitarr: <S as Stride>::AtomicPfxSize,
+    pub pfxbitarr: AtomicStride4,
     pub _af: PhantomData<AF>,
+    pub _s: PhantomData<S>,
 }
 
 impl<AF, S> Debug for TreeBitMapNode<AF, S>
@@ -76,9 +80,12 @@ where
 {
     pub(crate) fn new() -> Self {
         TreeBitMapNode {
-            ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
-            pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
+            // ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
+            ptrbitarr: AtomicStride3::new(),
+            pfxbitarr: AtomicStride4::new(),
+            // pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
             _af: PhantomData,
+            _s: PhantomData,
         }
     }
 
@@ -89,12 +96,12 @@ where
         &self,
         base_prefix: StrideNodeId<AF>,
         start_bs: BitSpan,
-    ) -> NodeMoreSpecificsPrefixIter<AF, S> {
+    ) -> NodeMoreSpecificsPrefixIter<AF> {
         debug_assert!(start_bs.check());
         let mut pfxbitarr = self.pfxbitarr.load();
         pfxbitarr = S::ms_pfx_mask(pfxbitarr, start_bs);
 
-        NodeMoreSpecificsPrefixIter::<AF, S> {
+        NodeMoreSpecificsPrefixIter::<AF> {
             pfxbitarr,
             base_prefix,
         }
@@ -106,12 +113,13 @@ where
         &self,
         base_prefix: StrideNodeId<AF>,
         start_bs: BitSpan,
-    ) -> NodeMoreSpecificChildIter<AF, S> {
+    ) -> NodeMoreSpecificChildIter<AF> {
         debug_assert!(start_bs.check());
         let ptrbitarr = self.ptrbitarr.load();
-        let (bitrange, start_cursor) = S::ptr_range(ptrbitarr, start_bs);
+        let (bitrange, start_cursor) =
+            Stride4::ptr_range(ptrbitarr, start_bs);
 
-        NodeMoreSpecificChildIter::<AF, S> {
+        NodeMoreSpecificChildIter::<AF> {
             bitrange,
             base_prefix,
             start_bs,
@@ -169,14 +177,15 @@ where
         if !is_last_stride {
             // We are not at the last stride
             // Check it the ptr bit is already set in this position
-            if (S::into_stride_size(ptrbitarr) & bit_pos) ==
-                <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::
-                    InnerType>::zero() {
+            if (S::into_stride_size(ptrbitarr) & bit_pos) == 0 {
+                // <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::
+                //     InnerType>::zero() {
                 // Nope, set it and create a child node
                 new_node = TreeBitMapNode {
                     ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                     pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                     _af: PhantomData,
+                    _s: PhantomData,
                 };
 
                 // THE CRITICAL SECTION
@@ -188,8 +197,9 @@ where
                 let mut a_ptrbitarr = self.ptrbitarr.compare_exchange(
                     ptrbitarr,
                     S::into_ptrbitarr_size(
-                    bit_pos | S::into_stride_size(ptrbitarr),
-                ));
+                        bit_pos | S::into_stride_size(ptrbitarr),
+                    ),
+                );
                 let mut spinwait = SpinWait::new();
                 loop {
                     match a_ptrbitarr {
@@ -203,24 +213,24 @@ where
                             a_ptrbitarr = self.ptrbitarr.compare_exchange(
                                 newer_array,
                                 S::into_ptrbitarr_size(
-                                bit_pos | S::into_stride_size(newer_array),
-                            ));
+                                    bit_pos
+                                        | S::into_stride_size(newer_array),
+                                ),
+                            );
                         }
                     };
                     spinwait.spin_no_yield();
                 }
 
-                return (NewNodeOrIndex::NewNode(
-                    new_node
-                ), retry_count);
+                return (NewNodeOrIndex::NewNode(new_node), retry_count);
             }
         } else {
             // only at the last stride do we create the bit in the prefix
             // bitmap, and only if it doesn't exist already
-            if pfxbitarr & bit_pos
-                == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::
-                    InnerType as std::ops::BitAnd>::Output::zero()
-            {
+            if pfxbitarr & bit_pos == 0 {
+                // == <<<S as Stride>::AtomicPfxSize as AtomicBitmap>::
+                //     InnerType as std::ops::BitAnd>::Output::zero()
+                // {
 
                 // THE CRITICAL SECTION
                 //
@@ -228,10 +238,9 @@ where
                 //
                 // preventing using an old pfxbitarr and overwrite bits set
                 // in the meantime elsewhere in the bitarray.
-                let mut a_pfxbitarr =
-                self.pfxbitarr.compare_exchange(
-                    pfxbitarr, bit_pos | pfxbitarr
-                );
+                let mut a_pfxbitarr = self
+                    .pfxbitarr
+                    .compare_exchange(pfxbitarr, bit_pos | pfxbitarr);
                 let mut spinwait = SpinWait::new();
 
                 loop {
@@ -244,7 +253,8 @@ where
                             // newer array.
                             retry_count += 1;
                             a_pfxbitarr = self.pfxbitarr.compare_exchange(
-                                newer_array, bit_pos | newer_array
+                                newer_array,
+                                bit_pos | newer_array,
                             );
                         }
                     };
@@ -349,19 +359,19 @@ type PfxBitArr<S> = <<S as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 // done now.
 
 #[derive(Debug, Copy, Clone)]
-pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily, S: Stride> {
+pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily> {
     base_prefix: StrideNodeId<AF>,
-    bitrange: PtrBitArr<S>,
+    bitrange: PtrBitArr<Stride4>,
     start_bs: BitSpan,
     start_cursor: u8,
 }
 
-impl<AF: AddressFamily, S: Stride> std::iter::Iterator
-    for NodeMoreSpecificChildIter<AF, S>
+impl<AF: AddressFamily> std::iter::Iterator
+    for NodeMoreSpecificChildIter<AF>
 {
     type Item = StrideNodeId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
-        if self.bitrange == PtrBitArr::<S>::zero() {
+        if self.bitrange == PtrBitArr::<Stride4>::zero() {
             trace!("empty ptrbitarr. This iterator is done.");
             return None;
         }
@@ -381,22 +391,23 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
             self.start_bs,
             self.start_cursor,
             <u8>::min(
-                (1 << (S::STRIDE_LEN - self.start_bs.len))
+                (1 << (Stride4::STRIDE_LEN - self.start_bs.len))
                     + self.start_cursor,
-                S::BITS - 2
+                Stride4::BITS as u8 - 2
             )
         );
 
         trace!("bitrange  {:032b}", self.bitrange);
 
-        self.bitrange = self.bitrange ^ S::ptr_bit_pos_from_index(cursor);
+        self.bitrange =
+            self.bitrange ^ Stride4::ptr_bit_pos_from_index(cursor);
 
-        trace!("mask      {:032b}", S::ptr_bit_pos_from_index(cursor));
+        trace!("mask      {:032b}", Stride4::ptr_bit_pos_from_index(cursor));
         trace!("next br   {:032b}", self.bitrange);
 
         let bs = BitSpan::from_bit_pos_index(cursor);
         if log_enabled!(log::Level::Trace) {
-            let bit_pos = S::ptr_bit_pos_from_index(cursor);
+            let bit_pos = Stride4::ptr_bit_pos_from_index(cursor);
             trace!(
                 "{:02}: {:05b} {:032b} bit_span: {:04b} ({:02}) (len: {})",
                 cursor,
@@ -417,7 +428,7 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
 
         let pfx = self.base_prefix.add_bit_span(BitSpan {
             bits: bs.bits,
-            len: S::STRIDE_LEN,
+            len: Stride4::STRIDE_LEN,
         });
         Some(pfx)
     }
@@ -546,19 +557,19 @@ pub const fn ms_prefix_mask_arr(bs: BitSpan) -> u32 {
 // the bit_span { bits: 2, len: 3 }, a.k.a. 0010 << 1. But now we will have
 // to go over a different amount of 1 << (5 - 4) = 2 iterations to reap the
 // next bit_spans of 0010 0 and 0010 1.
-pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily, S: Stride> {
+pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily> {
     base_prefix: StrideNodeId<AF>,
-    pfxbitarr: PfxBitArr<S>,
+    pfxbitarr: u32,
 }
 
-impl<AF: AddressFamily, S: Stride> std::iter::Iterator
-    for NodeMoreSpecificsPrefixIter<AF, S>
+impl<AF: AddressFamily> std::iter::Iterator
+    for NodeMoreSpecificsPrefixIter<AF>
 {
     type Item = PrefixId<AF>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Empty bitmap
-        if self.pfxbitarr == PfxBitArr::<S>::zero() {
+        if self.pfxbitarr == PfxBitArr::<Stride4>::zero() {
             trace!("empty pfxbitarr. This iterator is done.");
             return None;
         }
@@ -568,17 +579,17 @@ impl<AF: AddressFamily, S: Stride> std::iter::Iterator
         trace!(
             "ms prefix iterator start_bs {:?} start cursor {}",
             bs,
-            S::cursor_from_bit_span(bs)
+            Stride4::cursor_from_bit_span(bs)
         );
         trace!("pfx {:032b}", self.pfxbitarr);
-        let bit_pos = S::get_bit_pos(bs);
+        let bit_pos = Stride4::get_bit_pos(bs);
         let prefix_id: PrefixId<AF> = self
             .base_prefix
             .add_bit_span(BitSpan::from_bit_pos_index(
                 bit_pos.leading_zeros() as u8,
             ))
             .into();
-        self.pfxbitarr = self.pfxbitarr ^ S::bit_pos_from_index(cursor);
+        self.pfxbitarr = self.pfxbitarr ^ Stride4::bit_pos_from_index(cursor);
         Some(prefix_id)
     }
 }
@@ -590,8 +601,11 @@ where
 {
     fn default() -> Self {
         Self {
-            ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
-            pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
+            // ptrbitarr: <<S as Stride>::AtomicPtrSize as AtomicBitmap>::new(),
+            // pfxbitarr: <<S as Stride>::AtomicPfxSize as AtomicBitmap>::new(),
+            ptrbitarr: AtomicStride3::new(),
+            pfxbitarr: AtomicStride4::new(),
+            _s: PhantomData,
             _af: PhantomData,
         }
     }

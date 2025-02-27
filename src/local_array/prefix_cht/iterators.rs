@@ -19,9 +19,9 @@ pub(crate) struct MoreSpecificPrefixIter<
     NB: NodeBuckets<AF>,
 > {
     store: &'a TreeBitMap<AF, NB>,
-    cur_ptr_iter: NodeMoreSpecificChildIter<AF, Stride4>,
-    cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF, Stride4>,
-    parent_and_position: Vec<NodeMoreSpecificChildIter<AF, Stride4>>,
+    cur_ptr_iter: NodeMoreSpecificChildIter<AF>,
+    cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF>,
+    parent_and_position: Vec<NodeMoreSpecificChildIter<AF>>,
     // If specified, we're only iterating over records for this mui.
     mui: Option<u32>,
     // This is the tree-wide index of withdrawn muis, used to rewrite the

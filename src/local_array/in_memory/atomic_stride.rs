@@ -415,37 +415,37 @@ where
     // length, this follows from the fact that the `nibble` value represents
     // *both* the bitmap part, we're considering here *and* the position
     // relative to the nibble length offset in the bitmap.
-    fn get_bit_pos(
-        bit_pos: BitSpan,
-    ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+    fn get_bit_pos(bit_pos: BitSpan) -> u32;
+    // ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
     fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8;
 
-    fn bit_pos_from_index(
-        i: u8,
-    ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+    fn bit_pos_from_index(i: u8) -> u32;
+    // ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
-    fn ptr_bit_pos_from_index(
-        i: u8,
-    ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
+    fn ptr_bit_pos_from_index(i: u8) -> u16;
+    // ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
 
     fn cursor_from_bit_span(bs: BitSpan) -> u8;
 
     // fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8;
 
     fn ptr_range(
-        ptrbitarr: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::
-            InnerType,
+        // ptrbitarr: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::
+        //     InnerType,
+        ptrbitarr: u16,
         range: BitSpan,
     ) -> (
-        <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+        // <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+        u16,
         u8,
     );
 
     fn ms_pfx_mask(
-        pfxbitarr: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
+        // pfxbitarr: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
+        pfxbitarr: u32,
         range: BitSpan,
-    ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+    ) -> u32;
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding prefix in
@@ -504,8 +504,9 @@ where
     // one bit to the left.
     #[allow(clippy::wrong_self_convention)]
     fn into_stride_size(
-        bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-    ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+        bitmap: u16, // bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
+                     // ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
+    ) -> u32;
 
     // Convert a pfxbitarr sized bitmap into a ptrbitarr sized
     // Note that bitwise operators align bits of unsigned types with
@@ -514,15 +515,16 @@ where
     // accommodate the unused pfxbitarr's last bit.
     #[allow(clippy::wrong_self_convention)]
     fn into_ptrbitarr_size(
-        bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
-    ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
-
+        // bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
+        bitmap: u32,
+    ) -> u16;
+    // ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
     fn leading_zeros(self) -> u32;
 }
 
 impl_primitive_atomic_stride![3; 16; u16; AtomicStride3; u8; AtomicStride2];
 impl_primitive_atomic_stride![4; 32; u32; AtomicStride4; u16; AtomicStride3];
-impl_primitive_atomic_stride![5; 64; u64; AtomicStride5; u32; AtomicStride4];
+// impl_primitive_atomic_stride![5; 64; u64; AtomicStride5; u32; AtomicStride4];
 // impl_primitive_stride![6; 128; u128; u64];
 
 // impl Stride for Stride7 {

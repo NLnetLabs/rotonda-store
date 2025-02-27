@@ -178,7 +178,7 @@ macro_rules! impl_primitive_atomic_stride {
                 const BITS: u8 = $bits;
                 const STRIDE_LEN: u8 = $len;
 
-                fn get_bit_pos(bs: BitSpan) -> $pfxsize {
+                fn get_bit_pos(bs: BitSpan) -> u32 {
                     // trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
                     1 << (
                             <Self as Stride>::BITS - ((1 << bs.len) - 1) as u8
@@ -186,14 +186,14 @@ macro_rules! impl_primitive_atomic_stride {
                     )
                 }
 
-                fn bit_pos_from_index(i: u8) -> $pfxsize {
-                    <$pfxsize>::try_from(1).unwrap().rotate_right(1) >> i
+                fn bit_pos_from_index(i: u8) -> u32 {
+                    <u32>::try_from(1).unwrap().rotate_right(1) >> i
                 }
 
-                fn ptr_bit_pos_from_index(i: u8) -> $ptrsize {
+                fn ptr_bit_pos_from_index(i: u8) -> u16 {
                     // trace!("pfx {} ptr {} strlen {}",
                     // <$pfxsize>::BITS, <$ptrsize>::BITS, Self::STRIDE_LEN);
-                    <$ptrsize>::try_from(1).unwrap().rotate_right(1)
+                    <u16>::try_from(1).unwrap().rotate_right(1)
                         >> (i + 1)
                 }
 
@@ -203,12 +203,12 @@ macro_rules! impl_primitive_atomic_stride {
                 }
 
                 fn ptr_range(
-                    ptrbitarr: $ptrsize,
+                    ptrbitarr: u16,
                     bs: BitSpan
-                ) -> ($ptrsize, u8) {
+                ) -> (u16, u8) {
                     let start: u8 = (bs.bits << (4 - bs.len)) as u8;
                     let stop: u8 = start + (1 << (4 - bs.len));
-                    let mask: $ptrsize = (
+                    let mask: u16 = (
                         (((1_u32 << (stop as u32 - start as u32)) - 1)
                              as u32
                     )
@@ -225,10 +225,10 @@ macro_rules! impl_primitive_atomic_stride {
                 }
 
                 fn ms_pfx_mask(
-                    pfxbitarr: $pfxsize,
+                    pfxbitarr: u32,
                     bs: BitSpan
-                ) -> $pfxsize {
-                    <$pfxsize>::try_from(
+                ) -> u32 {
+                    <u32>::try_from(
                         $crate::local_array::in_memory::node::
                         ms_prefix_mask_arr(bs) & pfxbitarr as u32
                     ).unwrap()
@@ -270,12 +270,12 @@ macro_rules! impl_primitive_atomic_stride {
                     id
                 }
 
-                fn into_stride_size(bitmap: $ptrsize) -> $pfxsize {
-                    bitmap as $pfxsize << 1
+                fn into_stride_size(bitmap: u16) -> u32 {
+                    (bitmap as u32) << 1
                 }
 
-                fn into_ptrbitarr_size(bitmap: $pfxsize) -> $ptrsize {
-                    (bitmap >> 1) as $ptrsize
+                fn into_ptrbitarr_size(bitmap: u32) -> u16 {
+                    (bitmap >> 1) as u16
                 }
 
                 #[inline]

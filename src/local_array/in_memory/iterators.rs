@@ -60,9 +60,9 @@ pub(crate) struct MoreSpecificPrefixIter<
     NB: NodeBuckets<AF>,
 > {
     tree: &'a TreeBitMap<AF, NB>,
-    cur_ptr_iter: NodeMoreSpecificChildIter<AF, Stride4>,
-    cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF, Stride4>,
-    parent_and_position: Vec<NodeMoreSpecificChildIter<AF, Stride4>>,
+    cur_ptr_iter: NodeMoreSpecificChildIter<AF>,
+    cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF>,
+    parent_and_position: Vec<NodeMoreSpecificChildIter<AF>>,
 }
 
 impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
@@ -304,8 +304,8 @@ impl<
                 start_bs.len
             );
 
-            let cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF, Stride4>;
-            let cur_ptr_iter: NodeMoreSpecificChildIter<AF, Stride4>;
+            let cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF>;
+            let cur_ptr_iter: NodeMoreSpecificChildIter<AF>;
             let node = self.retrieve_node(start_node_id);
 
             if let Some(node) = node {

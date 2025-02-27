@@ -235,6 +235,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                 pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                 _af: PhantomData,
+                _s: PhantomData,
             },
         )?;
 
