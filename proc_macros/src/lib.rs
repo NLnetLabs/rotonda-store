@@ -200,12 +200,12 @@ pub fn stride_sizes(
         pub(crate) struct #buckets_name<AF: AddressFamily> {
             // created fields for each sub-prefix (StrideNodeId) length,
             // with hard-coded field-names, like this:
-            // l0: NodeSet<AF, Stride5>,
-            // l5: NodeSet<AF, Stride5>,
-            // l10: NodeSet<AF, Stride4>,
+            // l0: NodeSet<AF>,
+            // l4: NodeSet<AF>,
+            // l8: NodeSet<AF>,
             // ...
-            // l29: NodeSet<AF, Stride3>
-            # ( #strides_all_len_level: NodeSet<#ip_af, #strides>, )*
+            // l28: NodeSet<AF, Stride4>
+            # ( #strides_all_len_level: NodeSet<#ip_af>, )*
             _af: PhantomData<AF>,
             stride_sizes: [u8; 42],
             strides_len: u8
@@ -271,7 +271,7 @@ pub fn stride_sizes(
                 }
             }
 
-            fn get_store(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af, Stride4> {
+            fn get_store(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af> {
                 match id.get_id().1 as usize {
                     #( #strides_len4 => &self.#strides_len4_l, )*
                     // ex.:

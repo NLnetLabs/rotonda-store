@@ -28,28 +28,27 @@ use super::tree::{Stride, Stride4};
 // ----------- Node related structs -----------------------------------------
 
 #[derive(Debug)]
-pub(crate) struct StoredNode<AF, S>
+pub(crate) struct StoredNode<AF>
 where
     Self: Sized,
-    S: Stride,
     AF: AddressFamily,
 {
     pub(crate) node_id: StrideNodeId<AF>,
     // The ptrbitarr and pfxbitarr for this node
-    pub(crate) node: TreeBitMapNode<AF, S>,
+    pub(crate) node: TreeBitMapNode<AF, Stride4>,
     // Child nodes linked from this node
-    pub(crate) node_set: NodeSet<AF, S>,
+    pub(crate) node_set: NodeSet<AF>,
 }
 
 #[derive(Debug)]
-pub(crate) struct NodeSet<AF: AddressFamily, S: Stride>(
-    OnceBoxSlice<StoredNode<AF, S>>,
+pub struct NodeSet<AF: AddressFamily>(
+    OnceBoxSlice<StoredNode<AF>>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
     RwLock<RoaringBitmap>,
 );
 
-impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
+impl<AF: AddressFamily> NodeSet<AF> {
     pub(crate) fn init(p2_size: u8) -> Self {
         if log_enabled!(log::Level::Debug) {
             debug!(
@@ -71,7 +70,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         multi_uniq_id: u32,
     ) -> Result<(u32, bool), crate::prelude::multi::PrefixStoreError>
     where
-        S: atomic_stride::Stride,
+        // S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;
@@ -87,7 +86,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         _guard: &crate::epoch::Guard,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
-        S: atomic_stride::Stride,
+        // S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;
@@ -98,7 +97,7 @@ impl<AF: AddressFamily, S: Stride> NodeSet<AF, S> {
         Ok(try_count)
     }
 
-    pub(crate) fn read(&self) -> &OnceBoxSlice<StoredNode<AF, S>> {
+    pub(crate) fn read(&self) -> &OnceBoxSlice<StoredNode<AF>> {
         &self.0
     }
 }
@@ -580,7 +579,7 @@ pub trait NodeBuckets<AF: AddressFamily> {
     fn get_stride_sizes(&self) -> &[u8];
     fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8;
     // fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
-    fn get_store(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride4>;
+    fn get_store(&self, id: StrideNodeId<AF>) -> &NodeSet<AF>;
     // fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5>;
     fn get_strides_len() -> u8;
     // fn get_first_stride_size() -> u8;

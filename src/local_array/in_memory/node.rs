@@ -12,6 +12,7 @@ use super::tree::{
 
 use crate::af::AddressFamily;
 use crate::af::Zero;
+use crate::local_array::rib::default_store::STRIDE_SIZE;
 use crate::local_array::types::PrefixId;
 
 //------------ TreeBitMap Node ----------------------------------------------
@@ -260,7 +261,7 @@ where
         // base_prefix (which is always the start length of the stride).
         (
             NewNodeOrIndex::ExistingNode(
-                base_prefix.add_to_len(4).truncate_to_len(),
+                base_prefix.add_to_len(STRIDE_SIZE).truncate_to_len(),
             ),
             retry_count,
         )
