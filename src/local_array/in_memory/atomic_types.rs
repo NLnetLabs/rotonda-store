@@ -35,7 +35,7 @@ where
 {
     pub(crate) node_id: StrideNodeId<AF>,
     // The ptrbitarr and pfxbitarr for this node
-    pub(crate) node: TreeBitMapNode<AF, Stride4>,
+    pub(crate) node: TreeBitMapNode<AF>,
     // Child nodes linked from this node
     pub(crate) node_set: NodeSet<AF>,
 }

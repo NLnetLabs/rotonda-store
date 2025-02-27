@@ -5,6 +5,7 @@ use crate::prelude::*;
 use rand::prelude::*;
 
 pub const STRIDE_SIZE: u8 = 4;
+pub const STRIDE_BITS: u8 = 32;
 
 // The default stride sizes for IPv4, IPv6, resp.
 #[create_store((

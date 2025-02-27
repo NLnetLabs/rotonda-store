@@ -234,20 +234,9 @@ macro_rules! impl_primitive_atomic_stride {
                     ).unwrap()
                 }
 
-                // Ptrbitarr searches are only done in the last half of
-                // the bitarray, in the len = S::STRIDE_LEN part. We need a
-                // complete BitSpan still to figure when to stop.
-                // fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8 {
-                //     let p = Self::get_bit_pos(bs.bits << (4 - bs.len), 4)
-                //         .leading_zeros() as u8;
-                //     trace!("bs in {:?}", bs);
-                //     trace!("pos {}", p);
-                //     p
-                // }
-
                 fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8 {
                     1 << (
-                            <Self as Stride>::BITS - ((1 << len) - 1) as u8
+                            STRIDE_BITS - ((1 << len) - 1) as u8
                             - nibble as u8 - 1
                     )
                 }

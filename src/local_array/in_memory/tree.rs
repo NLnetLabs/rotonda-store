@@ -235,7 +235,6 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 ptrbitarr: AtomicStride3(AtomicU16::new(0)),
                 pfxbitarr: AtomicStride4(AtomicU32::new(0)),
                 _af: PhantomData,
-                _s: PhantomData,
             },
         )?;
 
@@ -490,7 +489,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         &self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
-        next_node: TreeBitMapNode<AF, Stride4>,
+        next_node: TreeBitMapNode<AF>,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
         if log_enabled!(log::Level::Trace) {
             debug!(
@@ -791,7 +790,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         &self,
         id: StrideNodeId<AF>,
         mui: u32,
-    ) -> Option<&TreeBitMapNode<AF, Stride4>> {
+    ) -> Option<&TreeBitMapNode<AF>> {
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
@@ -881,7 +880,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
     pub fn retrieve_node(
         &self,
         id: StrideNodeId<AF>,
-    ) -> Option<&TreeBitMapNode<AF, Stride4>> {
+    ) -> Option<&TreeBitMapNode<AF>> {
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
@@ -969,7 +968,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         &self,
         id: StrideNodeId<AF>,
         mui: u32,
-    ) -> Option<&TreeBitMapNode<AF, Stride4>> {
+    ) -> Option<&TreeBitMapNode<AF>> {
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;

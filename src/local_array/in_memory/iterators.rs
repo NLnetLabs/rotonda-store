@@ -20,7 +20,6 @@
 // in the TreeBitMap.
 
 use crate::local_array::in_memory::atomic_types::NodeBuckets;
-use crate::local_array::in_memory::tree::Stride4;
 use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::{
     af::AddressFamily,

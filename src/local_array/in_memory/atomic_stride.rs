@@ -1,26 +1,17 @@
 use log::trace;
 use parking_lot_core::SpinWait;
 use std::fmt::{Binary, Debug};
-use std::sync::atomic::{
-    fence, AtomicU16, AtomicU32, AtomicU64, AtomicU8, Ordering,
-};
+use std::sync::atomic::{fence, AtomicU16, AtomicU32, Ordering};
 
 use crate::af::Zero;
+use crate::local_array;
 use crate::local_array::bit_span::BitSpan;
-use crate::synth_int::AtomicU128;
-use crate::{impl_primitive_atomic_stride, AddressFamily};
+use crate::local_array::rib::default_store::STRIDE_BITS;
 
-use super::node::StrideNodeId;
+pub type Stride4 = AtomicStride4;
 
-pub type Stride3 = u16;
-pub type Stride4 = u32;
-pub type Stride5 = u64;
-
-pub struct AtomicStride2(pub AtomicU8);
 pub struct AtomicStride3(pub AtomicU16);
 pub struct AtomicStride4(pub AtomicU32);
-pub struct AtomicStride5(pub AtomicU64);
-pub struct AtomicStride6(pub AtomicU128);
 
 pub struct CasResult<InnerType>(pub Result<InnerType, InnerType>);
 
@@ -72,46 +63,46 @@ where
     }
 }
 
-impl AtomicBitmap for AtomicStride2 {
-    type InnerType = u8;
+// impl AtomicBitmap for AtomicStride2 {
+//     type InnerType = u8;
 
-    fn new() -> Self {
-        AtomicStride2(AtomicU8::new(0))
-    }
+//     fn new() -> Self {
+//         AtomicStride2(AtomicU8::new(0))
+//     }
 
-    fn compare_exchange(
-        &self,
-        current: Self::InnerType,
-        new: Self::InnerType,
-    ) -> CasResult<Self::InnerType> {
-        CasResult(self.0.compare_exchange(
-            current,
-            new,
-            Ordering::Acquire,
-            Ordering::Relaxed,
-        ))
-    }
+//     fn compare_exchange(
+//         &self,
+//         current: Self::InnerType,
+//         new: Self::InnerType,
+//     ) -> CasResult<Self::InnerType> {
+//         CasResult(self.0.compare_exchange(
+//             current,
+//             new,
+//             Ordering::Acquire,
+//             Ordering::Relaxed,
+//         ))
+//     }
 
-    fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
-    }
-}
+//     fn load(&self) -> Self::InnerType {
+//         self.0.load(Ordering::SeqCst)
+//     }
+// }
 
-impl Zero for AtomicStride2 {
-    fn zero() -> Self {
-        AtomicStride2(AtomicU8::new(0))
-    }
+// impl Zero for AtomicStride2 {
+//     fn zero() -> Self {
+//         AtomicStride2(AtomicU8::new(0))
+//     }
 
-    fn is_zero(&self) -> bool {
-        self.0.load(Ordering::SeqCst) == 0
-    }
-}
+//     fn is_zero(&self) -> bool {
+//         self.0.load(Ordering::SeqCst) == 0
+//     }
+// }
 
-impl From<u8> for AtomicStride2 {
-    fn from(value: u8) -> Self {
-        Self(AtomicU8::new(value))
-    }
-}
+// impl From<u8> for AtomicStride2 {
+//     fn from(value: u8) -> Self {
+//         Self(AtomicU8::new(value))
+//     }
+// }
 
 impl AtomicBitmap for AtomicStride3 {
     type InnerType = u16;
@@ -191,211 +182,8 @@ impl Zero for AtomicStride4 {
     }
 }
 
-impl AtomicBitmap for AtomicStride5 {
-    type InnerType = u64;
-
-    fn new() -> Self {
-        AtomicStride5(AtomicU64::new(0))
-    }
-    fn compare_exchange(
-        &self,
-        current: Self::InnerType,
-        new: Self::InnerType,
-    ) -> CasResult<Self::InnerType> {
-        CasResult(self.0.compare_exchange(
-            current,
-            new,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ))
-    }
-    fn load(&self) -> Self::InnerType {
-        self.0.load(Ordering::SeqCst)
-    }
-}
-
-impl From<u64> for AtomicStride5 {
-    fn from(value: u64) -> Self {
-        Self(AtomicU64::new(value))
-    }
-}
-
-impl Zero for AtomicStride5 {
-    fn zero() -> Self {
-        AtomicStride5(AtomicU64::new(0))
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0.load(Ordering::SeqCst) == 0
-    }
-}
-
-impl AtomicBitmap for AtomicStride6 {
-    type InnerType = u128;
-
-    fn new() -> Self {
-        AtomicStride6(AtomicU128::new(0))
-    }
-    fn compare_exchange(
-        &self,
-        current: Self::InnerType,
-        new: Self::InnerType,
-    ) -> CasResult<Self::InnerType> {
-        // TODO TODO
-        // This is not actually thread-safe, it actually
-        // needs a memory fence, since we're writing
-        // to two different memory locations.
-        (
-            self.0 .0.compare_exchange(
-                ((current << 64) >> 64) as u64,
-                ((new >> 64) << 64) as u64,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ),
-            self.0 .1.compare_exchange(
-                ((current << 64) >> 64) as u64,
-                ((new >> 64) << 64) as u64,
-                Ordering::SeqCst,
-                Ordering::SeqCst,
-            ),
-        )
-            .into()
-    }
-    fn load(&self) -> Self::InnerType {
-        let hi = self.0 .0.load(Ordering::SeqCst).to_be_bytes();
-        let lo = self.0 .1.load(Ordering::SeqCst).to_be_bytes();
-        u128::from_be_bytes([
-            hi[0], hi[1], hi[2], hi[3], hi[4], hi[5], hi[6], hi[7], lo[0],
-            lo[1], lo[2], lo[3], lo[4], lo[5], lo[6], lo[7],
-        ])
-    }
-
-    fn merge_with(&self, _node: Self::InnerType) {
-        todo!()
-    }
-}
-
-impl From<u128> for AtomicStride6 {
-    fn from(value: u128) -> Self {
-        Self(AtomicU128::new(value))
-    }
-}
-
-impl Zero for AtomicStride6 {
-    fn zero() -> Self {
-        AtomicStride6(AtomicU128::new(0))
-    }
-
-    fn is_zero(&self) -> bool {
-        self.0 .0.load(Ordering::SeqCst) == 0
-            && self.0 .1.load(Ordering::SeqCst) == 0
-    }
-}
-
-impl From<(Result<u64, u64>, Result<u64, u64>)> for CasResult<u128> {
-    fn from(r: (Result<u64, u64>, Result<u64, u64>)) -> Self {
-        match r {
-            (Ok(hi), Ok(lo)) => CasResult::new(u128::from_be_bytes([
-                hi.to_be_bytes()[0],
-                hi.to_be_bytes()[1],
-                hi.to_be_bytes()[2],
-                hi.to_be_bytes()[3],
-                hi.to_be_bytes()[4],
-                hi.to_be_bytes()[5],
-                hi.to_be_bytes()[6],
-                hi.to_be_bytes()[7],
-                lo.to_be_bytes()[0],
-                lo.to_be_bytes()[1],
-                lo.to_be_bytes()[2],
-                lo.to_be_bytes()[3],
-                lo.to_be_bytes()[4],
-                lo.to_be_bytes()[5],
-                lo.to_be_bytes()[6],
-                lo.to_be_bytes()[7],
-            ])),
-            (Err(hi), Ok(lo)) => CasResult(Err(u128::from_be_bytes([
-                hi.to_be_bytes()[0],
-                hi.to_be_bytes()[1],
-                hi.to_be_bytes()[2],
-                hi.to_be_bytes()[3],
-                hi.to_be_bytes()[4],
-                hi.to_be_bytes()[5],
-                hi.to_be_bytes()[6],
-                hi.to_be_bytes()[7],
-                lo.to_be_bytes()[0],
-                lo.to_be_bytes()[1],
-                lo.to_be_bytes()[2],
-                lo.to_be_bytes()[3],
-                lo.to_be_bytes()[4],
-                lo.to_be_bytes()[5],
-                lo.to_be_bytes()[6],
-                lo.to_be_bytes()[7],
-            ]))),
-            (Ok(hi), Err(lo)) => CasResult(Err(u128::from_be_bytes([
-                hi.to_be_bytes()[0],
-                hi.to_be_bytes()[1],
-                hi.to_be_bytes()[2],
-                hi.to_be_bytes()[3],
-                hi.to_be_bytes()[4],
-                hi.to_be_bytes()[5],
-                hi.to_be_bytes()[6],
-                hi.to_be_bytes()[7],
-                lo.to_be_bytes()[0],
-                lo.to_be_bytes()[1],
-                lo.to_be_bytes()[2],
-                lo.to_be_bytes()[3],
-                lo.to_be_bytes()[4],
-                lo.to_be_bytes()[5],
-                lo.to_be_bytes()[6],
-                lo.to_be_bytes()[7],
-            ]))),
-            (Err(hi), Err(lo)) => CasResult(Err(u128::from_be_bytes([
-                hi.to_be_bytes()[0],
-                hi.to_be_bytes()[1],
-                hi.to_be_bytes()[2],
-                hi.to_be_bytes()[3],
-                hi.to_be_bytes()[4],
-                hi.to_be_bytes()[5],
-                hi.to_be_bytes()[6],
-                hi.to_be_bytes()[7],
-                lo.to_be_bytes()[0],
-                lo.to_be_bytes()[1],
-                lo.to_be_bytes()[2],
-                lo.to_be_bytes()[3],
-                lo.to_be_bytes()[4],
-                lo.to_be_bytes()[5],
-                lo.to_be_bytes()[6],
-                lo.to_be_bytes()[7],
-            ]))),
-        }
-    }
-}
-pub(crate) trait Stride:
-    Sized
-    + Debug
-    + Eq
-    + Binary
-    + PartialOrd
-    + PartialEq
-    + Zero
-    + std::ops::BitAnd<Output = Self>
-    + std::ops::BitOr<Output = Self>
-where
-    Self::AtomicPtrSize: AtomicBitmap,
-    Self::AtomicPfxSize: AtomicBitmap,
-    Self::PtrSize: Zero
-        + Binary
-        + Copy
-        + Debug
-        + std::ops::BitAnd<Output = Self::PtrSize>
-        + PartialOrd
-        + Zero,
-{
-    type AtomicPfxSize;
-    type AtomicPtrSize;
-    type PtrSize;
-    const BITS: u8;
-    const STRIDE_LEN: u8;
+pub(crate) trait Stride {
+    // const STRIDE_LEN: u8;
 
     // Get the bit position of the start of the given nibble.
     // The nibble is defined as a `len` number of bits set from the right.
@@ -418,28 +206,13 @@ where
     fn get_bit_pos(bit_pos: BitSpan) -> u32;
     // ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
-    fn get_bit_pos_as_u8(nibble: u32, len: u8) -> u8;
-
     fn bit_pos_from_index(i: u8) -> u32;
-    // ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
 
     fn ptr_bit_pos_from_index(i: u8) -> u16;
-    // ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
 
     fn cursor_from_bit_span(bs: BitSpan) -> u8;
 
-    // fn ptr_cursor_from_bit_span(bs: BitSpan) -> u8;
-
-    fn ptr_range(
-        // ptrbitarr: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::
-        //     InnerType,
-        ptrbitarr: u16,
-        range: BitSpan,
-    ) -> (
-        // <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-        u16,
-        u8,
-    );
+    fn ptr_range(ptrbitarr: u16, range: BitSpan) -> (u16, u8);
 
     fn ms_pfx_mask(
         // pfxbitarr: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
@@ -464,7 +237,6 @@ where
 
     // get_pfx_index only needs nibble and len for fixed-layout bitarrays,
     // since the index can be deducted from them.
-    fn get_pfx_index(bit_span: BitSpan) -> usize;
 
     // Clear the bitmap to the right of the pointer and count the number of
     // ones. This number represents the index to the corresponding child node
@@ -485,16 +257,6 @@ where
     // The bit position relative to the offset for the nibble length, this
     // index is only used at the last (relevant) stride, so the offset is
     // always 0.
-    fn get_ptr_index(
-        bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
-        nibble: u32,
-    ) -> usize;
-
-    #[allow(clippy::wrong_self_convention)]
-    fn into_node_id<AF: AddressFamily>(
-        addr_bits: AF,
-        len: u8,
-    ) -> StrideNodeId<AF>;
 
     // Convert a ptrbitarr into a pfxbitarr sized bitmap,
     // so we can do bitwise operations with a pfxbitarr sized
@@ -502,7 +264,6 @@ where
     // Since the last bit in the pfxbitarr isn't used, but the
     // full ptrbitarr *is* used, the prtbitarr should be shifted
     // one bit to the left.
-    #[allow(clippy::wrong_self_convention)]
     fn into_stride_size(
         bitmap: u16, // bitmap: <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType,
                      // ) -> <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType;
@@ -513,17 +274,15 @@ where
     // different sizes to the right, so we don't have to do anything to pad
     // the smaller sized type. We do have to shift one bit to the left, to
     // accommodate the unused pfxbitarr's last bit.
-    #[allow(clippy::wrong_self_convention)]
     fn into_ptrbitarr_size(
         // bitmap: <<Self as Stride>::AtomicPfxSize as AtomicBitmap>::InnerType,
         bitmap: u32,
     ) -> u16;
     // ) -> <<Self as Stride>::AtomicPtrSize as AtomicBitmap>::InnerType;
-    fn leading_zeros(self) -> u32;
 }
 
-impl_primitive_atomic_stride![3; 16; u16; AtomicStride3; u8; AtomicStride2];
-impl_primitive_atomic_stride![4; 32; u32; AtomicStride4; u16; AtomicStride3];
+// impl_primitive_atomic_stride![3; 16; u16; AtomicStride3; u8; AtomicStride2];
+// impl_primitive_atomic_stride![4; 32; u32; AtomicStride4; u16; AtomicStride3];
 // impl_primitive_atomic_stride![5; 64; u64; AtomicStride5; u32; AtomicStride4];
 // impl_primitive_stride![6; 128; u128; u64];
 
@@ -687,3 +446,58 @@ impl_primitive_atomic_stride![4; 32; u32; AtomicStride4; u16; AtomicStride3];
 //         lz
 //     }
 // }
+impl Stride for AtomicStride4 {
+    // type AtomicPfxSize = $atomicpfxsize;
+    // type AtomicPtrSize = $atomicptrsize;
+    // type PtrSize = $ptrsize;
+    // const BITS: u8 = $bits;
+    // const STRIDE_LEN: u8 = 4;
+
+    fn get_bit_pos(bs: BitSpan) -> u32 {
+        // trace!("nibble {}, len {}, BITS {}", nibble, len, <Self as Stride>::BITS);
+        1 << (STRIDE_BITS - ((1 << bs.len) - 1) as u8 - bs.bits as u8 - 1)
+    }
+
+    fn bit_pos_from_index(i: u8) -> u32 {
+        <u32>::try_from(1).unwrap().rotate_right(1) >> i
+    }
+
+    fn ptr_bit_pos_from_index(i: u8) -> u16 {
+        // trace!("pfx {} ptr {} strlen {}",
+        // <$pfxsize>::BITS, <$ptrsize>::BITS, Self::STRIDE_LEN);
+        <u16>::try_from(1).unwrap().rotate_right(1) >> (i + 1)
+    }
+
+    fn cursor_from_bit_span(bs: BitSpan) -> u8 {
+        Self::get_bit_pos(bs).leading_zeros() as u8
+    }
+
+    fn ptr_range(ptrbitarr: u16, bs: BitSpan) -> (u16, u8) {
+        let start: u8 = (bs.bits << (4 - bs.len)) as u8;
+        let stop: u8 = start + (1 << (4 - bs.len));
+        let mask: u16 = (((1_u32 << (stop as u32 - start as u32)) - 1)
+            .rotate_right(stop as u32)
+            >> 16)
+            .try_into()
+            .unwrap();
+        trace!("- mask      {:032b}", mask);
+        trace!("- ptrbitarr {:032b}", ptrbitarr);
+        trace!("- shl bitar {:032b}", ptrbitarr & mask);
+
+        // if ptrbitarr & mask == <$ptrsize>::zero() { panic!("stop"); }
+
+        (ptrbitarr & mask, start)
+    }
+
+    fn ms_pfx_mask(pfxbitarr: u32, bs: BitSpan) -> u32 {
+        local_array::in_memory::node::ms_prefix_mask_arr(bs) & pfxbitarr
+    }
+
+    fn into_stride_size(bitmap: u16) -> u32 {
+        (bitmap as u32) << 1
+    }
+
+    fn into_ptrbitarr_size(bitmap: u32) -> u16 {
+        (bitmap >> 1) as u16
+    }
+}
