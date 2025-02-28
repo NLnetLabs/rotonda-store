@@ -122,13 +122,13 @@ pub(crate) fn into_pfxbitarr(bitmap: u16) -> u32 {
 }
 
 pub(crate) fn bit_pos_from_index(i: u8) -> u32 {
-    <u32>::try_from(1).unwrap().rotate_right(1) >> i
+    1_u32.rotate_right(1) >> i
 }
 
 pub(crate) fn ptr_bit_pos_from_index(i: u8) -> u16 {
     // trace!("pfx {} ptr {} strlen {}",
     // <$pfxsize>::BITS, <$ptrsize>::BITS, Self::STRIDE_LEN);
-    <u16>::try_from(1).unwrap().rotate_right(1) >> (i + 1)
+    1_u16.rotate_right(1) >> (i + 1)
 }
 
 impl AtomicBitmap for AtomicPfxBitArr {

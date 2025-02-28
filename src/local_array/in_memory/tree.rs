@@ -553,8 +553,10 @@ lvl{}",
                     trace!("this level {}", this_level);
                     trace!("next level {}", next_level);
 
-                    debug_assert!(next_level >= this_level);
-                    let node_set = NodeSet::init(next_level - this_level);
+                    // A weird trick to create either a NodeSet with 16 nodes,
+                    // or one without any (for the last stride)
+                    let node_set =
+                        NodeSet::init(next_level.saturating_sub(this_level));
 
                     let ptrbitarr = new_node.ptrbitarr.load();
                     let pfxbitarr = new_node.pfxbitarr.load();
@@ -818,7 +820,8 @@ lvl{}",
                             id.len(),
                             level + 1,
                         );
-                    let node_set = NodeSet::init(next_level - this_level);
+                    let node_set =
+                        NodeSet::init(next_level.saturating_sub(this_level));
 
                     // See if we can create the node
                     (node, _) =
@@ -906,7 +909,8 @@ lvl{}",
                             id.len(),
                             level + 1,
                         );
-                    let node_set = NodeSet::init(next_level - this_level);
+                    let node_set =
+                        NodeSet::init(next_level.saturating_sub(this_level));
 
                     // See if we can create the node
                     (node, _) =
@@ -992,7 +996,8 @@ lvl{}",
                             id.len(),
                             level + 1,
                         );
-                    let node_set = NodeSet::init(next_level - this_level);
+                    let node_set =
+                        NodeSet::init(next_level.saturating_sub(this_level));
 
                     // See if we can create the node
                     (node, _) =

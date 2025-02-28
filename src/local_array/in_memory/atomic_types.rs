@@ -160,7 +160,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
                 std::thread::current().name().unwrap_or("unnamed-thread"),
                 pfx_id.get_len()
             );
-            PrefixSet::init(next_level - this_level)
+            PrefixSet::init(next_level.saturating_sub(this_level))
         };
         // End of calculation
 
