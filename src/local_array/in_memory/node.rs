@@ -592,7 +592,7 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub struct StrideNodeId<AF: AddressFamily> {
-    addr_bits: AF,
+    bits: AF,
     len: u8,
 }
 
@@ -601,23 +601,26 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
         addr_bits: AF,
         len: u8,
     ) -> Self {
-        Self { addr_bits, len }
+        Self {
+            bits: addr_bits,
+            len,
+        }
     }
 
     #[inline]
     pub(crate) fn new_with_cleaned_id(addr_bits: AF, len: u8) -> Self {
         Self {
-            addr_bits: addr_bits.truncate_to_len(len),
+            bits: addr_bits.truncate_to_len(len),
             len,
         }
     }
 
-    pub fn get_id(&self) -> (AF, u8) {
-        (self.addr_bits, self.len)
+    pub(crate) fn len(&self) -> u8 {
+        self.len
     }
 
-    pub(crate) fn get_len(&self) -> u8 {
-        self.len
+    pub(crate) fn bits(&self) -> AF {
+        self.bits
     }
 
     pub fn set_len(mut self, len: u8) -> Self {
@@ -632,14 +635,14 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
 
     #[inline]
     pub(crate) fn truncate_to_len(self) -> Self {
-        StrideNodeId::new_with_cleaned_id(self.addr_bits, self.len)
+        StrideNodeId::new_with_cleaned_id(self.bits, self.len)
     }
 
     // clean out all bits that are set beyond the len. This function should
     // be used before doing any ORing to add a nibble.
     #[inline]
     pub(crate) fn with_cleaned_id(&self) -> (AF, u8) {
-        (self.addr_bits.truncate_to_len(self.len), self.len)
+        (self.bits.truncate_to_len(self.len), self.len)
     }
 
     pub(crate) fn add_bit_span(&self, bs: BitSpan) -> Self {
@@ -651,7 +654,7 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
 
 impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}-{}", self.addr_bits, self.len)
+        write!(f, "{}-{}", self.bits, self.len)
     }
 }
 
@@ -659,14 +662,14 @@ impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
     for PrefixId<AF>
 {
     fn from(id: StrideNodeId<AF>) -> Self {
-        PrefixId::new(id.addr_bits, id.len)
+        PrefixId::new(id.bits, id.len)
     }
 }
 
 impl<AF: AddressFamily> From<(AF, u8)> for StrideNodeId<AF> {
     fn from(value: (AF, u8)) -> Self {
         StrideNodeId {
-            addr_bits: value.0,
+            bits: value.0,
             len: value.1,
         }
     }

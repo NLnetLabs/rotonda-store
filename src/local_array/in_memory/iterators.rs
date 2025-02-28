@@ -286,9 +286,9 @@ impl<
             );
             trace!(
                 "start node id   {:032b} (bits {} len {})",
-                start_node_id.get_id().0,
-                start_node_id.get_id().0,
-                start_node_id.get_len()
+                start_node_id.bits(),
+                start_node_id.bits(),
+                start_node_id.len()
             );
             trace!(
                 "start pfx bit span  {:08b} {} len {}",

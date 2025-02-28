@@ -272,13 +272,13 @@ pub fn stride_sizes(
             }
 
             fn get_store(&self, id: StrideNodeId<#ip_af>) -> &NodeSet<#ip_af> {
-                match id.get_id().1 as usize {
+                match id.len() as usize {
                     #( #strides_len4 => &self.#strides_len4_l, )*
                     // ex.:
                     // 10 => &self.l10,
                     _ => panic!(
                         "unexpected sub prefix length {} in stride size 4 ({})",
-                        id.get_id().1,
+                        id.len(),
                         id
                     ),
                 }
@@ -291,7 +291,7 @@ pub fn stride_sizes(
 
             #[inline]
             fn get_stride_for_id(&self, id: StrideNodeId<#ip_af>) -> u8 {
-                [ #(#len_to_stride_arr, )* ][id.get_id().1 as usize]
+                [ #(#len_to_stride_arr, )* ][id.len() as usize]
             }
 
             #[inline]

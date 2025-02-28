@@ -337,8 +337,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                                 && local_retry_count > 0
                             {
                                 trace!(
-                                    "{} contention: Node \
-                                                 already exists {}",
+                                    "{} contention: Node already exists {}",
                                     std::thread::current()
                                         .name()
                                         .unwrap_or("unnamed-thread"),
@@ -384,7 +383,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                     if log_enabled!(log::Level::Error) {
                         error!(
                             "{} failing to store (intermediate) node {}.
-                             Giving up this node. This shouldn't happen!",
+Giving up this node. This shouldn't happen!",
                             std::thread::current()
                                 .name()
                                 .unwrap_or("unnamed-thread"),
@@ -508,12 +507,15 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         let mut retry_count = 0;
 
         loop {
-            let this_level = <NB as NodeBuckets<AF>>::len_to_store_bits(
-                id.get_id().1,
-                level,
-            );
-            trace!("{:032b}", id.get_id().0);
-            trace!("id {:?}", id.get_id());
+            let this_level =
+                <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level);
+
+            // if this_level > (id.len() / 4) {
+            //     return Err(PrefixStoreError::StoreNotReadyError);
+            // }
+
+            trace!("{:032b}", id.len());
+            trace!("id {:?}", id);
             trace!("multi_uniq_id {}", multi_uniq_id);
 
             // HASHING FUNCTION
@@ -524,16 +526,16 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                     // No node exists, so we create one here.
                     let next_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level + 1,
                         );
 
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "Empty node found,
-                            creating new node {} len{} lvl{}",
+                            "Empty node found,creating new node {} len{}
+lvl{}",
                             id,
-                            id.get_id().1,
+                            id.len(),
                             level + 1
                         );
                         trace!("Next level {}", next_level);
@@ -548,7 +550,10 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                     }
 
                     trace!("multi uniq id {}", multi_uniq_id);
+                    trace!("this level {}", this_level);
+                    trace!("next level {}", next_level);
 
+                    debug_assert!(next_level >= this_level);
                     let node_set = NodeSet::init(next_level - this_level);
 
                     let ptrbitarr = new_node.ptrbitarr.load();
@@ -592,13 +597,10 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                                 .unwrap_or("unnamed-thread"),
                             stored_node.node_id
                         );
-                        trace!("node_id {:?}", stored_node.node_id.get_id());
-                        trace!(
-                            "node_id {:032b}",
-                            stored_node.node_id.get_id().0
-                        );
+                        trace!("node_id {:?}", stored_node.node_id);
+                        trace!("node_id {:032b}", stored_node.node_id.bits());
                         trace!("id {}", id);
-                        trace!("     id {:032b}", id.get_id().0);
+                        trace!("     id {:032b}", id.bits());
                     }
 
                     // See if somebody beat us to creating our
@@ -635,13 +637,13 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                                  index {}",
                             stored_node.node_id,
                             id,
-                            id.get_id().1,
+                            id.len(),
                             level,
                             index
                         );
 
                         match <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level,
                         ) {
                             // on to the next level!
@@ -808,12 +810,12 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 None => {
                     let this_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level,
                         );
                     let next_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level + 1,
                         );
                     let node_set = NodeSet::init(next_level - this_level);
@@ -863,10 +865,8 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as NodeBuckets<AF>>::len_to_store_bits(
-                id.get_id().1,
-                level,
-            ) {
+            match <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level)
+            {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -898,12 +898,12 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 None => {
                     let this_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level,
                         );
                     let next_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level + 1,
                         );
                     let node_set = NodeSet::init(next_level - this_level);
@@ -951,10 +951,8 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as NodeBuckets<AF>>::len_to_store_bits(
-                id.get_id().1,
-                level,
-            ) {
+            match <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level)
+            {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -986,12 +984,12 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
                 None => {
                     let this_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level,
                         );
                     let next_level =
                         <NB as NodeBuckets<AF>>::len_to_store_bits(
-                            id.get_id().1,
+                            id.len(),
                             level + 1,
                         );
                     let node_set = NodeSet::init(next_level - this_level);
@@ -1049,10 +1047,8 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as NodeBuckets<AF>>::len_to_store_bits(
-                id.get_id().1,
-                level,
-            ) {
+            match <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level)
+            {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -1179,11 +1175,11 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
         let last_level = if level > 0 {
-            <NB>::len_to_store_bits(id.get_id().1, level - 1)
+            <NB>::len_to_store_bits(id.len(), level - 1)
         } else {
             0
         };
-        let this_level = <NB>::len_to_store_bits(id.get_id().1, level);
+        let this_level = <NB>::len_to_store_bits(id.len(), level);
         // trace!("bits division {}", this_level);
         // trace!(
         //     "calculated index ({} << {}) >> {}",
@@ -1192,7 +1188,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
         // );
         // HASHING FUNCTION
-        ((id.get_id().0 << AF::from_u8(last_level))
+        ((id.bits() << AF::from_u8(last_level))
             >> AF::from_u8(
                 (<AF>::BITS - (this_level - last_level)) % <AF>::BITS,
             ))
