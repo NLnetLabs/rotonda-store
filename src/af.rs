@@ -1,3 +1,4 @@
+use log::trace;
 use zerocopy::{IntoBytes, NetworkEndian, U128, U32};
 
 use crate::local_array::bit_span::BitSpan;
@@ -208,7 +209,8 @@ impl AddressFamily for IPv4 {
     }
 
     fn checked_shr_or_zero(self, rhs: u32) -> Self {
-        if rhs == 0 {
+        trace!("CHECKED_SHR_OR_ZERO {} >> {}", u32::from(self), rhs);
+        if rhs == 0 || rhs == 32 {
             return 0.into();
         }
         self >> U32::<NetworkEndian>::from(rhs)
@@ -351,7 +353,7 @@ impl AddressFamily for IPv6 {
     // }
 
     fn checked_shr_or_zero(self, rhs: u32) -> Self {
-        if rhs == 0 {
+        if rhs == 0 || rhs == 128 {
             return U128::from(0);
         };
 

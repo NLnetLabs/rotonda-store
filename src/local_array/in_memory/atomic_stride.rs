@@ -128,7 +128,8 @@ pub(crate) fn bit_pos_from_index(i: u8) -> u32 {
 pub(crate) fn ptr_bit_pos_from_index(i: u8) -> u16 {
     // trace!("pfx {} ptr {} strlen {}",
     // <$pfxsize>::BITS, <$ptrsize>::BITS, Self::STRIDE_LEN);
-    1_u16.rotate_right(1) >> (i + 1)
+    trace!("PTR_BIT_POS_FROM_INDEX {i}");
+    1_u16.rotate_right(i as u32 + 2)
 }
 
 impl AtomicBitmap for AtomicPfxBitArr {

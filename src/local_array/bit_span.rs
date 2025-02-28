@@ -28,7 +28,10 @@ impl BitSpan {
     }
 
     pub(crate) fn check(&self) -> bool {
-        // println!("check bit span: {:?}", self);
+        println!("check bit span: {:?}", self);
+        if self.len == 0 && self.bits == 0 {
+            return true;
+        };
         self.len < 5
             && self.bits < 16
             && (self.bits << (32 - self.len)) >> (32 - self.len) == self.bits
