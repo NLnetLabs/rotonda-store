@@ -1,4 +1,5 @@
 use log::trace;
+use multi::{MemoryOnlyConfig, Record, RouteStatus};
 use std::thread;
 use std::time::Duration;
 
@@ -13,10 +14,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     trace!("Starting one-threaded yolo testing....");
-    let v4 = vec![8];
-    let v6 = vec![8];
-    let mut tree_bitmap =
-        rotonda_store::SingleThreadedStore::<PrefixAs>::new(v4, v6);
+    let tree_bitmap = rotonda_store::MultiThreadedStore::<
+        PrefixAs,
+        MemoryOnlyConfig,
+    >::try_default()?;
 
     let mut pfx_int = 0_u32;
 
@@ -36,9 +37,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 print!("{}-", pfx_int);
                 let asn: u32 = rng.random();
-                match tree_bitmap
-                    .insert(&pfx.unwrap(), PrefixAs::new_from_u32(asn))
-                {
+                match tree_bitmap.insert(
+                    &pfx.unwrap(),
+                    Record::new(
+                        1,
+                        0,
+                        RouteStatus::Active,
+                        PrefixAs::new_from_u32(asn),
+                    ),
+                    None,
+                ) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);

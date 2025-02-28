@@ -1,11 +1,12 @@
+use multi::MemoryOnlyConfig;
+use multi::Record;
 use rotonda_store::meta_examples::NoMeta;
 use rotonda_store::prelude::*;
-use rotonda_store::SingleThreadedStore;
+use rotonda_store::MultiThreadedStore;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let v4 = vec![8];
-    let v6 = vec![8];
-    let mut tree_bitmap = SingleThreadedStore::<NoMeta>::new(v4, v6);
+    let tree_bitmap =
+        MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?;
 
     let pfxs = vec![
         Prefix::new_relaxed(
@@ -260,7 +261,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         println!("insert {}", pfx?);
         // let p : rotonda_store::Prefix<u32, PrefixAs> = pfx.into();
-        tree_bitmap.insert(&pfx.unwrap(), NoMeta::Empty)?;
+        tree_bitmap.insert(
+            &pfx.unwrap(),
+            Record::new(1, 0, multi::RouteStatus::Active, NoMeta::Empty),
+            None,
+        )?;
     }
     println!("------ end of inserts\n");
     // println!(
@@ -336,7 +341,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new_relaxed(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
         println!("search for: {:?}", spfx);
-        // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
+        let guard = &rotonda_store::epoch::pin();
         let s_spfx = tree_bitmap.match_prefix(
             // (&locks.0, &locks.1),
             &spfx.unwrap(),
@@ -348,6 +353,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 mui: None,
                 include_history: IncludeHistory::None,
             },
+            guard,
         );
         println!("exact match: {:?}", s_spfx);
         println!("-----------");
