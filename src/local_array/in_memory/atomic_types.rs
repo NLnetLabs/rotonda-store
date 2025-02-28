@@ -20,10 +20,8 @@ use crate::prelude::Meta;
 use crate::AddressFamily;
 
 use super::super::errors::PrefixStoreError;
-use super::atomic_stride;
 use super::node::{StrideNodeId, TreeBitMapNode};
 use super::oncebox::OnceBoxSlice;
-use super::tree::{Stride, Stride4};
 
 // ----------- Node related structs -----------------------------------------
 

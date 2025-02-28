@@ -6,7 +6,7 @@ use crate::{
         bit_span::BitSpan,
         in_memory::{
             node::{NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter},
-            tree::{Stride4, TreeBitMap},
+            tree::TreeBitMap,
         },
     },
     prelude::multi::{NodeBuckets, PrefixId},

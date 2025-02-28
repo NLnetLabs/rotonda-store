@@ -232,8 +232,8 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
             StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
             0_u32,
             TreeBitMapNode {
-                ptrbitarr: AtomicStride3(AtomicU16::new(0)),
-                pfxbitarr: AtomicStride4(AtomicU32::new(0)),
+                ptrbitarr: AtomicPtrBitArr(AtomicU16::new(0)),
+                pfxbitarr: AtomicPfxBitArr(AtomicU32::new(0)),
                 _af: PhantomData,
             },
         )?;
@@ -412,7 +412,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         match self.retrieve_node(node_id) {
             Some(n) => {
                 let pfxbitarr = n.pfxbitarr.load();
-                pfxbitarr & Stride4::get_bit_pos(bs) > 0
+                pfxbitarr & bs.into_bit_pos() > 0
             }
             None => false,
         }
@@ -429,7 +429,7 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
         match self.retrieve_node_for_mui(node_id, mui) {
             Some(n) => {
                 let pfxbitarr = n.pfxbitarr.load();
-                pfxbitarr & Stride4::get_bit_pos(bs) > 0
+                pfxbitarr & bs.into_bit_pos() > 0
             }
             None => false,
         }
