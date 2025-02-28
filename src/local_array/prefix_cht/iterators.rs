@@ -31,13 +31,8 @@ pub(crate) struct MoreSpecificPrefixIter<
     include_withdrawn: bool,
 }
 
-impl<
-        'a,
-        AF: AddressFamily + 'a,
-        // M: Meta,
-        NB: NodeBuckets<AF>,
-        // PB: PrefixBuckets<AF, M>,
-    > Iterator for MoreSpecificPrefixIter<'a, AF, NB>
+impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
+    for MoreSpecificPrefixIter<'a, AF, NB>
 {
     type Item = PrefixId<AF>;
 

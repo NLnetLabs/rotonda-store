@@ -177,7 +177,7 @@ impl<
         self.tree.insert::<&[u8], &[u8]>(key, value, 0)
     }
 
-    pub fn remove(&self, key: &[u8]) {
+    pub fn _remove(&self, key: &[u8]) {
         self.tree.remove_weak(key, 0);
         // the first byte of the prefix holds the length of the prefix.
         self.counters.dec_prefixes_count(key[0]);

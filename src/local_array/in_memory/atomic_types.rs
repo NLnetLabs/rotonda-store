@@ -68,7 +68,6 @@ impl<AF: AddressFamily> NodeSet<AF> {
         multi_uniq_id: u32,
     ) -> Result<(u32, bool), crate::prelude::multi::PrefixStoreError>
     where
-        // S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;
@@ -78,13 +77,12 @@ impl<AF: AddressFamily> NodeSet<AF> {
         Ok((try_count, !absent))
     }
 
-    pub(crate) fn remove_from_rbm_index(
+    pub(crate) fn _remove_from_rbm_index(
         &self,
         multi_uniq_id: u32,
         _guard: &crate::epoch::Guard,
     ) -> Result<u32, crate::prelude::multi::PrefixStoreError>
     where
-        // S: atomic_stride::Stride,
         AF: crate::AddressFamily,
     {
         let try_count = 0;

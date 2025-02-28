@@ -3,7 +3,6 @@ use parking_lot_core::SpinWait;
 use std::fmt::{Binary, Debug};
 use std::sync::atomic::{fence, AtomicU16, AtomicU32, Ordering};
 
-use crate::af::Zero;
 use crate::local_array;
 use crate::local_array::bit_span::BitSpan;
 
@@ -19,7 +18,6 @@ where
     type InnerType: Binary
         + Copy
         + Debug
-        + Zero
         + PartialOrd
         + std::ops::BitAnd<Output = Self::InnerType>
         + std::ops::BitOr<Output = Self::InnerType>

@@ -21,11 +21,11 @@ pub use crate::local_array::rib::DefaultStore as MultiThreadedStore;
 
 //------------ Types for strides displaying/monitoring ----------------------
 
-type AfStrideStats = Vec<StrideStats>;
+type AfStrideStats<AF> = Vec<StrideStats<AF>>;
 
 pub struct Stats<'a> {
-    pub v4: &'a AfStrideStats,
-    pub v6: &'a AfStrideStats,
+    pub v4: &'a AfStrideStats<IPv4>,
+    pub v6: &'a AfStrideStats<IPv6>,
 }
 
 impl std::fmt::Display for Stats<'_> {

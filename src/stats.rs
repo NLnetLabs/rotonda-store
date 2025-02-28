@@ -1,82 +1,37 @@
 //------------ Types for Statistics -----------------------------------------
 
-use crate::stride::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
-use std::fmt::{Debug, Display};
+// use crate::stride::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
+use std::{
+    fmt::{Debug, Display},
+    marker::PhantomData,
+};
 
-#[derive(Debug, Copy, Clone)]
-pub enum SizedStride {
-    Stride3,
-    Stride4,
-    Stride5,
-    Stride6,
-    Stride7,
-    Stride8,
-}
-pub struct StrideStats {
-    pub stride_type: SizedStride,
-    pub stride_size: usize,
-    pub stride_len: u8,
+use crate::{
+    local_array::{
+        in_memory::node::TreeBitMapNode, rib::default_store::STRIDE_SIZE,
+    },
+    AddressFamily,
+};
+
+pub struct StrideStats<AF: AddressFamily> {
     pub node_size: usize,
     pub created_nodes: Vec<CreatedNodes>,
     pub prefixes_num: Vec<CreatedNodes>,
+    _af: PhantomData<AF>,
 }
 
-impl StrideStats {
-    pub fn new(stride_type: SizedStride, num_depth_levels: u8) -> Self {
-        match stride_type {
-            SizedStride::Stride3 => Self {
-                stride_type: SizedStride::Stride3,
-                stride_size: 16,
-                stride_len: 3,
-                node_size: std::mem::size_of::<Stride3>(),
-                created_nodes: Self::nodes_vec(num_depth_levels),
-                prefixes_num: Self::nodes_vec(num_depth_levels),
-            },
-            SizedStride::Stride4 => Self {
-                stride_type: SizedStride::Stride4,
-                stride_size: 32,
-                stride_len: 4,
-                node_size: std::mem::size_of::<Stride4>(),
-                created_nodes: Self::nodes_vec(num_depth_levels),
-                prefixes_num: Self::nodes_vec(num_depth_levels),
-            },
-            SizedStride::Stride5 => Self {
-                stride_type: SizedStride::Stride5,
-                stride_size: 64,
-                stride_len: 5,
-                node_size: std::mem::size_of::<Stride5>(),
-                created_nodes: Self::nodes_vec(num_depth_levels),
-                prefixes_num: Self::nodes_vec(num_depth_levels),
-            },
-            SizedStride::Stride6 => Self {
-                stride_type: SizedStride::Stride6,
-                stride_size: 128,
-                stride_len: 6,
-                node_size: std::mem::size_of::<Stride6>(),
-                created_nodes: Self::nodes_vec(num_depth_levels),
-                prefixes_num: Self::nodes_vec(num_depth_levels),
-            },
-            SizedStride::Stride7 => Self {
-                stride_type: SizedStride::Stride7,
-                stride_size: 256,
-                stride_len: 7,
-                node_size: std::mem::size_of::<Stride7>(),
-                created_nodes: Self::nodes_vec(num_depth_levels),
-                prefixes_num: Self::nodes_vec(num_depth_levels),
-            },
-            SizedStride::Stride8 => Self {
-                stride_type: SizedStride::Stride8,
-                stride_size: 512,
-                stride_len: 8,
-                node_size: std::mem::size_of::<Stride8>(),
-                created_nodes: Self::nodes_vec(num_depth_levels),
-                prefixes_num: Self::nodes_vec(num_depth_levels),
-            },
+impl<AF: AddressFamily> StrideStats<AF> {
+    pub fn new() -> Self {
+        Self {
+            node_size: std::mem::size_of::<TreeBitMapNode<AF>>(),
+            created_nodes: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
+            prefixes_num: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
+            _af: PhantomData,
         }
     }
 
     pub fn mem_usage(&self) -> usize {
-        self.stride_size
+        STRIDE_SIZE as usize
             * self.created_nodes.iter().fold(0, |mut acc, c| {
                 acc += c.count;
                 acc
@@ -103,12 +58,17 @@ impl StrideStats {
     }
 }
 
-impl Debug for StrideStats {
+impl<AF: AddressFamily> Default for StrideStats<AF> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<AF: AddressFamily> Debug for StrideStats<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:?}:{:>8?} {:?} ({}k)",
-            &self.stride_type,
+            "Stride4:{:>8?} {:?} ({}k)",
             &self.created_nodes.iter().fold(0, |mut a, n| {
                 a += n.count;
                 a
@@ -119,12 +79,11 @@ impl Debug for StrideStats {
     }
 }
 
-impl Display for StrideStats {
+impl<AF: AddressFamily> Display for StrideStats<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{:?}:{:>8?} {:?} ({}k)",
-            &self.stride_type,
+            "Stride4:{:>8?} {:?} ({}k)",
             &self.created_nodes.iter().fold(0, |mut a, n| {
                 a += n.count;
                 a

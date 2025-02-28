@@ -12,11 +12,7 @@
 //! Read more about the data-structure in this [blog post](https://blog.nlnetlabs.nl/donkeys-mules-horses/).
 mod af;
 mod local_array;
-// mod local_vec;
-mod node_id;
 mod prefix_record;
-mod stride;
-mod synth_int;
 
 pub mod test_types;
 
