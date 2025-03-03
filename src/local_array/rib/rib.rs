@@ -328,7 +328,6 @@ pub struct UpsertReport {
 pub struct Rib<
     AF: AddressFamily,
     M: Meta,
-    // K: KeySize<AF, KEY_SIZE>,
     NB: FamilyCHT<AF, NodeSet<AF>>,
     PB: FamilyCHT<AF, PrefixSet<AF, M>>,
     C: Config,
@@ -344,8 +343,7 @@ pub struct Rib<
 
 impl<
         AF: AddressFamily,
-        M: crate::prefix_record::Meta,
-        // K: KeySize<AF, KEY_SIZE>,
+        M: Meta,
         NB: FamilyCHT<AF, NodeSet<AF>>,
         PB: FamilyCHT<AF, PrefixSet<AF, M>>,
         C: Config,
@@ -359,24 +357,6 @@ impl<
     {
         Rib::<AF, M, NB, PB, C, KEY_SIZE>::init(config)
     }
-
-    // pub(crate) fn new_short_key(
-    //     config: StoreConfig,
-    // ) -> Result<
-    //     Rib<AF, M, ShortKey<AF>, NB, PB, KEY_SIZE>,
-    //     Box<dyn std::error::Error>,
-    // > {
-    //     Rib::<AF, M, ShortKey<AF>, NB, PB, KEY_SIZE>::init(config)
-    // }
-
-    // pub(crate) fn new_long_key(
-    //     config: StoreConfig,
-    // ) -> Result<
-    //     Rib<AF, M, LongKey<AF>, NB, PB, KEY_SIZE>,
-    //     Box<dyn std::error::Error>,
-    // > {
-    //     Rib::<AF, M, LongKey<AF>, NB, PB, KEY_SIZE>::init(config)
-    // }
 
     fn init(config: C) -> Result<Self, Box<dyn std::error::Error>> {
         info!("store: initialize store {}", AF::BITS);
@@ -537,51 +517,11 @@ impl<
                     p_tree.get_records_with_keys_for_prefix_mui(prefix, mui);
 
                 for s in stored_prefixes {
-                    // let key: [u8; KEY_SIZE] = PersistTree::<
-                    //     AF,
-                    //     // PREFIX_SIZE,
-                    //     K,
-                    //     KEY_SIZE,
-                    // >::persistence_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Withdrawn,
-                    // );
-
-                    // let key = K::new_write_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Withdrawn,
-                    // );
-                    // let record =
-                    //     ZeroCopyRecord::<AF>::try_ref_from_prefix(&s)
-                    //         .unwrap()
-                    //         .0;
-                    // let key = ShortKey::from((record.prefix, mui));
-                    // trace!("insert key {:?}", key);
-
-                    // // new header for this value
-                    // let mut value = ValueHeader {
-                    //     ltime,
-                    //     status: RouteStatus::Withdrawn,
-                    // }
-                    // .as_bytes()
-                    // .to_vec();
-                    // value.extend_from_slice(record.meta.as_ref());
-
-                    // p_tree.insert(key.as_bytes(), &value);
                     let header = ValueHeader {
                         ltime,
                         status: RouteStatus::Withdrawn,
                     };
                     p_tree.rewrite_header_for_record(header, &s);
-
-                    // remove the entry for the same (prefix, mui), but with
-                    // an older logical time
-                    // let key = K::short_key(&s);
-                    // p_tree.remove(key.as_bytes());
                 }
             }
             PersistStrategy::PersistHistory => {
@@ -607,39 +547,6 @@ impl<
                             return Err(PrefixStoreError::StoreNotReadyError);
                         };
 
-                    // let key: [u8; KEY_SIZE] = PersistTree::<
-                    //     AF,
-                    //     K,
-                    //     // PREFIX_SIZE,
-                    //     KEY_SIZE,
-                    // >::persistence_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Withdrawn,
-                    // );
-                    // let key = K::new_write_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Withdrawn,
-                    // );
-                    //
-
-                    // Here we are keeping persisted history, so no removal of
-                    // old (prefix, mui) records.
-                    // We are inserting an empty record, since this is a
-                    // withdrawal.
-                    // p_tree.insert(
-                    //     LongKey::from((
-                    //         prefix,
-                    //         mui,
-                    //         ltime,
-                    //         RouteStatus::Withdrawn,
-                    //     ))
-                    //     .as_bytes(),
-                    //     &[],
-                    // );
                     p_tree.insert_empty_record(prefix, mui, ltime);
                 }
             }
@@ -668,57 +575,15 @@ impl<
             }
             PersistStrategy::PersistOnly => {
                 let p_tree = self.persist_tree.as_ref().unwrap();
-                // let stored_prefixes = p_tree
-                //     .get_records_with_keys_for_prefix_mui::<M>(prefix, mui)
 
                 if let Some(record_b) =
                     p_tree.get_most_recent_record_for_prefix_mui(prefix, mui)
                 {
-                    // let new_key: [u8; KEY_SIZE] = PersistTree::<
-                    //     AF,
-                    //     // PREFIX_SIZE,
-                    //     KEY_SIZE,
-                    // >::persistence_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Active,
-                    // );
-
-                    // let record: &mut ZeroCopyRecord<AF> =
-                    //     ZeroCopyRecord::try_mut_from_bytes(&mut record_b)
-                    //         .unwrap();
-                    // // record.prefix = prefix;
-                    // // record.multi_uniq_id = mui;
-                    // record.ltime = ltime;
-                    // record.status = RouteStatus::Active;
-
                     let header = ValueHeader {
                         ltime,
                         status: RouteStatus::Active,
                     };
-                    // .as_bytes()
-                    // .to_vec();
-                    // value.extend_from_slice(record.meta.as_ref());
-
-                    // p_tree.insert(
-                    //     ShortKey::from((prefix, mui)).as_bytes(),
-                    //     value.as_bytes(),
-                    // );
                     p_tree.rewrite_header_for_record(header, &record_b);
-                    // // remove the entry for the same (prefix, mui), but with
-                    // // an older logical time
-                    // let old_key = PersistTree::<
-                    //     AF,
-                    //     // PREFIX_SIZE,
-                    //     KEY_SIZE,
-                    // >::persistence_key(
-                    //     prefix,
-                    //     mui,
-                    //     record.ltime,
-                    //     record.status,
-                    // );
-                    // p_tree.remove(old_key);
                 }
             }
             PersistStrategy::PersistHistory => {
@@ -742,22 +607,6 @@ impl<
                             return Err(PrefixStoreError::StoreNotReadyError);
                         };
 
-                    // let key: [u8; KEY_SIZE] = PersistTree::<
-                    //     AF,
-                    //     // PREFIX_SIZE,
-                    //     KEY_SIZE,
-                    // >::persistence_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Active,
-                    // );
-                    // let key = K::new_write_key(
-                    //     prefix,
-                    //     mui,
-                    //     ltime,
-                    //     RouteStatus::Active,
-                    // );
                     // Here we are keeping persisted history, so no removal of
                     // old (prefix, mui) records.
                     // We are inserting an empty record, since this is a
@@ -943,38 +792,6 @@ impl<
             .into_iter()
             .flatten()
     }
-    // pub fn get_records_for_prefix(
-    //     &self,
-    //     prefix: &Prefix,
-    //     mui: Option<u32>,
-    //     include_withdrawn: bool,
-    // ) -> Vec<PublicRecord<M>> {
-    //     trace!("get records for prefix in the right store");
-    //     let guard = epoch::pin();
-    //     match self.persist_strategy() {
-    //         PersistStrategy::PersistOnly => self
-    //             .persist_tree
-    //             .as_ref()
-    //             .map(|tree| {
-    //                 tree.get_records_for_prefix(
-    //                     PrefixId::from(*prefix),
-    //                     mui,
-    //                     include_withdrawn,
-    //                     self.in_memory_tree.withdrawn_muis_bmin(&guard),
-    //                 )
-    //             })
-    //             .unwrap_or_default(),
-    //         _ => self
-    //             .prefix_cht
-    //             .get_records_for_prefix(
-    //                 PrefixId::from(*prefix),
-    //                 mui,
-    //                 include_withdrawn,
-    //                 self.in_memory_tree.withdrawn_muis_bmin(&guard),
-    //             )
-    //             .unwrap_or_default(),
-    //     }
-    // }
 
     pub fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {
         if let Some(p) = &self.persist_tree {
@@ -1004,10 +821,8 @@ impl<
 
 impl<
         M: Meta,
-        // K: KeySize<IPv4, KEY_SIZE>,
         NB: FamilyCHT<IPv4, NodeSet<IPv4>>,
         PB: FamilyCHT<IPv4, PrefixSet<IPv4, M>>,
-        // const PREFIX_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
     > std::fmt::Display for Rib<IPv4, M, NB, PB, C, KEY_SIZE>
@@ -1019,11 +834,9 @@ impl<
 
 impl<
         M: Meta,
-        // K: KeySize<IPv6, KEY_SIZE>,
         NB: FamilyCHT<IPv6, NodeSet<IPv6>>,
         PB: FamilyCHT<IPv6, PrefixSet<IPv6, M>>,
         C: Config,
-        // const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
     > std::fmt::Display for Rib<IPv6, M, NB, PB, C, KEY_SIZE>
 {

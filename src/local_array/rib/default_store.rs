@@ -1,5 +1,3 @@
-use crate::local_array::in_memory::atomic_types::NodeSet;
-use crate::local_array::persist::lsm_tree::LongKey;
 use crate::prelude::multi::*;
 use crate::prelude::*;
 use rand::prelude::*;
@@ -29,6 +27,10 @@ impl<AF: AddressFamily, const SIZE: usize> FamilyCHT<AF, NodeSet<AF>>
         }))
     }
 
+    fn root_for_len(&self, len: u8) -> &NodeSet<AF> {
+        &self.0[len as usize / 4]
+    }
+
     fn bits_for_len(len: u8, lvl: u8) -> u8 {
         let res = 4 * (lvl + 1);
         if res < len {
@@ -38,10 +40,6 @@ impl<AF: AddressFamily, const SIZE: usize> FamilyCHT<AF, NodeSet<AF>>
         } else {
             len
         }
-    }
-
-    fn root_for_len(&self, len: u8) -> &NodeSet<AF> {
-        &self.0[len as usize / 4]
     }
 }
 
@@ -77,24 +75,8 @@ impl<AF: AddressFamily, M: Meta, const SIZE: usize>
 }
 
 pub struct DefaultStore<M: Meta, C: Config> {
-    v4: Rib<
-        IPv4,
-        M,
-        // LongKey<IPv4>,
-        NodeCHT<IPv4, 9>,
-        PrefixCHT<IPv4, M, 33>,
-        C,
-        18,
-    >,
-    v6: Rib<
-        IPv6,
-        M,
-        // LongKey<IPv6>,
-        NodeCHT<IPv6, 33>,
-        PrefixCHT<IPv6, M, 129>,
-        C,
-        30,
-    >,
+    v4: Rib<IPv4, M, NodeCHT<IPv4, 9>, PrefixCHT<IPv4, M, 33>, C, 18>,
+    v6: Rib<IPv6, M, NodeCHT<IPv6, 33>, PrefixCHT<IPv6, M, 129>, C, 30>,
     config: C,
 }
 
