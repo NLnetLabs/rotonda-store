@@ -194,7 +194,7 @@ use roaring::RoaringBitmap;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::{fmt::Debug, marker::PhantomData};
 
-use super::atomic_types::NodeBuckets;
+use super::atomic_types::FamilyCHT;
 use crate::af::AddressFamily;
 use crate::rib::Counters;
 
@@ -210,7 +210,7 @@ use ansi_term::Colour;
 //--------------------- TreeBitMap ------------------------------------------
 
 #[derive(Debug)]
-pub struct TreeBitMap<AF: AddressFamily, NB: NodeBuckets<AF>> {
+pub struct TreeBitMap<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> {
     pub(crate) node_buckets: NB,
     pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
@@ -218,10 +218,10 @@ pub struct TreeBitMap<AF: AddressFamily, NB: NodeBuckets<AF>> {
     _af: PhantomData<AF>,
 }
 
-impl<AF: AddressFamily, NB: NodeBuckets<AF>> TreeBitMap<AF, NB> {
+impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> TreeBitMap<AF, NB> {
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let tree_bitmap = Self {
-            node_buckets: NodeBuckets::init(),
+            node_buckets: FamilyCHT::init(),
             withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             default_route_exists: AtomicBool::new(false),
@@ -466,7 +466,7 @@ Giving up this node. This shouldn't happen!",
             self.retrieve_node_mut(self.get_root_node_id(), mui)
         {
             self.node_buckets
-                .get_store(self.get_root_node_id())
+                .root_for_len(self.get_root_node_id().len())
                 .update_rbm_index(mui)
         } else {
             Err(PrefixStoreError::StoreNotReadyError)
@@ -501,14 +501,16 @@ Giving up this node. This shouldn't happen!",
         }
         self.counters.inc_nodes_count();
 
-        let mut nodes = self.node_buckets.get_store(id);
+        let mut nodes = self.node_buckets.root_for_len(id.len());
         let new_node = next_node;
         let mut level = 0;
         let mut retry_count = 0;
 
         loop {
-            let this_level =
-                <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level);
+            let this_level = <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
+                id.len(),
+                level,
+            );
 
             // if this_level > (id.len() / 4) {
             //     return Err(PrefixStoreError::StoreNotReadyError);
@@ -525,7 +527,7 @@ Giving up this node. This shouldn't happen!",
                 None => {
                     // No node exists, so we create one here.
                     let next_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level + 1,
                         );
@@ -644,7 +646,7 @@ lvl{}",
                             index
                         );
 
-                        match <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level,
                         ) {
@@ -798,7 +800,7 @@ lvl{}",
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
-        let mut nodes = self.node_buckets.get_store(id);
+        let mut nodes = self.node_buckets.root_for_len(id.len());
 
         loop {
             let index = Self::hash_node_id(id, level);
@@ -811,12 +813,12 @@ lvl{}",
                 // empty node in the store.
                 None => {
                     let this_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level,
                         );
                     let next_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level + 1,
                         );
@@ -868,8 +870,10 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level)
-            {
+            match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
+                id.len(),
+                level,
+            ) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -887,7 +891,7 @@ lvl{}",
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
-        let mut nodes = self.node_buckets.get_store(id);
+        let mut nodes = self.node_buckets.root_for_len(id.len());
 
         loop {
             let index = Self::hash_node_id(id, level);
@@ -900,12 +904,12 @@ lvl{}",
                 // empty node in the store.
                 None => {
                     let this_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level,
                         );
                     let next_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level + 1,
                         );
@@ -955,8 +959,10 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level)
-            {
+            match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
+                id.len(),
+                level,
+            ) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -974,7 +980,7 @@ lvl{}",
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
-        let mut nodes = self.node_buckets.get_store(id);
+        let mut nodes = self.node_buckets.root_for_len(id.len());
 
         loop {
             let index = Self::hash_node_id(id, level);
@@ -987,12 +993,12 @@ lvl{}",
                 // empty node in the store.
                 None => {
                     let this_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level,
                         );
                     let next_level =
-                        <NB as NodeBuckets<AF>>::len_to_store_bits(
+                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
                             id.len(),
                             level + 1,
                         );
@@ -1052,8 +1058,10 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as NodeBuckets<AF>>::len_to_store_bits(id.len(), level)
-            {
+            match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
+                id.len(),
+                level,
+            ) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -1082,9 +1090,9 @@ lvl{}",
 
     // Stride related methods
 
-    pub fn get_stride_sizes(&self) -> &[u8] {
-        self.node_buckets.get_stride_sizes()
-    }
+    // pub fn get_stride_sizes(&self) -> &[u8] {
+    //     self.node_buckets.get_stride_sizes()
+    // }
 
     // Calculates the id of the node that COULD host a prefix in its
     // ptrbitarr.
@@ -1180,11 +1188,11 @@ lvl{}",
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
         let last_level = if level > 0 {
-            <NB>::len_to_store_bits(id.len(), level - 1)
+            <NB>::bits_for_len(id.len(), level - 1)
         } else {
             0
         };
-        let this_level = <NB>::len_to_store_bits(id.len(), level);
+        let this_level = <NB>::bits_for_len(id.len(), level);
         // trace!("bits division {}", this_level);
         // trace!(
         //     "calculated index ({} << {}) >> {}",
@@ -1234,7 +1242,7 @@ lvl{}",
 
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
-impl<AF: AddressFamily, NB: NodeBuckets<AF>> std::fmt::Display
+impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> std::fmt::Display
     for TreeBitMap<AF, NB>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -1242,14 +1250,14 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> std::fmt::Display
         writeln!(_f, "{} nodes created", self.get_nodes_count())?;
         writeln!(_f)?;
 
-        writeln!(
-            _f,
-            "stride division {:?}",
-            self.get_stride_sizes()
-                .iter()
-                .map_while(|s| if s > &0 { Some(*s) } else { None })
-                .collect::<Vec<_>>()
-        )?;
+        // writeln!(
+        //     _f,
+        //     "stride division {:?}",
+        //     self.get_stride_sizes()
+        //         .iter()
+        //         .map_while(|s| if s > &0 { Some(*s) } else { None })
+        //         .collect::<Vec<_>>()
+        // )?;
 
         writeln!(
             _f,
@@ -1260,14 +1268,14 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> std::fmt::Display
         let bars = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
         const SCALE: u32 = 5500;
 
-        trace!(
-            "stride_sizes {:?}",
-            self.get_stride_sizes()
-                .iter()
-                .map_while(|s| if s > &0 { Some(*s) } else { None })
-                .enumerate()
-                .collect::<Vec<(usize, u8)>>()
-        );
+        // trace!(
+        //     "stride_sizes {:?}",
+        //     self.get_stride_sizes()
+        //         .iter()
+        //         .map_while(|s| if s > &0 { Some(*s) } else { None })
+        //         .enumerate()
+        //         .collect::<Vec<(usize, u8)>>()
+        // );
 
         for crate::stats::CreatedNodes {
             depth_level: len,

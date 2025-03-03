@@ -10,14 +10,11 @@ pub mod multi {
 
     pub use std::sync::atomic::Ordering;
 
-    pub use rotonda_macros::create_store;
-    pub use rotonda_macros::stride_sizes;
-
     pub use crossbeam_epoch::{self as epoch, Guard};
 
     pub use crate::local_array::errors::PrefixStoreError;
     pub use crate::local_array::in_memory::atomic_types::{
-        NodeBuckets, PrefixBuckets, PrefixSet,
+        FamilyCHT, NodeSet, PrefixSet,
     };
     pub use crate::local_array::in_memory::iterators;
     pub use crate::local_array::in_memory::node::StrideNodeId;

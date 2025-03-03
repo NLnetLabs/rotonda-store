@@ -7,8 +7,10 @@ use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 use crate::{
-    local_array::in_memory::atomic_types::{MultiMapValue, StoredPrefix},
-    prelude::multi::{PrefixBuckets, PrefixId, PrefixSet, PrefixStoreError},
+    local_array::in_memory::atomic_types::{
+        MultiMapValue, PrefixSet, StoredPrefix,
+    },
+    prelude::multi::{FamilyCHT, PrefixId, PrefixStoreError},
     rib::UpsertReport,
     AddressFamily, Meta, PublicRecord,
 };
@@ -17,14 +19,14 @@ use crate::{
 pub(crate) struct PrefixCHT<
     AF: AddressFamily,
     M: Meta,
-    PB: PrefixBuckets<AF, M>,
+    PB: FamilyCHT<AF, PrefixSet<AF, M>>,
 > {
     store: PB,
     _af: PhantomData<AF>,
     _m: PhantomData<M>,
 }
 
-impl<AF: AddressFamily, M: Meta, PB: PrefixBuckets<AF, M>>
+impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
     PrefixCHT<AF, M, PB>
 {
     pub(crate) fn new() -> Self {
@@ -42,7 +44,7 @@ impl<AF: AddressFamily, M: Meta, PB: PrefixBuckets<AF, M>>
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Option<Vec<PublicRecord<M>>> {
-        let mut prefix_set = self.store.get_root_prefix_set(prefix.get_len());
+        let mut prefix_set = self.store.root_for_len(prefix.get_len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
 
@@ -178,7 +180,7 @@ impl<AF: AddressFamily, M: Meta, PB: PrefixBuckets<AF, M>>
     ) -> (&StoredPrefix<AF, M>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
         let mut prefix_set =
-            self.store.get_root_prefix_set(search_prefix_id.get_len());
+            self.store.root_for_len(search_prefix_id.get_len());
         let mut level: u8 = 0;
 
         trace!("root prefix_set {:?}", prefix_set);
@@ -260,7 +262,7 @@ impl<AF: AddressFamily, M: Meta, PB: PrefixBuckets<AF, M>>
             usize,
         )>,
     ) {
-        let mut prefix_set = self.store.get_root_prefix_set(id.get_len());
+        let mut prefix_set = self.store.root_for_len(id.get_len());
         let mut parents = [None; 32];
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -305,11 +307,11 @@ impl<AF: AddressFamily, M: Meta, PB: PrefixBuckets<AF, M>>
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
         let last_level = if level > 0 {
-            <PB>::get_bits_for_len(id.get_len(), level - 1)
+            <PB>::bits_for_len(id.get_len(), level - 1)
         } else {
             0
         };
-        let this_level = <PB>::get_bits_for_len(id.get_len(), level);
+        let this_level = <PB>::bits_for_len(id.get_len(), level);
         // trace!(
         //     "bits division {}; no of bits {}",
         //     this_level,

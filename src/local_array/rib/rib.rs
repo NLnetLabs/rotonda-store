@@ -14,14 +14,13 @@ use crate::local_array::persist::lsm_tree::KeySize;
 use crate::local_array::prefix_cht::cht::PrefixCHT;
 use crate::local_array::types::PrefixId;
 use crate::prefix_record::{ValueHeader, ZeroCopyRecord};
-use crate::prelude::multi::RouteStatus;
+use crate::prelude::multi::{PrefixSet, RouteStatus};
 use crate::stats::CreatedNodes;
 use crate::{
     local_array::errors::PrefixStoreError, prefix_record::PublicRecord,
 };
 
-use crate::local_array::in_memory::atomic_types::NodeBuckets;
-use crate::local_array::in_memory::atomic_types::PrefixBuckets;
+use crate::local_array::in_memory::atomic_types::{FamilyCHT, NodeSet};
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
@@ -330,8 +329,8 @@ pub struct Rib<
     AF: AddressFamily,
     M: Meta,
     K: KeySize<AF, KEY_SIZE>,
-    NB: NodeBuckets<AF>,
-    PB: PrefixBuckets<AF, M>,
+    NB: FamilyCHT<AF, NodeSet<AF>>,
+    PB: FamilyCHT<AF, PrefixSet<AF, M>>,
     C: Config,
     const KEY_SIZE: usize,
 > {
@@ -347,8 +346,8 @@ impl<
         AF: AddressFamily,
         M: crate::prefix_record::Meta,
         K: KeySize<AF, KEY_SIZE>,
-        NB: NodeBuckets<AF>,
-        PB: PrefixBuckets<AF, M>,
+        NB: FamilyCHT<AF, NodeSet<AF>>,
+        PB: FamilyCHT<AF, PrefixSet<AF, M>>,
         C: Config,
         const KEY_SIZE: usize,
     > Rib<AF, M, K, NB, PB, C, KEY_SIZE>
@@ -1006,8 +1005,8 @@ impl<
 impl<
         M: Meta,
         K: KeySize<IPv4, KEY_SIZE>,
-        NB: NodeBuckets<IPv4>,
-        PB: PrefixBuckets<IPv4, M>,
+        NB: FamilyCHT<IPv4, NodeSet<IPv4>>,
+        PB: FamilyCHT<IPv4, PrefixSet<IPv4, M>>,
         // const PREFIX_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
@@ -1021,8 +1020,8 @@ impl<
 impl<
         M: Meta,
         K: KeySize<IPv6, KEY_SIZE>,
-        NB: NodeBuckets<IPv6>,
-        PB: PrefixBuckets<IPv6, M>,
+        NB: FamilyCHT<IPv6, NodeSet<IPv6>>,
+        PB: FamilyCHT<IPv6, PrefixSet<IPv6, M>>,
         C: Config,
         // const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,

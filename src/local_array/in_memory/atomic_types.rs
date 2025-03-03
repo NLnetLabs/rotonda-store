@@ -135,15 +135,15 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
 }
 
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
-    pub(crate) fn new<PB: PrefixBuckets<AF, M>>(
+    pub(crate) fn new<PB: FamilyCHT<AF, PrefixSet<AF, M>>>(
         pfx_id: PrefixId<AF>,
         level: u8,
     ) -> Self {
         // start calculation size of next set, it's dependent on the level
         // we're in.
         // let pfx_id = PrefixId::new(record.net, record.len);
-        let this_level = PB::get_bits_for_len(pfx_id.get_len(), level);
-        let next_level = PB::get_bits_for_len(pfx_id.get_len(), level + 1);
+        let this_level = PB::bits_for_len(pfx_id.get_len(), level);
+        let next_level = PB::bits_for_len(pfx_id.get_len(), level + 1);
 
         trace!("this level {} next level {}", this_level, next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
@@ -565,30 +565,11 @@ impl<M: Meta> Clone for MultiMap<M> {
 }
 
 // ----------- FamilyBuckets Trait ------------------------------------------
-//
-// Implementations of this trait are done by a proc-macro called
-// `stride_sizes`from the `rotonda-macros` crate.
 
-pub trait NodeBuckets<AF: AddressFamily> {
+pub trait FamilyCHT<AF: AddressFamily, V> {
     fn init() -> Self;
-    fn len_to_store_bits(len: u8, level: u8) -> u8;
-    fn get_stride_sizes(&self) -> &[u8];
-    fn get_stride_for_id(&self, id: StrideNodeId<AF>) -> u8;
-    // fn get_store3(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride3>;
-    fn get_store(&self, id: StrideNodeId<AF>) -> &NodeSet<AF>;
-    // fn get_store5(&self, id: StrideNodeId<AF>) -> &NodeSet<AF, Stride5>;
-    fn get_strides_len() -> u8;
-    // fn get_first_stride_size() -> u8;
-}
-
-pub trait PrefixBuckets<AF: AddressFamily, M: Meta>
-where
-    Self: Sized,
-{
-    fn init() -> Self;
-    fn remove(&mut self, id: PrefixId<AF>) -> Option<M>;
-    fn get_root_prefix_set(&self, len: u8) -> &'_ PrefixSet<AF, M>;
-    fn get_bits_for_len(len: u8, level: u8) -> u8;
+    fn bits_for_len(len: u8, level: u8) -> u8;
+    fn root_for_len(&self, len: u8) -> &V;
 }
 
 //------------ PrefixSet ----------------------------------------------------

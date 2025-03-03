@@ -19,7 +19,7 @@
 // contention, since every lookup has to go through the levels near the root
 // in the TreeBitMap.
 
-use crate::local_array::in_memory::atomic_types::NodeBuckets;
+use crate::local_array::in_memory::atomic_types::FamilyCHT;
 use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::{
     af::AddressFamily,
@@ -34,6 +34,8 @@ use crate::{
 
 use inetnum::addr::Prefix;
 use log::{log_enabled, trace};
+
+use super::atomic_types::NodeSet;
 
 // ----------- MoreSpecificPrefixIter ------------------------------------
 
@@ -56,7 +58,7 @@ use log::{log_enabled, trace};
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    NB: NodeBuckets<AF>,
+    NB: FamilyCHT<AF, NodeSet<AF>>,
 > {
     tree: &'a TreeBitMap<AF, NB>,
     cur_ptr_iter: NodeMoreSpecificChildIter<AF>,
@@ -64,7 +66,7 @@ pub(crate) struct MoreSpecificPrefixIter<
     parent_and_position: Vec<NodeMoreSpecificChildIter<AF>>,
 }
 
-impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
+impl<'a, AF: AddressFamily + 'a, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
     for MoreSpecificPrefixIter<'a, AF, NB>
 {
     type Item = PrefixId<AF>;
@@ -178,12 +180,16 @@ impl<'a, AF: AddressFamily + 'a, NB: NodeBuckets<AF>> Iterator
     }
 }
 
-pub(crate) struct LMPrefixIter<'a, AF: AddressFamily, NB: NodeBuckets<AF>> {
+pub(crate) struct LMPrefixIter<
+    'a,
+    AF: AddressFamily,
+    NB: FamilyCHT<AF, NodeSet<AF>>,
+> {
     tree: &'a TreeBitMap<AF, NB>,
     prefix: PrefixId<AF>,
 }
 
-impl<AF: AddressFamily, NB: NodeBuckets<AF>> Iterator
+impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
     for LMPrefixIter<'_, AF, NB>
 {
     type Item = PrefixId<AF>;
@@ -215,14 +221,14 @@ impl<AF: AddressFamily, NB: NodeBuckets<AF>> Iterator
 pub(crate) struct LessSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    NB: NodeBuckets<AF>,
+    NB: FamilyCHT<AF, NodeSet<AF>>,
 > {
     tree: &'a TreeBitMap<AF, NB>,
     prefix: PrefixId<AF>,
     cur_level: u8,
 }
 
-impl<AF: AddressFamily, NB: NodeBuckets<AF>> Iterator
+impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
     for LessSpecificPrefixIter<'_, AF, NB>
 {
     type Item = PrefixId<AF>;
@@ -259,7 +265,7 @@ impl<
         'a,
         AF: AddressFamily,
         // M: crate::prefix_record::Meta,
-        NB: NodeBuckets<AF>,
+        NB: FamilyCHT<AF, NodeSet<AF>>,
         // PB: PrefixBuckets<AF, M>,
     > TreeBitMap<AF, NB>
 {

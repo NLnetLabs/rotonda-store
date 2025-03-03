@@ -4,9 +4,7 @@ use log::trace;
 use zerocopy::TryFromBytes;
 
 use crate::af::AddressFamily;
-use crate::local_array::in_memory::atomic_types::{
-    NodeBuckets, PrefixBuckets,
-};
+use crate::local_array::in_memory::atomic_types::FamilyCHT;
 use crate::prefix_record::ZeroCopyRecord;
 use crate::rib::{Config, PersistStrategy, Rib};
 use crate::PublicRecord;
@@ -17,6 +15,7 @@ use crate::{Meta, QueryResult};
 use crate::{MatchOptions, MatchType};
 
 use super::errors::PrefixStoreError;
+use super::in_memory::atomic_types::{NodeSet, PrefixSet};
 use super::persist::lsm_tree::KeySize;
 use super::types::PrefixId;
 
@@ -28,8 +27,8 @@ where
     AF: AddressFamily,
     M: Meta,
     K: KeySize<AF, KEY_SIZE>,
-    NB: NodeBuckets<AF>,
-    PB: PrefixBuckets<AF, M>,
+    NB: FamilyCHT<AF, NodeSet<AF>>,
+    PB: FamilyCHT<AF, PrefixSet<AF, M>>,
 {
     pub(crate) fn get_value(
         &'a self,

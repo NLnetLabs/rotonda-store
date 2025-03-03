@@ -30,7 +30,7 @@ parking_lot_core = "0.9.10"
 inetnum   = "0.1"
 log       = "^0.4"
 roaring 	= "0.10.3"
-rotonda-macros = { path = "proc_macros", version = "0.4.0" }
+# rotonda-macros = { path = "proc_macros", version = "0.4.0" }
 routecore       = { git = "https://github.com/nlnetlabs/routecore", branch = "dev", version = "0.5.2-dev", features = ["bgp", "bmp", "fsm", "serde", "mrt"] }
 ansi_term   = { version = "0.12", optional = true }
 csv         = { version = "1", optional = true }
