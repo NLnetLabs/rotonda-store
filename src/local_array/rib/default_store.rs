@@ -80,7 +80,7 @@ pub struct DefaultStore<M: Meta, C: Config> {
     v4: Rib<
         IPv4,
         M,
-        LongKey<IPv4>,
+        // LongKey<IPv4>,
         NodeCHT<IPv4, 9>,
         PrefixCHT<IPv4, M, 33>,
         C,
@@ -89,7 +89,7 @@ pub struct DefaultStore<M: Meta, C: Config> {
     v6: Rib<
         IPv6,
         M,
-        LongKey<IPv6>,
+        // LongKey<IPv6>,
         NodeCHT<IPv6, 33>,
         PrefixCHT<IPv6, M, 129>,
         C,

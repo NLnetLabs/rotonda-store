@@ -21,12 +21,12 @@ use super::types::PrefixId;
 
 //------------ Prefix Matching ----------------------------------------------
 
-impl<'a, AF, M, K, NB, PB, C: Config, const KEY_SIZE: usize>
-    Rib<AF, M, K, NB, PB, C, KEY_SIZE>
+impl<'a, AF, M, NB, PB, C: Config, const KEY_SIZE: usize>
+    Rib<AF, M, NB, PB, C, KEY_SIZE>
 where
     AF: AddressFamily,
     M: Meta,
-    K: KeySize<AF, KEY_SIZE>,
+    // K: KeySize<AF, KEY_SIZE>,
     NB: FamilyCHT<AF, NodeSet<AF>>,
     PB: FamilyCHT<AF, PrefixSet<AF, M>>,
 {

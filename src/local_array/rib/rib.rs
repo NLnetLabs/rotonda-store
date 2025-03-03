@@ -10,7 +10,7 @@ use epoch::{Guard, Owned};
 use zerocopy::TryFromBytes;
 
 use crate::local_array::in_memory::tree::TreeBitMap;
-use crate::local_array::persist::lsm_tree::KeySize;
+use crate::local_array::persist::lsm_tree::{KeySize, LongKey};
 use crate::local_array::prefix_cht::cht::PrefixCHT;
 use crate::local_array::types::PrefixId;
 use crate::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -328,7 +328,7 @@ pub struct UpsertReport {
 pub struct Rib<
     AF: AddressFamily,
     M: Meta,
-    K: KeySize<AF, KEY_SIZE>,
+    // K: KeySize<AF, KEY_SIZE>,
     NB: FamilyCHT<AF, NodeSet<AF>>,
     PB: FamilyCHT<AF, PrefixSet<AF, M>>,
     C: Config,
@@ -338,26 +338,26 @@ pub struct Rib<
     pub(crate) in_memory_tree: TreeBitMap<AF, NB>,
     pub(crate) prefix_cht: PrefixCHT<AF, M, PB>,
     pub(in crate::local_array) persist_tree:
-        Option<PersistTree<AF, K, KEY_SIZE>>,
+        Option<PersistTree<AF, LongKey<AF>, KEY_SIZE>>,
     pub counters: Counters,
 }
 
 impl<
         AF: AddressFamily,
         M: crate::prefix_record::Meta,
-        K: KeySize<AF, KEY_SIZE>,
+        // K: KeySize<AF, KEY_SIZE>,
         NB: FamilyCHT<AF, NodeSet<AF>>,
         PB: FamilyCHT<AF, PrefixSet<AF, M>>,
         C: Config,
         const KEY_SIZE: usize,
-    > Rib<AF, M, K, NB, PB, C, KEY_SIZE>
+    > Rib<AF, M, NB, PB, C, KEY_SIZE>
 {
     #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         config: C,
-    ) -> Result<Rib<AF, M, K, NB, PB, C, KEY_SIZE>, Box<dyn std::error::Error>>
+    ) -> Result<Rib<AF, M, NB, PB, C, KEY_SIZE>, Box<dyn std::error::Error>>
     {
-        Rib::<AF, M, K, NB, PB, C, KEY_SIZE>::init(config)
+        Rib::<AF, M, NB, PB, C, KEY_SIZE>::init(config)
     }
 
     // pub(crate) fn new_short_key(
@@ -1004,13 +1004,13 @@ impl<
 
 impl<
         M: Meta,
-        K: KeySize<IPv4, KEY_SIZE>,
+        // K: KeySize<IPv4, KEY_SIZE>,
         NB: FamilyCHT<IPv4, NodeSet<IPv4>>,
         PB: FamilyCHT<IPv4, PrefixSet<IPv4, M>>,
         // const PREFIX_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > std::fmt::Display for Rib<IPv4, M, K, NB, PB, C, KEY_SIZE>
+    > std::fmt::Display for Rib<IPv4, M, NB, PB, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv4, {}>", std::any::type_name::<M>())
@@ -1019,13 +1019,13 @@ impl<
 
 impl<
         M: Meta,
-        K: KeySize<IPv6, KEY_SIZE>,
+        // K: KeySize<IPv6, KEY_SIZE>,
         NB: FamilyCHT<IPv6, NodeSet<IPv6>>,
         PB: FamilyCHT<IPv6, PrefixSet<IPv6, M>>,
         C: Config,
         // const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > std::fmt::Display for Rib<IPv6, M, K, NB, PB, C, KEY_SIZE>
+    > std::fmt::Display for Rib<IPv6, M, NB, PB, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())
