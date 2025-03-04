@@ -5,14 +5,6 @@ use rand::prelude::*;
 pub const STRIDE_SIZE: u8 = 4;
 pub const STRIDE_BITS: u8 = 32;
 
-impl<M: Meta, C: Config> DefaultStore<M, C> {
-    pub fn try_default() -> Result<Self, PrefixStoreError> {
-        let config = C::default();
-        Self::new_with_config(config)
-            .map_err(|_| PrefixStoreError::StoreNotReadyError)
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct NodeCHT<AF: AddressFamily, const SIZE: usize>(
     [NodeSet<AF>; SIZE],
@@ -23,7 +15,7 @@ impl<AF: AddressFamily, const SIZE: usize> FamilyCHT<AF, NodeSet<AF>>
 {
     fn init() -> Self {
         Self(std::array::from_fn::<_, SIZE, _>(|_| {
-            NodeSet::<AF>::init(16)
+            NodeSet::<AF>::init(4)
         }))
     }
 
@@ -54,7 +46,7 @@ impl<AF: AddressFamily, M: Meta, const SIZE: usize>
 {
     fn init() -> Self {
         Self(std::array::from_fn::<_, SIZE, _>(|_| {
-            PrefixSet::<AF, M>::init(16)
+            PrefixSet::<AF, M>::init(4)
         }))
     }
 
@@ -81,6 +73,12 @@ pub struct DefaultStore<M: Meta, C: Config> {
 }
 
 impl<'a, M: Meta, C: Config> DefaultStore<M, C> {
+    pub fn try_default() -> Result<Self, PrefixStoreError> {
+        let config = C::default();
+        Self::new_with_config(config)
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)
+    }
+
     pub fn new_with_config(
         config: C,
     ) -> Result<Self, Box<dyn std::error::Error>> {
@@ -695,8 +693,7 @@ impl<'a, M: Meta, C: Config> DefaultStore<M, C> {
     /// Print the store statistics to the standard output.
     #[cfg(feature = "cli")]
     pub fn print_funky_stats(&self) {
-        println!("");
-        println!("Stats for IPv4 multi-threaded store\n");
+        println!("\nStats for IPv4 multi-threaded store\n");
         println!("{}", self.v4.in_memory_tree);
         println!("Stats for IPv6 multi-threaded store\n");
         println!("{}", self.v6.in_memory_tree);
