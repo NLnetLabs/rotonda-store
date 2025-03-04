@@ -9,21 +9,19 @@ use crossbeam_epoch::{self as epoch};
 use epoch::{Guard, Owned};
 use zerocopy::TryFromBytes;
 
-use crate::local_array::in_memory::tree::TreeBitMap;
-use crate::local_array::persist::lsm_tree::LongKey;
-use crate::local_array::prefix_cht::cht::PrefixCht;
-use crate::local_array::types::PrefixId;
-use crate::prefix_record::{ValueHeader, ZeroCopyRecord};
-use crate::prelude::multi::RouteStatus;
+use crate::in_memory::tree::TreeBitMap;
+use crate::persist::lsm_tree::LongKey;
+use crate::prefix_cht::cht::PrefixCht;
+// use crate::prelude::multi::RouteStatus;
 use crate::stats::CreatedNodes;
-use crate::{
-    local_array::errors::PrefixStoreError, prefix_record::PublicRecord,
-};
+use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
+use crate::types::{PrefixId, RouteStatus};
+use crate::{types::errors::PrefixStoreError, types::PublicRecord};
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
-pub use crate::local_array::in_memory::iterators;
-pub use crate::local_array::query;
+pub use crate::in_memory::iterators;
+pub use crate::rib::query;
 
 use crate::{IPv4, IPv6, Meta};
 
@@ -334,8 +332,7 @@ pub struct Rib<
     pub config: C,
     pub(crate) in_memory_tree: TreeBitMap<AF, N_ROOT_SIZE>,
     pub(crate) prefix_cht: PrefixCht<AF, M, P_ROOT_SIZE>,
-    pub(in crate::local_array) persist_tree:
-        Option<PersistTree<AF, LongKey<AF>, KEY_SIZE>>,
+    pub(crate) persist_tree: Option<PersistTree<AF, LongKey<AF>, KEY_SIZE>>,
     pub counters: Counters,
 }
 
