@@ -16,50 +16,7 @@ pub const RECORDS_MAX_NUM: usize = 3;
 
 //------------ The publicly available Rotonda Stores ------------------------
 
-pub use crate::local_array::rib::DefaultStore as MultiThreadedStore;
-// pub use crate::local_vec::store::Store as SingleThreadedStore;
-
-//------------ Types for strides displaying/monitoring ----------------------
-
-// type AfStrideStats<AF> = Vec<StrideStats<AF>>;
-
-// pub struct Stats<'a> {
-//     pub v4: &'a AfStrideStats<IPv4>,
-//     pub v6: &'a AfStrideStats<IPv6>,
-// }
-
-// impl std::fmt::Display for Stats<'_> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         writeln!(f, "v4 ")?;
-//         for s in self.v4.iter() {
-//             writeln!(f, "{} ", s)?;
-//         }
-//         writeln!(f, "v6 ")?;
-//         for s in self.v6.iter() {
-//             writeln!(f, "{} ", s)?;
-//         }
-//         Ok(())
-//     }
-// }
-
-// pub struct Strides<'a> {
-//     pub v4: &'a Vec<u8>,
-//     pub v6: &'a Vec<u8>,
-// }
-
-// impl std::fmt::Debug for Strides<'_> {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         write!(f, "v4 ")?;
-//         for s in self.v4.iter() {
-//             write!(f, "{} ", s)?;
-//         }
-//         writeln!(f, "v5 ")?;
-//         for s in self.v6.iter() {
-//             write!(f, "{} ", s)?;
-//         }
-//         Ok(())
-//     }
-// }
+pub use crate::local_array::rib::StarCastDb as MultiThreadedStore;
 
 //------------ MatchOptions / MatchType -------------------------------------
 

@@ -1,4 +1,4 @@
-use super::rib::default_store::STRIDE_BITS;
+use super::rib::default_store::BIT_SPAN_SIZE;
 
 #[derive(Copy, Clone, Debug)]
 pub struct BitSpan {
@@ -38,7 +38,10 @@ impl BitSpan {
     }
 
     pub(crate) fn into_bit_pos(self) -> u32 {
-        1 << (STRIDE_BITS - ((1 << self.len) - 1) as u8 - self.bits as u8 - 1)
+        1 << (BIT_SPAN_SIZE
+            - ((1 << self.len) - 1) as u8
+            - self.bits as u8
+            - 1)
     }
 
     pub(crate) fn cursor_from_bit_span(self) -> u8 {

@@ -14,7 +14,7 @@ use crate::af::AddressFamily;
 use crate::local_array::in_memory::tree::{
     bit_pos_from_index, ptr_bit_pos_from_index,
 };
-use crate::local_array::rib::default_store::{STRIDE_BITS, STRIDE_SIZE};
+use crate::local_array::rib::default_store::{BIT_SPAN_SIZE, STRIDE_SIZE};
 use crate::local_array::types::PrefixId;
 
 //------------ TreeBitMap Node ----------------------------------------------
@@ -368,7 +368,7 @@ impl<AF: AddressFamily> std::iter::Iterator
             self.start_cursor,
             <u8>::min(
                 (1 << (STRIDE_SIZE - self.start_bs.len)) + self.start_cursor,
-                STRIDE_BITS - 2
+                BIT_SPAN_SIZE - 2
             )
         );
 
