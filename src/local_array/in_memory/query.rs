@@ -4,13 +4,11 @@ use crate::rib::query::TreeQueryResult;
 use crate::{MatchOptions, MatchType};
 
 use super::super::types::PrefixId;
-use super::atomic_types::{FamilyCHT, NodeSet};
 use super::tree::TreeBitMap;
 
-impl<AF, NB> TreeBitMap<AF, NB>
+impl<AF, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE>
 where
     AF: AddressFamily,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
 {
     pub(crate) fn match_prefix(
         &self,

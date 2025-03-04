@@ -13,8 +13,8 @@ use log::{debug, log_enabled, trace};
 use epoch::{Guard, Owned};
 use roaring::RoaringBitmap;
 
+use crate::local_array::rib::default_store::STRIDE_SIZE;
 use crate::local_array::types::{PrefixId, RouteStatus};
-// use crate::local_array::in_memory_tree::*;
 use crate::prefix_record::PublicRecord;
 use crate::prelude::Meta;
 use crate::AddressFamily;
@@ -121,7 +121,7 @@ impl PathSelections {
 // records that are stored inside it, so that iterators over its linked lists
 // don't have to go into them if there's nothing there and could stop early.
 #[derive(Debug)]
-pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
+pub struct StoredPrefix<AF: AddressFamily, M: Meta> {
     // the serial number
     // pub serial: usize,
     // the prefix itself,
@@ -135,15 +135,12 @@ pub struct StoredPrefix<AF: AddressFamily, M: crate::prefix_record::Meta> {
 }
 
 impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
-    pub(crate) fn new<PB: FamilyCHT<AF, PrefixSet<AF, M>>>(
-        pfx_id: PrefixId<AF>,
-        level: u8,
-    ) -> Self {
+    pub(crate) fn new(pfx_id: PrefixId<AF>, level: u8) -> Self {
         // start calculation size of next set, it's dependent on the level
         // we're in.
         // let pfx_id = PrefixId::new(record.net, record.len);
-        let this_level = PB::bits_for_len(pfx_id.get_len(), level);
-        let next_level = PB::bits_for_len(pfx_id.get_len(), level + 1);
+        let this_level = bits_for_len(pfx_id.get_len(), level);
+        let next_level = bits_for_len(pfx_id.get_len(), level + 1);
 
         trace!("this level {} next level {}", this_level, next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
@@ -153,7 +150,7 @@ impl<AF: AddressFamily, M: crate::prefix_record::Meta> StoredPrefix<AF, M> {
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
-            PrefixSet::init(next_level - this_level)
+            PrefixSet::init(next_level.saturating_sub(this_level))
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
@@ -566,11 +563,11 @@ impl<M: Meta> Clone for MultiMap<M> {
 
 // ----------- FamilyBuckets Trait ------------------------------------------
 
-pub trait FamilyCHT<AF: AddressFamily, V> {
-    fn init() -> Self;
-    fn bits_for_len(len: u8, level: u8) -> u8;
-    fn root_for_len(&self, len: u8) -> &V;
-}
+// pub trait FamilyCHT<AF: AddressFamily, V> {
+//     fn init() -> Self;
+//     fn bits_for_len(len: u8, level: u8) -> u8;
+//     fn root_for_len(&self, len: u8) -> &V;
+// }
 
 //------------ PrefixSet ----------------------------------------------------
 
@@ -593,3 +590,67 @@ impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
         PrefixSet(OnceBoxSlice::new(p2_size))
     }
 }
+
+//-----
+//
+pub(crate) trait Value {
+    fn init(size: usize) -> Self;
+}
+
+impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
+    fn init(p2_size: usize) -> Self {
+        PrefixSet(OnceBoxSlice::new(p2_size as u8))
+    }
+}
+
+impl<AF: AddressFamily> Value for NodeSet<AF> {
+    fn init(p2_size: usize) -> Self {
+        if log_enabled!(log::Level::Debug) {
+            debug!(
+                "{} store: creating space for {} nodes",
+                std::thread::current().name().unwrap_or("unnamed-thread"),
+                1 << p2_size
+            );
+        }
+
+        NodeSet(
+            OnceBoxSlice::new(p2_size as u8),
+            RoaringBitmap::new().into(),
+        )
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct Cht<
+    V,
+    const ROOT_SIZE: usize,
+    const STRIDES_PER_BUCKET: usize,
+>([V; ROOT_SIZE]);
+
+impl<V: Value, const ROOT_SIZE: usize, const STRIDES_PER_BUCKET: usize>
+    Cht<V, ROOT_SIZE, STRIDES_PER_BUCKET>
+{
+    pub(crate) fn init() -> Self {
+        Self(std::array::from_fn::<_, ROOT_SIZE, _>(|_| {
+            V::init(STRIDE_SIZE as usize)
+        }))
+    }
+
+    pub(crate) fn root_for_len(&self, len: u8) -> &V {
+        &self.0[len as usize / STRIDES_PER_BUCKET]
+    }
+}
+
+pub(crate) fn bits_for_len(len: u8, lvl: u8) -> u8 {
+    let res = STRIDE_SIZE * (lvl + 1);
+    if res < len {
+        res
+    } else if res >= len + STRIDE_SIZE {
+        0
+    } else {
+        len
+    }
+}
+
+pub(crate) type NodeCht<AF, const ROOT_SIZE: usize> =
+    Cht<NodeSet<AF>, ROOT_SIZE, 4>;

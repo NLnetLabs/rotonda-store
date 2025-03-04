@@ -4,7 +4,6 @@ use log::trace;
 use zerocopy::TryFromBytes;
 
 use crate::af::AddressFamily;
-use crate::local_array::in_memory::atomic_types::FamilyCHT;
 use crate::prefix_record::ZeroCopyRecord;
 use crate::rib::{Config, PersistStrategy, Rib};
 use crate::PublicRecord;
@@ -15,20 +14,19 @@ use crate::{Meta, QueryResult};
 use crate::{MatchOptions, MatchType};
 
 use super::errors::PrefixStoreError;
-use super::in_memory::atomic_types::{NodeSet, PrefixSet};
-use super::persist::lsm_tree::KeySize;
 use super::types::PrefixId;
 
 //------------ Prefix Matching ----------------------------------------------
 
-impl<'a, AF, M, NB, PB, C: Config, const KEY_SIZE: usize>
-    Rib<AF, M, NB, PB, C, KEY_SIZE>
-where
-    AF: AddressFamily,
-    M: Meta,
-    // K: KeySize<AF, KEY_SIZE>,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
-    PB: FamilyCHT<AF, PrefixSet<AF, M>>,
+impl<
+        'a,
+        AF: AddressFamily,
+        M: Meta,
+        const N_ROOT_SIZE: usize,
+        const P_ROOT_SIZE: usize,
+        C: Config,
+        const KEY_SIZE: usize,
+    > Rib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     pub(crate) fn get_value(
         &'a self,

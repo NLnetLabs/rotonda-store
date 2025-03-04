@@ -5,70 +5,70 @@ use rand::prelude::*;
 pub const STRIDE_SIZE: u8 = 4;
 pub const STRIDE_BITS: u8 = 32;
 
-#[derive(Debug)]
-pub(crate) struct NodeCHT<AF: AddressFamily, const SIZE: usize>(
-    [NodeSet<AF>; SIZE],
-);
+// #[derive(Debug)]
+// pub(crate) struct NodeCHT<AF: AddressFamily, const SIZE: usize>(
+//     [NodeSet<AF>; SIZE],
+// );
 
-impl<AF: AddressFamily, const SIZE: usize> FamilyCHT<AF, NodeSet<AF>>
-    for NodeCHT<AF, SIZE>
-{
-    fn init() -> Self {
-        Self(std::array::from_fn::<_, SIZE, _>(|_| {
-            NodeSet::<AF>::init(4)
-        }))
-    }
+// impl<AF: AddressFamily, const SIZE: usize> FamilyCHT<AF, NodeSet<AF>>
+//     for NodeCHT<AF, SIZE>
+// {
+//     fn init() -> Self {
+//         Self(std::array::from_fn::<_, SIZE, _>(|_| {
+//             NodeSet::<AF>::init(STRIDE_SIZE)
+//         }))
+//     }
 
-    fn root_for_len(&self, len: u8) -> &NodeSet<AF> {
-        &self.0[len as usize / 4]
-    }
+//     fn root_for_len(&self, len: u8) -> &NodeSet<AF> {
+//         &self.0[len as usize / STRIDE_SIZE as usize]
+//     }
 
-    fn bits_for_len(len: u8, lvl: u8) -> u8 {
-        let res = 4 * (lvl + 1);
-        if res < len {
-            res
-        } else if res >= len + 4 {
-            0
-        } else {
-            len
-        }
-    }
-}
+//     fn bits_for_len(len: u8, lvl: u8) -> u8 {
+//         let res = STRIDE_SIZE * (lvl + 1);
+//         if res < len {
+//             res
+//         } else if res >= len + STRIDE_SIZE {
+//             0
+//         } else {
+//             len
+//         }
+//     }
+// }
 
 // create a range p0..p32 for IPv4, and p0..p128 for IPv6
-#[derive(Debug)]
-pub(crate) struct PrefixCHT<AF: AddressFamily, M: Meta, const SIZE: usize>(
-    [PrefixSet<AF, M>; SIZE],
-);
+// #[derive(Debug)]
+// pub(crate) struct PrefixCHT<AF: AddressFamily, M: Meta, const SIZE: usize>(
+//     [PrefixSet<AF, M>; SIZE],
+// );
 
-impl<AF: AddressFamily, M: Meta, const SIZE: usize>
-    FamilyCHT<AF, PrefixSet<AF, M>> for PrefixCHT<AF, M, SIZE>
-{
-    fn init() -> Self {
-        Self(std::array::from_fn::<_, SIZE, _>(|_| {
-            PrefixSet::<AF, M>::init(4)
-        }))
-    }
+// impl<AF: AddressFamily, M: Meta, const SIZE: usize>
+//     FamilyCHT<AF, PrefixSet<AF, M>> for PrefixCHT<AF, M, SIZE>
+// {
+//     fn init() -> Self {
+//         Self(std::array::from_fn::<_, SIZE, _>(|_| {
+//             PrefixSet::<AF, M>::init(STRIDE_SIZE)
+//         }))
+//     }
 
-    fn root_for_len(&self, len: u8) -> &PrefixSet<AF, M> {
-        &self.0[len as usize]
-    }
+//     fn root_for_len(&self, len: u8) -> &PrefixSet<AF, M> {
+//         &self.0[len as usize]
+//     }
 
-    fn bits_for_len(len: u8, lvl: u8) -> u8 {
-        let res = 4 * (lvl + 1);
-        if res < len {
-            res
-        } else if res >= len + 4 {
-            0
-        } else {
-            len
-        }
-    }
-}
+//     fn bits_for_len(len: u8, lvl: u8) -> u8 {
+//         let res = STRIDE_SIZE * (lvl + 1);
+//         if res < len {
+//             res
+//         } else if res >= len + 4 {
+//             0
+//         } else {
+//             len
+//         }
+//     }
+// }
 
 pub struct DefaultStore<M: Meta, C: Config> {
-    v4: Rib<IPv4, M, NodeCHT<IPv4, 9>, PrefixCHT<IPv4, M, 33>, C, 18>,
-    v6: Rib<IPv6, M, NodeCHT<IPv6, 33>, PrefixCHT<IPv6, M, 129>, C, 30>,
+    v4: Rib<IPv4, M, 9, 33, C, 18>,
+    v6: Rib<IPv6, M, 33, 129, C, 30>,
     config: C,
 }
 

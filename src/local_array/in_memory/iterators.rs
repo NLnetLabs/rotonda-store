@@ -19,7 +19,6 @@
 // contention, since every lookup has to go through the levels near the root
 // in the TreeBitMap.
 
-use crate::local_array::in_memory::atomic_types::FamilyCHT;
 use crate::local_array::in_memory::tree::TreeBitMap;
 use crate::{
     af::AddressFamily,
@@ -34,8 +33,6 @@ use crate::{
 
 use inetnum::addr::Prefix;
 use log::{log_enabled, trace};
-
-use super::atomic_types::NodeSet;
 
 // ----------- MoreSpecificPrefixIter ------------------------------------
 
@@ -58,16 +55,16 @@ use super::atomic_types::NodeSet;
 pub(crate) struct MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
+    const ROOT_SIZE: usize,
 > {
-    tree: &'a TreeBitMap<AF, NB>,
+    tree: &'a TreeBitMap<AF, ROOT_SIZE>,
     cur_ptr_iter: NodeMoreSpecificChildIter<AF>,
     cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF>,
     parent_and_position: Vec<NodeMoreSpecificChildIter<AF>>,
 }
 
-impl<'a, AF: AddressFamily + 'a, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
-    for MoreSpecificPrefixIter<'a, AF, NB>
+impl<'a, AF: AddressFamily + 'a, const ROOT_SIZE: usize> Iterator
+    for MoreSpecificPrefixIter<'a, AF, ROOT_SIZE>
 {
     type Item = PrefixId<AF>;
 
@@ -180,17 +177,14 @@ impl<'a, AF: AddressFamily + 'a, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
     }
 }
 
-pub(crate) struct LMPrefixIter<
-    'a,
-    AF: AddressFamily,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
-> {
-    tree: &'a TreeBitMap<AF, NB>,
+pub(crate) struct LMPrefixIter<'a, AF: AddressFamily, const ROOT_SIZE: usize>
+{
+    tree: &'a TreeBitMap<AF, ROOT_SIZE>,
     prefix: PrefixId<AF>,
 }
 
-impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
-    for LMPrefixIter<'_, AF, NB>
+impl<AF: AddressFamily, const ROOT_SIZE: usize> Iterator
+    for LMPrefixIter<'_, AF, ROOT_SIZE>
 {
     type Item = PrefixId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
@@ -221,15 +215,15 @@ impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
 pub(crate) struct LessSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
+    const ROOT_SIZE: usize,
 > {
-    tree: &'a TreeBitMap<AF, NB>,
+    tree: &'a TreeBitMap<AF, ROOT_SIZE>,
     prefix: PrefixId<AF>,
     cur_level: u8,
 }
 
-impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
-    for LessSpecificPrefixIter<'_, AF, NB>
+impl<AF: AddressFamily, const ROOT_SIZE: usize> Iterator
+    for LessSpecificPrefixIter<'_, AF, ROOT_SIZE>
 {
     type Item = PrefixId<AF>;
 
@@ -261,13 +255,8 @@ impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
 // These are only the methods that are starting the iterations. All other
 // methods for Rib are in the main rib.rs file.
 
-impl<
-        'a,
-        AF: AddressFamily,
-        // M: crate::prefix_record::Meta,
-        NB: FamilyCHT<AF, NodeSet<AF>>,
-        // PB: PrefixBuckets<AF, M>,
-    > TreeBitMap<AF, NB>
+impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
+    TreeBitMap<AF, ROOT_SIZE>
 {
     // Iterator over all more-specific prefixes, starting from the given
     // prefix at the given level and cursor.

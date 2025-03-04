@@ -62,7 +62,7 @@ impl<T> Drop for OnceBox<T> {
 }
 
 #[derive(Debug, Default)]
-pub struct OnceBoxSlice<T> {
+pub(crate) struct OnceBoxSlice<T> {
     ptr: AtomicPtr<OnceBox<T>>,
     p2_size: u8,
 }

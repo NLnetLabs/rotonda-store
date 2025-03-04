@@ -184,7 +184,9 @@
 // produce a fix for it).
 
 use crate::local_array::bit_span::BitSpan;
-use crate::local_array::in_memory::atomic_types::{NodeSet, StoredNode};
+use crate::local_array::in_memory::atomic_types::{
+    bits_for_len, NodeSet, StoredNode,
+};
 use crate::local_array::rib::default_store::STRIDE_SIZE;
 use crate::prelude::multi::PrefixId;
 use crossbeam_epoch::{Atomic, Guard};
@@ -194,7 +196,7 @@ use roaring::RoaringBitmap;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::{fmt::Debug, marker::PhantomData};
 
-use super::atomic_types::FamilyCHT;
+use super::atomic_types::{Cht, NodeCht};
 use crate::af::AddressFamily;
 use crate::rib::Counters;
 
@@ -210,22 +212,20 @@ use ansi_term::Colour;
 //--------------------- TreeBitMap ------------------------------------------
 
 #[derive(Debug)]
-pub struct TreeBitMap<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> {
-    pub(crate) node_buckets: NB,
+pub struct TreeBitMap<AF: AddressFamily, const ROOT_SIZE: usize> {
+    pub(crate) node_buckets: NodeCht<AF, ROOT_SIZE>,
     pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
     default_route_exists: AtomicBool,
-    _af: PhantomData<AF>,
 }
 
-impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> TreeBitMap<AF, NB> {
+impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let tree_bitmap = Self {
-            node_buckets: FamilyCHT::init(),
+            node_buckets: Cht::init(),
             withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             default_route_exists: AtomicBool::new(false),
-            _af: PhantomData,
         };
 
         let _retry_count = tree_bitmap.store_node(
@@ -507,10 +507,7 @@ Giving up this node. This shouldn't happen!",
         let mut retry_count = 0;
 
         loop {
-            let this_level = <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                id.len(),
-                level,
-            );
+            let this_level = bits_for_len(id.len(), level);
 
             // if this_level > (id.len() / 4) {
             //     return Err(PrefixStoreError::StoreNotReadyError);
@@ -526,11 +523,7 @@ Giving up this node. This shouldn't happen!",
             match nodes.read().get(index) {
                 None => {
                     // No node exists, so we create one here.
-                    let next_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level + 1,
-                        );
+                    let next_level = bits_for_len(id.len(), level + 1);
 
                     if log_enabled!(log::Level::Trace) {
                         trace!(
@@ -646,10 +639,7 @@ lvl{}",
                             index
                         );
 
-                        match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level,
-                        ) {
+                        match bits_for_len(id.len(), level) {
                             // on to the next level!
                             next_bit_shift if next_bit_shift > 0 => {
                                 nodes = &stored_node.node_set;
@@ -666,131 +656,6 @@ lvl{}",
             }
         }
     }
-
-    // Create a new node in the store with payload `next_node`.
-    //
-    // Next node will be ignored if a node with the same `id` already exists,
-    // but the multi_uniq_id will be added to the rbm_index of the NodeSet.
-    //
-    // Returns: a tuple with the node_id of the created node and the number of
-    // retry_count
-    // #[allow(clippy::type_complexity)]
-    // fn _old_old_store_node(
-    //     &self,
-    //     id: StrideNodeId<AF>,
-    //     multi_uniq_id: u32,
-    //     next_node: TreeBitMapNode<AF, Stride4>,
-    // ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
-    //     struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
-    //         f: &'s dyn Fn(
-    //             &SearchLevel<AF, S>,
-    //             &NodeSet<AF, S>,
-    //             TreeBitMapNode<AF, S>,
-    //             u32, // multi_uniq_id
-    //             u8,  // the store level
-    //             u32, // retry_count
-    //         ) -> Result<
-    //             (StrideNodeId<AF>, u32),
-    //             PrefixStoreError,
-    //         >,
-    //     }
-
-    //     let search_level_3 =
-    //         store_node_closure![Stride3; id; guard; back_off;];
-    //     let search_level_4 =
-    //         store_node_closure![Stride4; id; guard; back_off;];
-    //     let search_level_5 =
-    //         store_node_closure![Stride5; id; guard; back_off;];
-
-    //     if log_enabled!(log::Level::Trace) {
-    //         debug!(
-    //             "{} store: Store node {}: {:?} mui {}",
-    //             std::thread::current().name().unwrap_or("unnamed-thread"),
-    //             id,
-    //             next_node,
-    //             multi_uniq_id
-    //         );
-    //     }
-    //     self.counters.inc_nodes_count();
-
-    //     // match next_node {
-    //     // SizedStrideNode::Stride3(new_node) => (search_level_3.f)(
-    //     //     &search_level_3,
-    //     //     self.node_buckets.get_store3(id),
-    //     //     new_node,
-    //     //     multi_uniq_id,
-    //     //     0,
-    //     //     0,
-    //     // ),
-    //     (search_level_4.f)(
-    //         &search_level_4,
-    //         self.node_buckets.get_store4(id),
-    //         next_node,
-    //         multi_uniq_id,
-    //         0,
-    //         0,
-    //     )
-    //     // SizedStrideNode::Stride5(new_node) => (search_level_5.f)(
-    //     //     &search_level_5,
-    //     //     self.node_buckets.get_store5(id),
-    //     //     new_node,
-    //     //     multi_uniq_id,
-    //     //     0,
-    //     //     0,
-    //     // ),
-    //     // }
-    // }
-
-    // #[allow(clippy::type_complexity)]
-    // pub(crate) fn _retrieve_node_mut(
-    //     &self,
-    //     id: StrideNodeId<AF>,
-    //     multi_uniq_id: u32,
-    // ) -> Option<SizedStrideRef<'_, AF>> {
-    //     struct SearchLevel<'s, AF: AddressFamily, S: Stride> {
-    //         f: &'s dyn for<'a> Fn(
-    //             &SearchLevel<AF, S>,
-    //             &'a NodeSet<AF, S>,
-    //             u8,
-    //         )
-    //             -> Option<SizedStrideRef<'a, AF>>,
-    //     }
-
-    //     let search_level_3 =
-    //         retrieve_node_mut_closure![Stride3; id; multi_uniq_id;];
-    //     let search_level_4 =
-    //         retrieve_node_mut_closure![Stride4; id; multi_uniq_id;];
-    //     let search_level_5 =
-    //         retrieve_node_mut_closure![Stride5; id; multi_uniq_id;];
-
-    //     if log_enabled!(log::Level::Trace) {
-    //         trace!(
-    //             "{} store: Retrieve node mut {} from l{}",
-    //             std::thread::current().name().unwrap_or("unnamed-thread"),
-    //             id,
-    //             id.get_id().1
-    //         );
-    //     }
-
-    //     match self.node_buckets.get_stride_for_id(id) {
-    //         3 => (search_level_3.f)(
-    //             &search_level_3,
-    //             self.node_buckets.get_store3(id),
-    //             0,
-    //         ),
-
-    //         4 => (search_level_4.f)(
-    //             &search_level_4,
-    //             self.node_buckets.get_store4(id),
-    //             0,
-    //         ),
-    //         _ => (search_level_5.f)(
-    //             &search_level_5,
-    //             self.node_buckets.get_store5(id),
-    //             0,
-    //         ),
-    //     }
-    // }
 
     pub fn retrieve_node_mut(
         &self,
@@ -812,16 +677,8 @@ lvl{}",
                 // thread running this method, so our thread enounters an
                 // empty node in the store.
                 None => {
-                    let this_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level,
-                        );
-                    let next_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level + 1,
-                        );
+                    let this_level = bits_for_len(id.len(), level);
+                    let next_level = bits_for_len(id.len(), level + 1);
                     let node_set =
                         NodeSet::init(next_level.saturating_sub(this_level));
 
@@ -870,10 +727,7 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                id.len(),
-                level,
-            ) {
+            match bits_for_len(id.len(), level) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -903,16 +757,8 @@ lvl{}",
                 // thread running this method, so our thread enounters an
                 // empty node in the store.
                 None => {
-                    let this_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level,
-                        );
-                    let next_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level + 1,
-                        );
+                    let this_level = bits_for_len(id.len(), level);
+                    let next_level = bits_for_len(id.len(), level + 1);
                     let node_set =
                         NodeSet::init(next_level.saturating_sub(this_level));
 
@@ -959,10 +805,7 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                id.len(),
-                level,
-            ) {
+            match bits_for_len(id.len(), level) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -992,16 +835,8 @@ lvl{}",
                 // thread running this method, so our thread enounters an
                 // empty node in the store.
                 None => {
-                    let this_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level,
-                        );
-                    let next_level =
-                        <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                            id.len(),
-                            level + 1,
-                        );
+                    let this_level = bits_for_len(id.len(), level);
+                    let next_level = bits_for_len(id.len(), level + 1);
                     let node_set =
                         NodeSet::init(next_level.saturating_sub(this_level));
 
@@ -1058,10 +893,7 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match <NB as FamilyCHT<AF, NodeSet<AF>>>::bits_for_len(
-                id.len(),
-                level,
-            ) {
+            match bits_for_len(id.len(), level) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -1188,11 +1020,11 @@ lvl{}",
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
         let last_level = if level > 0 {
-            <NB>::bits_for_len(id.len(), level - 1)
+            bits_for_len(id.len(), level - 1)
         } else {
             0
         };
-        let this_level = <NB>::bits_for_len(id.len(), level);
+        let this_level = bits_for_len(id.len(), level);
         // trace!("bits division {}", this_level);
         // trace!(
         //     "calculated index ({} << {}) >> {}",
@@ -1242,8 +1074,8 @@ lvl{}",
 
 // This implements the funky stats for a tree
 #[cfg(feature = "cli")]
-impl<AF: AddressFamily, NB: FamilyCHT<AF, NodeSet<AF>>> std::fmt::Display
-    for TreeBitMap<AF, NB>
+impl<AF: AddressFamily, const ROOT_SIZE: usize> std::fmt::Display
+    for TreeBitMap<AF, ROOT_SIZE>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(_f, "{} prefixes created", self.get_prefixes_count())?;

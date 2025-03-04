@@ -1,10 +1,10 @@
 use std::{fmt, slice};
 
+use crate::prefix_record::InternalPrefixRecord;
 pub use crate::prefix_record::{
     Meta, PublicPrefixSingleRecord, RecordSingleSet,
 };
 use crate::prefix_record::{PublicRecord, RecordSet};
-use crate::{prefix_record::InternalPrefixRecord, stats::StrideStats};
 
 use inetnum::addr::Prefix;
 
@@ -21,45 +21,45 @@ pub use crate::local_array::rib::DefaultStore as MultiThreadedStore;
 
 //------------ Types for strides displaying/monitoring ----------------------
 
-type AfStrideStats<AF> = Vec<StrideStats<AF>>;
+// type AfStrideStats<AF> = Vec<StrideStats<AF>>;
 
-pub struct Stats<'a> {
-    pub v4: &'a AfStrideStats<IPv4>,
-    pub v6: &'a AfStrideStats<IPv6>,
-}
+// pub struct Stats<'a> {
+//     pub v4: &'a AfStrideStats<IPv4>,
+//     pub v6: &'a AfStrideStats<IPv6>,
+// }
 
-impl std::fmt::Display for Stats<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "v4 ")?;
-        for s in self.v4.iter() {
-            writeln!(f, "{} ", s)?;
-        }
-        writeln!(f, "v6 ")?;
-        for s in self.v6.iter() {
-            writeln!(f, "{} ", s)?;
-        }
-        Ok(())
-    }
-}
+// impl std::fmt::Display for Stats<'_> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         writeln!(f, "v4 ")?;
+//         for s in self.v4.iter() {
+//             writeln!(f, "{} ", s)?;
+//         }
+//         writeln!(f, "v6 ")?;
+//         for s in self.v6.iter() {
+//             writeln!(f, "{} ", s)?;
+//         }
+//         Ok(())
+//     }
+// }
 
-pub struct Strides<'a> {
-    pub v4: &'a Vec<u8>,
-    pub v6: &'a Vec<u8>,
-}
+// pub struct Strides<'a> {
+//     pub v4: &'a Vec<u8>,
+//     pub v6: &'a Vec<u8>,
+// }
 
-impl std::fmt::Debug for Strides<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "v4 ")?;
-        for s in self.v4.iter() {
-            write!(f, "{} ", s)?;
-        }
-        writeln!(f, "v5 ")?;
-        for s in self.v6.iter() {
-            write!(f, "{} ", s)?;
-        }
-        Ok(())
-    }
-}
+// impl std::fmt::Debug for Strides<'_> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(f, "v4 ")?;
+//         for s in self.v4.iter() {
+//             write!(f, "{} ", s)?;
+//         }
+//         writeln!(f, "v5 ")?;
+//         for s in self.v6.iter() {
+//             write!(f, "{} ", s)?;
+//         }
+//         Ok(())
+//     }
+// }
 
 //------------ MatchOptions / MatchType -------------------------------------
 

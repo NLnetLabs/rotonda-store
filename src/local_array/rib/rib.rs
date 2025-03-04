@@ -10,17 +10,15 @@ use epoch::{Guard, Owned};
 use zerocopy::TryFromBytes;
 
 use crate::local_array::in_memory::tree::TreeBitMap;
-use crate::local_array::persist::lsm_tree::{KeySize, LongKey};
-use crate::local_array::prefix_cht::cht::PrefixCHT;
+use crate::local_array::persist::lsm_tree::LongKey;
+use crate::local_array::prefix_cht::cht::PrefixCht;
 use crate::local_array::types::PrefixId;
 use crate::prefix_record::{ValueHeader, ZeroCopyRecord};
-use crate::prelude::multi::{PrefixSet, RouteStatus};
+use crate::prelude::multi::RouteStatus;
 use crate::stats::CreatedNodes;
 use crate::{
     local_array::errors::PrefixStoreError, prefix_record::PublicRecord,
 };
-
-use crate::local_array::in_memory::atomic_types::{FamilyCHT, NodeSet};
 
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
@@ -328,14 +326,14 @@ pub struct UpsertReport {
 pub struct Rib<
     AF: AddressFamily,
     M: Meta,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
-    PB: FamilyCHT<AF, PrefixSet<AF, M>>,
+    const N_ROOT_SIZE: usize,
+    const P_ROOT_SIZE: usize,
     C: Config,
     const KEY_SIZE: usize,
 > {
     pub config: C,
-    pub(crate) in_memory_tree: TreeBitMap<AF, NB>,
-    pub(crate) prefix_cht: PrefixCHT<AF, M, PB>,
+    pub(crate) in_memory_tree: TreeBitMap<AF, N_ROOT_SIZE>,
+    pub(crate) prefix_cht: PrefixCht<AF, M, P_ROOT_SIZE>,
     pub(in crate::local_array) persist_tree:
         Option<PersistTree<AF, LongKey<AF>, KEY_SIZE>>,
     pub counters: Counters,
@@ -344,18 +342,19 @@ pub struct Rib<
 impl<
         AF: AddressFamily,
         M: Meta,
-        NB: FamilyCHT<AF, NodeSet<AF>>,
-        PB: FamilyCHT<AF, PrefixSet<AF, M>>,
+        const P_ROOT_SIZE: usize,
+        const N_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > Rib<AF, M, NB, PB, C, KEY_SIZE>
+    > Rib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
-    #[allow(clippy::type_complexity)]
     pub(crate) fn new(
         config: C,
-    ) -> Result<Rib<AF, M, NB, PB, C, KEY_SIZE>, Box<dyn std::error::Error>>
-    {
-        Rib::<AF, M, NB, PB, C, KEY_SIZE>::init(config)
+    ) -> Result<
+        Rib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>,
+        Box<dyn std::error::Error>,
+    > {
+        Rib::<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>::init(config)
     }
 
     fn init(config: C) -> Result<Self, Box<dyn std::error::Error>> {
@@ -372,10 +371,10 @@ impl<
 
         let store = Rib {
             config,
-            in_memory_tree: TreeBitMap::<AF, NB>::new()?,
+            in_memory_tree: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
             persist_tree,
             counters: Counters::default(),
-            prefix_cht: PrefixCHT::<AF, M, PB>::new(),
+            prefix_cht: PrefixCht::<AF, M, P_ROOT_SIZE>::init(),
         };
 
         Ok(store)
@@ -634,7 +633,6 @@ impl<
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.insert(mui);
 
-        #[allow(clippy::assigning_clones)]
         loop {
             match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
                 current,
@@ -667,7 +665,6 @@ impl<
         let mut new = unsafe { current.as_ref() }.unwrap().clone();
         new.remove(mui);
 
-        #[allow(clippy::assigning_clones)]
         loop {
             match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
                 current,
@@ -821,11 +818,12 @@ impl<
 
 impl<
         M: Meta,
-        NB: FamilyCHT<IPv4, NodeSet<IPv4>>,
-        PB: FamilyCHT<IPv4, PrefixSet<IPv4, M>>,
+        const N_ROOT_SIZE: usize,
+        const P_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > std::fmt::Display for Rib<IPv4, M, NB, PB, C, KEY_SIZE>
+    > std::fmt::Display
+    for Rib<IPv4, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv4, {}>", std::any::type_name::<M>())
@@ -834,11 +832,12 @@ impl<
 
 impl<
         M: Meta,
-        NB: FamilyCHT<IPv6, NodeSet<IPv6>>,
-        PB: FamilyCHT<IPv6, PrefixSet<IPv6, M>>,
+        const N_ROOT_SIZE: usize,
+        const P_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > std::fmt::Display for Rib<IPv6, M, NB, PB, C, KEY_SIZE>
+    > std::fmt::Display
+    for Rib<IPv6, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())

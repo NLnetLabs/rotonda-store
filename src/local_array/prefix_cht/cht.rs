@@ -1,5 +1,3 @@
-use std::marker::PhantomData;
-
 use crossbeam_epoch::Guard;
 use crossbeam_utils::Backoff;
 use inetnum::addr::Prefix;
@@ -8,33 +6,25 @@ use roaring::RoaringBitmap;
 
 use crate::{
     local_array::in_memory::atomic_types::{
-        MultiMapValue, PrefixSet, StoredPrefix,
+        bits_for_len, Cht, MultiMapValue, PrefixSet, StoredPrefix,
     },
-    prelude::multi::{FamilyCHT, PrefixId, PrefixStoreError},
+    prelude::multi::{PrefixId, PrefixStoreError},
     rib::UpsertReport,
     AddressFamily, Meta, PublicRecord,
 };
 
 #[derive(Debug)]
-pub(crate) struct PrefixCHT<
+pub(crate) struct PrefixCht<
     AF: AddressFamily,
     M: Meta,
-    PB: FamilyCHT<AF, PrefixSet<AF, M>>,
-> {
-    store: PB,
-    _af: PhantomData<AF>,
-    _m: PhantomData<M>,
-}
+    const ROOT_SIZE: usize,
+>(Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>);
 
-impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
-    PrefixCHT<AF, M, PB>
+impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
+    PrefixCht<AF, M, ROOT_SIZE>
 {
-    pub(crate) fn new() -> Self {
-        Self {
-            store: PB::init(),
-            _af: PhantomData,
-            _m: PhantomData,
-        }
+    pub(crate) fn init() -> Self {
+        Self(<Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>>::init())
     }
 
     pub(crate) fn get_records_for_prefix(
@@ -44,7 +34,7 @@ impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Option<Vec<PublicRecord<M>>> {
-        let mut prefix_set = self.store.root_for_len(prefix.get_len());
+        let mut prefix_set = self.0.root_for_len(prefix.get_len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
 
@@ -173,14 +163,12 @@ impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
     //
     // The error condition really shouldn't happen, because that basically
     // means the root node for that particular prefix length doesn't exist.
-    #[allow(clippy::type_complexity)]
     pub(crate) fn non_recursive_retrieve_prefix_mut(
         &self,
         search_prefix_id: PrefixId<AF>,
     ) -> (&StoredPrefix<AF, M>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
-        let mut prefix_set =
-            self.store.root_for_len(search_prefix_id.get_len());
+        let mut prefix_set = self.0.root_for_len(search_prefix_id.get_len());
         let mut level: u8 = 0;
 
         trace!("root prefix_set {:?}", prefix_set);
@@ -210,7 +198,7 @@ impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
                         prefix_set
                             .0
                             .get_or_init(index, || {
-                                StoredPrefix::new::<PB>(
+                                StoredPrefix::new(
                                     PrefixId::new(
                                         search_prefix_id.get_net(),
                                         search_prefix_id.get_len(),
@@ -262,7 +250,7 @@ impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
             usize,
         )>,
     ) {
-        let mut prefix_set = self.store.root_for_len(id.get_len());
+        let mut prefix_set = self.0.root_for_len(id.get_len());
         let mut parents = [None; 32];
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -307,11 +295,11 @@ impl<AF: AddressFamily, M: Meta, PB: FamilyCHT<AF, PrefixSet<AF, M>>>
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
         let last_level = if level > 0 {
-            <PB>::bits_for_len(id.get_len(), level - 1)
+            bits_for_len(id.get_len(), level - 1)
         } else {
             0
         };
-        let this_level = <PB>::bits_for_len(id.get_len(), level);
+        let this_level = bits_for_len(id.get_len(), level);
         // trace!(
         //     "bits division {}; no of bits {}",
         //     this_level,

@@ -13,9 +13,6 @@ pub mod multi {
     pub use crossbeam_epoch::{self as epoch, Guard};
 
     pub use crate::local_array::errors::PrefixStoreError;
-    pub use crate::local_array::in_memory::atomic_types::{
-        FamilyCHT, NodeSet, PrefixSet,
-    };
     pub use crate::local_array::in_memory::iterators;
     pub use crate::local_array::in_memory::node::StrideNodeId;
     pub use crate::local_array::persist::lsm_tree::KeySize;

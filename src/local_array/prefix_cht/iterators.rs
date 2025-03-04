@@ -5,21 +5,20 @@ use crate::{
     local_array::{
         bit_span::BitSpan,
         in_memory::{
-            atomic_types::NodeSet,
             node::{NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter},
             tree::TreeBitMap,
         },
     },
-    prelude::multi::{FamilyCHT, PrefixId},
+    prelude::multi::PrefixId,
     AddressFamily,
 };
 
-pub(crate) struct MoreSpecificPrefixIter<
+pub(crate) struct _MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
-    NB: FamilyCHT<AF, NodeSet<AF>>,
+    const ROOT_SIZE: usize,
 > {
-    store: &'a TreeBitMap<AF, NB>,
+    store: &'a TreeBitMap<AF, ROOT_SIZE>,
     cur_ptr_iter: NodeMoreSpecificChildIter<AF>,
     cur_pfx_iter: NodeMoreSpecificsPrefixIter<AF>,
     parent_and_position: Vec<NodeMoreSpecificChildIter<AF>>,
@@ -32,8 +31,8 @@ pub(crate) struct MoreSpecificPrefixIter<
     include_withdrawn: bool,
 }
 
-impl<'a, AF: AddressFamily + 'a, NB: FamilyCHT<AF, NodeSet<AF>>> Iterator
-    for MoreSpecificPrefixIter<'a, AF, NB>
+impl<'a, AF: AddressFamily + 'a, const ROOT_SIZE: usize> Iterator
+    for _MoreSpecificPrefixIter<'a, AF, ROOT_SIZE>
 {
     type Item = PrefixId<AF>;
 
