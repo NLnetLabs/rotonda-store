@@ -4,7 +4,7 @@ use std::{fmt::Debug, marker::PhantomData};
 use log::{log_enabled, trace};
 use parking_lot_core::SpinWait;
 
-use crate::in_memory::atomic_bitmap::{
+use crate::tree_bitmap::atomic_bitmap::{
     AtomicBitmap, AtomicPfxBitArr, AtomicPtrBitArr, CasResult,
 };
 use crate::types::BitSpan;
@@ -28,7 +28,7 @@ use crate::types::PrefixId;
 // in a treebitmap node is enabled by the storage backend for the
 // multi-threaded store, since holds its entries keyed on the [node|prefix]
 // id. (in contrast with arrays or `vec`s, that have
-pub struct TreeBitMapNode<AF>
+pub(crate) struct TreeBitMapNode<AF>
 where
     Self: Sized,
     AF: AddressFamily,

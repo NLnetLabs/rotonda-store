@@ -19,9 +19,9 @@
 // contention, since every lookup has to go through the levels near the root
 // in the TreeBitMap.
 
-use crate::in_memory::TreeBitMap;
+use crate::TreeBitMap;
 use crate::{
-    in_memory::tree_bitmap_node::{
+    tree_bitmap::tree_bitmap_node::{
         NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
     },
     types::{AddressFamily, BitSpan, PrefixId},

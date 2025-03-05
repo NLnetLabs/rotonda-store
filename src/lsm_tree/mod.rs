@@ -13,36 +13,26 @@ use zerocopy::{
 };
 
 use crate::rib::Counters;
-use crate::types::prefix_record::PublicRecord;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
-use crate::types::{AddressFamily, Meta};
+use crate::types::AddressFamily;
+use crate::types::PublicRecord;
 use crate::types::{PrefixId, RouteStatus};
-
-type ZeroCopyError<'a, T> = zerocopy::ConvertError<
-    zerocopy::AlignmentError<&'a [u8], T>,
-    zerocopy::SizeError<&'a [u8], T>,
-    zerocopy::ValidityError<&'a [u8], T>,
->;
-type ZeroCopyMutError<'a, T> = zerocopy::ConvertError<
-    zerocopy::AlignmentError<&'a mut [u8], T>,
-    zerocopy::SizeError<&'a mut [u8], T>,
-    zerocopy::ValidityError<&'a mut [u8], T>,
->;
+use crate::Meta;
 
 pub(crate) trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
     TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
 {
-    fn mut_from_bytes(
-        bytes: &mut [u8],
-    ) -> std::result::Result<&mut Self, ZeroCopyMutError<'_, Self>> {
-        Self::try_mut_from_bytes(bytes.as_mut_bytes())
-    }
+    // fn mut_from_bytes(
+    //     bytes: &mut [u8],
+    // ) -> std::result::Result<&mut Self, ZeroCopyMutError<'_, Self>> {
+    //     Self::try_mut_from_bytes(bytes.as_mut_bytes())
+    // }
 
-    fn from_bytes(
-        bytes: &[u8],
-    ) -> std::result::Result<&Self, ZeroCopyError<'_, Self>> {
-        Self::try_ref_from_bytes(bytes.as_bytes())
-    }
+    // fn from_bytes(
+    //     bytes: &[u8],
+    // ) -> std::result::Result<&Self, ZeroCopyError<'_, Self>> {
+    //     Self::try_ref_from_bytes(bytes.as_bytes())
+    // }
 
     fn header(bytes: &[u8]) -> &LongKey<AF> {
         LongKey::try_ref_from_bytes(bytes.as_bytes()).unwrap()
@@ -54,7 +44,7 @@ pub(crate) trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
         LongKey::try_mut_from_bytes(bytes.as_mut_bytes()).unwrap()
     }
 
-    fn short_key(bytes: &[u8]) -> &ShortKey<AF> {
+    fn _short_key(bytes: &[u8]) -> &ShortKey<AF> {
         trace!("short key from bytes {:?}", bytes);
         let s_b = &bytes[..(AF::BITS as usize / 8) + 6];
         trace!("short key {:?}", s_b);
@@ -141,7 +131,7 @@ impl<AF: AddressFamily> From<(PrefixId<AF>, u32, u64, RouteStatus)>
     }
 }
 
-pub struct PersistTree<
+pub struct LsmTree<
     AF: AddressFamily,
     K: KeySize<AF, KEY_SIZE>,
     // The size in bytes of the prefix in the persisted storage (disk), this
@@ -163,10 +153,10 @@ impl<
         K: KeySize<AF, KEY_SIZE>,
         // const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > PersistTree<AF, K, KEY_SIZE>
+    > LsmTree<AF, K, KEY_SIZE>
 {
-    pub fn new(persist_path: &Path) -> PersistTree<AF, K, KEY_SIZE> {
-        PersistTree::<AF, K, KEY_SIZE> {
+    pub fn new(persist_path: &Path) -> LsmTree<AF, K, KEY_SIZE> {
+        LsmTree::<AF, K, KEY_SIZE> {
             tree: lsm_tree::Config::new(persist_path).open().unwrap(),
             counters: Counters::default(),
             _af: PhantomData,
@@ -181,7 +171,7 @@ impl<
     pub fn _remove(&self, key: &[u8]) {
         self.tree.remove_weak(key, 0);
         // the first byte of the prefix holds the length of the prefix.
-        self.counters.dec_prefixes_count(key[0]);
+        self.counters._dec_prefixes_count(key[0]);
     }
 
     pub fn get_records_for_prefix(
@@ -879,7 +869,7 @@ impl<
         K: KeySize<AF, KEY_SIZE>,
         // const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > std::fmt::Debug for PersistTree<AF, K, KEY_SIZE>
+    > std::fmt::Debug for LsmTree<AF, K, KEY_SIZE>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()

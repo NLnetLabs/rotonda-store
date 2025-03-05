@@ -3,8 +3,8 @@ use crate::types::AddressFamily;
 use crate::rib::starcast_af_query::TreeQueryResult;
 use crate::{MatchOptions, MatchType};
 
-use super::TreeBitMap;
 use crate::types::PrefixId;
+use crate::TreeBitMap;
 
 impl<AF, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE>
 where

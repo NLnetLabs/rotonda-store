@@ -1,6 +1,6 @@
+use crate::types::{prefix_record::RecordSet, PublicRecord};
+use crate::Meta;
 use std::fmt;
-
-use crate::types::{prefix_record::RecordSet, Meta, PublicRecord};
 
 use inetnum::addr::Prefix;
 

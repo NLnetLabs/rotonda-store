@@ -5,7 +5,7 @@ use std::error::Error;
 
 #[test]
 fn test_af_1() -> Result<(), Box<dyn Error>> {
-    use crate::in_memory::tree_bitmap_node::StrideNodeId;
+    use crate::tree_bitmap::StrideNodeId;
     use crate::types::BitSpan;
     use crate::AddressFamily;
     use crate::IPv4;
@@ -35,7 +35,7 @@ fn test_af_1() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_af_2() -> Result<(), Box<dyn Error>> {
     use crate::IPv4;
-    use crate::{in_memory::tree_bitmap_node::StrideNodeId, types::BitSpan};
+    use crate::{tree_bitmap::StrideNodeId, types::BitSpan};
 
     let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111.into();
     let nu_prefix = StrideNodeId::dangerously_new_with_id_as_is(bit_addr, 8);

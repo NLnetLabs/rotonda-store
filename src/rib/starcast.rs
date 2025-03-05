@@ -1,7 +1,5 @@
 use crossbeam_epoch::Guard;
 use inetnum::addr::Prefix;
-// use crate::prelude::multi::*;
-// use crate::prelude::*;
 use rand::prelude::*;
 
 use crate::{
@@ -683,9 +681,9 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     #[cfg(feature = "cli")]
     pub fn print_funky_stats(&self) {
         println!("\nStats for IPv4 multi-threaded store\n");
-        println!("{}", self.v4.in_memory_tree);
+        println!("{}", self.v4.tree_bitmap);
         println!("Stats for IPv6 multi-threaded store\n");
-        println!("{}", self.v6.in_memory_tree);
+        println!("{}", self.v6.tree_bitmap);
     }
 
     // The Store statistics.

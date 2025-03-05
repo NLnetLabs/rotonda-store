@@ -2,7 +2,7 @@ use parking_lot_core::SpinWait;
 use std::fmt::{Binary, Debug};
 use std::sync::atomic::{fence, AtomicU16, AtomicU32, Ordering};
 
-use crate::types::bit_span::BitSpan;
+use crate::types::BitSpan;
 
 use super::tree_bitmap_node;
 

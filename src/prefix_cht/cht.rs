@@ -14,7 +14,8 @@ use crate::{
     cht::{bits_for_len, Cht, OnceBoxSlice, Value},
     rib::starcast_af::UpsertReport,
     types::{
-        errors::PrefixStoreError, AddressFamily, PrefixId, PublicRecord,
+        errors::PrefixStoreError, prefix_record::PublicRecord, AddressFamily,
+        PrefixId,
     },
     Meta,
 };
@@ -49,7 +50,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub fn _len(&self) -> usize {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map.len()
@@ -181,7 +182,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             .collect::<Vec<_>>()
     }
 
-    pub fn as_records(&self) -> Vec<PublicRecord<M>> {
+    pub fn _as_records(&self) -> Vec<PublicRecord<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map
@@ -342,7 +343,7 @@ impl PathSelections {
         self.path_selection_muis.0
     }
 
-    pub fn backup(&self) -> Option<u32> {
+    pub fn _backup(&self) -> Option<u32> {
         self.path_selection_muis.1
     }
 }
@@ -365,7 +366,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: Meta> {
     pub next_bucket: PrefixSet<AF, M>,
 }
 
-impl<AF: AddressFamily, M: crate::types::Meta> StoredPrefix<AF, M> {
+impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
     pub(crate) fn new(pfx_id: PrefixId<AF>, level: u8) -> Self {
         // start calculation size of next set, it's dependent on the level
         // we're in.

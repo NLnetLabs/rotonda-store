@@ -1,6 +1,5 @@
 mod oncebox;
 
-pub(crate) use oncebox::OnceBox;
 pub(crate) use oncebox::OnceBoxSlice;
 
 use crate::rib::STRIDE_SIZE;

@@ -3,7 +3,7 @@
 mod tests {
     use inetnum::addr::Prefix;
     use inetnum::asn::Asn;
-    use rotonda_store::rib::starcast_af::Config;
+    use rotonda_store::Config;
     use rotonda_store::{
         epoch, IncludeHistory, MatchOptions, MatchType, Meta, PrefixRecord,
         Record, RouteStatus, StarCastRib,

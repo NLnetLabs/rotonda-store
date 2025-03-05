@@ -1,3 +1,15 @@
+mod atomic_bitmap;
+mod node_cht;
+
+mod tree_bitmap_iterators;
+mod tree_bitmap_node;
+mod tree_bitmap_query;
+
+pub(crate) use tree_bitmap_node::{
+    NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter, StrideNodeId,
+    TreeBitMapNode,
+};
+
 // ----------- THE STORE ----------------------------------------------------
 //
 // The CustomAllocStore provides in-memory storage for the BitTreeMapNodes
@@ -184,24 +196,22 @@
 // produce a fix for it).
 
 use crate::cht::{bits_for_len, Cht};
-use crate::in_memory::node_cht::{NodeCht, NodeSet, StoredNode};
 use crate::rib::STRIDE_SIZE;
 use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard};
 use log::{debug, error, log_enabled, trace};
+use node_cht::{NodeCht, NodeSet, StoredNode};
 use roaring::RoaringBitmap;
+use tree_bitmap_node::NewNodeOrIndex;
 
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::{fmt::Debug, marker::PhantomData};
 
-use super::atomic_bitmap::{AtomicBitmap, AtomicPfxBitArr, AtomicPtrBitArr};
 use crate::rib::Counters;
 use crate::types::AddressFamily;
+use atomic_bitmap::{AtomicBitmap, AtomicPfxBitArr, AtomicPtrBitArr};
 
-use crate::in_memory::tree_bitmap_node::{NewNodeOrIndex, StrideNodeId};
 use crate::types::errors::PrefixStoreError;
-
-use super::tree_bitmap_node::TreeBitMapNode;
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;

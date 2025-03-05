@@ -1,4 +1,3 @@
-use super::super::persist::lsm_tree::PersistTree;
 use std::path::Path;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -9,15 +8,15 @@ use crossbeam_epoch::{self as epoch};
 use epoch::{Guard, Owned};
 use zerocopy::TryFromBytes;
 
-use crate::in_memory::tree_bitmap::TreeBitMap;
-use crate::persist::lsm_tree::LongKey;
 use crate::prefix_cht::cht::PrefixCht;
 use crate::stats::CreatedNodes;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
 use crate::types::{PrefixId, RouteStatus};
-use crate::{types::errors::PrefixStoreError, types::PublicRecord};
-
-pub use crate::rib::starcast_af_query;
+use crate::TreeBitMap;
+use crate::{lsm_tree::LongKey, LsmTree};
+use crate::{
+    types::errors::PrefixStoreError, types::prefix_record::PublicRecord,
+};
 
 use crate::{IPv4, IPv6, Meta};
 
@@ -192,7 +191,7 @@ impl Counters {
         self.prefixes[len as usize].fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn dec_prefixes_count(&self, len: u8) {
+    pub fn _dec_prefixes_count(&self, len: u8) {
         self.prefixes[len as usize].fetch_sub(1, Ordering::Relaxed);
     }
 
@@ -326,9 +325,9 @@ pub(crate) struct StarCastAfRib<
     const KEY_SIZE: usize,
 > {
     pub config: C,
-    pub(crate) in_memory_tree: TreeBitMap<AF, N_ROOT_SIZE>,
+    pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
     pub(crate) prefix_cht: PrefixCht<AF, M, P_ROOT_SIZE>,
-    pub(crate) persist_tree: Option<PersistTree<AF, LongKey<AF>, KEY_SIZE>>,
+    pub(crate) persist_tree: Option<LsmTree<AF, LongKey<AF>, KEY_SIZE>>,
     pub counters: Counters,
 }
 
@@ -360,13 +359,13 @@ impl<
             _ => {
                 let persist_path = &config.persist_path().unwrap();
                 let pp_ref = &Path::new(persist_path);
-                Some(PersistTree::new(pp_ref))
+                Some(LsmTree::new(pp_ref))
             }
         };
 
         let store = StarCastAfRib {
             config,
-            in_memory_tree: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
+            tree_bitmap: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
             persist_tree,
             counters: Counters::default(),
             prefix_cht: PrefixCht::<AF, M, P_ROOT_SIZE>::init(),
@@ -383,7 +382,7 @@ impl<
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("try insertingf {:?}", prefix);
         let guard = &epoch::pin();
-        self.in_memory_tree
+        self.tree_bitmap
             .set_prefix_exists(prefix, record.multi_uniq_id)
             .and_then(|(retry_count, exists)| {
                 trace!("exists, upsert it");
@@ -453,7 +452,7 @@ impl<
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
                     let (retry_count, exists) = self
-                        .in_memory_tree
+                        .tree_bitmap
                         .set_prefix_exists(prefix, record.multi_uniq_id)?;
                     persist_tree.persist_record_w_short_key(prefix, &record);
                     Ok(UpsertReport {
@@ -471,14 +470,14 @@ impl<
 
     pub fn contains(&self, prefix: PrefixId<AF>, mui: Option<u32>) -> bool {
         if let Some(mui) = mui {
-            self.in_memory_tree.prefix_exists_for_mui(prefix, mui)
+            self.tree_bitmap.prefix_exists_for_mui(prefix, mui)
         } else {
-            self.in_memory_tree.prefix_exists(prefix)
+            self.tree_bitmap.prefix_exists(prefix)
         }
     }
 
     pub fn get_nodes_count(&self) -> usize {
-        self.in_memory_tree.get_nodes_count()
+        self.tree_bitmap.get_nodes_count()
     }
 
     // Change the status of the record for the specified (prefix, mui)
@@ -621,7 +620,7 @@ impl<
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
         let current = self
-            .in_memory_tree
+            .tree_bitmap
             .withdrawn_muis_bmin
             .load(Ordering::Acquire, guard);
 
@@ -629,7 +628,7 @@ impl<
         new.insert(mui);
 
         loop {
-            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+            match self.tree_bitmap.withdrawn_muis_bmin.compare_exchange(
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
@@ -653,7 +652,7 @@ impl<
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
         let current = self
-            .in_memory_tree
+            .tree_bitmap
             .withdrawn_muis_bmin
             .load(Ordering::Acquire, guard);
 
@@ -661,7 +660,7 @@ impl<
         new.remove(mui);
 
         loop {
-            match self.in_memory_tree.withdrawn_muis_bmin.compare_exchange(
+            match self.tree_bitmap.withdrawn_muis_bmin.compare_exchange(
                 current,
                 Owned::new(new),
                 Ordering::AcqRel,
@@ -682,7 +681,7 @@ impl<
     // functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
         unsafe {
-            self.in_memory_tree
+            self.tree_bitmap
                 .withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .as_ref()
@@ -696,7 +695,7 @@ impl<
     // functions.
     pub(crate) fn is_mui_active(&self, mui: u32, guard: &Guard) -> bool {
         !unsafe {
-            self.in_memory_tree
+            self.tree_bitmap
                 .withdrawn_muis_bmin
                 .load(Ordering::Acquire, guard)
                 .as_ref()
@@ -707,7 +706,7 @@ impl<
 
     pub(crate) fn get_prefixes_count(&self) -> UpsertCounters {
         UpsertCounters {
-            in_memory_count: self.in_memory_tree.get_prefixes_count(),
+            in_memory_count: self.tree_bitmap.get_prefixes_count(),
             persisted_count: self
                 .persist_tree
                 .as_ref()
@@ -718,9 +717,7 @@ impl<
 
     pub fn get_prefixes_count_for_len(&self, len: u8) -> UpsertCounters {
         UpsertCounters {
-            in_memory_count: self
-                .in_memory_tree
-                .get_prefixes_count_for_len(len),
+            in_memory_count: self.tree_bitmap.get_prefixes_count_for_len(len),
             persisted_count: self
                 .persist_tree
                 .as_ref()
@@ -733,7 +730,7 @@ impl<
         &'a self,
         guard: &'a Guard,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
-        self.in_memory_tree.prefixes_iter().map(|p| {
+        self.tree_bitmap.prefixes_iter().map(|p| {
             (
                 p,
                 self.get_value(p.into(), None, true, guard)

@@ -10,34 +10,31 @@
 //! Part of the Rotonda modular BGP engine.
 
 //! Read more about the data-structure in this [blog post](https://blog.nlnetlabs.nl/donkeys-mules-horses/).
+mod cht;
+mod lsm_tree;
+mod prefix_cht;
+mod rib;
+mod tree_bitmap;
+mod types;
 
 #[macro_use]
 mod macros;
 
-pub(crate) mod types;
-
-// Public Interfaces
-
-/// Some simple metadata implementations
-pub mod meta_examples;
-
-pub(crate) mod cht;
-pub(crate) mod in_memory;
-pub(crate) mod persist;
-pub(crate) mod prefix_cht;
-mod tests;
+pub(crate) use lsm_tree::LsmTree;
+pub(crate) use tree_bitmap::TreeBitMap;
 
 // re-exports
 pub use crossbeam_epoch::{self as epoch, Guard};
 pub use inetnum::addr;
 
-pub mod rib;
+// Public Interfaces on the root of the crate
 
 pub use rib::starcast::StarCastRib;
 pub use rib::starcast_af::{
-    MemoryOnlyConfig, PersistHistoryConfig, PersistOnlyConfig,
-    WriteAheadConfig,
+    Config, MemoryOnlyConfig, PersistHistoryConfig, PersistOnlyConfig,
+    PersistStrategy, UpsertReport, WriteAheadConfig,
 };
+pub use types::af::AddressFamily;
 pub use types::af::IPv4;
 pub use types::af::IPv6;
 pub use types::af::IntoIpAddr;
@@ -45,10 +42,10 @@ pub use types::errors;
 pub use types::match_options::{
     IncludeHistory, MatchOptions, MatchType, QueryResult,
 };
-pub use types::prefix_id::RouteStatus;
+pub use types::meta_examples;
+pub use types::prefix_record::Meta;
 pub use types::prefix_record::PublicPrefixRecord as PrefixRecord;
 pub use types::prefix_record::PublicRecord as Record;
+pub use types::route_status::RouteStatus;
 pub use types::stats;
 pub use types::test_types;
-pub use types::AddressFamily;
-pub use types::Meta;

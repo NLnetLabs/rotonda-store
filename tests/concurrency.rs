@@ -2,9 +2,8 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    meta_examples::NoMeta, rib::starcast_af::Config, test_types::BeBytesAsn,
-    IncludeHistory, MatchOptions, MemoryOnlyConfig, Record, RouteStatus,
-    StarCastRib,
+    meta_examples::NoMeta, test_types::BeBytesAsn, Config, IncludeHistory,
+    MatchOptions, MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
 };
 
 mod common {

@@ -2,14 +2,9 @@ use log::trace;
 use roaring::RoaringBitmap;
 
 use crate::{
-    in_memory::{
-        tree_bitmap_node::{
-            NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
-        },
-        TreeBitMap,
-    },
-    // prelude::multi::PrefixId,
+    tree_bitmap::{NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter},
     types::{AddressFamily, BitSpan, PrefixId},
+    TreeBitMap,
 };
 
 pub(crate) struct _MoreSpecificPrefixIter<

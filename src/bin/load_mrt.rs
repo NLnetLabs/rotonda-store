@@ -1,12 +1,12 @@
-use rotonda_store::rib::starcast_af::Config;
-use rotonda_store::rib::starcast_af::PersistStrategy;
-use rotonda_store::rib::starcast_af::UpsertReport;
+use rotonda_store::Config;
 use rotonda_store::MemoryOnlyConfig;
 use rotonda_store::PersistHistoryConfig;
 use rotonda_store::PersistOnlyConfig;
+use rotonda_store::PersistStrategy;
 use rotonda_store::Record;
 use rotonda_store::RouteStatus;
 use rotonda_store::StarCastRib;
+use rotonda_store::UpsertReport;
 use rotonda_store::WriteAheadConfig;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::message::update_builder::StandardCommunitiesList;

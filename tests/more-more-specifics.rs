@@ -4,8 +4,8 @@ use std::error::Error;
 
 use inetnum::addr::Prefix;
 use rotonda_store::{
-    meta_examples::PrefixAs, rib::starcast_af::Config, IncludeHistory,
-    MatchOptions, MatchType, Record, RouteStatus, StarCastRib,
+    meta_examples::PrefixAs, Config, IncludeHistory, MatchOptions, MatchType,
+    Record, RouteStatus, StarCastRib,
 };
 
 mod common {

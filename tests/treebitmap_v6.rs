@@ -15,8 +15,7 @@ mod tests {
     use rotonda_store::{
         epoch,
         meta_examples::{NoMeta, PrefixAs},
-        rib::starcast_af::Config,
-        IncludeHistory, IntoIpAddr, MatchOptions, MatchType,
+        Config, IncludeHistory, IntoIpAddr, MatchOptions, MatchType,
         MemoryOnlyConfig, PersistOnlyConfig, Record, RouteStatus,
         StarCastRib,
     };

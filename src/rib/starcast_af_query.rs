@@ -5,8 +5,8 @@ use zerocopy::TryFromBytes;
 
 use crate::rib::starcast_af::{Config, PersistStrategy, StarCastAfRib};
 use crate::types::prefix_record::ZeroCopyRecord;
-use crate::types::AddressFamily;
 use crate::types::PublicRecord;
+use crate::AddressFamily;
 use inetnum::addr::Prefix;
 
 use crate::{Meta, QueryResult};
@@ -43,7 +43,7 @@ impl<
                         prefix_id,
                         mui,
                         include_withdrawn,
-                        self.in_memory_tree.withdrawn_muis_bmin(guard),
+                        self.tree_bitmap.withdrawn_muis_bmin(guard),
                     )
                     .map(|v| {
                         v.iter()
@@ -69,7 +69,7 @@ impl<
                 prefix_id,
                 mui,
                 include_withdrawn,
-                self.in_memory_tree.withdrawn_muis_bmin(guard),
+                self.tree_bitmap.withdrawn_muis_bmin(guard),
             ),
         }
     }
@@ -87,7 +87,7 @@ impl<
             None
         };
         let more_specifics = self
-            .in_memory_tree
+            .tree_bitmap
             .more_specific_prefix_iter_from(prefix_id)
             .map(|p| {
                 self.get_value(prefix_id, mui, include_withdrawn, guard)
@@ -123,7 +123,7 @@ impl<
         };
 
         let less_specifics = self
-            .in_memory_tree
+            .tree_bitmap
             .less_specific_prefix_iter(prefix_id)
             .map(|p| {
                 self.get_value(prefix_id, mui, include_withdrawn, guard)
@@ -158,7 +158,7 @@ impl<
             None
         } else {
             Some(
-                self.in_memory_tree
+                self.tree_bitmap
                     .more_specific_prefix_iter_from(prefix_id)
                     .filter_map(move |p| {
                         self.get_value(p, mui, include_withdrawn, guard)
@@ -199,7 +199,7 @@ impl<
         include_withdrawn: bool,
         guard: &'a Guard,
     ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
-        self.in_memory_tree
+        self.tree_bitmap
             .less_specific_prefix_iter(prefix_id)
             .filter_map(move |p| {
                 self.get_value(p, mui, include_withdrawn, guard)
@@ -214,7 +214,7 @@ impl<
         guard: &'a Guard,
     ) -> QueryResult<M> {
         trace!("match_prefix rib {:?} {:?}", search_pfx, options);
-        let res = self.in_memory_tree.match_prefix(search_pfx, options);
+        let res = self.tree_bitmap.match_prefix(search_pfx, options);
 
         trace!("res {:?}", res);
         let mut res = QueryResult::from(res);

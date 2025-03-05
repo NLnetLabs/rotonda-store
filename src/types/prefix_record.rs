@@ -373,69 +373,69 @@ pub struct RecordSingleSet<M: Meta> {
     pub v6: Vec<PublicPrefixSingleRecord<M>>,
 }
 
-impl<M: Meta> RecordSingleSet<M> {
-    pub fn new() -> Self {
-        Self {
-            v4: Default::default(),
-            v6: Default::default(),
-        }
-    }
+// impl<M: Meta> RecordSingleSet<M> {
+//     pub fn new() -> Self {
+//         Self {
+//             v4: Default::default(),
+//             v6: Default::default(),
+//         }
+//     }
 
-    pub fn push(&mut self, prefix: Prefix, meta: M) {
-        match prefix.addr() {
-            std::net::IpAddr::V4(_) => &mut self.v4,
-            std::net::IpAddr::V6(_) => &mut self.v6,
-        }
-        .push(PublicPrefixSingleRecord::new(prefix, meta));
-    }
+//     pub fn push(&mut self, prefix: Prefix, meta: M) {
+//         match prefix.addr() {
+//             std::net::IpAddr::V4(_) => &mut self.v4,
+//             std::net::IpAddr::V6(_) => &mut self.v6,
+//         }
+//         .push(PublicPrefixSingleRecord::new(prefix, meta));
+//     }
 
-    pub fn is_empty(&self) -> bool {
-        self.v4.is_empty() && self.v6.is_empty()
-    }
+//     pub fn is_empty(&self) -> bool {
+//         self.v4.is_empty() && self.v6.is_empty()
+//     }
 
-    pub fn iter(&self) -> RecordSetSingleIter<M> {
-        RecordSetSingleIter {
-            v4: if self.v4.is_empty() {
-                None
-            } else {
-                Some(self.v4.iter())
-            },
-            v6: self.v6.iter(),
-        }
-    }
+//     pub fn iter(&self) -> RecordSetSingleIter<M> {
+//         RecordSetSingleIter {
+//             v4: if self.v4.is_empty() {
+//                 None
+//             } else {
+//                 Some(self.v4.iter())
+//             },
+//             v6: self.v6.iter(),
+//         }
+//     }
 
-    #[must_use]
-    pub fn reverse(mut self) -> RecordSingleSet<M> {
-        self.v4.reverse();
-        self.v6.reverse();
-        self
-    }
+//     #[must_use]
+//     pub fn reverse(mut self) -> RecordSingleSet<M> {
+//         self.v4.reverse();
+//         self.v6.reverse();
+//         self
+//     }
 
-    pub fn len(&self) -> usize {
-        self.v4.len() + self.v6.len()
-    }
-}
+//     pub fn len(&self) -> usize {
+//         self.v4.len() + self.v6.len()
+//     }
+// }
 
-impl<M: Meta> Default for RecordSingleSet<M> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl<M: Meta> Default for RecordSingleSet<M> {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
-impl<M: Meta> fmt::Display for RecordSingleSet<M> {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let arr_str_v4 =
-            self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
-                format!("{} {}", pfx_arr, *pfx)
-            });
-        let arr_str_v6 =
-            self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
-                format!("{} {}", pfx_arr, *pfx)
-            });
+// impl<M: Meta> fmt::Display for RecordSingleSet<M> {
+//     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+//         let arr_str_v4 =
+//             self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
+//                 format!("{} {}", pfx_arr, *pfx)
+//             });
+//         let arr_str_v6 =
+//             self.v6.iter().fold("".to_string(), |pfx_arr, pfx| {
+//                 format!("{} {}", pfx_arr, *pfx)
+//             });
 
-        write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
-    }
-}
+//         write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
+//     }
+// }
 
 impl<M: Meta>
     From<(

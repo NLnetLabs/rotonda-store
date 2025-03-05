@@ -27,7 +27,7 @@ where
 }
 
 #[derive(Debug)]
-pub struct NodeSet<AF: AddressFamily>(
+pub(crate) struct NodeSet<AF: AddressFamily>(
     OnceBoxSlice<StoredNode<AF>>,
     // A Bitmap index that keeps track of the `multi_uniq_id`s (mui) that are
     // present in value collections in the meta-data tree in the child nodes
