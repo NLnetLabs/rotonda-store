@@ -1,7 +1,13 @@
-use rotonda_store::rib::MemoryOnlyConfig;
-use rotonda_store::rib::PersistHistoryConfig;
-use rotonda_store::rib::PersistOnlyConfig;
-use rotonda_store::rib::WriteAheadConfig;
+use rotonda_store::rib::starcast_af::Config;
+use rotonda_store::rib::starcast_af::PersistStrategy;
+use rotonda_store::rib::starcast_af::UpsertReport;
+use rotonda_store::MemoryOnlyConfig;
+use rotonda_store::PersistHistoryConfig;
+use rotonda_store::PersistOnlyConfig;
+use rotonda_store::Record;
+use rotonda_store::RouteStatus;
+use rotonda_store::StarCastRib;
+use rotonda_store::WriteAheadConfig;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::message::update_builder::StandardCommunitiesList;
 use std::collections::BTreeSet;
@@ -16,12 +22,6 @@ use memmap2::Mmap;
 use rayon::iter::ParallelBridge;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::*;
-use rotonda_store::prelude::multi::PrefixStoreError;
-use rotonda_store::prelude::multi::{MultiThreadedStore, RouteStatus};
-use rotonda_store::rib::Config;
-use rotonda_store::rib::PersistStrategy;
-use rotonda_store::rib::UpsertReport;
-use rotonda_store::PublicRecord;
 use routecore::bgp::message::PduParseInfo;
 use routecore::bgp::path_attributes::OwnedPathAttributes;
 use routecore::mrt::MrtFile;
@@ -174,15 +174,17 @@ struct Cli {
     persist_strategy: Option<String>,
 }
 
+type Type = rotonda_store::errors::PrefixStoreError;
+
 fn insert<C: Config, T: rotonda_store::Meta>(
-    store: &MultiThreadedStore<T, C>,
+    store: &StarCastRib<T, C>,
     prefix: &Prefix,
     mui: u32,
     ltime: u64,
     route_status: RouteStatus,
     value: T,
-) -> Result<UpsertReport, PrefixStoreError> {
-    let record = PublicRecord::new(mui, ltime, route_status, value);
+) -> Result<UpsertReport, Type> {
+    let record = Record::new(mui, ltime, route_status, value);
     store
         .insert(prefix, record, None)
         .inspect_err(|e| eprintln!("Error in test_store: {e}"))
@@ -222,7 +224,7 @@ fn par_load_prefixes(
 
 fn mt_parse_and_insert_table<C: Config + Sync>(
     tables: TableDumpIterator<&[u8]>,
-    store: Option<&MultiThreadedStore<PaBytes, C>>,
+    store: Option<&StarCastRib<PaBytes, C>>,
     ltime: u64,
 ) -> (UpsertCounters, Vec<Prefix>) {
     let persist_strategy =
@@ -334,7 +336,7 @@ fn mt_parse_and_insert_table<C: Config + Sync>(
 
 fn st_parse_and_insert_table<C: Config>(
     entries: RibEntryIterator<&[u8]>,
-    store: Option<&MultiThreadedStore<PaBytes, C>>,
+    store: Option<&StarCastRib<PaBytes, C>>,
     ltime: u64,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
@@ -365,7 +367,7 @@ fn st_parse_and_insert_table<C: Config>(
 
 fn mt_prime_store<C: Config + Sync>(
     prefixes: &Vec<(Prefix, u16)>,
-    store: &MultiThreadedStore<PaBytes, C>,
+    store: &StarCastRib<PaBytes, C>,
 ) -> UpsertCounters {
     let t0 = std::time::Instant::now();
 
@@ -398,7 +400,7 @@ fn mt_prime_store<C: Config + Sync>(
 
 fn st_prime_store<C: Config>(
     prefixes: &Vec<(Prefix, u16)>,
-    store: &MultiThreadedStore<PaBytes, C>,
+    store: &StarCastRib<PaBytes, C>,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
 
@@ -418,7 +420,7 @@ fn st_prime_store<C: Config>(
     counters
 }
 
-type Stores<C> = Vec<MultiThreadedStore<PaBytes, C>>;
+type Stores<C> = Vec<StarCastRib<PaBytes, C>>;
 
 // Create all the stores necessary, and if at least one is created, create
 // a reference to the first one.
@@ -426,7 +428,7 @@ fn create_stores<'a, C: Config + Sync>(
     stores: &'a mut Stores<C>,
     args: &'a Cli,
     store_config: C,
-) -> Option<&'a MultiThreadedStore<PaBytes, C>> {
+) -> Option<&'a StarCastRib<PaBytes, C>> {
     match &args {
         a if a.single_store && a.parse_only => {
             eprintln!(
@@ -437,7 +439,7 @@ fn create_stores<'a, C: Config + Sync>(
         }
         a if a.single_store => {
             stores.push(
-                MultiThreadedStore::<PaBytes, C>::new_with_config(
+                StarCastRib::<PaBytes, C>::new_with_config(
                     store_config.clone(),
                 )
                 .unwrap(),
@@ -456,9 +458,8 @@ fn create_stores<'a, C: Config + Sync>(
         }
         _ => {
             for _ in &args.mrt_files {
-                stores.push(
-                    MultiThreadedStore::<PaBytes, C>::try_default().unwrap(),
-                );
+                stores
+                    .push(StarCastRib::<PaBytes, C>::try_default().unwrap());
             }
             println!("Number of created stores: {}", stores.len());
             println!("store config: {:?}", store_config);
@@ -469,7 +470,7 @@ fn create_stores<'a, C: Config + Sync>(
 }
 
 fn exec_for_store<'a, C: Config + Sync>(
-    mut store: Option<&'a MultiThreadedStore<PaBytes, C>>,
+    mut store: Option<&'a StarCastRib<PaBytes, C>>,
     inner_stores: &'a Stores<C>,
     args: &'a Cli,
 ) {

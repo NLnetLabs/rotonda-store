@@ -1,7 +1,9 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 use inetnum::addr::Prefix;
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::{prelude::multi::*, prelude::*};
+use rotonda_store::{
+    epoch, meta_examples::PrefixAs, rib::starcast_af::Config, IncludeHistory,
+    MatchOptions, MatchType, Record, RouteStatus, StarCastRib,
+};
 
 use std::error::Error;
 
@@ -24,7 +26,7 @@ rotonda_store::all_strategies![
 
 // #[test]
 fn test_more_specifics<C: Config>(
-    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+    tree_bitmap: StarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -265,7 +267,7 @@ rotonda_store::all_strategies![
 ];
 
 fn test_brunos_more_specifics<C: Config>(
-    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+    tree_bitmap: StarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     tree_bitmap.insert(
         &Prefix::new(std::net::Ipv4Addr::new(168, 181, 224, 0).into(), 22)

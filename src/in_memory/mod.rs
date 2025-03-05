@@ -1,15 +1,9 @@
-pub(crate) mod atomic_stride;
-pub(crate) mod atomic_types;
-pub(crate) mod node;
-mod oncebox;
-pub(crate) mod tree;
+pub(crate) mod atomic_bitmap;
+pub(crate) mod node_cht;
 
-// #[deprecated]
-// mod deprecated_query;
+pub(crate) mod tree_bitmap;
+pub(crate) mod tree_bitmap_iterators;
+pub(crate) mod tree_bitmap_node;
+mod tree_bitmap_query;
 
-pub mod iterators;
-
-mod query;
-
-// #[macro_use]
-// mod macros;
+pub(crate) use tree_bitmap::TreeBitMap;

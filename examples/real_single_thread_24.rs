@@ -1,11 +1,10 @@
+use inetnum::addr::Prefix;
 use log::trace;
-use multi::{MemoryOnlyConfig, Record, RouteStatus};
+use rotonda_store::{IntoIpAddr, MemoryOnlyConfig, Record, RouteStatus};
 use std::thread;
 use std::time::Duration;
 
 use rand::Rng;
-
-use rotonda_store::prelude::*;
 
 use rotonda_store::meta_examples::PrefixAs;
 
@@ -14,7 +13,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     trace!("Starting one-threaded yolo testing....");
-    let tree_bitmap = rotonda_store::MultiThreadedStore::<
+    let tree_bitmap = rotonda_store::StarCastRib::<
         PrefixAs,
         MemoryOnlyConfig,
     >::try_default()?;

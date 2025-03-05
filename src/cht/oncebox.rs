@@ -75,7 +75,7 @@ impl<T> OnceBoxSlice<T> {
         }
     }
 
-    pub fn is_null(&self) -> bool {
+    pub fn _is_null(&self) -> bool {
         self.ptr.load(Ordering::Relaxed).is_null()
     }
 

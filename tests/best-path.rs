@@ -1,14 +1,14 @@
 use inetnum::addr::Prefix;
 use inetnum::asn::Asn;
 use log::trace;
-use rotonda_store::prelude::multi::PrefixStoreError;
-use rotonda_store::prelude::multi::Record;
-use rotonda_store::prelude::multi::RouteStatus;
-use rotonda_store::rib::MemoryOnlyConfig;
+use rotonda_store::errors::PrefixStoreError;
 use rotonda_store::IncludeHistory;
 use rotonda_store::MatchOptions;
+use rotonda_store::MemoryOnlyConfig;
 use rotonda_store::Meta;
-use rotonda_store::MultiThreadedStore;
+use rotonda_store::Record;
+use rotonda_store::RouteStatus;
+use rotonda_store::StarCastRib;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::path_attributes::BgpIdentifier;
 use routecore::bgp::path_attributes::PaMap;
@@ -75,7 +75,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
     crate::common::init();
 
     let tree_bitmap =
-        std::sync::Arc::new(std::sync::Arc::new(MultiThreadedStore::<
+        std::sync::Arc::new(std::sync::Arc::new(StarCastRib::<
             Ipv4Route,
             MemoryOnlyConfig,
         >::try_default()?));

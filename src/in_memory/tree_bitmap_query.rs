@@ -1,10 +1,10 @@
-use crate::af::AddressFamily;
+use crate::types::AddressFamily;
 
-use crate::rib::query::TreeQueryResult;
+use crate::rib::starcast_af_query::TreeQueryResult;
 use crate::{MatchOptions, MatchType};
 
-use super::super::types::PrefixId;
-use super::tree::TreeBitMap;
+use super::TreeBitMap;
+use crate::types::PrefixId;
 
 impl<AF, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE>
 where

@@ -2,11 +2,9 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    meta_examples::NoMeta,
-    prelude::multi::RouteStatus,
-    rib::{Config, MemoryOnlyConfig},
-    test_types::BeBytesAsn,
-    IncludeHistory, MatchOptions, MultiThreadedStore, PublicRecord as Record,
+    meta_examples::NoMeta, rib::starcast_af::Config, test_types::BeBytesAsn,
+    IncludeHistory, MatchOptions, MemoryOnlyConfig, Record, RouteStatus,
+    StarCastRib,
 };
 
 mod common {
@@ -27,7 +25,7 @@ rotonda_store::all_strategies![
 ];
 
 fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
-    tree_bitmap: MultiThreadedStore<BeBytesAsn, C>,
+    tree_bitmap: StarCastRib<BeBytesAsn, C>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
@@ -417,7 +415,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
 
-    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<
+    let tree_bitmap = std::sync::Arc::new(StarCastRib::<
         BeBytesAsn,
         MemoryOnlyConfig,
     >::try_default()?);
@@ -734,7 +732,7 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     println!("PersistOnly strategy starting...");
-    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<
+    let tree_bitmap = std::sync::Arc::new(StarCastRib::<
         NoMeta,
         MemoryOnlyConfig,
     >::try_default()?);

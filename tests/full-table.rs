@@ -3,7 +3,11 @@
 mod tests {
     use inetnum::addr::Prefix;
     use inetnum::asn::Asn;
-    use rotonda_store::{prelude::multi::*, prelude::*};
+    use rotonda_store::rib::starcast_af::Config;
+    use rotonda_store::{
+        epoch, IncludeHistory, MatchOptions, MatchType, Meta, PrefixRecord,
+        Record, RouteStatus, StarCastRib,
+    };
 
     use std::error::Error;
     use std::fs::File;
@@ -60,7 +64,7 @@ mod tests {
 
     // #[test]
     fn test_full_table_from_csv<C: Config>(
-        tree_bitmap: MultiThreadedStore<AsnList, C>,
+        tree_bitmap: StarCastRib<AsnList, C>,
     ) -> Result<(), Box<dyn Error>> {
         // These constants are all contingent on the exact csv file,
         // being loaded!

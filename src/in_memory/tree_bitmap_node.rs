@@ -4,18 +4,14 @@ use std::{fmt::Debug, marker::PhantomData};
 use log::{log_enabled, trace};
 use parking_lot_core::SpinWait;
 
-use super::super::bit_span::BitSpan;
-use super::tree::{
-    into_pfxbitarr, into_ptrbitarr, AtomicBitmap, AtomicPfxBitArr,
-    AtomicPtrBitArr, CasResult,
+use crate::in_memory::atomic_bitmap::{
+    AtomicBitmap, AtomicPfxBitArr, AtomicPtrBitArr, CasResult,
 };
+use crate::types::BitSpan;
 
-use crate::af::AddressFamily;
-use crate::local_array::in_memory::tree::{
-    bit_pos_from_index, ptr_bit_pos_from_index,
-};
-use crate::local_array::rib::default_store::{BIT_SPAN_SIZE, STRIDE_SIZE};
-use crate::local_array::types::PrefixId;
+use crate::rib::{BIT_SPAN_SIZE, STRIDE_SIZE};
+use crate::types::AddressFamily;
+use crate::types::PrefixId;
 
 //------------ TreeBitMap Node ----------------------------------------------
 
@@ -479,6 +475,42 @@ pub const fn ms_prefix_mask_arr(bs: BitSpan) -> u32 {
         0b_00000000000000000000000000000010, // bits =15, len = 4
         0b_00000000000000000000000000000000, // padding
     ][(1 << bs.len) - 1 + bs.bits as usize]
+}
+
+fn into_ptrbitarr(bitmap: u32) -> u16 {
+    (bitmap >> 1) as u16
+}
+
+fn into_pfxbitarr(bitmap: u16) -> u32 {
+    (bitmap as u32) << 1
+}
+
+fn bit_pos_from_index(i: u8) -> u32 {
+    1_u32.rotate_right(1) >> i
+}
+
+fn ptr_bit_pos_from_index(i: u8) -> u16 {
+    // trace!("pfx {} ptr {} strlen {}",
+    // <$pfxsize>::BITS, <$ptrsize>::BITS, Self::STRIDE_LEN);
+    trace!("PTR_BIT_POS_FROM_INDEX {i}");
+    1_u16.rotate_right(i as u32 + 2)
+}
+
+pub(crate) fn ptr_range(ptrbitarr: u16, bs: BitSpan) -> (u16, u8) {
+    let start: u8 = (bs.bits << (4 - bs.len)) as u8;
+    let stop: u8 = start + (1 << (4 - bs.len));
+    let mask: u16 = (((1_u32 << (stop as u32 - start as u32)) - 1)
+        .rotate_right(stop as u32)
+        >> 16)
+        .try_into()
+        .unwrap();
+    if log_enabled!(log::Level::Trace) {
+        trace!("- mask      {:032b}", mask);
+        trace!("- ptrbitarr {:032b}", ptrbitarr);
+        trace!("- shl bitar {:032b}", ptrbitarr & mask);
+    }
+
+    (ptrbitarr & mask, start)
 }
 
 // Creates an Iterator that returns all prefixes that exist in a node that

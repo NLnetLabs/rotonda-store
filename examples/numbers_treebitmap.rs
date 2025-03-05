@@ -1,7 +1,8 @@
+use inetnum::addr::Prefix;
 use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::prelude::*;
-use rotonda_store::rib::MemoryOnlyConfig;
+use rotonda_store::{
+    MemoryOnlyConfig, PrefixRecord, Record, RouteStatus, StarCastRib,
+};
 
 use std::env;
 use std::error::Error;
@@ -64,7 +65,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     for _strides in strides_vec.iter() {
         let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
         let tree_bitmap =
-            MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
+            StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

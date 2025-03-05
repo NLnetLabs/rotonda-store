@@ -13,8 +13,12 @@ mod common {
 mod tests {
     use inetnum::addr::Prefix;
     use rotonda_store::{
-        meta_examples::NoMeta, meta_examples::PrefixAs, prelude::multi::*,
-        prelude::*,
+        epoch,
+        meta_examples::{NoMeta, PrefixAs},
+        rib::starcast_af::Config,
+        IncludeHistory, IntoIpAddr, MatchOptions, MatchType,
+        MemoryOnlyConfig, PersistOnlyConfig, Record, RouteStatus,
+        StarCastRib,
     };
 
     rotonda_store::all_strategies![
@@ -25,7 +29,7 @@ mod tests {
 
     // #[test]
     fn test_arbitrary_insert_ipv6<C: Config>(
-        trie: MultiThreadedStore<NoMeta, C>,
+        trie: StarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
         // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
@@ -74,7 +78,7 @@ mod tests {
 
     // #[test]
     fn test_insert_extremes_ipv6<C: Config>(
-        trie: MultiThreadedStore<NoMeta, C>,
+        trie: StarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -168,7 +172,7 @@ mod tests {
     // the end of a prefix-length array).
     // #[test]
     fn test_max_levels<C: Config>(
-        tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+        tree_bitmap: StarCastRib<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -351,7 +355,7 @@ mod tests {
 
     // #[test]
     fn test_tree_ipv6<C: Config>(
-        tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+        tree_bitmap: StarCastRib<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
@@ -670,19 +674,75 @@ mod tests {
         Ok(())
     }
 
-    // rotonda_store::all_strategies![
-    //     ranges_ipv4;
-    //     test_ranges_ipv4;
-    //     NoMeta
-    // ];
-
+    // This test cannot be run with the current test creation macro. The
+    // test recreates the store for each outer loop!
     #[test]
-    fn test_ranges_ipv4(// tree_bitmap: MultiThreadedStore<NoMeta>,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn test_ranges_ipv6_mo() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
             let tree_bitmap =
-                MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default(
+                StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
+
+            let pfx_vec: Vec<Prefix> = (1..32)
+                .collect::<Vec<u8>>()
+                .into_iter()
+                .map(|i_len| {
+                    Prefix::new_relaxed(
+                        std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
+                            .into(),
+                        i_len,
+                    )
+                    .unwrap()
+                })
+                .collect();
+
+            let mut i_len_s = 0;
+            for pfx in pfx_vec {
+                i_len_s += 1;
+                tree_bitmap.insert(
+                    &pfx,
+                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                    None,
                 )?;
+
+                let res_pfx = Prefix::new_relaxed(
+                    std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
+                        .into(),
+                    i_len_s,
+                );
+
+                let guard = &epoch::pin();
+                for s_len in i_len_s..32 {
+                    let pfx = Prefix::new_relaxed(
+                        std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
+                            .into(),
+                        s_len,
+                    )?;
+                    let res = tree_bitmap.match_prefix(
+                        &pfx,
+                        &MatchOptions {
+                            match_type: MatchType::LongestMatch,
+                            include_withdrawn: false,
+                            include_less_specifics: false,
+                            include_more_specifics: false,
+                            mui: None,
+                            include_history: IncludeHistory::None,
+                        },
+                        guard,
+                    );
+                    println!("{:?}", pfx);
+
+                    assert_eq!(res.prefix.unwrap(), res_pfx?);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_ranges_ipv6_po() -> Result<(), Box<dyn std::error::Error>> {
+        for i_net in 0..255 {
+            let tree_bitmap =
+                StarCastRib::<NoMeta, PersistOnlyConfig>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()

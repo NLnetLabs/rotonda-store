@@ -1,12 +1,12 @@
-use multi::MemoryOnlyConfig;
-use multi::Record;
+use inetnum::addr::Prefix;
 use rotonda_store::meta_examples::NoMeta;
-use rotonda_store::prelude::*;
-use rotonda_store::MultiThreadedStore;
+use rotonda_store::{
+    IncludeHistory, IntoIpAddr, MatchOptions, MatchType, MemoryOnlyConfig,
+    Record, RouteStatus, StarCastRib,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap =
-        MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?;
+    let tree_bitmap = StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
 
     let pfxs = vec![
         Prefix::new_relaxed(
@@ -263,7 +263,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // let p : rotonda_store::Prefix<u32, PrefixAs> = pfx.into();
         tree_bitmap.insert(
             &pfx.unwrap(),
-            Record::new(1, 0, multi::RouteStatus::Active, NoMeta::Empty),
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
     }

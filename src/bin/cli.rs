@@ -1,12 +1,14 @@
 #![cfg(feature = "cli")]
 use ansi_term::Colour;
-use rotonda_store::rib::MemoryOnlyConfig;
+use rotonda_store::{
+    epoch, IncludeHistory, MatchOptions, MatchType, MemoryOnlyConfig,
+    PrefixRecord, Record, RouteStatus, StarCastRib,
+};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
 use inetnum::addr::Prefix;
 use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::prelude::{multi::*, *};
 use rustyline::history::DefaultHistory;
 
 use std::env;
@@ -68,7 +70,7 @@ fn load_prefixes(
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
     let tree_bitmap =
-        MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::try_default()?;
+        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);

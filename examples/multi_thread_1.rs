@@ -1,14 +1,14 @@
 use std::{sync::Arc, thread};
 
-use rotonda_store::meta_examples::NoMeta;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::prelude::*;
-use rotonda_store::rib::MemoryOnlyConfig;
+use inetnum::addr::Prefix;
+use rotonda_store::{
+    epoch, meta_examples::NoMeta, IncludeHistory, IntoIpAddr, MatchOptions,
+    MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = Arc::new(
-        MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?,
-    );
+    let tree_bitmap =
+        Arc::new(StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?);
 
     let _: Vec<_> = (0..16)
         .map(|i: i32| {

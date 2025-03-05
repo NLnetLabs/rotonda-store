@@ -16,9 +16,11 @@ mod tests {
     use inetnum::addr::Prefix;
     use log::trace;
     use rotonda_store::{
+        epoch,
         meta_examples::{NoMeta, PrefixAs},
-        prelude::multi::*,
-        prelude::*,
+        rib::starcast_af::Config,
+        IncludeHistory, IntoIpAddr, MatchOptions, MatchType, Record,
+        RouteStatus, StarCastRib,
     };
 
     rotonda_store::all_strategies![
@@ -29,7 +31,7 @@ mod tests {
 
     // #[test]
     fn test_insert_extremes_ipv4<C: Config>(
-        trie: MultiThreadedStore<NoMeta, C>,
+        trie: StarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
@@ -107,7 +109,7 @@ mod tests {
 
     // #[test]
     fn test_tree_ipv4<C: Config>(
-        tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+        tree_bitmap: StarCastRib<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -424,7 +426,7 @@ mod tests {
 
     // #[test]
     fn test_ranges_ipv4<C: Config>(
-        _tree_bitmap: MultiThreadedStore<NoMeta, C>,
+        _tree_bitmap: StarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // for persist_strategy in [
         //     PersistStrategy::MemoryOnly,
@@ -433,7 +435,7 @@ mod tests {
         //     // PersistStrategy::PersistHistory,
 
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta, C>::try_default()?;
+            let tree_bitmap = StarCastRib::<NoMeta, C>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -497,7 +499,7 @@ mod tests {
 
     // #[test]
     fn test_multi_ranges_ipv4<C: Config>(
-        tree_bitmap: MultiThreadedStore<NoMeta, C>,
+        tree_bitmap: StarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 

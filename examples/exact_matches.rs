@@ -1,12 +1,14 @@
+use inetnum::addr::Prefix;
 use rotonda_store::meta_examples::NoMeta;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::rib::MemoryOnlyConfig;
-use rotonda_store::{prelude::*, IncludeHistory};
+// use rotonda_store::prelude::multi::*;
+use rotonda_store::{
+    epoch, IncludeHistory, IntoIpAddr, MatchOptions, MatchType,
+    MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
-    let tree_bitmap =
-        MultiThreadedStore::<NoMeta, MemoryOnlyConfig>::try_default()?;
+    let tree_bitmap = StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

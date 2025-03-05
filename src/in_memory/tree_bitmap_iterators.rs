@@ -19,16 +19,12 @@
 // contention, since every lookup has to go through the levels near the root
 // in the TreeBitMap.
 
-use crate::local_array::in_memory::tree::TreeBitMap;
+use crate::in_memory::TreeBitMap;
 use crate::{
-    af::AddressFamily,
-    local_array::{
-        bit_span::BitSpan,
-        in_memory::node::{
-            NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
-        },
-        types::PrefixId,
+    in_memory::tree_bitmap_node::{
+        NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
     },
+    types::{AddressFamily, BitSpan, PrefixId},
 };
 
 use inetnum::addr::Prefix;

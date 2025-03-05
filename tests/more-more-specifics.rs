@@ -3,12 +3,11 @@
 use std::error::Error;
 
 use inetnum::addr::Prefix;
-
 use rotonda_store::{
-    meta_examples::PrefixAs, prelude::multi::RouteStatus, rib::Config,
-    IncludeHistory, MatchOptions, MatchType, MultiThreadedStore,
-    PublicRecord as Record,
+    meta_examples::PrefixAs, rib::starcast_af::Config, IncludeHistory,
+    MatchOptions, MatchType, Record, RouteStatus, StarCastRib,
 };
+
 mod common {
     use std::io::Write;
 
@@ -28,7 +27,7 @@ rotonda_store::all_strategies![
 
 // #[test]
 fn test_more_specifics_without_less_specifics<C: Config>(
-    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+    tree_bitmap: StarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -130,7 +129,7 @@ rotonda_store::all_strategies![
 ];
 
 fn test_more_specifics_with_less_specifics<C: Config>(
-    tree_bitmap: MultiThreadedStore<PrefixAs, C>,
+    tree_bitmap: StarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 

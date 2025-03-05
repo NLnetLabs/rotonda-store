@@ -9,18 +9,14 @@ use crossbeam_epoch::{self as epoch};
 use epoch::{Guard, Owned};
 use zerocopy::TryFromBytes;
 
-use crate::in_memory::tree::TreeBitMap;
+use crate::in_memory::tree_bitmap::TreeBitMap;
 use crate::persist::lsm_tree::LongKey;
 use crate::prefix_cht::cht::PrefixCht;
-// use crate::prelude::multi::RouteStatus;
 use crate::stats::CreatedNodes;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
 use crate::types::{PrefixId, RouteStatus};
 use crate::{types::errors::PrefixStoreError, types::PublicRecord};
 
-// Make sure to also import the other methods for the Rib, so the proc macro
-// create_store can use them.
-pub use crate::in_memory::iterators;
 pub use crate::rib::starcast_af_query;
 
 use crate::{IPv4, IPv6, Meta};

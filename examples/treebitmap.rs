@@ -1,14 +1,13 @@
 use inetnum::addr::Prefix;
-use rotonda_store::meta_examples::NoMeta;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::prelude::*;
-use rotonda_store::rib::MemoryOnlyConfig;
+use rotonda_store::{
+    epoch, meta_examples::NoMeta, IncludeHistory, IntoIpAddr, MatchOptions,
+    MatchType, MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
+};
 
 type Prefix4<'a> = Prefix;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap =
-        MultiThreadedStore::<_, MemoryOnlyConfig>::try_default()?;
+    let tree_bitmap = StarCastRib::<_, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),

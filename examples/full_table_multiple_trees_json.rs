@@ -1,8 +1,10 @@
-// extern crate self as roto;
+use inetnum::addr::Prefix;
+use rotonda_store::epoch;
 use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::prelude::*;
-use rotonda_store::rib::MemoryOnlyConfig;
+use rotonda_store::{
+    IncludeHistory, MatchOptions, MatchType, MemoryOnlyConfig, PrefixRecord,
+    Record, RouteStatus, StarCastRib,
+};
 
 use std::error::Error;
 use std::fs::File;
@@ -54,7 +56,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
             let config = MemoryOnlyConfig;
             let tree_bitmap =
-                MultiThreadedStore::<PrefixAs, MemoryOnlyConfig>::new_with_config(config)?;
+                StarCastRib::<PrefixAs, MemoryOnlyConfig>::new_with_config(
+                    config,
+                )?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);

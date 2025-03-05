@@ -183,12 +183,10 @@
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
-use crate::local_array::bit_span::BitSpan;
-use crate::local_array::in_memory::atomic_types::{
-    bits_for_len, NodeSet, StoredNode,
-};
-use crate::local_array::rib::default_store::STRIDE_SIZE;
-use crate::prelude::multi::PrefixId;
+use crate::cht::{bits_for_len, Cht};
+use crate::in_memory::node_cht::{NodeCht, NodeSet, StoredNode};
+use crate::rib::STRIDE_SIZE;
+use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard};
 use log::{debug, error, log_enabled, trace};
 use roaring::RoaringBitmap;
@@ -196,15 +194,14 @@ use roaring::RoaringBitmap;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::{fmt::Debug, marker::PhantomData};
 
-use super::atomic_types::{Cht, NodeCht};
-use crate::af::AddressFamily;
+use super::atomic_bitmap::{AtomicBitmap, AtomicPfxBitArr, AtomicPtrBitArr};
 use crate::rib::Counters;
+use crate::types::AddressFamily;
 
-use super::super::errors::PrefixStoreError;
-pub(crate) use super::atomic_stride::*;
-use crate::local_array::in_memory::node::{NewNodeOrIndex, StrideNodeId};
+use crate::in_memory::tree_bitmap_node::{NewNodeOrIndex, StrideNodeId};
+use crate::types::errors::PrefixStoreError;
 
-use super::node::TreeBitMapNode;
+use super::tree_bitmap_node::TreeBitMapNode;
 
 #[cfg(feature = "cli")]
 use ansi_term::Colour;
@@ -213,8 +210,8 @@ use ansi_term::Colour;
 
 #[derive(Debug)]
 pub struct TreeBitMap<AF: AddressFamily, const ROOT_SIZE: usize> {
-    pub(crate) node_buckets: NodeCht<AF, ROOT_SIZE>,
-    pub(in crate::local_array) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    pub(crate) node_cht: NodeCht<AF, ROOT_SIZE>,
+    pub(crate) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
     default_route_exists: AtomicBool,
 }
@@ -222,7 +219,7 @@ pub struct TreeBitMap<AF: AddressFamily, const ROOT_SIZE: usize> {
 impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
     pub(crate) fn new() -> Result<Self, Box<dyn std::error::Error>> {
         let tree_bitmap = Self {
-            node_buckets: Cht::init(),
+            node_cht: Cht::init(),
             withdrawn_muis_bmin: RoaringBitmap::new().into(),
             counters: Counters::default(),
             default_route_exists: AtomicBool::new(false),
@@ -465,7 +462,7 @@ Giving up this node. This shouldn't happen!",
         if let Some(_root_node) =
             self.retrieve_node_mut(self.get_root_node_id(), mui)
         {
-            self.node_buckets
+            self.node_cht
                 .root_for_len(self.get_root_node_id().len())
                 .update_rbm_index(mui)
         } else {
@@ -501,7 +498,7 @@ Giving up this node. This shouldn't happen!",
         }
         self.counters.inc_nodes_count();
 
-        let mut nodes = self.node_buckets.root_for_len(id.len());
+        let mut nodes = self.node_cht.root_for_len(id.len());
         let new_node = next_node;
         let mut level = 0;
         let mut retry_count = 0;
@@ -665,7 +662,7 @@ lvl{}",
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
-        let mut nodes = self.node_buckets.root_for_len(id.len());
+        let mut nodes = self.node_cht.root_for_len(id.len());
 
         loop {
             let index = Self::hash_node_id(id, level);
@@ -745,7 +742,7 @@ lvl{}",
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
-        let mut nodes = self.node_buckets.root_for_len(id.len());
+        let mut nodes = self.node_cht.root_for_len(id.len());
 
         loop {
             let index = Self::hash_node_id(id, level);
@@ -823,7 +820,7 @@ lvl{}",
         // HASHING FUNCTION
         let mut level = 0;
         let mut node;
-        let mut nodes = self.node_buckets.root_for_len(id.len());
+        let mut nodes = self.node_cht.root_for_len(id.len());
 
         loop {
             let index = Self::hash_node_id(id, level);

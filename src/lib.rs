@@ -10,31 +10,45 @@
 //! Part of the Rotonda modular BGP engine.
 
 //! Read more about the data-structure in this [blog post](https://blog.nlnetlabs.nl/donkeys-mules-horses/).
-mod af;
-mod local_array;
-mod prefix_record;
-
-pub mod test_types;
 
 #[macro_use]
 mod macros;
 
-mod rotonda_store;
+pub(crate) mod types;
 
 // Public Interfaces
-
-pub mod prelude;
-/// Statistics for the two trees (IPv4 and IPv6).
-pub mod stats;
 
 /// Some simple metadata implementations
 pub mod meta_examples;
 
-/// The publicly available devices
-pub use crate::rotonda_store::*;
+pub(crate) mod cht;
+pub(crate) mod in_memory;
+pub(crate) mod persist;
+pub(crate) mod prefix_cht;
+mod tests;
 
 // re-exports
 pub use crossbeam_epoch::{self as epoch, Guard};
 pub use inetnum::addr;
 
-pub use prefix_record::{PublicRecord, RecordSet};
+pub mod rib;
+
+pub use rib::starcast::StarCastRib;
+pub use rib::starcast_af::{
+    MemoryOnlyConfig, PersistHistoryConfig, PersistOnlyConfig,
+    WriteAheadConfig,
+};
+pub use types::af::IPv4;
+pub use types::af::IPv6;
+pub use types::af::IntoIpAddr;
+pub use types::errors;
+pub use types::match_options::{
+    IncludeHistory, MatchOptions, MatchType, QueryResult,
+};
+pub use types::prefix_id::RouteStatus;
+pub use types::prefix_record::PublicPrefixRecord as PrefixRecord;
+pub use types::prefix_record::PublicRecord as Record;
+pub use types::stats;
+pub use types::test_types;
+pub use types::AddressFamily;
+pub use types::Meta;

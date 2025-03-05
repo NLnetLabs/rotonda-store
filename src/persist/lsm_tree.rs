@@ -12,10 +12,11 @@ use zerocopy::{
     Unaligned, U32, U64,
 };
 
-use crate::local_array::types::{PrefixId, RouteStatus};
-use crate::prefix_record::{ValueHeader, ZeroCopyRecord};
 use crate::rib::Counters;
-use crate::{AddressFamily, Meta, PublicRecord};
+use crate::types::prefix_record::PublicRecord;
+use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
+use crate::types::{AddressFamily, Meta};
+use crate::types::{PrefixId, RouteStatus};
 
 type ZeroCopyError<'a, T> = zerocopy::ConvertError<
     zerocopy::AlignmentError<&'a [u8], T>,
@@ -28,7 +29,7 @@ type ZeroCopyMutError<'a, T> = zerocopy::ConvertError<
     zerocopy::ValidityError<&'a mut [u8], T>,
 >;
 
-pub trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
+pub(crate) trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
     TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
 {
     fn mut_from_bytes(

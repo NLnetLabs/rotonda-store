@@ -6,11 +6,15 @@ macro_rules! all_strategies {
         $(
             #[test]
             fn $fn_name() -> Result<(), Box<dyn std::error::Error>> {
-                use rotonda_store::prelude::multi::*;
+                use rotonda_store::{
+                        MemoryOnlyConfig,
+                        PersistOnlyConfig,
+                        PersistHistoryConfig, WriteAheadConfig
+                    };
+
                 //------- Default (MemoryOnly)
                 println!("MemoryOnly strategy starting...");
-                let tree_bitmap =
-                    MultiThreadedStore::<
+                let tree_bitmap = StarCastRib::<
                         $ty, MemoryOnlyConfig>::try_default()?;
 
                 $test_name(tree_bitmap)?;
@@ -23,7 +27,7 @@ macro_rules! all_strategies {
                     "/tmp/rotonda/".into()
                 );
 
-                let tree_bitmap = MultiThreadedStore::<
+                let tree_bitmap = StarCastRib::<
                     $ty, PersistOnlyConfig
                 >::new_with_config(
                     store_config
@@ -39,7 +43,7 @@ macro_rules! all_strategies {
                     "/tmp/rotonda/".into()
                 );
 
-                let tree_bitmap = MultiThreadedStore::<
+                let tree_bitmap = StarCastRib::<
                     $ty,
                     PersistHistoryConfig
                 >::new_with_config(
@@ -57,7 +61,7 @@ macro_rules! all_strategies {
                     "/tmp/rotonda/".into()
                 );
 
-                let tree_bitmap = MultiThreadedStore::<
+                let tree_bitmap = StarCastRib::<
                     $ty,
                     WriteAheadConfig
                 >::new_with_config(
