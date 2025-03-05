@@ -13,7 +13,7 @@ rust-version.workspace = true
 license.workspace = true
 
 [workspace.package]
-version = "0.4.1"
+version = "0.5.0"
 edition = "2021"
 authors = ["NLnet Labs <routing-team@nlnetlabs.nl>"]
 license = "BSD-3-Clause"
@@ -35,7 +35,7 @@ clap        = { version = "4.4", optional = true, features = ["derive"] }
 rayon = { version = "1.10", optional = true }
 memmap2 = { version = "0.9", optional = true }
 rand = { version = "0.9" }
-lsm-tree = { version = "2.6.3" }
+lsm-tree = { version = "2.6.6" }
 serde = "1.0.216"
 serde_derive = "1.0.216"
 serde_json = "1.0.133"

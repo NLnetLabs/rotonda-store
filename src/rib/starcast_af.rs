@@ -29,15 +29,17 @@ use crate::AddressFamily;
 /// or persisted.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum PersistStrategy {
-    /// Current records are stored both in-memory and persisted. Additionally
-    /// historical records are persisted.
+    /// Current records are stored both in-memory and persisted. Historical
+    /// records are persisted.
     WriteAhead,
-    /// Current records are stored in-memory, historical records are pesisted.
+    /// Current records are stored in-memory, historical records are
+    /// persisted.
     PersistHistory,
     /// Current records are stored in-memory, historical records are discarded
-    /// when nwer records appear.
+    /// when newer records appear.
     MemoryOnly,
-    /// Both current and historical records are persisted.
+    /// Current records are persisted immediately. No records are stored in
+    /// memory. Historical records are discarded when newer records appear.
     PersistOnly,
 }
 
@@ -417,7 +419,7 @@ impl<
         match self.config.persist_strategy() {
             PersistStrategy::WriteAhead => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.persist_record_w_short_key(prefix, &record);
+                    persist_tree.persist_record_w_long_key(prefix, &record);
 
                     self.prefix_cht
                         .upsert_prefix(

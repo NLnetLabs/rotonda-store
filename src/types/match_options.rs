@@ -60,10 +60,17 @@ impl std::fmt::Display for MatchType {
     }
 }
 
+/// Match option to indicate that the result should return historical records,
+/// for the requested prefixes and the more- and less-specific prefixes. This
+/// option is ignored if the persist strategy config option is anythin other
+/// than `PersistHistory` or WriteAhead`.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum IncludeHistory {
+    /// Do not return any historical records.
     None,
+    /// Return historical records for the requested prefix only.
     SearchPrefix,
+    /// Return historical records for all prefixes in the result.
     All,
 }
 
