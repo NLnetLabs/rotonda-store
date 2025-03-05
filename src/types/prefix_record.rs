@@ -2,14 +2,16 @@ use std::fmt;
 use std::fmt::Debug;
 use std::{cmp::Ordering, sync::Arc};
 
-use crate::af::AddressFamily;
-use crate::local_array::types::RouteStatus;
-use crate::prelude::multi::PrefixId;
+// use crate::prelude::multi::PrefixId;
+use crate::types::AddressFamily;
+use crate::types::RouteStatus;
 use inetnum::addr::Prefix;
 use zerocopy::{
     Immutable, IntoBytes, KnownLayout, NetworkEndian, TryFromBytes,
     Unaligned, U128, U32,
 };
+
+use super::PrefixId;
 
 //------------ InternalPrefixRecord -----------------------------------------
 

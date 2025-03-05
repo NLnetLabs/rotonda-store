@@ -1,22 +1,8 @@
-use std::{fmt, slice};
+use std::fmt;
 
-use crate::prefix_record::InternalPrefixRecord;
-pub use crate::prefix_record::{
-    Meta, PublicPrefixSingleRecord, RecordSingleSet,
-};
-use crate::prefix_record::{PublicRecord, RecordSet};
+use crate::types::{prefix_record::RecordSet, Meta, PublicRecord};
 
 use inetnum::addr::Prefix;
-
-pub use crate::af::{AddressFamily, IPv4, IPv6};
-
-pub use crate::local_array::rib::rib;
-
-pub const RECORDS_MAX_NUM: usize = 3;
-
-//------------ The publicly available Rotonda Stores ------------------------
-
-pub use crate::local_array::rib::StarCastDb as MultiThreadedStore;
 
 //------------ MatchOptions / MatchType -------------------------------------
 
@@ -79,41 +65,6 @@ pub enum IncludeHistory {
     None,
     SearchPrefix,
     All,
-}
-
-//------------ PrefixRecordIter ---------------------------------------------
-
-// Converts from the InternalPrefixRecord to the (public) PrefixRecord
-// while iterating.
-#[derive(Clone, Debug)]
-pub struct PrefixSingleRecordIter<'a, M: Meta> {
-    pub(crate) v4: Option<slice::Iter<'a, InternalPrefixRecord<IPv4, M>>>,
-    pub(crate) v6: slice::Iter<'a, InternalPrefixRecord<IPv6, M>>,
-}
-
-impl<M: Meta> Iterator for PrefixSingleRecordIter<'_, M> {
-    type Item = PublicPrefixSingleRecord<M>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // V4 is already done.
-        if self.v4.is_none() {
-            return self.v6.next().map(|res| {
-                PublicPrefixSingleRecord::new(
-                    Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                    res.meta.clone(),
-                )
-            });
-        }
-
-        if let Some(res) = self.v4.as_mut().and_then(|v4| v4.next()) {
-            return Some(PublicPrefixSingleRecord::new(
-                Prefix::new(res.net.into_ipaddr(), res.len).unwrap(),
-                res.meta.clone(),
-            ));
-        }
-        self.v4 = None;
-        self.next()
-    }
 }
 
 //------------- QueryResult -------------------------------------------------

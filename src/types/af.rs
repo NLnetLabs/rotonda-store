@@ -1,7 +1,7 @@
 use log::trace;
 use zerocopy::{IntoBytes, NetworkEndian, U128, U32};
 
-use crate::local_array::bit_span::BitSpan;
+use crate::types::BitSpan;
 
 //------------ AddressFamily (trait) ----------------------------------------
 /// The address family of an IP address as a Trait.

@@ -1,4 +1,4 @@
-use super::rib::default_store::BIT_SPAN_SIZE;
+use crate::rib::BIT_SPAN_SIZE;
 
 #[derive(Copy, Clone, Debug)]
 pub struct BitSpan {

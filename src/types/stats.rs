@@ -7,10 +7,8 @@ use std::{
 };
 
 use crate::{
-    local_array::{
-        in_memory::node::TreeBitMapNode, rib::default_store::STRIDE_SIZE,
-    },
-    AddressFamily,
+    in_memory::tree_bitmap_node::TreeBitMapNode, rib::STRIDE_SIZE,
+    types::AddressFamily,
 };
 
 pub struct StrideStats<AF: AddressFamily> {
