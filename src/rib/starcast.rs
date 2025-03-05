@@ -11,20 +11,21 @@ use crate::{
     Record,
 };
 
-use super::rib::{
-    Config, PersistStrategy, Rib, StoreStats, UpsertCounters, UpsertReport,
+use super::starcast_af::{
+    Config, PersistStrategy, StarCastAfRib, StoreStats, UpsertCounters,
+    UpsertReport,
 };
 
 pub const STRIDE_SIZE: u8 = 4;
 pub const BIT_SPAN_SIZE: u8 = 32;
 
-pub struct StarCastDb<M: Meta, C: Config> {
-    v4: Rib<IPv4, M, 9, 33, C, 18>,
-    v6: Rib<IPv6, M, 33, 129, C, 30>,
+pub struct StarCastRib<M: Meta, C: Config> {
+    v4: StarCastAfRib<IPv4, M, 9, 33, C, 18>,
+    v6: StarCastAfRib<IPv6, M, 33, 129, C, 30>,
     config: C,
 }
 
-impl<'a, M: Meta, C: Config> StarCastDb<M, C> {
+impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     pub fn try_default() -> Result<Self, PrefixStoreError> {
         let config = C::default();
         Self::new_with_config(config)
@@ -53,8 +54,8 @@ impl<'a, M: Meta, C: Config> StarCastDb<M, C> {
         }
 
         Ok(Self {
-            v4: Rib::new(config_v4)?,
-            v6: Rib::new(config_v6)?,
+            v4: StarCastAfRib::new(config_v4)?,
+            v6: StarCastAfRib::new(config_v6)?,
             config,
         })
     }
@@ -420,6 +421,42 @@ impl<'a, M: Meta, C: Config> StarCastDb<M, C> {
         guard: &'a Guard,
     ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
         self.v6.prefixes_iter(guard).map(PrefixRecord::from)
+    }
+
+    pub fn persist_prefixes_iter(
+        &'a self,
+    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+        self.v4
+            .persist_prefixes_iter()
+            .map(PrefixRecord::from)
+            .chain(self.v6.persist_prefixes_iter().map(PrefixRecord::from))
+    }
+
+    pub fn persist_prefixes_iter_v4(
+        &'a self,
+    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+        self.v4.persist_prefixes_iter().map(PrefixRecord::from)
+    }
+
+    pub fn persist_prefixes_iter_v6(
+        &'a self,
+    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+        self.v6.persist_prefixes_iter().map(PrefixRecord::from)
+    }
+
+    pub fn is_mui_active(&self, mui: u32) -> bool {
+        let guard = &epoch::pin();
+        self.v4.is_mui_active(mui, guard) || self.v6.is_mui_active(mui, guard)
+    }
+
+    pub fn is_mui_active_v4(&self, mui: u32) -> bool {
+        let guard = &epoch::pin();
+        self.v4.is_mui_active(mui, guard)
+    }
+
+    pub fn is_mui_active_v6(&self, mui: u32) -> bool {
+        let guard = &epoch::pin();
+        self.v6.is_mui_active(mui, guard)
     }
 
     /// Change the local status of the record for the combination of

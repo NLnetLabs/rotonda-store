@@ -3,7 +3,7 @@ use epoch::Guard;
 use log::trace;
 use zerocopy::TryFromBytes;
 
-use crate::rib::rib::{Config, PersistStrategy, Rib};
+use crate::rib::starcast_af::{Config, PersistStrategy, StarCastAfRib};
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::AddressFamily;
 use crate::types::PublicRecord;
@@ -26,7 +26,7 @@ impl<
         const P_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > Rib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    > StarCastAfRib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     pub(crate) fn get_value(
         &'a self,

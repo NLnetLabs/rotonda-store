@@ -21,7 +21,7 @@ use crate::{types::errors::PrefixStoreError, types::PublicRecord};
 // Make sure to also import the other methods for the Rib, so the proc macro
 // create_store can use them.
 pub use crate::in_memory::iterators;
-pub use crate::rib::query;
+pub use crate::rib::starcast_af_query;
 
 use crate::{IPv4, IPv6, Meta};
 
@@ -321,7 +321,7 @@ pub struct UpsertReport {
 // A Routing Information Base that consists of multiple different trees for
 // in-memory and on-disk (persisted storage).
 #[derive(Debug)]
-pub struct Rib<
+pub(crate) struct StarCastAfRib<
     AF: AddressFamily,
     M: Meta,
     const N_ROOT_SIZE: usize,
@@ -343,15 +343,17 @@ impl<
         const N_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > Rib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    > StarCastAfRib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     pub(crate) fn new(
         config: C,
     ) -> Result<
-        Rib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>,
+        StarCastAfRib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>,
         Box<dyn std::error::Error>,
     > {
-        Rib::<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>::init(config)
+        StarCastAfRib::<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>::init(
+            config,
+        )
     }
 
     fn init(config: C) -> Result<Self, Box<dyn std::error::Error>> {
@@ -366,7 +368,7 @@ impl<
             }
         };
 
-        let store = Rib {
+        let store = StarCastAfRib {
             config,
             in_memory_tree: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
             persist_tree,
@@ -696,7 +698,7 @@ impl<
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
-    pub fn mui_is_active(&self, mui: u32, guard: &Guard) -> bool {
+    pub(crate) fn is_mui_active(&self, mui: u32, guard: &Guard) -> bool {
         !unsafe {
             self.in_memory_tree
                 .withdrawn_muis_bmin
@@ -707,7 +709,7 @@ impl<
         .contains(mui)
     }
 
-    pub fn get_prefixes_count(&self) -> UpsertCounters {
+    pub(crate) fn get_prefixes_count(&self) -> UpsertCounters {
         UpsertCounters {
             in_memory_count: self.in_memory_tree.get_prefixes_count(),
             persisted_count: self
@@ -750,7 +752,7 @@ impl<
         self.config.persist_strategy()
     }
 
-    pub fn persist_prefixes_iter(
+    pub(crate) fn persist_prefixes_iter(
         &self,
     ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + '_ {
         self.persist_tree
@@ -787,7 +789,7 @@ impl<
             .flatten()
     }
 
-    pub fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {
+    pub(crate) fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {
         if let Some(p) = &self.persist_tree {
             p.flush_to_disk()
                 .map_err(|_| PrefixStoreError::PersistFailed)
@@ -820,7 +822,7 @@ impl<
         C: Config,
         const KEY_SIZE: usize,
     > std::fmt::Display
-    for Rib<IPv4, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    for StarCastAfRib<IPv4, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv4, {}>", std::any::type_name::<M>())
@@ -834,7 +836,7 @@ impl<
         C: Config,
         const KEY_SIZE: usize,
     > std::fmt::Display
-    for Rib<IPv6, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    for StarCastAfRib<IPv6, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())
