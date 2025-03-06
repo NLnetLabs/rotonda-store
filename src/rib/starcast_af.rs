@@ -5,7 +5,7 @@ use inetnum::addr::Prefix;
 use log::{info, trace};
 
 use crossbeam_epoch::{self as epoch};
-use epoch::{Guard, Owned};
+use epoch::Guard;
 use zerocopy::TryFromBytes;
 
 use crate::prefix_cht::cht::PrefixCht;
@@ -621,29 +621,7 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self
-            .tree_bitmap
-            .withdrawn_muis_bmin
-            .load(Ordering::Acquire, guard);
-
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.insert(mui);
-
-        loop {
-            match self.tree_bitmap.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
+        self.tree_bitmap.mark_mui_as_withdrawn(mui, guard)
     }
 
     // Change the status of the mui globally to Active. Iterators and match
@@ -653,57 +631,36 @@ impl<
         mui: u32,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        let current = self
-            .tree_bitmap
-            .withdrawn_muis_bmin
-            .load(Ordering::Acquire, guard);
-
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.remove(mui);
-
-        loop {
-            match self.tree_bitmap.withdrawn_muis_bmin.compare_exchange(
-                current,
-                Owned::new(new),
-                Ordering::AcqRel,
-                Ordering::Acquire,
-                guard,
-            ) {
-                Ok(_) => return Ok(()),
-                Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
-                }
-            }
-        }
+        self.tree_bitmap.mark_mui_as_active(mui, guard)
     }
 
     // Whether this mui is globally withdrawn. Note that this overrules
     // (by default) any (prefix, mui) combination in iterators and match
     // functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
-        unsafe {
-            self.tree_bitmap
-                .withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
+        // unsafe {
+        self.tree_bitmap
+            .withdrawn_muis_bmin(guard)
+            // .load(Ordering::Acquire, guard)
+            // .as_ref()
+            // }
+            // .unwrap()
+            .contains(mui)
     }
 
     // Whether this mui is globally active. Note that the local statuses of
     // records (prefix, mui) may be set to withdrawn in iterators and match
     // functions.
     pub(crate) fn is_mui_active(&self, mui: u32, guard: &Guard) -> bool {
-        !unsafe {
-            self.tree_bitmap
-                .withdrawn_muis_bmin
-                .load(Ordering::Acquire, guard)
-                .as_ref()
-        }
-        .unwrap()
-        .contains(mui)
+        // !unsafe {
+        !self
+            .tree_bitmap
+            .withdrawn_muis_bmin(guard)
+            // .load(Ordering::Acquire, guard)
+            // .as_ref()
+            // }
+            // .unwrap()
+            .contains(mui)
     }
 
     pub(crate) fn get_prefixes_count(&self) -> UpsertCounters {

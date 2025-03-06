@@ -198,7 +198,7 @@ pub(crate) use tree_bitmap_node::{
 use crate::cht::{bits_for_len, Cht};
 use crate::rib::STRIDE_SIZE;
 use crate::types::{BitSpan, PrefixId};
-use crossbeam_epoch::{Atomic, Guard};
+use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use log::{debug, error, log_enabled, trace};
 use node_cht::{NodeCht, NodeSet, StoredNode};
 use roaring::RoaringBitmap;
@@ -220,8 +220,8 @@ use ansi_term::Colour;
 
 #[derive(Debug)]
 pub struct TreeBitMap<AF: AddressFamily, const ROOT_SIZE: usize> {
-    pub(crate) node_cht: NodeCht<AF, ROOT_SIZE>,
-    pub(crate) withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    node_cht: NodeCht<AF, ROOT_SIZE>,
+    withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     counters: Counters,
     default_route_exists: AtomicBool,
 }
@@ -491,34 +491,78 @@ Giving up this node. This shouldn't happen!",
         }
     }
 
+    pub fn mark_mui_as_active(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.remove(mui);
+
+        self.update_withdrawn_muis_bmin(current, new, guard)
+    }
+
+    pub fn mark_mui_as_withdrawn(
+        &self,
+        mui: u32,
+        guard: &Guard,
+    ) -> Result<(), PrefixStoreError> {
+        let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
+
+        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        new.insert(mui);
+
+        self.update_withdrawn_muis_bmin(current, new, guard)
+    }
+
+    pub(crate) fn update_withdrawn_muis_bmin<'a>(
+        &self,
+        current: Shared<'a, RoaringBitmap>,
+        mut new: RoaringBitmap,
+        guard: &'a Guard,
+    ) -> Result<(), PrefixStoreError> {
+        loop {
+            match self.withdrawn_muis_bmin.compare_exchange(
+                current,
+                Owned::new(new),
+                Ordering::AcqRel,
+                Ordering::Acquire,
+                guard,
+            ) {
+                Ok(_) => return Ok(()),
+                Err(updated) => {
+                    new =
+                        unsafe { updated.current.as_ref() }.unwrap().clone();
+                }
+            }
+        }
+    }
+
     fn store_node(
         &self,
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
-        next_node: TreeBitMapNode<AF>,
+        new_node: TreeBitMapNode<AF>,
     ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
         if log_enabled!(log::Level::Trace) {
             debug!(
                 "{} store: Store node {}: {:?} mui {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
                 id,
-                next_node,
+                new_node,
                 multi_uniq_id
             );
         }
         self.counters.inc_nodes_count();
 
         let mut nodes = self.node_cht.root_for_len(id.len());
-        let new_node = next_node;
         let mut level = 0;
         let mut retry_count = 0;
 
         loop {
             let this_level = bits_for_len(id.len(), level);
-
-            // if this_level > (id.len() / 4) {
-            //     return Err(PrefixStoreError::StoreNotReadyError);
-            // }
 
             trace!("{:032b}", id.len());
             trace!("id {:?}", id);
