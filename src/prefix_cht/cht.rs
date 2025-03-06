@@ -382,14 +382,18 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
                 1 << (next_level - this_level),
                 pfx_id.get_len()
             );
-            PrefixSet::init(next_level.saturating_sub(this_level))
+            PrefixSet::init_with_p2_children(
+                next_level.saturating_sub(this_level) as usize,
+            )
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
                 pfx_id.get_len()
             );
-            PrefixSet::init(next_level.saturating_sub(this_level))
+            PrefixSet::init_with_p2_children(
+                next_level.saturating_sub(this_level) as usize,
+            )
         };
         // End of calculation
 
@@ -496,15 +500,12 @@ pub struct PrefixSet<AF: AddressFamily, M: Meta>(
     pub OnceBoxSlice<StoredPrefix<AF, M>>,
 );
 
-impl<AF: AddressFamily, M: Meta> PrefixSet<AF, M> {
-    pub fn init(p2_size: u8) -> Self {
-        PrefixSet(OnceBoxSlice::new(p2_size))
-    }
-}
-
 impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
-    fn init(p2_size: usize) -> Self {
+    fn init_with_p2_children(p2_size: usize) -> Self {
         PrefixSet(OnceBoxSlice::new(p2_size as u8))
+    }
+    fn init_leaf() -> Self {
+        PrefixSet(OnceBoxSlice::new(0))
     }
 }
 

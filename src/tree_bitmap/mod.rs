@@ -195,7 +195,7 @@ pub(crate) use tree_bitmap_node::{
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
-use crate::cht::{bits_for_len, Cht};
+use crate::cht::{bits_for_len, Cht, Value};
 use crate::rib::STRIDE_SIZE;
 use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
@@ -601,8 +601,9 @@ lvl{}",
 
                     // A weird trick to create either a NodeSet with 16 nodes,
                     // or one without any (for the last stride)
-                    let node_set =
-                        NodeSet::init(next_level.saturating_sub(this_level));
+                    let node_set = NodeSet::init_with_p2_children(
+                        next_level.saturating_sub(this_level) as usize,
+                    );
 
                     let ptrbitarr = new_node.ptrbitarr.load();
                     let pfxbitarr = new_node.pfxbitarr.load();
@@ -730,8 +731,9 @@ lvl{}",
                 None => {
                     let this_level = bits_for_len(id.len(), level);
                     let next_level = bits_for_len(id.len(), level + 1);
-                    let node_set =
-                        NodeSet::init(next_level.saturating_sub(this_level));
+                    let node_set = NodeSet::init_with_p2_children(
+                        next_level.saturating_sub(this_level) as usize,
+                    );
 
                     // See if we can create the node
                     (node, _) =
@@ -810,8 +812,9 @@ lvl{}",
                 None => {
                     let this_level = bits_for_len(id.len(), level);
                     let next_level = bits_for_len(id.len(), level + 1);
-                    let node_set =
-                        NodeSet::init(next_level.saturating_sub(this_level));
+                    let node_set = NodeSet::init_with_p2_children(
+                        next_level.saturating_sub(this_level) as usize,
+                    );
 
                     // See if we can create the node
                     (node, _) =
@@ -888,8 +891,9 @@ lvl{}",
                 None => {
                     let this_level = bits_for_len(id.len(), level);
                     let next_level = bits_for_len(id.len(), level + 1);
-                    let node_set =
-                        NodeSet::init(next_level.saturating_sub(this_level));
+                    let node_set = NodeSet::init_with_p2_children(
+                        next_level.saturating_sub(this_level) as usize,
+                    );
 
                     // See if we can create the node
                     (node, _) =

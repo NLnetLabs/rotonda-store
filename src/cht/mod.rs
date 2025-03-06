@@ -5,7 +5,8 @@ pub(crate) use oncebox::OnceBoxSlice;
 use crate::rib::STRIDE_SIZE;
 
 pub(crate) trait Value {
-    fn init(size: usize) -> Self;
+    fn init_with_p2_children(size: usize) -> Self;
+    fn init_leaf() -> Self;
 }
 
 #[derive(Debug)]
@@ -20,7 +21,7 @@ impl<V: Value, const ROOT_SIZE: usize, const STRIDES_PER_BUCKET: usize>
 {
     pub(crate) fn init() -> Self {
         Self(std::array::from_fn::<_, ROOT_SIZE, _>(|_| {
-            V::init(STRIDE_SIZE as usize)
+            V::init_with_p2_children(STRIDE_SIZE as usize)
         }))
     }
 

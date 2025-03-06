@@ -35,18 +35,6 @@ pub(crate) struct NodeSet<AF: AddressFamily>(
 );
 
 impl<AF: AddressFamily> NodeSet<AF> {
-    pub(crate) fn init(p2_size: u8) -> Self {
-        if log_enabled!(log::Level::Debug) {
-            debug!(
-                "{} store: creating space for {} nodes",
-                std::thread::current().name().unwrap_or("unnamed-thread"),
-                1 << p2_size
-            );
-        }
-
-        NodeSet(OnceBoxSlice::new(p2_size), RoaringBitmap::new().into())
-    }
-
     pub(crate) fn rbm(&self) -> &RwLock<RoaringBitmap> {
         &self.1
     }
@@ -87,7 +75,7 @@ impl<AF: AddressFamily> NodeSet<AF> {
 }
 
 impl<AF: AddressFamily> Value for NodeSet<AF> {
-    fn init(p2_size: usize) -> Self {
+    fn init_with_p2_children(p2_size: usize) -> Self {
         if log_enabled!(log::Level::Debug) {
             debug!(
                 "{} store: creating space for {} nodes",
@@ -100,5 +88,9 @@ impl<AF: AddressFamily> Value for NodeSet<AF> {
             OnceBoxSlice::new(p2_size as u8),
             RoaringBitmap::new().into(),
         )
+    }
+
+    fn init_leaf() -> Self {
+        NodeSet(OnceBoxSlice::new(0), RoaringBitmap::new().into())
     }
 }
