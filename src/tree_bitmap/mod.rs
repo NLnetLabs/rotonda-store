@@ -810,49 +810,12 @@ lvl{}",
                 // thread running this method, so our thread enounters an
                 // empty node in the store.
                 None => {
-                    let this_level = bits_for_len(id.len(), level);
-                    let next_level = bits_for_len(id.len(), level + 1);
-                    let node_set = NodeSet::init_with_p2_children(
-                        next_level.saturating_sub(this_level) as usize,
-                    );
-
-                    // See if we can create the node
-                    (node, _) =
-                        nodes.read().get_or_init(index, || StoredNode {
-                            node_id: id,
-                            node: TreeBitMapNode::new(),
-                            node_set,
-                        });
-
-                    // We may have lost, and a different node than we
-                    // intended could live here, if so go a level deeper
-                    if id == node.node_id {
-                        // Nope, its ours or at least the node we need.
-
-                        return Some(&node.node);
-                    };
+                    return None;
                 }
                 Some(this_node) => {
                     node = this_node;
                     if id == this_node.node_id {
                         // YES, It's the one we're looking for!
-
-                        // Update the rbm_index in this node with the
-                        // multi_uniq_id that the caller specified. This
-                        // is the only atomic operation we need to do
-                        // here. The NodeSet that the index is attached
-                        // to, does not need to be written to, it's part
-                        // of a trie, so it just needs to "exist" (and it
-                        // already does).
-                        // let retry_count =
-                        //     this_node.node_set.update_rbm_index(mui).ok();
-
-                        //     trace!("Retry_count rbm index {:?}", retry_count);
-                        //     trace!(
-                        //     "add multi uniq id to bitmap index {} for node {}",
-                        //     mui,
-                        //     this_node.node
-                        // );
                         return Some(&this_node.node);
                     };
                 }
@@ -889,27 +852,7 @@ lvl{}",
                 // thread running this method, so our thread enounters an
                 // empty node in the store.
                 None => {
-                    let this_level = bits_for_len(id.len(), level);
-                    let next_level = bits_for_len(id.len(), level + 1);
-                    let node_set = NodeSet::init_with_p2_children(
-                        next_level.saturating_sub(this_level) as usize,
-                    );
-
-                    // See if we can create the node
-                    (node, _) =
-                        nodes.read().get_or_init(index, || StoredNode {
-                            node_id: id,
-                            node: TreeBitMapNode::new(),
-                            node_set,
-                        });
-
-                    // We may have lost, and a different node than we
-                    // intended could live here, if so go a level deeper
-                    if id == node.node_id {
-                        // Nope, its ours or at least the node we need.
-
-                        return Some(&node.node);
-                    };
+                    return None;
                 }
                 Some(this_node) => {
                     // node = this_node;
@@ -925,23 +868,6 @@ lvl{}",
 
                     if id == this_node.node_id {
                         // YES, It's the one we're looking for!
-
-                        // Update the rbm_index in this node with the
-                        // multi_uniq_id that the caller specified. This
-                        // is the only atomic operation we need to do
-                        // here. The NodeSet that the index is attached
-                        // to, does not need to be written to, it's part
-                        // of a trie, so it just needs to "exist" (and it
-                        // already does).
-                        // let retry_count =
-                        //     this_node.node_set.update_rbm_index(mui).ok();
-
-                        //     trace!("Retry_count rbm index {:?}", retry_count);
-                        //     trace!(
-                        //     "add multi uniq id to bitmap index {} for node {}",
-                        //     mui,
-                        //     this_node.node
-                        // );
                         return Some(&this_node.node);
                     };
                 }
