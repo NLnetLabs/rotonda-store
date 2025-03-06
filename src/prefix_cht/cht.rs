@@ -502,7 +502,8 @@ pub struct PrefixSet<AF: AddressFamily, M: Meta>(
 
 impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
     fn init_with_p2_children(p2_size: usize) -> Self {
-        PrefixSet(OnceBoxSlice::new(p2_size as u8))
+        let size = if p2_size == 0 { 0 } else { 1 << p2_size };
+        PrefixSet(OnceBoxSlice::new(size))
     }
     fn init_leaf() -> Self {
         PrefixSet(OnceBoxSlice::new(0))

@@ -80,14 +80,13 @@ impl<AF: AddressFamily> Value for NodeSet<AF> {
             debug!(
                 "{} store: creating space for {} nodes",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
-                1 << p2_size
+                2_usize.pow(p2_size as u32)
             );
         }
 
-        NodeSet(
-            OnceBoxSlice::new(p2_size as u8),
-            RoaringBitmap::new().into(),
-        )
+        let size = if p2_size == 0 { 0 } else { 1 << p2_size };
+
+        NodeSet(OnceBoxSlice::new(size), RoaringBitmap::new().into())
     }
 
     fn init_leaf() -> Self {
