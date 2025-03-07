@@ -9,6 +9,7 @@ use inetnum::addr::Prefix;
 use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
+use crate::cht::nodeset_size;
 use crate::RouteStatus;
 use crate::{
     cht::{bits_for_len, Cht, OnceBoxSlice, Value},
@@ -371,29 +372,25 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         // start calculation size of next set, it's dependent on the level
         // we're in.
         // let pfx_id = PrefixId::new(record.net, record.len);
-        let this_level = bits_for_len(pfx_id.get_len(), level);
-        let next_level = bits_for_len(pfx_id.get_len(), level + 1);
+        // let this_level = bits_for_len(pfx_id.get_len(), level);
+        let next_level = nodeset_size(pfx_id.get_len(), level + 1);
 
-        trace!("this level {} next level {}", this_level, next_level);
+        trace!("next level {}", next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
             debug!(
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
-                1 << (next_level - this_level),
+                1 << next_level,
                 pfx_id.get_len()
             );
-            PrefixSet::init_with_p2_children(
-                next_level.saturating_sub(this_level) as usize,
-            )
+            PrefixSet::init_with_p2_children(next_level as usize)
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
                 pfx_id.get_len()
             );
-            PrefixSet::init_with_p2_children(
-                next_level.saturating_sub(this_level) as usize,
-            )
+            PrefixSet::init_with_p2_children(next_level as usize)
         };
         // End of calculation
 

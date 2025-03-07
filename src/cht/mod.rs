@@ -1,5 +1,6 @@
 mod oncebox;
 
+use num_traits::Saturating;
 pub(crate) use oncebox::OnceBoxSlice;
 
 use crate::rib::STRIDE_SIZE;
@@ -39,4 +40,8 @@ pub(crate) fn bits_for_len(len: u8, lvl: u8) -> u8 {
     } else {
         len
     }
+}
+
+pub fn nodeset_size(len: u8, lvl: u8) -> u8 {
+    4_u8.saturating_sub((4 * (lvl + 1)).saturating_sub(len))
 }

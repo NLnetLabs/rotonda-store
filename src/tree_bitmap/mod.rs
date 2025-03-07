@@ -195,7 +195,7 @@ pub(crate) use tree_bitmap_node::{
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
-use crate::cht::{bits_for_len, Cht, Value};
+use crate::cht::{bits_for_len, nodeset_size, Cht, Value};
 use crate::rib::STRIDE_SIZE;
 use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
@@ -562,7 +562,7 @@ Giving up this node. This shouldn't happen!",
         let mut retry_count = 0;
 
         loop {
-            let this_level = bits_for_len(id.len(), level);
+            // let this_level = bits_for_len(id.len(), level);
 
             trace!("{:032b}", id.len());
             trace!("id {:?}", id);
@@ -574,35 +574,27 @@ Giving up this node. This shouldn't happen!",
             match nodes.read().get(index) {
                 None => {
                     // No node exists, so we create one here.
-                    let next_level = bits_for_len(id.len(), level + 1);
+                    let next_level = nodeset_size(id.len(), level + 1);
 
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "Empty node found,creating new node {} len{}
-lvl{}",
+                "Empty node found,creating new node {} len{} vl{}",
                             id,
                             id.len(),
                             level + 1
                         );
                         trace!("Next level {}", next_level);
-                        trace!(
-                            "Creating space for {} nodes",
-                            if next_level >= this_level {
-                                1 << (next_level - this_level)
-                            } else {
-                                1
-                            }
-                        );
+                        trace!("Creating space for {} nodes", next_level);
                     }
 
                     trace!("multi uniq id {}", multi_uniq_id);
-                    trace!("this level {}", this_level);
                     trace!("next level {}", next_level);
 
                     // A weird trick to create either a NodeSet with 16 nodes,
                     // or one without any (for the last stride)
                     let node_set = NodeSet::init_with_p2_children(
-                        next_level.saturating_sub(this_level) as usize,
+                        // next_level.saturating_sub(this_level) as usize,
+                        next_level as usize,
                     );
 
                     let ptrbitarr = new_node.ptrbitarr.load();
@@ -639,8 +631,7 @@ lvl{}",
 
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "
-                                {} store: Node here exists {:?}",
+                            "{} store: Node here exists {:?}",
                             std::thread::current()
                                 .name()
                                 .unwrap_or("unnamed-thread"),
@@ -681,9 +672,7 @@ lvl{}",
                         // call to create it.
                         level += 1;
                         trace!(
-                            "Collision with node_id {},
-                                 move to next level: {} len{} next_lvl{}
-                                 index {}",
+"Collision with node_id {}, move to next level: {} len{} next_lvl{} index {}",
                             stored_node.node_id,
                             id,
                             id.len(),
@@ -691,15 +680,14 @@ lvl{}",
                             index
                         );
 
-                        match bits_for_len(id.len(), level) {
+                        match nodeset_size(id.len(), level) {
                             // on to the next level!
                             next_bit_shift if next_bit_shift > 0 => {
                                 nodes = &stored_node.node_set;
                             }
                             // There's no next level!
                             _ => panic!(
-                                "out of storage levels,
-                                    current level is {}",
+                                "out of storage levels, current level is {}",
                                 level
                             ),
                         }
@@ -729,10 +717,10 @@ lvl{}",
                 // thread running this method, so our thread enounters an
                 // empty node in the store.
                 None => {
-                    let this_level = bits_for_len(id.len(), level);
-                    let next_level = bits_for_len(id.len(), level + 1);
+                    // let this_level = bits_for_len(id.len(), level);
+                    let next_level = nodeset_size(id.len(), level + 1);
                     let node_set = NodeSet::init_with_p2_children(
-                        next_level.saturating_sub(this_level) as usize,
+                        next_level as usize, // next_level.saturating_sub(this_level) as usize,
                     );
 
                     // See if we can create the node
@@ -780,7 +768,7 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match bits_for_len(id.len(), level) {
+            match nodeset_size(id.len(), level) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -822,7 +810,7 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match bits_for_len(id.len(), level) {
+            match nodeset_size(id.len(), level) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
@@ -874,7 +862,7 @@ lvl{}",
             }
             // It isn't ours. Move one level deeper.
             level += 1;
-            match bits_for_len(id.len(), level) {
+            match nodeset_size(id.len(), level) {
                 // on to the next level!
                 next_bit_shift if next_bit_shift > 0 => {
                     nodes = &node.node_set;
