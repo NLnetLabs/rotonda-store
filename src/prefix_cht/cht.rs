@@ -9,10 +9,10 @@ use inetnum::addr::Prefix;
 use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
-use crate::cht::nodeset_size;
+use crate::cht::{nodeset_size, prev_node_size};
 use crate::RouteStatus;
 use crate::{
-    cht::{bits_for_len, Cht, OnceBoxSlice, Value},
+    cht::{Cht, OnceBoxSlice, Value},
     rib::starcast_af::UpsertReport,
     types::{
         errors::PrefixStoreError, prefix_record::PublicRecord, AddressFamily,
@@ -502,9 +502,6 @@ impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
         let size = if p2_size == 0 { 0 } else { 1 << p2_size };
         PrefixSet(OnceBoxSlice::new(size))
     }
-    fn init_leaf() -> Self {
-        PrefixSet(OnceBoxSlice::new(0))
-    }
 }
 
 #[derive(Debug)]
@@ -788,12 +785,12 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
 
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
-        let last_level = if level > 0 {
-            bits_for_len(id.get_len(), level - 1)
-        } else {
-            0
-        };
-        let this_level = bits_for_len(id.get_len(), level);
+        // let last_level = if level > 0 {
+        //     bits_for_len(id.get_len(), level.saturating_sub(1))
+        // } else {
+        //     0
+        // };
+        let last_level = prev_node_size(id.get_len(), level);
         // trace!(
         //     "bits division {}; no of bits {}",
         //     this_level,
@@ -806,10 +803,9 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
         // );
         // HASHING FUNCTION
+        let size = nodeset_size(id.get_len(), level);
         ((id.get_net() << AF::from_u32(last_level as u32))
-            >> AF::from_u8(
-                (<AF>::BITS - (this_level - last_level)) % <AF>::BITS,
-            ))
+            >> AF::from_u8((<AF>::BITS - size) % <AF>::BITS))
         .dangerously_truncate_to_u32() as usize
     }
 }

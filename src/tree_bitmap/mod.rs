@@ -195,7 +195,7 @@ pub(crate) use tree_bitmap_node::{
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
-use crate::cht::{bits_for_len, nodeset_size, Cht, Value};
+use crate::cht::{bits_for_len, nodeset_size, prev_node_size, Cht, Value};
 use crate::rib::STRIDE_SIZE;
 use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
@@ -988,12 +988,12 @@ Giving up this node. This shouldn't happen!",
 
     pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
-        let last_level = if level > 0 {
-            bits_for_len(id.len(), level - 1)
-        } else {
-            0
-        };
-        let this_level = bits_for_len(id.len(), level);
+        // let last_level = if level > 0 {
+        //     bits_for_len(id.len(), level - 1)
+        // } else {
+        //     0
+        // };
+        let last_level = prev_node_size(id.len(), level);
         // trace!("bits division {}", this_level);
         // trace!(
         //     "calculated index ({} << {}) >> {}",
@@ -1002,10 +1002,9 @@ Giving up this node. This shouldn't happen!",
         //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
         // );
         // HASHING FUNCTION
+        let size = nodeset_size(id.len(), level);
         ((id.bits() << AF::from_u8(last_level))
-            >> AF::from_u8(
-                (<AF>::BITS - (this_level - last_level)) % <AF>::BITS,
-            ))
+            >> AF::from_u8((<AF>::BITS - size) % <AF>::BITS))
         .dangerously_truncate_to_u32() as usize
     }
 }

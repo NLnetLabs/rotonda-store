@@ -88,8 +88,4 @@ impl<AF: AddressFamily> Value for NodeSet<AF> {
 
         NodeSet(OnceBoxSlice::new(size), RoaringBitmap::new().into())
     }
-
-    fn init_leaf() -> Self {
-        NodeSet(OnceBoxSlice::new(0), RoaringBitmap::new().into())
-    }
 }

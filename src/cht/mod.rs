@@ -1,13 +1,11 @@
 mod oncebox;
 
-use num_traits::Saturating;
 pub(crate) use oncebox::OnceBoxSlice;
 
 use crate::rib::STRIDE_SIZE;
 
 pub(crate) trait Value {
     fn init_with_p2_children(size: usize) -> Self;
-    fn init_leaf() -> Self;
 }
 
 #[derive(Debug)]
@@ -28,17 +26,6 @@ impl<V: Value, const ROOT_SIZE: usize, const STRIDES_PER_BUCKET: usize>
 
     pub(crate) fn root_for_len(&self, len: u8) -> &V {
         &self.0[len as usize / STRIDES_PER_BUCKET]
-    }
-}
-
-pub(crate) fn bits_for_len(len: u8, lvl: u8) -> u8 {
-    let res = STRIDE_SIZE * (lvl + 1);
-    if res < len {
-        res
-    } else if res >= len + STRIDE_SIZE {
-        0
-    } else {
-        len
     }
 }
 
@@ -103,4 +90,38 @@ pub(crate) fn bits_for_len(len: u8, lvl: u8) -> u8 {
 // ...
 pub fn nodeset_size(len: u8, lvl: u8) -> u8 {
     4_u8.saturating_sub((4 * (lvl + 1)).saturating_sub(len))
+}
+
+// The value of the set of the parent of this one. used to calculate the shift
+// offset in the hash for the CHT, so this is basically the `nodeset_size`
+// shifted on (len, lvl) combination downwards.
+//
+// len lvl prev
+// 00  00  00
+// 01  00  00
+// 01  01  01
+// 02  00  00
+// 02  01  02
+// 03  00  00
+// 03  01  03
+// 04  00  00
+// 04  01  04
+// 05  00  00
+// 05  01  04
+// 05  02  05
+// 06  00  00
+// 06  01  04
+// 06  02  06
+// 07  00  00
+// 07  01  04
+// 07  02  07
+// 08  00  00
+// 08  01  04
+// 08  02  08
+// 09  00  00
+// 09  01  04
+// 09  02  08
+// 09  03  09
+pub fn prev_node_size(len: u8, lvl: u8) -> u8 {
+    (lvl * 4) - lvl.saturating_sub(len >> 2) * ((lvl * 4) - len)
 }
