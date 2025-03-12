@@ -3,10 +3,10 @@
 use std::error::Error;
 
 use inetnum::addr::Prefix;
-use rotonda_store::{
-    meta_examples::PrefixAs, Config, IncludeHistory, MatchOptions, MatchType,
-    Record, RouteStatus, StarCastRib,
-};
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{Record, RouteStatus};
+use rotonda_store::rib::{config::Config, StarCastRib};
+use rotonda_store::test_types::PrefixAs;
 
 mod common {
     use std::io::Write;

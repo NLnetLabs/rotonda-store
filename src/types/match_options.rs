@@ -15,7 +15,7 @@ use super::prefix_record::Meta;
 /// Note that the `match_type` field may be different from the actual
 /// `MatchType` returned from the result.
 ///
-/// See [MultiThreadedStore::match_prefix] for more details.
+/// See [crate::rib::StarCastRib::match_prefix] for more details.
 #[derive(Debug, Clone)]
 pub struct MatchOptions {
     /// The requested [MatchType]
@@ -82,7 +82,7 @@ pub enum IncludeHistory {
 /// This is the result type of a query. It contains the prefix record that was
 /// found in the store, as well as less- or more-specifics as requested.
 ///
-/// See [MultiThreadedStore::match_prefix] for more details.
+/// See [crate::rib::StarCastRib::match_prefix] for more details.
 
 #[derive(Clone, Debug)]
 pub struct QueryResult<M: Meta> {

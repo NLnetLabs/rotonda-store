@@ -1,14 +1,14 @@
+use inetnum::addr::Prefix;
 use rotonda_store::{
-    epoch, meta_examples::PrefixAs, IncludeHistory, IntoIpAddr, MatchOptions,
-    MatchType, Record, RouteStatus, StarCastRib,
+    epoch,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    rib::{config::MemoryOnlyConfig, StarCastRib},
+    test_types::PrefixAs,
+    IntoIpAddr,
 };
 
-use inetnum::addr::Prefix;
-use rotonda_store::MemoryOnlyConfig;
-
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap =
-        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -215,7 +215,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
         let p: Prefix = pfx.unwrap();
-        tree_bitmap.insert(
+        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?.insert(
             &p,
             Record::new(0, 0, RouteStatus::Active, PrefixAs::new(666.into())),
             None,
@@ -281,18 +281,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         println!("search for: {:?}", spfx);
         let guard = &epoch::pin();
-        let s_spfx = tree_bitmap.match_prefix(
-            &spfx.unwrap(),
-            &MatchOptions {
-                match_type: MatchType::ExactMatch,
-                include_withdrawn: false,
-                include_less_specifics: true,
-                include_more_specifics: true,
-                mui: None,
-                include_history: IncludeHistory::None,
-            },
-            guard,
-        );
+        let s_spfx =
+            StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?
+                .match_prefix(
+                    &spfx.unwrap(),
+                    &MatchOptions {
+                        match_type: MatchType::ExactMatch,
+                        include_withdrawn: false,
+                        include_less_specifics: true,
+                        include_more_specifics: true,
+                        mui: None,
+                        include_history: IncludeHistory::None,
+                    },
+                    guard,
+                );
         println!("em/m-s: {:#?}", s_spfx);
         println!("-----------");
     }

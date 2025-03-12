@@ -17,9 +17,11 @@ mod tests {
     use log::trace;
     use rotonda_store::{
         epoch,
-        meta_examples::{NoMeta, PrefixAs},
-        Config, IncludeHistory, IntoIpAddr, MatchOptions, MatchType, Record,
-        RouteStatus, StarCastRib,
+        match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_record::{Record, RouteStatus},
+        rib::{config::Config, StarCastRib},
+        test_types::{NoMeta, PrefixAs},
+        IntoIpAddr,
     };
 
     rotonda_store::all_strategies![

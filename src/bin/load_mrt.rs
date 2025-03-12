@@ -1,15 +1,3 @@
-use rotonda_store::Config;
-use rotonda_store::MemoryOnlyConfig;
-use rotonda_store::PersistHistoryConfig;
-use rotonda_store::PersistOnlyConfig;
-use rotonda_store::PersistStrategy;
-use rotonda_store::Record;
-use rotonda_store::RouteStatus;
-use rotonda_store::StarCastRib;
-use rotonda_store::UpsertReport;
-use rotonda_store::WriteAheadConfig;
-use routecore::bgp::aspath::HopPath;
-use routecore::bgp::message::update_builder::StandardCommunitiesList;
 use std::collections::BTreeSet;
 use std::fmt;
 use std::fs::File;
@@ -19,16 +7,31 @@ use std::time::Instant;
 use clap::Parser;
 use inetnum::addr::Prefix;
 use memmap2::Mmap;
-use rayon::iter::ParallelBridge;
-use rayon::iter::ParallelIterator;
-use rayon::prelude::*;
-use routecore::bgp::message::PduParseInfo;
-use routecore::bgp::path_attributes::OwnedPathAttributes;
-use routecore::mrt::MrtFile;
+use rayon::{
+    iter::{ParallelBridge, ParallelIterator},
+    prelude::*,
+};
+use rotonda_store::{
+    prefix_record::{Meta, Record, RouteStatus},
+    rib::{
+        config::{
+            Config, MemoryOnlyConfig, PersistHistoryConfig,
+            PersistOnlyConfig, PersistStrategy, WriteAheadConfig,
+        },
+        StarCastRib,
+    },
+    stats::UpsertReport,
+};
+use routecore::{
+    bgp::{
+        aspath::HopPath,
+        message::{update_builder::StandardCommunitiesList, PduParseInfo},
+        path_attributes::OwnedPathAttributes,
+    },
+    mrt::{MrtFile, RibEntryIterator, TableDumpIterator},
+};
 
 use rand::seq::SliceRandom;
-use routecore::mrt::RibEntryIterator;
-use routecore::mrt::TableDumpIterator;
 
 #[derive(Clone, Debug)]
 struct PaBytes(Vec<u8>);
@@ -51,7 +54,7 @@ impl From<Vec<u8>> for PaBytes {
     }
 }
 
-impl rotonda_store::Meta for PaBytes {
+impl Meta for PaBytes {
     type Orderable<'a> = u32;
 
     type TBI = u32;
@@ -176,7 +179,7 @@ struct Cli {
 
 type Type = rotonda_store::errors::PrefixStoreError;
 
-fn insert<C: Config, T: rotonda_store::Meta>(
+fn insert<C: Config, T: Meta>(
     store: &StarCastRib<T, C>,
     prefix: &Prefix,
     mui: u32,

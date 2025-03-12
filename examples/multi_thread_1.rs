@@ -2,8 +2,12 @@ use std::{sync::Arc, thread};
 
 use inetnum::addr::Prefix;
 use rotonda_store::{
-    epoch, meta_examples::NoMeta, IncludeHistory, IntoIpAddr, MatchOptions,
-    MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
+    epoch,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    rib::{config::MemoryOnlyConfig, StarCastRib},
+    test_types::NoMeta,
+    IntoIpAddr,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,7 +57,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let s_spfx = tree_bitmap.match_prefix(
             &spfx.unwrap(),
             &MatchOptions {
-                match_type: rotonda_store::MatchType::ExactMatch,
+                match_type: MatchType::ExactMatch,
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: true,

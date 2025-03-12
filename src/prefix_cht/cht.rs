@@ -10,15 +10,15 @@ use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 use crate::cht::{nodeset_size, prev_node_size};
-use crate::RouteStatus;
+use crate::prefix_record::Meta;
+use crate::stats::UpsertReport;
+use crate::types::RouteStatus;
 use crate::{
     cht::{Cht, OnceBoxSlice, Value},
-    rib::starcast_af::UpsertReport,
     types::{
-        errors::PrefixStoreError, prefix_record::PublicRecord, AddressFamily,
+        errors::PrefixStoreError, prefix_record::Record, AddressFamily,
         PrefixId,
     },
-    Meta,
 };
 
 // ----------- MultiMap ------------------------------------------------------
@@ -61,21 +61,17 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         &self,
         mui: u32,
         include_withdrawn: bool,
-    ) -> Option<PublicRecord<M>> {
+    ) -> Option<Record<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
 
-        record_map
-            .get(&mui)
-            .and_then(|r| -> Option<PublicRecord<M>> {
-                if include_withdrawn
-                    || r.route_status() == RouteStatus::Active
-                {
-                    Some(PublicRecord::from((mui, r)))
-                } else {
-                    None
-                }
-            })
+        record_map.get(&mui).and_then(|r| -> Option<Record<M>> {
+            if include_withdrawn || r.route_status() == RouteStatus::Active {
+                Some(Record::from((mui, r)))
+            } else {
+                None
+            }
+        })
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
@@ -94,7 +90,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         mui: u32,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
-    ) -> Option<PublicRecord<M>> {
+    ) -> Option<Record<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map.get(&mui).map(|r| {
@@ -104,7 +100,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             if bmin.contains(mui) {
                 r.set_route_status(rewrite_status);
             }
-            PublicRecord::from((mui, &r))
+            Record::from((mui, &r))
         })
     }
 
@@ -113,7 +109,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         mui: u32,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<PublicRecord<M>> {
+    ) -> Option<Record<M>> {
         match include_withdrawn {
             false => self.get_record_for_mui(mui, include_withdrawn),
             true => self.get_record_for_mui_with_rewritten_status(
@@ -131,7 +127,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         mui: Option<u32>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<PublicRecord<M>>> {
+    ) -> Option<Vec<Record<M>>> {
         if let Some(mui) = mui {
             self.get_filtered_record_for_mui(mui, include_withdrawn, bmin)
                 .map(|r| vec![r])
@@ -168,7 +164,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         &self,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
-    ) -> Vec<PublicRecord<M>> {
+    ) -> Vec<Record<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map
@@ -178,17 +174,17 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
                 if bmin.contains(*r.0) {
                     rec.set_route_status(rewrite_status);
                 }
-                PublicRecord::from((*r.0, &rec))
+                Record::from((*r.0, &rec))
             })
             .collect::<Vec<_>>()
     }
 
-    pub fn _as_records(&self) -> Vec<PublicRecord<M>> {
+    pub fn _as_records(&self) -> Vec<Record<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map
             .iter()
-            .map(|r| PublicRecord::from((*r.0, r.1)))
+            .map(|r| Record::from((*r.0, r.1)))
             .collect::<Vec<_>>()
     }
 
@@ -198,7 +194,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub fn as_active_records_not_in_bmin(
         &self,
         bmin: &RoaringBitmap,
-    ) -> Vec<PublicRecord<M>> {
+    ) -> Vec<Record<M>> {
         let c_map = Arc::clone(&self.0);
         let record_map = c_map.lock().unwrap();
         record_map
@@ -207,7 +203,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
                 if r.1.route_status() == RouteStatus::Active
                     && !bmin.contains(*r.0)
                 {
-                    Some(PublicRecord::from((*r.0, r.1)))
+                    Some(Record::from((*r.0, r.1)))
                 } else {
                     None
                 }
@@ -242,7 +238,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     #[allow(clippy::type_complexity)]
     pub(crate) fn upsert_record(
         &self,
-        new_rec: PublicRecord<M>,
+        new_rec: Record<M>,
     ) -> Result<(Option<(MultiMapValue<M>, usize)>, usize), PrefixStoreError>
     {
         let (mut record_map, retry_count) = self.guard_with_retry(0);
@@ -305,8 +301,8 @@ impl<M: Meta> std::fmt::Display for MultiMapValue<M> {
     }
 }
 
-impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
-    fn from(value: PublicRecord<M>) -> Self {
+impl<M: Meta> From<Record<M>> for MultiMapValue<M> {
+    fn from(value: Record<M>) -> Self {
         Self {
             ltime: value.ltime,
             route_status: value.status,
@@ -315,7 +311,7 @@ impl<M: Meta> From<PublicRecord<M>> for MultiMapValue<M> {
     }
 }
 
-impl<M: Meta> From<(u32, &MultiMapValue<M>)> for PublicRecord<M> {
+impl<M: Meta> From<(u32, &MultiMapValue<M>)> for Record<M> {
     fn from(value: (u32, &MultiMapValue<M>)) -> Self {
         Self {
             multi_uniq_id: value.0,
@@ -524,7 +520,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         mui: Option<u32>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<PublicRecord<M>>> {
+    ) -> Option<Vec<Record<M>>> {
         let mut prefix_set = self.0.root_for_len(prefix.get_len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -569,7 +565,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     pub(crate) fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: PublicRecord<M>,
+        record: Record<M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<(UpsertReport, Option<MultiMapValue<M>>), PrefixStoreError>

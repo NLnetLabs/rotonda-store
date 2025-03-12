@@ -2,13 +2,14 @@ use inetnum::addr::Prefix;
 use inetnum::asn::Asn;
 use log::trace;
 use rotonda_store::errors::PrefixStoreError;
-use rotonda_store::IncludeHistory;
-use rotonda_store::MatchOptions;
-use rotonda_store::MemoryOnlyConfig;
-use rotonda_store::Meta;
-use rotonda_store::Record;
-use rotonda_store::RouteStatus;
-use rotonda_store::StarCastRib;
+use rotonda_store::match_options::IncludeHistory;
+use rotonda_store::match_options::MatchOptions;
+use rotonda_store::match_options::MatchType;
+use rotonda_store::prefix_record::Meta;
+use rotonda_store::prefix_record::Record;
+use rotonda_store::prefix_record::RouteStatus;
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::path_attributes::BgpIdentifier;
 use routecore::bgp::path_attributes::PaMap;
@@ -179,7 +180,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
     let res = tree_bitmap.match_prefix(
         &pfx,
         &MatchOptions {
-            match_type: rotonda_store::MatchType::ExactMatch,
+            match_type: MatchType::ExactMatch,
             include_withdrawn: false,
             include_less_specifics: false,
             include_more_specifics: false,

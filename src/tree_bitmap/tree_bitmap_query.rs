@@ -1,7 +1,7 @@
+use crate::match_options::{MatchOptions, MatchType};
 use crate::types::AddressFamily;
 
 use crate::rib::starcast_af_query::TreeQueryResult;
-use crate::{MatchOptions, MatchType};
 
 use crate::types::PrefixId;
 use crate::TreeBitMap;

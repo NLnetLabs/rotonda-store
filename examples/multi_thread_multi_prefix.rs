@@ -1,5 +1,10 @@
 use inetnum::addr::Prefix;
 use log::trace;
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::IntoIpAddr;
 
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
@@ -8,8 +13,7 @@ use std::time::Duration;
 
 use rand::Rng;
 
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::{IncludeHistory, IntoIpAddr, MatchOptions, MemoryOnlyConfig, StarCastRib, Record, RouteStatus};
+use rotonda_store::test_types::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
@@ -33,8 +37,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .name(i.to_string())
             .spawn(
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                    let mut rng = rand::rng(); 
-                    
+                    let mut rng = rand::rng();
+
                     // println!("park thread {}", i);
                     thread::park();
 
@@ -42,14 +46,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                     let mut x = 0;
                     loop {
-                        let pfx = Prefix::new_relaxed(pfx_int.clone().load(std::sync::atomic::Ordering::Relaxed).into_ipaddr(), 32).unwrap();
+                        let pfx = Prefix::new_relaxed(
+                            pfx_int
+                                .clone()
+                                .load(std::sync::atomic::Ordering::Relaxed)
+                                .into_ipaddr(),
+                            32,
+                        )
+                        .unwrap();
                         let guard = &crossbeam_epoch::pin();
                         while x < 100 {
                             let asn = PrefixAs::new_from_u32(rng.random());
                             match tree_bitmap.insert(
                                 &pfx,
                                 Record::new(0, 0, RouteStatus::Active, asn),
-                                None
+                                None,
                             ) {
                                 Ok(metrics) => {
                                     if metrics.prefix_new {
@@ -63,18 +74,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     println!("{}", e);
                                 }
                             };
-                            let _s_spfx = tree_bitmap.match_prefix(
-                                &pfx,
-                                &MatchOptions {
-                                    match_type: rotonda_store::MatchType::ExactMatch,
-                                    include_withdrawn: true,
-                                    include_less_specifics: true,
-                                    include_more_specifics: true,
-                                    mui: None,
-                                    include_history: IncludeHistory::None,
-                                },
-                                guard,
-                            ).prefix_meta;
+                            let _s_spfx = tree_bitmap
+                                .match_prefix(
+                                    &pfx,
+                                    &MatchOptions {
+                                        match_type: MatchType::ExactMatch,
+                                        include_withdrawn: true,
+                                        include_less_specifics: true,
+                                        include_more_specifics: true,
+                                        mui: None,
+                                        include_history: IncludeHistory::None,
+                                    },
+                                    guard,
+                                )
+                                .prefix_meta;
                             x += 1;
                         }
 
@@ -84,9 +97,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         thread::park();
                         // thread::sleep(Duration::from_secs(3));
                         println!("wake thread {}", i);
-                        println!("prefix count {:?}", tree_bitmap.prefixes_count());
+                        println!(
+                            "prefix count {:?}",
+                            tree_bitmap.prefixes_count()
+                        );
                         x = 0;
-
                     }
                 },
             )

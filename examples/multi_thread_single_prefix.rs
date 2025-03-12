@@ -1,4 +1,9 @@
 use log::trace;
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::IntoIpAddr;
 
 use std::sync::Arc;
 use std::thread;
@@ -6,11 +11,7 @@ use std::time::Duration;
 
 use rand::Rng;
 
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::{
-    IncludeHistory, IntoIpAddr, MatchOptions, MemoryOnlyConfig, Record,
-    RouteStatus, StarCastRib,
-};
+use rotonda_store::test_types::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
@@ -25,10 +26,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         32,
     );
 
-    let threads = (0..16).enumerate().map(|(i, _)| {
-        let tree_bitmap = tree_bitmap.clone();
+    let threads =
+        (0..16).enumerate().map(|(i, _)| {
+            let tree_bitmap = tree_bitmap.clone();
 
-        std::thread::Builder::new()
+            std::thread::Builder::new()
             .name(i.to_string())
             .spawn(
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
@@ -64,7 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let _s_spfx = tree_bitmap.match_prefix(
                         &pfx.unwrap(),
                         &MatchOptions {
-                            match_type: rotonda_store::MatchType::ExactMatch,
+                            match_type: MatchType::ExactMatch,
                             include_withdrawn: true,
                             include_less_specifics: true,
                             include_more_specifics: true,
@@ -90,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 },
             )
             .unwrap()
-    });
+        });
 
     threads.for_each(|t| {
         t.thread().unpark();

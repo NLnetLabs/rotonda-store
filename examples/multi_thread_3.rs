@@ -1,14 +1,14 @@
 use inetnum::addr::Prefix;
 use log::trace;
-use rotonda_store::{epoch, IncludeHistory};
-use rotonda_store::{
-    IntoIpAddr, MatchOptions, MemoryOnlyConfig, Record, RouteStatus,
-    StarCastRib,
-};
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::{epoch, IntoIpAddr};
 use std::time::Duration;
 use std::{sync::Arc, thread};
 
-use rotonda_store::meta_examples::PrefixAs;
+use rotonda_store::test_types::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
@@ -95,7 +95,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let s_spfx = tree_bitmap.match_prefix(
         &pfx.unwrap(),
         &MatchOptions {
-            match_type: rotonda_store::MatchType::ExactMatch,
+            match_type: MatchType::ExactMatch,
             include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,

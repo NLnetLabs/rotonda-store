@@ -12,12 +12,11 @@ use zerocopy::{
     Unaligned, U32, U64,
 };
 
-use crate::rib::Counters;
+use crate::prefix_record::Meta;
+use crate::stats::Counters;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
-use crate::types::AddressFamily;
-use crate::types::PublicRecord;
+use crate::types::{AddressFamily, Record};
 use crate::types::{PrefixId, RouteStatus};
-use crate::Meta;
 
 pub(crate) trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
     TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
@@ -732,7 +731,7 @@ impl<
     pub(crate) fn persist_record_w_long_key<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
-        record: &PublicRecord<M>,
+        record: &Record<M>,
     ) {
         self.insert(
             LongKey::from((
@@ -749,7 +748,7 @@ impl<
     pub(crate) fn persist_record_w_short_key<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
-        record: &PublicRecord<M>,
+        record: &Record<M>,
     ) {
         trace!("Record to persist {}", record);
         let mut value = ValueHeader {

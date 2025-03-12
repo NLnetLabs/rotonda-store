@@ -1,8 +1,8 @@
 use inetnum::addr::Prefix;
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::{
-    MemoryOnlyConfig, PrefixRecord, Record, RouteStatus, StarCastRib,
-};
+use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::test_types::PrefixAs;
 
 use std::env;
 use std::error::Error;

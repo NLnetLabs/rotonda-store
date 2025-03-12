@@ -11,13 +11,17 @@ mod common {
 
 #[cfg(test)]
 mod tests {
-    use inetnum::addr::Prefix;
     use rotonda_store::{
+        addr::Prefix,
         epoch,
-        meta_examples::{NoMeta, PrefixAs},
-        Config, IncludeHistory, IntoIpAddr, MatchOptions, MatchType,
-        MemoryOnlyConfig, PersistOnlyConfig, Record, RouteStatus,
-        StarCastRib,
+        match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_record::{Record, RouteStatus},
+        rib::{
+            config::{Config, MemoryOnlyConfig, PersistOnlyConfig},
+            StarCastRib,
+        },
+        test_types::{NoMeta, PrefixAs},
+        IntoIpAddr,
     };
 
     rotonda_store::all_strategies![

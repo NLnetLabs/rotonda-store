@@ -1,9 +1,22 @@
 //------------ Config --------------------------------------------------------
 
 //! Configuration options for a RIB for AFI/SAFIs [IPv4, IPv6] with [Unicast,
-//! Multicast]
+//! Multicast].
+//!
+//! A Configuration is created by picking one of the `*Config` structs in
+//! this module, instantiate it, set some fields on it, and pass it in as an
+//! argument to [new_with_config](super::StarCastRib::new_with_config).
+//!
+//! ```
+//! use rotonda_store::test_types::PrefixAs;
+//! use rotonda_store::rib::StarCastRib;
+//! use rotonda_store::rib::config::PersistOnlyConfig;
+//!
+//! let config = PersistOnlyConfig::default();
+//! let tree_bitmap = StarCastRib::<PrefixAs, _>::new_with_config(config);
+//! ```
 
-/// Defines where records are stored, in-memory and/or persisted (to disk),
+/// Defines where records are stored: in-memory and/or persisted (to disk),
 /// and, whether new records for a unique (prefix, mui) pair are overwritten
 /// or persisted.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]

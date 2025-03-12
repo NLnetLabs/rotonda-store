@@ -3,18 +3,17 @@ use epoch::Guard;
 use log::trace;
 use zerocopy::TryFromBytes;
 
-use crate::rib::starcast_af::{Config, PersistStrategy, StarCastAfRib};
+use crate::match_options::{MatchOptions, MatchType, QueryResult};
 use crate::types::prefix_record::ZeroCopyRecord;
-use crate::types::PublicRecord;
+use crate::types::Record;
 use crate::AddressFamily;
+use crate::{prefix_record::Meta, rib::starcast_af::StarCastAfRib};
 use inetnum::addr::Prefix;
-
-use crate::{Meta, QueryResult};
-
-use crate::{MatchOptions, MatchType};
 
 use crate::types::errors::PrefixStoreError;
 use crate::types::PrefixId;
+
+use super::config::{Config, PersistStrategy};
 
 //------------ Prefix Matching ----------------------------------------------
 
@@ -34,7 +33,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> Option<Vec<PublicRecord<M>>> {
+    ) -> Option<Vec<Record<M>>> {
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 trace!("get value from persist_store for {:?}", prefix_id);
@@ -51,7 +50,7 @@ impl<
                                 let record: &ZeroCopyRecord<AF> =
                                     ZeroCopyRecord::try_ref_from_bytes(bytes)
                                         .unwrap();
-                                PublicRecord::<M> {
+                                Record::<M> {
                                     multi_uniq_id: record.multi_uniq_id,
                                     ltime: record.ltime,
                                     status: record.status,
@@ -148,7 +147,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<Record<M>>)> + 'a {
         println!("more_specifics_iter_from fn");
         // If the user wanted a specific mui and not withdrawn prefixes, we
         // may return early if the mui is globally withdrawn.
@@ -198,7 +197,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<PublicRecord<M>>)> + 'a {
+    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<Record<M>>)> + 'a {
         self.tree_bitmap
             .less_specific_prefix_iter(prefix_id)
             .filter_map(move |p| {
@@ -280,7 +279,7 @@ impl<
         &'a self,
         search_pfx: PrefixId<AF>,
         guard: &Guard,
-    ) -> Option<Result<PublicRecord<M>, PrefixStoreError>> {
+    ) -> Option<Result<Record<M>, PrefixStoreError>> {
         self.prefix_cht
             .non_recursive_retrieve_prefix(search_pfx)
             .0
@@ -365,13 +364,12 @@ impl<AF: AddressFamily, M: Meta> From<TreeQueryResult<AF>>
     }
 }
 
-pub(crate) type FamilyRecord<AF, M> =
-    Vec<(PrefixId<AF>, Vec<PublicRecord<M>>)>;
+pub(crate) type FamilyRecord<AF, M> = Vec<(PrefixId<AF>, Vec<Record<M>>)>;
 
 pub(crate) struct FamilyQueryResult<AF: AddressFamily, M: Meta> {
     pub match_type: MatchType,
     pub prefix: Option<PrefixId<AF>>,
-    pub prefix_meta: Vec<PublicRecord<M>>,
+    pub prefix_meta: Vec<Record<M>>,
     pub less_specifics: Option<FamilyRecord<AF, M>>,
     pub more_specifics: Option<FamilyRecord<AF, M>>,
 }

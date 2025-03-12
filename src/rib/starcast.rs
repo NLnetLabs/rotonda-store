@@ -4,19 +4,25 @@ use rand::prelude::*;
 
 use crate::{
     epoch,
+    match_options::{MatchOptions, QueryResult},
+    prefix_record::{Meta, PrefixRecord, Record},
+    rib::config::Config,
     types::{errors::PrefixStoreError, PrefixId},
-    AddressFamily, IPv4, IPv6, MatchOptions, Meta, PrefixRecord, QueryResult,
-    Record,
+    AddressFamily, IPv4, IPv6,
 };
 
-use super::starcast_af::{
-    Config, PersistStrategy, StarCastAfRib, StoreStats, UpsertCounters,
-    UpsertReport,
-};
+use super::starcast_af::StarCastAfRib;
+use crate::rib::config::PersistStrategy;
+use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 
 pub const STRIDE_SIZE: u8 = 4;
 pub const BIT_SPAN_SIZE: u8 = 32;
 
+/// A RIB that stores routes (and/or other data) for [`IPv4`,
+/// `IPv6`]/[`Unicast`, `Multicast`], i.e. AFI/SAFI types `{1,2}/{1,2}`.
+///
+/// Routes can be kept in memory, persisted to disk, or both. Also, historical
+/// records can be persisted.
 pub struct StarCastRib<M: Meta, C: Config> {
     v4: StarCastAfRib<IPv4, M, 9, 33, C, 18>,
     v6: StarCastAfRib<IPv6, M, 33, 129, C, 30>,
@@ -24,12 +30,22 @@ pub struct StarCastRib<M: Meta, C: Config> {
 }
 
 impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
+    /// Create a new RIB with a default configuration. The default
+    /// configuration uses the `MemoryOnly` persistence strategy.
+    ///
+    /// This method is really infallible, but we return a result anyway to be
+    /// in line with the `new_with_config` method.
     pub fn try_default() -> Result<Self, PrefixStoreError> {
         let config = C::default();
         Self::new_with_config(config)
             .map_err(|_| PrefixStoreError::StoreNotReadyError)
     }
 
+    /// Create a new RIB with the specified configuration.
+    ///
+    /// Creation may fail for all strategies that persist to disk, e.g.
+    /// the persistence path does not exist, it doesn't have the correct
+    /// permissions, etc.
     pub fn new_with_config(
         config: C,
     ) -> Result<Self, Box<dyn std::error::Error>> {

@@ -1,12 +1,19 @@
 use inetnum::addr::Prefix;
-use rotonda_store::{
-    epoch, meta_examples::NoMeta, IncludeHistory, IntoIpAddr, MatchOptions,
-    MatchType, MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
-};
+use rotonda_store::match_options::IncludeHistory;
+use rotonda_store::match_options::MatchOptions;
+use rotonda_store::match_options::MatchType;
+use rotonda_store::prefix_record::Record;
+use rotonda_store::prefix_record::RouteStatus;
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::test_types::NoMeta;
+use rotonda_store::IntoIpAddr;
 
 type Prefix4<'a> = Prefix;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+type Type = Result<(), Box<dyn std::error::Error>>;
+
+fn main() -> Type {
     let tree_bitmap = StarCastRib::<_, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new(
@@ -290,7 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         println!("search for: {:?}", spfx);
         // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
-        let guard = &epoch::pin();
+        let guard = &rotonda_store::epoch::pin();
         let s_spfx = tree_bitmap.match_prefix(
             &spfx.unwrap(),
             &MatchOptions {

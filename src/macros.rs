@@ -6,10 +6,11 @@ macro_rules! all_strategies {
         $(
             #[test]
             fn $fn_name() -> Result<(), Box<dyn std::error::Error>> {
-                use rotonda_store::{
+                use rotonda_store::rib::config::{
                         MemoryOnlyConfig,
                         PersistOnlyConfig,
-                        PersistHistoryConfig, WriteAheadConfig
+                        PersistHistoryConfig,
+                        WriteAheadConfig
                     };
 
                 //------- Default (MemoryOnly)

@@ -1,14 +1,14 @@
 #![cfg(feature = "cli")]
 use ansi_term::Colour;
-use rotonda_store::{
-    epoch, IncludeHistory, MatchOptions, MatchType, MemoryOnlyConfig,
-    PrefixRecord, Record, RouteStatus, StarCastRib,
-};
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
 use inetnum::addr::Prefix;
-use rotonda_store::meta_examples::PrefixAs;
+use rotonda_store::test_types::PrefixAs;
 use rustyline::history::DefaultHistory;
 
 use std::env;
@@ -91,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // tree_bitmap.print_funky_stats();
     // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
-    let guard = &epoch::pin();
+    let guard = &rotonda_store::epoch::pin();
 
     let mut rl = Editor::<(), DefaultHistory>::new()?;
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {

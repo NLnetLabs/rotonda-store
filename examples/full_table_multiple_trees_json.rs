@@ -1,10 +1,10 @@
 use inetnum::addr::Prefix;
 use rotonda_store::epoch;
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::{
-    IncludeHistory, MatchOptions, MatchType, MemoryOnlyConfig, PrefixRecord,
-    Record, RouteStatus, StarCastRib,
-};
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::test_types::PrefixAs;
 
 use std::error::Error;
 use std::fs::File;
@@ -56,9 +56,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
             let config = MemoryOnlyConfig;
             let tree_bitmap =
-                StarCastRib::<PrefixAs, MemoryOnlyConfig>::new_with_config(
-                    config,
-                )?;
+                StarCastRib::<PrefixAs, _>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);

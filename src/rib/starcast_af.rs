@@ -1,317 +1,26 @@
 use std::path::Path;
-use std::sync::atomic::{AtomicUsize, Ordering};
 
 use inetnum::addr::Prefix;
 use log::{info, trace};
 
-use crossbeam_epoch::{self as epoch};
-use epoch::Guard;
+use crate::prefix_record::Meta;
+use crate::rib::config::PersistStrategy;
+use crate::stats::{Counters, UpsertCounters, UpsertReport};
+use crate::{epoch, Guard};
 use zerocopy::TryFromBytes;
 
 use crate::prefix_cht::cht::PrefixCht;
-use crate::stats::CreatedNodes;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
 use crate::types::{PrefixId, RouteStatus};
 use crate::TreeBitMap;
 use crate::{lsm_tree::LongKey, LsmTree};
-use crate::{
-    types::errors::PrefixStoreError, types::prefix_record::PublicRecord,
-};
+use crate::{types::errors::PrefixStoreError, types::prefix_record::Record};
 
-use crate::{IPv4, IPv6, Meta};
+use crate::{IPv4, IPv6};
 
 use crate::AddressFamily;
 
-//------------ Config --------------------------------------------------------
-
-/// Defines where records are stored, in-memory and/or persisted (to disk),
-/// and, whether new records for a unique (prefix, mui) pair are overwritten
-/// or persisted.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum PersistStrategy {
-    /// Current records are stored both in-memory and persisted. Historical
-    /// records are persisted.
-    WriteAhead,
-    /// Current records are stored in-memory, historical records are
-    /// persisted.
-    PersistHistory,
-    /// Current records are stored in-memory, historical records are discarded
-    /// when newer records appear.
-    MemoryOnly,
-    /// Current records are persisted immediately. No records are stored in
-    /// memory. Historical records are discarded when newer records appear.
-    PersistOnly,
-}
-
-pub trait Config: Clone + Default + std::fmt::Debug {
-    fn persist_strategy(&self) -> PersistStrategy;
-    fn persist_path(&self) -> Option<String>;
-    fn set_persist_path(&mut self, path: String);
-}
-
-//------------ MemoryOnlyConfig ----------------------------------------------
-
-#[derive(Copy, Clone, Debug)]
-pub struct MemoryOnlyConfig;
-
-impl Config for MemoryOnlyConfig {
-    fn persist_strategy(&self) -> PersistStrategy {
-        PersistStrategy::MemoryOnly
-    }
-
-    fn persist_path(&self) -> Option<String> {
-        None
-    }
-
-    fn set_persist_path(&mut self, _: String) {
-        unimplemented!()
-    }
-}
-
-impl Default for MemoryOnlyConfig {
-    fn default() -> Self {
-        Self
-    }
-}
-
-//------------ PeristOnlyConfig ----------------------------------------------
-
-impl Default for PersistOnlyConfig {
-    fn default() -> Self {
-        Self {
-            persist_path: "/tmp/rotonda/".to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct PersistOnlyConfig {
-    persist_path: String,
-}
-
-impl Config for PersistOnlyConfig {
-    fn persist_strategy(&self) -> PersistStrategy {
-        PersistStrategy::PersistOnly
-    }
-
-    fn persist_path(&self) -> Option<String> {
-        Some(self.persist_path.clone())
-    }
-
-    fn set_persist_path(&mut self, path: String) {
-        self.persist_path = path;
-    }
-}
-
-//------------ WriteAheadConfig ----------------------------------------------
-
-impl Default for WriteAheadConfig {
-    fn default() -> Self {
-        Self {
-            persist_path: "/tmp/rotonda/".to_string(),
-        }
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct WriteAheadConfig {
-    persist_path: String,
-}
-
-impl Config for WriteAheadConfig {
-    fn persist_strategy(&self) -> PersistStrategy {
-        PersistStrategy::WriteAhead
-    }
-
-    fn persist_path(&self) -> Option<String> {
-        Some(self.persist_path.clone())
-    }
-
-    fn set_persist_path(&mut self, path: String) {
-        self.persist_path = path;
-    }
-}
-
-//------------ PersistHistoryConfig ------------------------------------------
-
-#[derive(Clone, Debug)]
-pub struct PersistHistoryConfig {
-    persist_path: String,
-}
-
-impl Config for PersistHistoryConfig {
-    fn persist_strategy(&self) -> PersistStrategy {
-        PersistStrategy::PersistHistory
-    }
-
-    fn persist_path(&self) -> Option<String> {
-        Some(self.persist_path.clone())
-    }
-
-    fn set_persist_path(&mut self, path: String) {
-        self.persist_path = path;
-    }
-}
-
-impl Default for PersistHistoryConfig {
-    fn default() -> Self {
-        Self {
-            persist_path: "/tmp/rotonda/".to_string(),
-        }
-    }
-}
-
-//------------ Counters -----------------------------------------------------
-
-#[derive(Debug)]
-pub struct Counters {
-    // number of created nodes in the in-mem tree
-    nodes: AtomicUsize,
-    // number of unique prefixes in the store
-    prefixes: [AtomicUsize; 129],
-    // number of unique (prefix, mui) values inserted in the in-mem tree
-    routes: AtomicUsize,
-}
-
-impl Counters {
-    pub fn get_nodes_count(&self) -> usize {
-        self.nodes.load(Ordering::Relaxed)
-    }
-
-    pub fn inc_nodes_count(&self) {
-        self.nodes.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn get_prefixes_count(&self) -> Vec<usize> {
-        self.prefixes
-            .iter()
-            .map(|pc| pc.load(Ordering::Relaxed))
-            .collect::<Vec<_>>()
-    }
-
-    pub fn inc_prefixes_count(&self, len: u8) {
-        self.prefixes[len as usize].fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn _dec_prefixes_count(&self, len: u8) {
-        self.prefixes[len as usize].fetch_sub(1, Ordering::Relaxed);
-    }
-
-    pub fn get_prefix_stats(&self) -> Vec<CreatedNodes> {
-        self.prefixes
-            .iter()
-            .enumerate()
-            .filter_map(|(len, count)| {
-                let count = count.load(Ordering::Relaxed);
-                if count != 0 {
-                    Some(CreatedNodes {
-                        depth_level: len as u8,
-                        count,
-                    })
-                } else {
-                    None
-                }
-            })
-            .collect()
-    }
-
-    pub fn inc_routes_count(&self) {
-        self.routes.fetch_add(1, Ordering::Relaxed);
-    }
-}
-
-impl Default for Counters {
-    fn default() -> Self {
-        let mut prefixes: Vec<AtomicUsize> = Vec::with_capacity(129);
-        for _ in 0..=128 {
-            prefixes.push(AtomicUsize::new(0));
-        }
-
-        Self {
-            nodes: AtomicUsize::new(0),
-            prefixes: prefixes.try_into().unwrap(),
-            routes: AtomicUsize::new(0),
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct UpsertCounters {
-    // number of unique inserted prefixes|routes in the in-mem tree
-    in_memory_count: usize,
-    // number of unique persisted prefixes|routes
-    persisted_count: usize,
-    // total number of unique inserted prefixes|routes in the RIB
-    total_count: usize,
-}
-
-impl UpsertCounters {
-    pub fn in_memory(&self) -> usize {
-        self.in_memory_count
-    }
-
-    pub fn persisted(&self) -> usize {
-        self.persisted_count
-    }
-
-    pub fn total(&self) -> usize {
-        self.total_count
-    }
-}
-
-impl std::fmt::Display for UpsertCounters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
-        write!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
-        write!(f, "Total inserted Items:\t{}", self.total_count)
-    }
-}
-
-impl std::ops::AddAssign for UpsertCounters {
-    fn add_assign(&mut self, rhs: Self) {
-        self.in_memory_count += rhs.in_memory_count;
-        self.persisted_count += rhs.persisted_count;
-        self.total_count += rhs.total_count;
-    }
-}
-
-impl std::ops::Add for UpsertCounters {
-    type Output = UpsertCounters;
-
-    fn add(self, rhs: Self) -> Self::Output {
-        Self {
-            in_memory_count: self.in_memory_count + rhs.in_memory_count,
-            persisted_count: self.persisted_count + rhs.persisted_count,
-            total_count: self.total_count + rhs.total_count,
-        }
-    }
-}
-
-//------------ StoreStats ----------------------------------------------
-
-#[derive(Debug)]
-pub struct StoreStats {
-    pub v4: Vec<CreatedNodes>,
-    pub v6: Vec<CreatedNodes>,
-}
-
-//------------ UpsertReport --------------------------------------------------
-
-#[derive(Debug)]
-pub struct UpsertReport {
-    // Indicates the number of Atomic Compare-and-Swap operations were
-    // necessary to create/update the Record entry. High numbers indicate
-    // contention.
-    pub cas_count: usize,
-    // Indicates whether this was the first mui record for this prefix was
-    // created. So, the prefix did not exist before hand.
-    pub prefix_new: bool,
-    // Indicates whether this mui was new for this prefix. False means an old
-    // value was overwritten.
-    pub mui_new: bool,
-    // The number of mui records for this prefix after the upsert operation.
-    pub mui_count: usize,
-}
+use super::config::Config;
 
 // ----------- Rib -----------------------------------------------------------
 //
@@ -379,7 +88,7 @@ impl<
     pub(crate) fn insert(
         &self,
         prefix: PrefixId<AF>,
-        record: PublicRecord<M>,
+        record: Record<M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("try insertingf {:?}", prefix);
@@ -411,7 +120,7 @@ impl<
     fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: PublicRecord<M>,
+        record: Record<M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
@@ -441,7 +150,7 @@ impl<
                         if let Some(persist_tree) = &self.persist_tree {
                             persist_tree.persist_record_w_long_key(
                                 prefix,
-                                &PublicRecord::from((mui, &rec)),
+                                &Record::from((mui, &rec)),
                             );
                         }
                     }
@@ -688,7 +397,7 @@ impl<
     pub fn prefixes_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + 'a {
+    ) -> impl Iterator<Item = (Prefix, Vec<Record<M>>)> + 'a {
         self.tree_bitmap.prefixes_iter().map(|p| {
             (
                 p,
@@ -706,7 +415,7 @@ impl<
 
     pub(crate) fn persist_prefixes_iter(
         &self,
-    ) -> impl Iterator<Item = (Prefix, Vec<PublicRecord<M>>)> + '_ {
+    ) -> impl Iterator<Item = (Prefix, Vec<Record<M>>)> + '_ {
         self.persist_tree
             .as_ref()
             .map(|tree| {
@@ -726,14 +435,14 @@ impl<
                                         rec,
                                     )
                                     .unwrap();
-                                PublicRecord {
+                                Record {
                                     multi_uniq_id: rec.multi_uniq_id,
                                     ltime: rec.ltime,
                                     status: rec.status,
                                     meta: rec.meta.to_vec().into(),
                                 }
                             })
-                            .collect::<Vec<PublicRecord<M>>>(),
+                            .collect::<Vec<Record<M>>>(),
                     )
                 })
             })

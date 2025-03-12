@@ -2,8 +2,13 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    meta_examples::NoMeta, test_types::BeBytesAsn, Config, IncludeHistory,
-    MatchOptions, MemoryOnlyConfig, Record, RouteStatus, StarCastRib,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    rib::{
+        config::{Config, MemoryOnlyConfig},
+        StarCastRib,
+    },
+    test_types::{BeBytesAsn, NoMeta},
 };
 
 mod common {
@@ -352,7 +357,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
     );
 
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::ExactMatch,
+        match_type: MatchType::ExactMatch,
         include_withdrawn: true,
         include_less_specifics: false,
         include_more_specifics: false,
@@ -633,7 +638,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         .collect();
 
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::ExactMatch,
+        match_type: MatchType::ExactMatch,
         include_withdrawn: true,
         include_less_specifics: false,
         include_more_specifics: false,
@@ -658,7 +663,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
 
     println!("get all prefixes");
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::EmptyMatch,
+        match_type: MatchType::EmptyMatch,
         include_withdrawn: false,
         include_less_specifics: false,
         include_more_specifics: true,
@@ -736,7 +741,7 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
         MemoryOnlyConfig,
     >::try_default()?);
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::EmptyMatch,
+        match_type: MatchType::EmptyMatch,
         include_withdrawn: false,
         include_less_specifics: false,
         include_more_specifics: true,

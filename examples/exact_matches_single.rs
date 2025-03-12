@@ -1,8 +1,12 @@
 use inetnum::addr::Prefix;
-use rotonda_store::meta_examples::NoMeta;
 use rotonda_store::{
-    IncludeHistory, IntoIpAddr, MatchOptions, MatchType, MemoryOnlyConfig,
-    Record, RouteStatus, StarCastRib,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    IntoIpAddr,
+};
+use rotonda_store::{
+    rib::{config::MemoryOnlyConfig, StarCastRib},
+    test_types::NoMeta,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

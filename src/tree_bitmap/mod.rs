@@ -197,6 +197,7 @@ pub(crate) use tree_bitmap_node::{
 
 use crate::cht::{nodeset_size, prev_node_size, Cht, Value};
 use crate::rib::STRIDE_SIZE;
+use crate::stats::Counters;
 use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use log::{debug, error, log_enabled, trace};
@@ -207,7 +208,6 @@ use tree_bitmap_node::NewNodeOrIndex;
 use std::sync::atomic::{AtomicBool, AtomicU16, AtomicU32, Ordering};
 use std::{fmt::Debug, marker::PhantomData};
 
-use crate::rib::Counters;
 use crate::types::AddressFamily;
 use atomic_bitmap::{AtomicBitmap, AtomicPfxBitArr, AtomicPtrBitArr};
 

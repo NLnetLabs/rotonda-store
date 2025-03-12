@@ -1,8 +1,11 @@
 // type Prefix4<'a> = Prefix<u32, PrefixAs>;
 use inetnum::addr::Prefix;
 use rotonda_store::{
-    epoch, meta_examples::PrefixAs, Config, IncludeHistory, MatchOptions,
-    MatchType, Record, RouteStatus, StarCastRib,
+    epoch,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    rib::{config::Config, StarCastRib},
+    test_types::PrefixAs,
 };
 
 use std::error::Error;

@@ -1,14 +1,26 @@
-//! A library that provides abstractions for a BGP Routing Information Base (RIB) for different AFI/SAFI types, as a database.
+//! A library that provides abstractions for a BGP Routing Information Base
+//! (RIB) for different AFI/SAFI types, as a database.
 //!
-//! The data structures provides by this crate can be used to store and query routes (or other metadata keyed on IP prefixes, or a comparable bitarray) in memory and on-disk, for both current and historical data.
+//! The data structures provided by this crate can be used to store and query
+//! routes (and route-like data) in memory and on-disk, for both current and
+//! historical data.
 //!
-//! [^1]:[Paper](https://www.cs.cornell.edu/courses/cs419/2005sp/tree-bitmap.pdf).
-//! [^2]: Read more about the data-structure in this [blogpost](https://blog.nlnetlabs.nl/donkeys-mules-horses/).
-
+//! The main data structures that this crate implements are firstly a tree
+//! bitmap, largely as described in this paper[^1] - but with a twist.
+//! There's also a blog post[^2] about the tree bitmap, and similar data
+//! structures. Secondly, this repo implements a concurrent chained hash
+//! table (called `cht` throughout this repo), geared towards keys that are
+//! "prefix-like", i.e. variable-length bitfields, that fit within a
+//! primitive integer type.
+//!
+//! The log-structured merge tree ("lsm_tree") used in this library is
+//! provided by the `lsm_tree` crate - the crate that powers `fjall`.
+//!
+//! [^1]: <https://www.cs.cornell.edu/courses/cs419/2005sp/tree-bitmap.pdf>
+//! [^2]: <https://blog.nlnetlabs.nl/donkeys-mules-horses/>
 mod cht;
 mod lsm_tree;
 mod prefix_cht;
-mod rib;
 mod tree_bitmap;
 mod types;
 
@@ -24,27 +36,29 @@ pub use inetnum::addr;
 
 // Public Interfaces on the root of the crate
 
-pub use rib::starcast::StarCastRib;
-pub use rib::starcast_af::{
-    Config, MemoryOnlyConfig, PersistHistoryConfig, PersistOnlyConfig,
-    PersistStrategy, UpsertReport, WriteAheadConfig,
-};
+/// RIBs for various AFI/SAFI types
+pub mod rib;
+
+/// Types used to create match queries on a RIB
+pub use types::match_options;
+
+/// Record, Record Iterator and related types/traits
+pub use types::prefix_record;
+
+/// Error types returned by a RIB
+pub use types::errors;
+
 pub use types::af::AddressFamily;
 pub use types::af::IPv4;
 pub use types::af::IPv6;
-pub use types::af::IntoIpAddr;
-pub use types::errors;
-pub use types::match_options::{
-    IncludeHistory, MatchOptions, MatchType, QueryResult,
-};
 
-#[doc(hidden)]
-pub use types::meta_examples;
+/// Trait that describes the conversion of a u32 or u128 in to a IPv4, or IPV6
+/// respectively.
+pub use types::af::IntoIpAddr;
+
+/// Statistics and metrics types returned by methods on a RIB
+pub use types::stats;
+
+// Used in tests
 #[doc(hidden)]
 pub use types::test_types;
-
-pub use types::prefix_record::Meta;
-pub use types::prefix_record::PublicPrefixRecord as PrefixRecord;
-pub use types::prefix_record::PublicRecord as Record;
-pub use types::route_status::RouteStatus;
-pub use types::stats;
