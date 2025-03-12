@@ -6,8 +6,8 @@ use crate::types::BitSpan;
 //------------ AddressFamily (trait) ----------------------------------------
 /// The address family of an IP address as a Trait.
 ///
-/// The idea of this trait is that each family will have a separate type to
-/// be able to only take the amount of memory needs. Useful when building
+/// The idea of this trait is that each family will have a separate type to be
+/// able to only take the exact amount of memory needed. Useful when building
 /// trees with large amounts of addresses/prefixes. Used by rotonda-store for
 /// this purpose.
 pub trait AddressFamily:

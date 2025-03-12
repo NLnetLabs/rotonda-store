@@ -1,26 +1,22 @@
 //------------ Types for Statistics -----------------------------------------
 
-// use crate::stride::{Stride3, Stride4, Stride5, Stride6, Stride7, Stride8};
 use std::{
     fmt::{Debug, Display},
     marker::PhantomData,
+    sync::atomic::{AtomicUsize, Ordering},
 };
 
-use crate::{
-    rib::STRIDE_SIZE, tree_bitmap::TreeBitMapNode, types::AddressFamily,
-};
+use crate::{rib::STRIDE_SIZE, types::AddressFamily};
 
-pub struct StrideStats<AF: AddressFamily> {
-    pub node_size: usize,
-    pub created_nodes: Vec<CreatedNodes>,
-    pub prefixes_num: Vec<CreatedNodes>,
+pub(crate) struct StrideStats<AF: AddressFamily> {
+    pub(crate) created_nodes: Vec<CreatedNodes>,
+    pub(crate) prefixes_num: Vec<CreatedNodes>,
     _af: PhantomData<AF>,
 }
 
 impl<AF: AddressFamily> StrideStats<AF> {
     pub fn new() -> Self {
         Self {
-            node_size: std::mem::size_of::<TreeBitMapNode<AF>>(),
             created_nodes: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
             prefixes_num: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
             _af: PhantomData,
@@ -107,4 +103,156 @@ impl Debug for CreatedNodes {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         f.write_fmt(format_args!("/{}: {}", &self.depth_level, &self.count))
     }
+}
+
+//------------ Counters -----------------------------------------------------
+
+#[derive(Debug)]
+pub(crate) struct Counters {
+    // number of created nodes in the in-mem tree
+    nodes: AtomicUsize,
+    // number of unique prefixes in the store
+    prefixes: [AtomicUsize; 129],
+    // number of unique (prefix, mui) values inserted in the in-mem tree
+    routes: AtomicUsize,
+}
+
+impl Counters {
+    pub fn get_nodes_count(&self) -> usize {
+        self.nodes.load(Ordering::Relaxed)
+    }
+
+    pub fn inc_nodes_count(&self) {
+        self.nodes.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn get_prefixes_count(&self) -> Vec<usize> {
+        self.prefixes
+            .iter()
+            .map(|pc| pc.load(Ordering::Relaxed))
+            .collect::<Vec<_>>()
+    }
+
+    pub fn inc_prefixes_count(&self, len: u8) {
+        self.prefixes[len as usize].fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn _dec_prefixes_count(&self, len: u8) {
+        self.prefixes[len as usize].fetch_sub(1, Ordering::Relaxed);
+    }
+
+    pub fn get_prefix_stats(&self) -> Vec<CreatedNodes> {
+        self.prefixes
+            .iter()
+            .enumerate()
+            .filter_map(|(len, count)| -> Option<CreatedNodes> {
+                let count = count.load(Ordering::Relaxed);
+                if count != 0 {
+                    Some(CreatedNodes {
+                        depth_level: len as u8,
+                        count,
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
+    pub fn inc_routes_count(&self) {
+        self.routes.fetch_add(1, Ordering::Relaxed);
+    }
+}
+
+impl Default for Counters {
+    fn default() -> Self {
+        let mut prefixes: Vec<AtomicUsize> = Vec::with_capacity(129);
+        for _ in 0..=128 {
+            prefixes.push(AtomicUsize::new(0));
+        }
+
+        Self {
+            nodes: AtomicUsize::new(0),
+            prefixes: prefixes.try_into().unwrap(),
+            routes: AtomicUsize::new(0),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct UpsertCounters {
+    // number of unique inserted prefixes|routes in the in-mem tree
+    pub(crate) in_memory_count: usize,
+    // number of unique persisted prefixes|routes
+    pub(crate) persisted_count: usize,
+    // total number of unique inserted prefixes|routes in the RIB
+    pub(crate) total_count: usize,
+}
+
+impl UpsertCounters {
+    pub fn in_memory(&self) -> usize {
+        self.in_memory_count
+    }
+
+    pub fn persisted(&self) -> usize {
+        self.persisted_count
+    }
+
+    pub fn total(&self) -> usize {
+        self.total_count
+    }
+}
+
+impl std::fmt::Display for UpsertCounters {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
+        write!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
+        write!(f, "Total inserted Items:\t{}", self.total_count)
+    }
+}
+
+impl std::ops::AddAssign for UpsertCounters {
+    fn add_assign(&mut self, rhs: Self) {
+        self.in_memory_count += rhs.in_memory_count;
+        self.persisted_count += rhs.persisted_count;
+        self.total_count += rhs.total_count;
+    }
+}
+
+impl std::ops::Add for UpsertCounters {
+    type Output = UpsertCounters;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            in_memory_count: self.in_memory_count + rhs.in_memory_count,
+            persisted_count: self.persisted_count + rhs.persisted_count,
+            total_count: self.total_count + rhs.total_count,
+        }
+    }
+}
+
+//------------ StoreStats ----------------------------------------------
+
+#[derive(Debug)]
+pub struct StoreStats {
+    pub v4: Vec<CreatedNodes>,
+    pub v6: Vec<CreatedNodes>,
+}
+
+//------------ UpsertReport --------------------------------------------------
+
+#[derive(Debug)]
+pub struct UpsertReport {
+    // Indicates the number of Atomic Compare-and-Swap operations were
+    // necessary to create/update the Record entry. High numbers indicate
+    // contention.
+    pub cas_count: usize,
+    // Indicates whether this was the first mui record for this prefix was
+    // created. So, the prefix did not exist before hand.
+    pub prefix_new: bool,
+    // Indicates whether this mui was new for this prefix. False means an old
+    // value was overwritten.
+    pub mui_new: bool,
+    // The number of mui records for this prefix after the upsert operation.
+    pub mui_count: usize,
 }

@@ -1,8 +1,9 @@
-use crate::types::{prefix_record::RecordSet, PublicRecord};
-use crate::Meta;
+use crate::types::{prefix_record::RecordSet, Record};
 use std::fmt;
 
 use inetnum::addr::Prefix;
+
+use super::prefix_record::Meta;
 
 //------------ MatchOptions / MatchType -------------------------------------
 
@@ -90,7 +91,7 @@ pub struct QueryResult<M: Meta> {
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
-    pub prefix_meta: Vec<PublicRecord<M>>,
+    pub prefix_meta: Vec<Record<M>>,
     /// The less-specifics of the resulting prefix together with their meta
     /// data
     pub less_specifics: Option<RecordSet<M>>,
