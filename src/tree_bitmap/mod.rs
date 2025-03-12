@@ -195,7 +195,7 @@ pub(crate) use tree_bitmap_node::{
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
-use crate::cht::{bits_for_len, nodeset_size, prev_node_size, Cht, Value};
+use crate::cht::{nodeset_size, prev_node_size, Cht, Value};
 use crate::rib::STRIDE_SIZE;
 use crate::types::{BitSpan, PrefixId};
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
