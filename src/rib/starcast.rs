@@ -719,9 +719,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     }
 
     /// Change the status of all records for IPv6 prefixes for this
-    /// `multi_uniq_id` globally to Active.  Note that the global
-    /// `Active` status will be overridden by the local status of the
-    /// record.
+    /// `multi_uniq_id` globally to Active.
+    ///
+    /// Note that the global `Active` status will be overridden by the local
+    /// status of the record.
     pub fn mark_mui_as_active_v6(
         &self,
         mui: u32,
@@ -732,11 +733,12 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     }
 
     /// Change the status of all records for IPv6 prefixes for this
-    /// `multi_uniq_id` globally to Withdrawn. A global `Withdrawn`
-    /// status for a `multi_uniq_id` overrides the local status of
-    /// prefixes for this mui. However the local status can still be
-    /// modified. This modification will take effect if the global
-    /// status is changed to `Active`.
+    /// `multi_uniq_id` globally to Withdrawn.
+    ///
+    /// A global `Withdrawn` status for a `multi_uniq_id` overrides the local
+    /// status of prefixes for this mui. However the local status can still be
+    /// modified. This modification will take effect if the global status is
+    /// changed to `Active`.
     pub fn mark_mui_as_withdrawn_v6(
         &self,
         mui: u32,
@@ -765,7 +767,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         res_v4.and(res_v6)
     }
 
-    /// Reques whether the global status for IPv4 prefixes and the specified
+    /// Request whether the global status for IPv4 prefixes and the specified
     /// `multi_uniq_id` is set to `Withdrawn`.
     pub fn mui_is_withdrawn_v4(&self, mui: u32) -> bool {
         let guard = &epoch::pin();
@@ -781,7 +783,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v6.mui_is_withdrawn(mui, guard)
     }
 
-    /// Returns the number of all prefixes in the store.
+    /// Request the number of all prefixes in the store.
     ///
     /// Note that this method will actually traverse the complete
     /// tree.
@@ -789,7 +791,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v4.get_prefixes_count() + self.v6.get_prefixes_count()
     }
 
-    /// Returns the number of all IPv4 prefixes in the store.
+    /// Request the number of all IPv4 prefixes in the store.
     ///
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
@@ -798,7 +800,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v4.get_prefixes_count()
     }
 
-    /// Returns the number of all IPv4 prefixes with the
+    /// Request the number of all IPv4 prefixes with the
     /// supplied prefix length in the store.
     ///
     /// Note that this counter may be lower than the actual
@@ -808,7 +810,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v4.get_prefixes_count_for_len(len)
     }
 
-    /// Returns the number of all IPv6 prefixes in the store.
+    /// Request the number of all IPv6 prefixes in the store.
     ///
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
@@ -827,7 +829,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v6.get_prefixes_count_for_len(len)
     }
 
-    /// Returns the number of nodes in the store.
+    /// Request the number of nodes in the store.
     ///
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
@@ -836,7 +838,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v4.get_nodes_count() + self.v6.get_nodes_count()
     }
 
-    /// Returns the number of IPv4 nodes in the store.
+    /// Request the number of IPv4 nodes in the store.
     ///
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
@@ -845,7 +847,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v4.get_nodes_count()
     }
 
-    /// Returns the number of IPv6 nodes in the store.
+    /// Request the number of IPv6 nodes in the store.
     ///
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
@@ -924,7 +926,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         Ok(())
     }
 
-    /// Return the approximate number of items that are persisted
+    /// Request the approximate number of items that are persisted
     /// to disk, for IPv4 and IPv6 respectively.
     pub fn approx_persisted_items(&self) -> (usize, usize) {
         (
@@ -933,7 +935,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         )
     }
 
-    /// Return an estimation of the disk space currently used by the
+    /// Request an estimation of the disk space currently used by the
     /// store in bytes.
     pub fn disk_space(&self) -> u64 {
         self.v4.disk_space() + self.v6.disk_space()
