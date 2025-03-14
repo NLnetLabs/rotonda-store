@@ -23,6 +23,37 @@ pub const BIT_SPAN_SIZE: u8 = 32;
 ///
 /// Routes can be kept in memory, persisted to disk, or both. Also, historical
 /// records can be persisted.
+///
+/// A RIB stores "route-like" data. A `route` according to RFC4271 would be
+/// specified as an IP prefix and a set of path attributes. Our StarCastRib,
+/// on the other hand, does not really care whether it stores path attributes,
+/// or any other type of record, for a given IP prefix.
+///
+/// In order to be able to store multiple records for a `(prefix, record)`
+/// pair, however, the store needs to given an extra piece of information in
+/// the key. We are calling this piece of data a `multi uniq id` (called "mui"
+/// throughout this repo), and uses an `u32` as its underlying data type.
+/// This `mui` is completely user-defined, and has no additional semantics
+/// for the  store beyond establishing the uniqueness of the key. The `mui`
+/// was specifically designed for use cases where Rotonda wants to store RIBs
+/// that it receives from multiple peers in one StarCastRib, so that every
+/// peer that Rotonda knows of gets its own, unique `mui`, and our StarCastRib
+/// would store them all without overwriting already stored `(prefix,
+/// record)` pairs. In other words, multiple values can be stored per unique
+/// `(prefix, record)` pair.
+///
+/// Next to creating `(prefix, record)` entries for `mui`, the [RouteStatus]( crate::prefix_record::RouteStatus) of a `mui` can be globally set to
+/// `Withdrawn`or `Active`. A global status of `Withdrawn` overrides the
+/// local status of a prefix for that `mui`. In that case, the local status
+/// can still be changed and will take effect when the global status is set
+/// (back) to `Active`.
+///
+/// The RIB can be conceptually thought of as a MultiMap - a HashMap that can
+/// store multiple values for a given key - that is keyed on `prefix`, and
+/// will store multiple values for a prefix, based on the specified `mui`.
+/// Furthermore, a [persist strategy](crate::rib::config::PersistStrategy),
+/// chosen by the user, for a `StarCastRib` determines what happens with key
+/// collisions in this multi map.
 pub struct StarCastRib<M: Meta, C: Config> {
     v4: StarCastAfRib<IPv4, M, 9, 33, C, 18>,
     v6: StarCastAfRib<IPv6, M, 33, 129, C, 30>,
@@ -30,8 +61,9 @@ pub struct StarCastRib<M: Meta, C: Config> {
 }
 
 impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
-    /// Create a new RIB with a default configuration. The default
-    /// configuration uses the `MemoryOnly` persistence strategy.
+    /// Create a new RIB with a default configuration.
+    ///
+    /// The default configuration uses the `MemoryOnly` persistence strategy.
     ///
     /// This method is really infallible, but we return a result anyway to be
     /// in line with the `new_with_config` method.
@@ -41,7 +73,8 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
             .map_err(|_| PrefixStoreError::StoreNotReadyError)
     }
 
-    /// Create a new RIB with the specified configuration.
+    /// Create a new RIB with the specified [configuration](
+    /// crate::rib::config).
     ///
     /// Creation may fail for all strategies that persist to disk, e.g.
     /// the persistence path does not exist, it doesn't have the correct
@@ -74,6 +107,16 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         })
     }
 
+    /// Query the RIB for a matching prefix with options.
+    ///
+    /// A reference to a [Guard](crate::Guard) must be passed in to
+    /// assure that the resulting prefixes are time consistent. The guard can
+    /// be re-used for multiple matches to assure time consistency between
+    /// the matches.
+    ///
+    /// Returns a [QueryResult](crate::match_options::QueryResult)
+    ///that may contain one or more prefixes, with or without their associated
+    ///records.
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix,
@@ -100,6 +143,9 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Search the RIB for a prefix.
+    ///
+    /// Returns a bool indicating whether the prefix was found. Regardless of the chosen persist strategy
     pub fn contains(&'a self, prefix: &Prefix, mui: Option<u32>) -> bool {
         match prefix.addr() {
             std::net::IpAddr::V4(_addr) => {
@@ -111,6 +157,14 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Return a previously calculated best path for a prefix, if any.
+    ///
+    /// Returns `None` if the prefix was not found
+    ///in the RIB. Returns a [BestPathNotFound](
+    /// crate::errors::PrefixStoreError::BestPathNotFound) error if the
+    /// best path was never calculated, or returns a [StoreNotReadyError](
+    /// crate::errors::PrefixStoreError::StoreNotReadyError) if there is no
+    /// record for the prefix (but the prefix does exist).
     pub fn best_path(
         &'a self,
         search_pfx: &Prefix,
@@ -134,6 +188,17 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Calculate the best path for a prefix.
+    ///
+    /// This method takes all the records for a prefix, i.e. all the records
+    /// for different values of `mui` for this prefix, and calculates the best
+    /// path for them.
+    ///
+    /// Returns the values of `mui` for the best path, and the backup path,
+    /// respectively.
+    /// Returns `None` if the prefix does not exist. Returns a [StoreNotReady]()
+    /// crate::errors::PrefixStoreError::StoreNotReadyError) if there is no
+    /// record for the prefix (but the prefix does exist).
     pub fn calculate_and_store_best_and_backup_path(
         &self,
         search_pfx: &Prefix,
@@ -164,6 +229,12 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Determine if a best path selection is based on stale records.
+    ///
+    /// Returns `Ok(true)` if the records have been updated since the last
+    /// best path selection was performed.
+    /// Returns a [StoreNotReady](crate::errors::PrefixStoreError) if the
+    /// prefix cannot be found in the RIB.
     pub fn is_ps_outdated(
         &self,
         search_pfx: &Prefix,
@@ -187,6 +258,17 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Request all more specific prefixes in the RIB for a certain
+    /// prefix, including the prefix itself.
+    ///
+    /// If a `mui` is specified only prefixes for that particular `mui`
+    /// are returned. If `None` is specified all more specific prefixes,
+    /// regardless of their `mui` will be included in the returned result.
+    ///
+    /// if `include_withdrawn` is set to `true`, all more prefixes that have a
+    /// status  of `Withdrawn` will included in the returned result.
+    ///
+    /// Returns a [QueryResult](crate::match_options::QueryResult).
     pub fn more_specifics_from(
         &'a self,
         search_pfx: &Prefix,
@@ -216,6 +298,17 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Request all less specific prefixes in the RIB for a certain
+    /// prefix, including the prefix itself.
+    ///
+    /// If a `mui` is specified only prefixes for that particular `mui`
+    /// are returned. If `None` is specified all less specific prefixes,
+    /// regardless of their `mui` will be included in the returned result.
+    ///
+    /// if `include_withdrawn` is set to `true`, all more prefixes that have a
+    /// status of `Withdrawn` will included in the returned result.
+    ///
+    /// Returns a [QueryResult](crate::match_options::QueryResult).
     pub fn less_specifics_from(
         &'a self,
         search_pfx: &Prefix,
@@ -245,6 +338,17 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Request an iterator over all less specific prefixes in the RIB for a
+    /// certain prefix, including the prefix itself.
+    ///
+    /// If a `mui` is specified only prefixes for that particular `mui`
+    /// are returned. If `None` is specified all less specific prefixes,
+    /// regardless of their `mui` will be included in the returned result.
+    ///
+    /// if `include_withdrawn` is set to `true`, all more prefixes that have a
+    /// status of `Withdrawn` will included in the returned result.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn less_specifics_iter_from(
         &'a self,
         search_pfx: &Prefix,
@@ -292,6 +396,17 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
             .chain(right.into_iter().flatten())
     }
 
+    /// Request an iterator over all more specific prefixes in the RIB for a
+    /// certain prefix, including the prefix itself.
+    ///
+    /// If a `mui` is specified only prefixes for that particular `mui`
+    /// are returned. If `None` is specified all more specific prefixes,
+    /// regardless of their `mui` will be included in the returned result.
+    ///
+    /// if `include_withdrawn` is set to `true`, all more prefixes that have a
+    /// status  of `Withdrawn` will included in the returned result.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn more_specifics_iter_from(
         &'a self,
         search_pfx: &Prefix,
@@ -339,6 +454,13 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
             .chain(right.into_iter().flatten())
     }
 
+    /// Request an iterator over all IPv4 prefixes in the RIB for a certain
+    /// `mui`.
+    ///
+    /// if `include_withdrawn` is set to `true`, all prefixes that have a
+    /// status  of `Withdrawn` will included in the returned result.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn iter_records_for_mui_v4(
         &'a self,
         mui: u32,
@@ -366,6 +488,13 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         .flatten()
     }
 
+    /// Request an iterator over all IPv6 prefixes in the RIB for a certain
+    /// `mui`.
+    ///
+    /// if `include_withdrawn` is set to `true`, all prefixes that have a
+    /// status  of `Withdrawn` will included in the returned result.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn iter_records_for_mui_v6(
         &'a self,
         mui: u32,
@@ -393,6 +522,14 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         .flatten()
     }
 
+    /// Insert a Prefix with a [Record](crate::prefix_record::Record) into
+    /// the RIB.
+    ///
+    /// If `update_path_selections` is passed in with the tie breaker info
+    /// then perform a best path selection.
+    ///
+    /// Returns an [UpsertReport](crate::stats::UpsertReport) or
+    /// a PrefixStoreError if the prefix and/or Record cannot be stored.
     pub fn insert(
         &self,
         prefix: &Prefix,
@@ -413,6 +550,9 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
+    /// Request an iterator over all prefixes in the RIB.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
@@ -423,6 +563,9 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
             .chain(self.v6.prefixes_iter(guard).map(PrefixRecord::from))
     }
 
+    /// Request an iterator over all IPv4 prefixes in the RIB.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn prefixes_iter_v4(
         &'a self,
         guard: &'a Guard,
@@ -430,6 +573,9 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v4.prefixes_iter(guard).map(PrefixRecord::from)
     }
 
+    /// Request an iterator over all IPv6 prefixes in the RIB.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn prefixes_iter_v6(
         &'a self,
         guard: &'a Guard,
@@ -437,6 +583,9 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         self.v6.prefixes_iter(guard).map(PrefixRecord::from)
     }
 
+    /// Request an iterator over all persisted prefixes.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn persist_prefixes_iter(
         &'a self,
     ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
@@ -446,28 +595,40 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
             .chain(self.v6.persist_prefixes_iter().map(PrefixRecord::from))
     }
 
+    /// Request an iterator over all persisted IPv4 prefixes.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn persist_prefixes_iter_v4(
         &'a self,
     ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
         self.v4.persist_prefixes_iter().map(PrefixRecord::from)
     }
 
+    /// Request an iterator over all persisted IPv6 prefixes.
+    ///
+    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
     pub fn persist_prefixes_iter_v6(
         &'a self,
     ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
         self.v6.persist_prefixes_iter().map(PrefixRecord::from)
     }
 
+    /// Request whether the global status of a `mui` is set to `Active` for
+    ///both IPv4 and IPv6 prefixes.
     pub fn is_mui_active(&self, mui: u32) -> bool {
         let guard = &epoch::pin();
         self.v4.is_mui_active(mui, guard) || self.v6.is_mui_active(mui, guard)
     }
 
+    /// Request whether the global status of a `mui` is set to `Active` for
+    ///IPv4 prefixes.
     pub fn is_mui_active_v4(&self, mui: u32) -> bool {
         let guard = &epoch::pin();
         self.v4.is_mui_active(mui, guard)
     }
 
+    /// Request whether the global status of a `mui` is set to `Active` for
+    /// IPv6 prefixes.
     pub fn is_mui_active_v6(&self, mui: u32) -> bool {
         let guard = &epoch::pin();
         self.v6.is_mui_active(mui, guard)
@@ -604,16 +765,16 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         res_v4.and(res_v6)
     }
 
-    // Whether the global status for IPv4 prefixes and the specified
-    // `multi_uniq_id` is set to `Withdrawn`.
+    /// Reques whether the global status for IPv4 prefixes and the specified
+    /// `multi_uniq_id` is set to `Withdrawn`.
     pub fn mui_is_withdrawn_v4(&self, mui: u32) -> bool {
         let guard = &epoch::pin();
 
         self.v4.mui_is_withdrawn(mui, guard)
     }
 
-    // Whether the global status for IPv6 prefixes and the specified
-    // `multi_uniq_id` is set to `Active`.
+    /// Request whether the global status for IPv6 prefixes and the specified
+    /// `multi_uniq_id` is set to `Active`.
     pub fn mui_is_withdrawn_v6(&self, mui: u32) -> bool {
         let guard = &epoch::pin();
 
@@ -712,10 +873,19 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
 
     // Disk Persistence
 
+    /// Request the persist strategy as set in the [configuration](
+    /// crate::rib::config) for this RIB.
     pub fn persist_strategy(&self) -> PersistStrategy {
         self.config.persist_strategy()
     }
 
+    /// Request all records for a prefix.
+    ///
+    /// If `mui` is specified, only the record for that specific `mui` will
+    /// be returned.
+    ///
+    /// if `include_withdrawn` is passed in as `true` records with status
+    /// `Withdrawn` will be returned, as well as records with status `Active`.
     pub fn get_records_for_prefix(
         &self,
         prefix: &Prefix,
@@ -740,8 +910,13 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         }
     }
 
-    /// Persist all the non-unique (prefix, mui, ltime) tuples
-    /// with their values to disk
+    /// Persist all relevant RIB entries to disk.
+    ///
+    /// Records that are marked for persistence are first cached in memory,
+    /// and only written to disk when this method is called.
+    ////
+    /// The specific behaviour is depended on the chosen [persists strategy](
+    /// crate::rib::config::PersistStrategy).
     pub fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {
         self.v4.flush_to_disk()?;
         self.v6.flush_to_disk()?;

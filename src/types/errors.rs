@@ -1,15 +1,35 @@
 use std::fmt;
 
+/// Possible errors returned by methods on a RIB
 #[derive(Debug, PartialEq, Eq)]
 pub enum PrefixStoreError {
+    /// There is too much contention while creating a node: the store has
+    /// given up. The method or function returning this error can be safely
+    /// retries.
     NodeCreationMaxRetryError,
+    /// A node that does not exist (yet), maybe due to contention. The
+    ///function or method causing this error can be safely retried.
     NodeNotFound,
+    /// The method returning this error presupposes a condition that has not
+    /// been met, and may never be met. Retrying is safe, but may result in
+    /// the same error. Therefore is should probably be retried only once.
     StoreNotReadyError,
+    /// A best path was requested, but the selection procedure was performed
+    /// on a route set that is now stale. A new best path calculation over the
+    /// set should be performed before retrying.
     PathSelectionOutdated,
+    /// The requested prefix was not found in the store.
     PrefixNotFound,
+    /// A best path was requested, but it was never calculated. Perform a best
+    ///path selection first, before retrying.
     BestPathNotFound,
+    /// A record was specifically requested from the in-memory data structure,
+    /// but the record is not in memory. It may be persisted to disk.
     RecordNotInMemory,
+    /// The method returning this error was trying to persist records to disk
+    /// but failed. Retrying is safe, but may be yield the same result.
     PersistFailed,
+    /// A status for a record was requested, but it was never set.
     StatusUnknown,
 }
 
