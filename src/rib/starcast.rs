@@ -114,9 +114,8 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// be re-used for multiple matches to assure time consistency between
     /// the matches.
     ///
-    /// Returns a [QueryResult](crate::match_options::QueryResult)
-    ///that may contain one or more prefixes, with or without their associated
-    ///records.
+    /// Returns a [QueryResult] that may contain one or more prefixes, with or
+    /// without their associated records.
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix,
@@ -348,8 +347,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// if `include_withdrawn` is set to `true`, all more prefixes that have a
     /// status of `Withdrawn` will included in the returned result.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn less_specifics_iter_from(
         &'a self,
         search_pfx: &Prefix,
@@ -407,8 +405,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// if `include_withdrawn` is set to `true`, all more prefixes that have a
     /// status  of `Withdrawn` will included in the returned result.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn more_specifics_iter_from(
         &'a self,
         search_pfx: &Prefix,
@@ -462,8 +459,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// if `include_withdrawn` is set to `true`, all prefixes that have a
     /// status  of `Withdrawn` will included in the returned result.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn iter_records_for_mui_v4(
         &'a self,
         mui: u32,
@@ -497,8 +493,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// if `include_withdrawn` is set to `true`, all prefixes that have a
     /// status  of `Withdrawn` will included in the returned result.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn iter_records_for_mui_v6(
         &'a self,
         mui: u32,
@@ -532,8 +527,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// If `update_path_selections` is passed in with the tie breaker info
     /// then perform a best path selection.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn insert(
         &self,
         prefix: &Prefix,
@@ -556,8 +550,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
 
     /// Request an iterator over all prefixes in the RIB.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
@@ -570,8 +563,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
 
     /// Request an iterator over all IPv4 prefixes in the RIB.
     ///
-    /// Returns an iterator over [PrefixRecord]
-    /// (crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn prefixes_iter_v4(
         &'a self,
         guard: &'a Guard,
@@ -581,8 +573,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
 
     /// Request an iterator over all IPv6 prefixes in the RIB.
     ///
-    /// Returns an iterator over [PrefixRecord]
-    /// (crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn prefixes_iter_v6(
         &'a self,
         guard: &'a Guard,
@@ -592,7 +583,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
 
     /// Request an iterator over all persisted prefixes.
     ///
-    /// Returns an over [PrefixRecord](crate::prefix_record::PrefixRecord).
+    /// Returns an over [PrefixRecord].
     pub fn persist_prefixes_iter(
         &'a self,
     ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
@@ -614,8 +605,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
 
     /// Request an iterator over all persisted IPv6 prefixes.
     ///
-    /// Returns an iterator over [PrefixRecord](
-    /// crate::prefix_record::PrefixRecord).
+    /// Returns an iterator over [PrefixRecord].
     pub fn persist_prefixes_iter_v6(
         &'a self,
     ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
