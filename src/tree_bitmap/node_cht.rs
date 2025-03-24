@@ -47,7 +47,10 @@ impl<AF: AddressFamily> NodeSet<AF> {
         AF: crate::types::AddressFamily,
     {
         let try_count = 0;
-        let mut rbm = self.1.write().unwrap();
+        let mut rbm = self
+            .1
+            .write()
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
         let absent = rbm.insert(multi_uniq_id);
 
         Ok((try_count, !absent))
@@ -63,7 +66,10 @@ impl<AF: AddressFamily> NodeSet<AF> {
     {
         let try_count = 0;
 
-        let mut rbm = self.1.write().unwrap();
+        let mut rbm = self
+            .1
+            .write()
+            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
         rbm.remove(multi_uniq_id);
 
         Ok(try_count)

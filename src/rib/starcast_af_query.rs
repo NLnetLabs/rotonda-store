@@ -48,8 +48,10 @@ impl<
                         v.iter()
                             .map(|bytes| {
                                 let record: &ZeroCopyRecord<AF> =
-                                    ZeroCopyRecord::try_ref_from_bytes(bytes)
-                                        .unwrap();
+                                    ZeroCopyRecord::try_ref_from_bytes(
+                                        bytes.as_ref().unwrap(),
+                                    )
+                                    .unwrap();
                                 Record::<M> {
                                     multi_uniq_id: record.multi_uniq_id,
                                     ltime: record.ltime,

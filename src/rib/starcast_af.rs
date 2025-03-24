@@ -3,11 +3,11 @@ use std::path::Path;
 use inetnum::addr::Prefix;
 use log::{info, trace};
 
+use crate::errors::FatalError;
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
 use crate::stats::{Counters, UpsertCounters, UpsertReport};
 use crate::{epoch, Guard};
-use zerocopy::TryFromBytes;
 
 use crate::prefix_cht::cht::PrefixCht;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -68,7 +68,10 @@ impl<
         let persist_tree = match config.persist_strategy() {
             PersistStrategy::MemoryOnly => None,
             _ => {
-                let persist_path = &config.persist_path().unwrap();
+                let persist_path =
+                    &config.persist_path().unwrap_or_else(|| {
+                        "Missing persistence path".to_string()
+                    });
                 let pp_ref = &Path::new(persist_path);
                 Some(LsmTree::new(pp_ref))
             }
@@ -216,16 +219,19 @@ impl<
                     "mark as wd in persist tree {:?} for mui {:?}",
                     prefix, mui
                 );
-                let p_tree = self.persist_tree.as_ref().unwrap();
-                let stored_prefixes =
-                    p_tree.get_records_with_keys_for_prefix_mui(prefix, mui);
+                if let Some(p_tree) = self.persist_tree.as_ref() {
+                    let stored_prefixes = p_tree
+                        .get_records_with_keys_for_prefix_mui(prefix, mui);
 
-                for s in stored_prefixes {
-                    let header = ValueHeader {
-                        ltime,
-                        status: RouteStatus::Withdrawn,
-                    };
-                    p_tree.rewrite_header_for_record(header, &s);
+                    for s in stored_prefixes {
+                        let header = ValueHeader {
+                            ltime,
+                            status: RouteStatus::Withdrawn,
+                        };
+                        p_tree.rewrite_header_for_record(header, &s);
+                    }
+                } else {
+                    return Err(PrefixStoreError::StoreNotReadyError);
                 }
             }
             PersistStrategy::PersistHistory => {
@@ -278,16 +284,18 @@ impl<
                 stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
             }
             PersistStrategy::PersistOnly => {
-                let p_tree = self.persist_tree.as_ref().unwrap();
-
-                if let Some(record_b) =
-                    p_tree.get_most_recent_record_for_prefix_mui(prefix, mui)
-                {
-                    let header = ValueHeader {
-                        ltime,
-                        status: RouteStatus::Active,
-                    };
-                    p_tree.rewrite_header_for_record(header, &record_b);
+                if let Some(p_tree) = self.persist_tree.as_ref() {
+                    if let Ok(Some(record_b)) = p_tree
+                        .get_most_recent_record_for_prefix_mui(prefix, mui)
+                    {
+                        let header = ValueHeader {
+                            ltime,
+                            status: RouteStatus::Active,
+                        };
+                        p_tree.rewrite_header_for_record(header, &record_b);
+                    }
+                } else {
+                    return Err(PrefixStoreError::StoreNotReadyError);
                 }
             }
             PersistStrategy::PersistHistory => {
@@ -348,13 +356,7 @@ impl<
     // functions.
     pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
         // unsafe {
-        self.tree_bitmap
-            .withdrawn_muis_bmin(guard)
-            // .load(Ordering::Acquire, guard)
-            // .as_ref()
-            // }
-            // .unwrap()
-            .contains(mui)
+        self.tree_bitmap.withdrawn_muis_bmin(guard).contains(mui)
     }
 
     // Whether this mui is globally active. Note that the local statuses of
@@ -362,14 +364,7 @@ impl<
     // functions.
     pub(crate) fn is_mui_active(&self, mui: u32, guard: &Guard) -> bool {
         // !unsafe {
-        !self
-            .tree_bitmap
-            .withdrawn_muis_bmin(guard)
-            // .load(Ordering::Acquire, guard)
-            // .as_ref()
-            // }
-            // .unwrap()
-            .contains(mui)
+        !self.tree_bitmap.withdrawn_muis_bmin(guard).contains(mui)
     }
 
     pub(crate) fn get_prefixes_count(&self) -> UpsertCounters {
@@ -415,39 +410,39 @@ impl<
 
     pub(crate) fn persist_prefixes_iter(
         &self,
-    ) -> impl Iterator<Item = (Prefix, Vec<Record<M>>)> + '_ {
-        self.persist_tree
-            .as_ref()
-            .map(|tree| {
-                tree.prefixes_iter().map(|recs| {
-                    (
-                        Prefix::from(
-                            ZeroCopyRecord::<AF>::try_ref_from_bytes(
-                                &recs[0],
-                            )
-                            .unwrap()
-                            .prefix,
-                        ),
+    ) -> impl Iterator<Item = Result<(Prefix, Vec<Record<M>>), FatalError>> + '_
+    {
+        if let Some(tree) = &self.persist_tree {
+            Some(tree.prefixes_iter().map(|recs| {
+                if let Ok(pfx) = ZeroCopyRecord::<AF>::from_bytes(&recs[0]) {
+                    Ok((
+                        Prefix::from(pfx.prefix),
                         recs.iter()
-                            .map(|rec| {
-                                let rec =
-                                    ZeroCopyRecord::<AF>::try_ref_from_bytes(
-                                        rec,
-                                    )
-                                    .unwrap();
-                                Record {
-                                    multi_uniq_id: rec.multi_uniq_id,
-                                    ltime: rec.ltime,
-                                    status: rec.status,
-                                    meta: rec.meta.to_vec().into(),
+                            .filter_map(|rec| {
+                                if let Ok(rec) =
+                                    ZeroCopyRecord::<AF>::from_bytes(rec)
+                                {
+                                    Some(Record {
+                                        multi_uniq_id: rec.multi_uniq_id,
+                                        ltime: rec.ltime,
+                                        status: rec.status,
+                                        meta: rec.meta.to_vec().into(),
+                                    })
+                                } else {
+                                    None
                                 }
                             })
                             .collect::<Vec<Record<M>>>(),
-                    )
-                })
-            })
-            .into_iter()
-            .flatten()
+                    ))
+                } else {
+                    Err(FatalError)
+                }
+            }))
+        } else {
+            None
+        }
+        .into_iter()
+        .flatten()
     }
 
     pub(crate) fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {

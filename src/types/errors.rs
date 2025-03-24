@@ -12,7 +12,7 @@ pub enum PrefixStoreError {
     NodeNotFound,
     /// The method returning this error presupposes a condition that has not
     /// been met, and may never be met. Retrying is safe, but may result in
-    /// the same error. Therefore is should probably be retried only once.
+    /// the same error. Therefore it should probably be retried only once.
     StoreNotReadyError,
     /// A best path was requested, but the selection procedure was performed
     /// on a route set that is now stale. A new best path calculation over the
@@ -26,6 +26,9 @@ pub enum PrefixStoreError {
     /// A record was specifically requested from the in-memory data structure,
     /// but the record is not in memory. It may be persisted to disk.
     RecordNotInMemory,
+    /// An error external to to our execution happened, most notably another
+    ///thread panicking while trying to acquire a lock.
+    ExternalError,
     /// The method returning this error was trying to persist records to disk
     /// but failed. Retrying is safe, but may be yield the same result.
     PersistFailed,
@@ -78,6 +81,13 @@ impl fmt::Display for PrefixStoreError {
                     persisted."
                 )
             }
+            PrefixStoreError::ExternalError => {
+                write!(
+                f,
+                "Error: An action could not be completed, due to another \
+                thread panicking."
+            )
+            }
             PrefixStoreError::StatusUnknown => {
                 write!(
                     f,
@@ -88,3 +98,18 @@ impl fmt::Display for PrefixStoreError {
         }
     }
 }
+
+#[derive(Debug)]
+pub struct FatalError;
+
+impl std::fmt::Display for FatalError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Error: A Fatal error has occurred. The store must be considered \
+             corrupted. The application should terminate."
+        )
+    }
+}
+
+pub type FatalResult<T> = Result<T, FatalError>;

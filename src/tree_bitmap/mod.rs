@@ -820,7 +820,8 @@ Giving up this node. This shouldn't happen!",
             }
         }
     }
-    pub fn retrieve_node_for_mui(
+
+    pub(crate) fn retrieve_node_for_mui(
         &self,
         id: StrideNodeId<AF>,
         mui: u32,

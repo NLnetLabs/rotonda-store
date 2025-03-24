@@ -4,6 +4,7 @@ use rand::prelude::*;
 
 use crate::{
     epoch,
+    errors::FatalError,
     match_options::{MatchOptions, QueryResult},
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
@@ -586,11 +587,15 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// Returns an over [PrefixRecord].
     pub fn persist_prefixes_iter(
         &'a self,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+    ) -> impl Iterator<Item = Result<PrefixRecord<M>, FatalError>> + 'a {
         self.v4
             .persist_prefixes_iter()
-            .map(PrefixRecord::from)
-            .chain(self.v6.persist_prefixes_iter().map(PrefixRecord::from))
+            .map(|rr| rr.map(PrefixRecord::from))
+            .chain(
+                self.v6
+                    .persist_prefixes_iter()
+                    .map(|rr| rr.map(PrefixRecord::from)),
+            )
     }
 
     /// Request an iterator over all persisted IPv4 prefixes.
@@ -599,8 +604,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// crate::prefix_record::PrefixRecord).
     pub fn persist_prefixes_iter_v4(
         &'a self,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
-        self.v4.persist_prefixes_iter().map(PrefixRecord::from)
+    ) -> impl Iterator<Item = Result<PrefixRecord<M>, FatalError>> + 'a {
+        self.v4
+            .persist_prefixes_iter()
+            .map(|rr| rr.map(PrefixRecord::from))
     }
 
     /// Request an iterator over all persisted IPv6 prefixes.
@@ -608,8 +615,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// Returns an iterator over [PrefixRecord].
     pub fn persist_prefixes_iter_v6(
         &'a self,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
-        self.v6.persist_prefixes_iter().map(PrefixRecord::from)
+    ) -> impl Iterator<Item = Result<PrefixRecord<M>, FatalError>> + 'a {
+        self.v6
+            .persist_prefixes_iter()
+            .map(|rr| rr.map(PrefixRecord::from))
     }
 
     /// Request whether the global status of a `mui` is set to `Active` for

@@ -12,6 +12,7 @@ use zerocopy::{
     Unaligned, U32, U64,
 };
 
+use crate::errors::{FatalError, FatalResult};
 use crate::prefix_record::Meta;
 use crate::stats::Counters;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -33,14 +34,21 @@ pub(crate) trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
     //     Self::try_ref_from_bytes(bytes.as_bytes())
     // }
 
-    fn header(bytes: &[u8]) -> &LongKey<AF> {
-        LongKey::try_ref_from_bytes(bytes.as_bytes()).unwrap()
+    // Try to extract a header from the bytes for reading only. If this
+    // somehow fails, we don't know what to do anymore. Data may be corrupted,
+    // so it probably should not be retried.
+    fn header(bytes: &[u8]) -> Result<&LongKey<AF>, FatalError> {
+        LongKey::try_ref_from_bytes(bytes.as_bytes()).map_err(|_| FatalError)
     }
 
-    fn header_mut(bytes: &mut [u8]) -> &mut LongKey<AF> {
+    // Try to extract a header for writing. If this somehow fails, we most
+    //probably cannot write to it anymore. This is fatal. The application
+    //should exit, data integrity (on disk) should be verified.
+    fn header_mut(bytes: &mut [u8]) -> Result<&mut LongKey<AF>, FatalError> {
         trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
-        LongKey::try_mut_from_bytes(bytes.as_mut_bytes()).unwrap()
+        LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
+            .map_err(|_| FatalError)
     }
 
     fn _short_key(bytes: &[u8]) -> &ShortKey<AF> {
@@ -147,12 +155,8 @@ pub struct LsmTree<
     _k: PhantomData<K>,
 }
 
-impl<
-        AF: AddressFamily,
-        K: KeySize<AF, KEY_SIZE>,
-        // const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    > LsmTree<AF, K, KEY_SIZE>
+impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
+    LsmTree<AF, K, KEY_SIZE>
 {
     pub fn new(persist_path: &Path) -> LsmTree<AF, K, KEY_SIZE> {
         LsmTree::<AF, K, KEY_SIZE> {
@@ -179,7 +183,7 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         withdrawn_muis_bmin: &RoaringBitmap,
-    ) -> Option<Vec<Vec<u8>>> {
+    ) -> Option<Vec<FatalResult<Vec<u8>>>> {
         match (mui, include_withdrawn) {
             // Specific mui, include withdrawn routes
             (Some(mui), true) => {
@@ -192,24 +196,19 @@ impl<
                         kv.map(|kv| {
                             trace!("mui i persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            // let key: &mut LongKey<AF> =
-                            //     LongKey::try_mut_from_bytes(
-                            //         bytes.as_mut_bytes(),
-                            //     )
-                            //     .unwrap();
-                            let key = K::header_mut(&mut bytes[..KEY_SIZE]);
+                            let key = K::header_mut(&mut bytes[..KEY_SIZE])?;
                             // If mui is in the global withdrawn muis table,
                             // then rewrite the routestatus of the record
                             // to withdrawn.
                             if withdrawn_muis_bmin.contains(key.mui.into()) {
                                 key.status = RouteStatus::Withdrawn;
                             }
-                            bytes
+                            Ok(bytes)
                         })
                     })
-                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
+                    .collect::<Vec<lsm_tree::Result<FatalResult<Vec<u8>>>>>()
                     .into_iter()
-                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .collect::<lsm_tree::Result<Vec<FatalResult<Vec<u8>>>>>()
                     .ok()
                     .and_then(
                         |recs| {
@@ -221,48 +220,33 @@ impl<
                         },
                     )
             }
-            // Al muis, include withdrawn routes
+            // All muis, include withdrawn routes
             (None, true) => {
                 // get all records for this prefix
-                // let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
                 self.tree
                     .prefix(prefix.as_bytes(), None, None)
-                    // .into_iter()
                     .map(|kv| {
                         kv.map(|kv| {
                             trace!("n i persist kv pair found: {:?}", kv);
-                            // let kv = kv.unwrap();
-                            // let (_, r_mui, ltime, mut status) =
-                            //     Self::parse_key(kv.0.as_ref());
 
-                            // If mui is in the global withdrawn muis table, then
-                            // rewrite the routestatus of the record to withdrawn.
+                            // If mui is in the global withdrawn muis table,
+                            // then rewrite the routestatus of the record
+                            // to withdrawn.
                             let mut bytes = [kv.0, kv.1].concat();
                             trace!("bytes {:?}", bytes);
-                            // let key: &mut LongKey<AF> =
-                            //     LongKey::try_mut_from_bytes(
-                            //         bytes.as_mut_bytes(),
-                            //     )
-                            //     .unwrap();
-                            let key = K::header_mut(&mut bytes[..KEY_SIZE]);
+                            let key = K::header_mut(&mut bytes[..KEY_SIZE])?;
                             trace!("key {:?}", key);
                             trace!("wm_bmin {:?}", withdrawn_muis_bmin);
                             if withdrawn_muis_bmin.contains(key.mui.into()) {
                                 trace!("rewrite status");
                                 key.status = RouteStatus::Withdrawn;
                             }
-                            // PublicRecord::new(
-                            //     r_mui,
-                            //     ltime,
-                            //     status,
-                            //     kv.1.as_ref().to_vec().into(),
-                            // )
-                            bytes
+                            Ok(bytes)
                         })
                     })
-                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
+                    .collect::<Vec<lsm_tree::Result<FatalResult<Vec<u8>>>>>()
                     .into_iter()
-                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .collect::<lsm_tree::Result<Vec<FatalResult<Vec<u8>>>>>()
                     .ok()
                     .and_then(
                         |recs| {
@@ -280,47 +264,49 @@ impl<
                 // let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
                 self.tree
                     .prefix(prefix.as_bytes(), None, None)
-                    .filter_map(|kv| {
-                        kv.map(|kv| {
+                    .filter_map(|r| {
+                        r.map(|kv| {
                             trace!("n f persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            // let key: &mut LongKey<AF> =
-                            //     LongKey::try_mut_from_bytes(
-                            //         bytes.as_mut_bytes(),
-                            //     )
-                            //     .unwrap();
-                            let header =
-                                K::header_mut(&mut bytes[..KEY_SIZE]);
-                            // If mui is in the global withdrawn muis table,
-                            // then skip this record
-                            trace!("header {}", Prefix::from(header.prefix));
-                            trace!(
-                                "status {}",
-                                header.status == RouteStatus::Withdrawn
-                            );
-                            if header.status == RouteStatus::Withdrawn
-                                || withdrawn_muis_bmin
-                                    .contains(header.mui.into())
+                            if let Ok(header) =
+                                K::header_mut(&mut bytes[..KEY_SIZE])
                             {
+                                // If mui is in the global withdrawn muis
+                                // table, then skip this record
                                 trace!(
-                                    "NOT returning {} {}",
+                                    "header {}",
+                                    Prefix::from(header.prefix)
+                                );
+                                trace!(
+                                    "status {}",
+                                    header.status == RouteStatus::Withdrawn
+                                );
+                                if header.status == RouteStatus::Withdrawn
+                                    || withdrawn_muis_bmin
+                                        .contains(header.mui.into())
+                                {
+                                    trace!(
+                                        "NOT returning {} {}",
+                                        Prefix::from(header.prefix),
+                                        header.mui
+                                    );
+                                    return None;
+                                }
+                                trace!(
+                                    "RETURNING {} {}",
                                     Prefix::from(header.prefix),
                                     header.mui
                                 );
-                                return None;
+                                Some(Ok(bytes))
+                            } else {
+                                return Some(Err(FatalError));
                             }
-                            trace!(
-                                "RETURNING {} {}",
-                                Prefix::from(header.prefix),
-                                header.mui
-                            );
-                            Some(bytes)
                         })
                         .transpose()
                     })
-                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
+                    .collect::<Vec<lsm_tree::Result<FatalResult<Vec<u8>>>>>()
                     .into_iter()
-                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .collect::<lsm_tree::Result<Vec<FatalResult<Vec<u8>>>>>()
                     .ok()
                     .and_then(
                         |recs| {
@@ -339,42 +325,29 @@ impl<
                 let prefix_b = ShortKey::<AF>::from((prefix, mui));
                 self.tree
                     .prefix(prefix_b.as_bytes(), None, None)
-                    // .into_iter()
                     .filter_map(|kv| {
-                        // let kv = kv.unwrap();
                         kv.map(|kv| {
                             trace!("mui f persist kv pair found: {:?}", kv);
                             let bytes = [kv.0, kv.1].concat();
-                            // let (_, r_mui, ltime, status) =
-                            //     Self::parse_key(kv.0.as_ref());
-
-                            // let key: &mut LongKey<AF> =
-                            //     LongKey::try_mut_from_bytes(
-                            //         bytes.as_mut_bytes(),
-                            //     )
-                            //     .unwrap();
-                            let key = K::header(&bytes[..KEY_SIZE]);
-                            // If mui is in the global withdrawn muis table, then
-                            // skip this record
-                            if key.status == RouteStatus::Withdrawn
-                                || withdrawn_muis_bmin
-                                    .contains(key.mui.into())
-                            {
-                                return None;
+                            if let Ok(key) = K::header(&bytes[..KEY_SIZE]) {
+                                // If mui is in the global withdrawn muis
+                                // table, then skip this record
+                                if key.status == RouteStatus::Withdrawn
+                                    || withdrawn_muis_bmin
+                                        .contains(key.mui.into())
+                                {
+                                    return None;
+                                }
+                                Some(Ok(bytes))
+                            } else {
+                                Some(Err(FatalError))
                             }
-                            // Some(PublicRecord::new(
-                            //     mui,
-                            //     ltime,
-                            //     status,
-                            //     kv.1.as_ref().to_vec().into(),
-                            // ))
-                            Some(bytes)
                         })
                         .transpose()
                     })
-                    .collect::<Vec<lsm_tree::Result<Vec<u8>>>>()
+                    .collect::<Vec<lsm_tree::Result<FatalResult<Vec<u8>>>>>()
                     .into_iter()
-                    .collect::<lsm_tree::Result<Vec<Vec<u8>>>>()
+                    .collect::<lsm_tree::Result<Vec<FatalResult<Vec<u8>>>>>()
                     .ok()
                     .and_then(
                         |recs| {
@@ -387,74 +360,38 @@ impl<
                     )
             }
         }
-
-        // if let Some(mui) = mui {
-        //     let prefix_b = Self::prefix_mui_persistence_key(prefix, mui);
-
-        //     (*self.tree.prefix(prefix_b))
-        //         .into_iter()
-        //         .filter_map(|kv| {
-        //             let kv = kv.unwrap();
-        //             let (_, mui, ltime, mut status) =
-        //                 Self::parse_key(kv.0.as_ref());
-        //             if include_withdrawn {
-        //                 // If mui is in the global withdrawn muis table, then
-        //                 // rewrite the routestatus of the record to withdrawn.
-        //                 if withdrawn_muis_bmin.contains(mui) {
-        //                     status = RouteStatus::Withdrawn;
-        //                 }
-        //             // If the use does not want withdrawn routes then filter
-        //             // them out here.
-        //             } else if status == RouteStatus::Withdrawn {
-        //                 return None;
-        //             }
-        //             Some(PublicRecord::new(
-        //                 mui,
-        //                 ltime,
-        //                 status,
-        //                 kv.1.as_ref().to_vec().into(),
-        //             ))
-        //         })
-        //         .collect::<Vec<_>>()
-        // } else {
-        //     let prefix_b = &prefix.to_len_first_bytes::<PREFIX_SIZE>();
-
-        //     (*self.tree.prefix(prefix_b))
-        //         .into_iter()
-        //         .map(|kv| {
-        //             let kv = kv.unwrap();
-        //             let (_, mui, ltime, status) =
-        //                 Self::parse_key(kv.0.as_ref());
-        //             if include_withdrawn || status != RouteStatus::Withdrawn {
-        //                 Some(PublicRecord::new(
-        //                     mui,
-        //                     ltime,
-        //                     status,
-        //                     kv.1.as_ref().to_vec().into(),
-        //                 ))
-        //             } else {
-        //                 None
-        //             }
-        //         })
-        //         .collect::<Vec<_>>()
-        // }
     }
 
     pub fn get_most_recent_record_for_prefix_mui(
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
-    ) -> Option<Vec<u8>> {
+    ) -> FatalResult<Option<Vec<u8>>> {
         trace!("get most recent record for prefix mui combo");
         let key_b = ShortKey::from((prefix, mui));
+        let mut res: FatalResult<Vec<u8>> = Err(FatalError);
 
-        (*self.tree.prefix(key_b.as_bytes(), None, None))
-            .into_iter()
-            .map(move |kv| {
-                let kv = kv.unwrap();
-                [kv.0, kv.1].concat()
-            })
-            .max_by(|b0, b1| K::header(b0).ltime.cmp(&K::header(b1).ltime))
+        for rkv in self.tree.prefix(key_b.as_bytes(), None, None).into_iter()
+        {
+            if let Ok(kvs) = rkv {
+                let kv = [kvs.0, kvs.1].concat();
+                if let Ok(h) = K::header(&kv) {
+                    if let Ok(r) = &res {
+                        if K::header(&r).unwrap().ltime < h.ltime {
+                            res = Ok(kv);
+                        }
+                    } else {
+                        res = Ok(kv);
+                    }
+                } else {
+                    return Err(FatalError);
+                }
+            } else {
+                return Err(FatalError);
+            }
+        }
+
+        res.map(|r| Some(r.to_vec()))
     }
 
     pub(crate) fn get_records_with_keys_for_prefix_mui(
@@ -462,9 +399,6 @@ impl<
         prefix: PrefixId<AF>,
         mui: u32,
     ) -> Vec<Vec<u8>> {
-        // let key_b: [u8; KEY_SIZE] =
-        //     ShortKey::from((prefix, mui)).as_key_size_bytes();
-
         let key_b = ShortKey::from((prefix, mui));
 
         (*self.tree.prefix(key_b.as_bytes(), None, None))
@@ -472,16 +406,6 @@ impl<
             .map(|kv| {
                 let kv = kv.unwrap();
                 [kv.0, kv.1].concat()
-                // let (_, mui, ltime, status) = Self::parse_key(kv.0.as_ref());
-                // (
-                //     kv.0.to_vec(),
-                //     PublicRecord::new(
-                //         mui,
-                //         ltime,
-                //         status,
-                //         kv.1.as_ref().to_vec().into(),
-                //     ),
-                // )
             })
             .collect::<Vec<_>>()
     }
@@ -944,7 +868,7 @@ impl<
         };
 
         if let Some(mut r_rec) = rec {
-            let outer_pfx = K::header(&r_rec[0]).prefix;
+            let outer_pfx = K::header(&r_rec[0]).unwrap().prefix;
 
             for (k, v) in self.tree_iter.by_ref().flatten() {
                 // let (pfx, mui, ltime, status) =
@@ -953,7 +877,7 @@ impl<
                 //     );
                 let header = K::header(&k);
 
-                if header.prefix == outer_pfx {
+                if header.unwrap().prefix == outer_pfx {
                     r_rec.push([k, v].concat());
                     // r_rec.1.push(PublicRecord {
                     //     meta: v.to_vec().into(),

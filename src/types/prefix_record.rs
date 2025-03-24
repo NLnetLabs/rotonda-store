@@ -1,7 +1,7 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::types::AddressFamily;
+use crate::{errors::FatalError, types::AddressFamily};
 use inetnum::addr::Prefix;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 
@@ -75,6 +75,12 @@ pub(crate) struct ZeroCopyRecord<AF: AddressFamily> {
     pub ltime: u64,
     pub status: RouteStatus,
     pub meta: [u8],
+}
+
+impl<AF: AddressFamily> ZeroCopyRecord<AF> {
+    pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
+        Self::try_ref_from_bytes(b).or_else(|_| Err(FatalError))
+    }
 }
 
 impl<AF: AddressFamily + std::fmt::Display> std::fmt::Display

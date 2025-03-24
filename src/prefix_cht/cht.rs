@@ -35,15 +35,25 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         Self(Arc::new(Mutex::new(record_map)))
     }
 
-    fn guard_with_retry(
+    fn acquire_write_lock(
         &self,
-        mut retry_count: usize,
-    ) -> (MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize) {
+    ) -> Result<
+        (MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize),
+        PrefixStoreError,
+    > {
+        let mut retry_count: usize = 0;
         let backoff = Backoff::new();
 
         loop {
-            if let Ok(guard) = self.0.try_lock() {
-                return (guard, retry_count);
+            // We're using lock(), which returns an Error only if another
+            // thread has panicked while holding the lock. In that situtation
+            // we are certainly not going to write anything.
+            if let Ok(guard) = self
+                .0
+                .lock()
+                .or_else(|_| Err(PrefixStoreError::ExternalError))
+            {
+                return Ok((guard, retry_count));
             }
 
             backoff.spin();
@@ -51,9 +61,24 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
+    fn acquire_read_guard(
+        &self,
+    ) -> MutexGuard<HashMap<u32, MultiMapValue<M>>> {
+        let backoff = Backoff::new();
+
+        loop {
+            if let Ok(guard) = self.0.try_lock() {
+                return guard;
+            }
+
+            backoff.spin();
+        }
+    }
+
     pub fn _len(&self) -> usize {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+        let record_map = self.acquire_read_guard();
         record_map.len()
     }
 
@@ -62,8 +87,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         mui: u32,
         include_withdrawn: bool,
     ) -> Option<Record<M>> {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+        let record_map = self.acquire_read_guard();
 
         record_map.get(&mui).and_then(|r| -> Option<Record<M>> {
             if include_withdrawn || r.route_status() == RouteStatus::Active {
@@ -75,8 +101,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+        let record_map = self.acquire_read_guard();
         let ord_routes = record_map
             .iter()
             .map(|r| (r.1.meta().as_orderable(tbi), *r.0));
@@ -91,8 +118,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Option<Record<M>> {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+
+        let record_map = self.acquire_read_guard();
         record_map.get(&mui).map(|r| {
             // We'll return a cloned record: the record in the store remains
             // untouched.
@@ -165,8 +194,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Vec<Record<M>> {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+        let record_map = self.acquire_read_guard();
         record_map
             .iter()
             .map(move |r| {
@@ -180,8 +210,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn _as_records(&self) -> Vec<Record<M>> {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+        let record_map = self.acquire_read_guard();
         record_map
             .iter()
             .map(|r| Record::from((*r.0, r.1)))
@@ -195,8 +226,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         &self,
         bmin: &RoaringBitmap,
     ) -> Vec<Record<M>> {
-        let c_map = Arc::clone(&self.0);
-        let record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let record_map = c_map.lock().unwrap();
+        let record_map = self.acquire_read_guard();
         record_map
             .iter()
             .filter_map(|r| {
@@ -213,8 +245,9 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Withdrawn.
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32, ltime: u64) {
-        let c_map = Arc::clone(&self.0);
-        let mut record_map = c_map.lock().unwrap();
+        // let c_map = Arc::clone(&self.0);
+        // let mut record_map = c_map.lock().unwrap();
+        let mut record_map = self.acquire_read_guard();
         if let Some(rec) = record_map.get_mut(&mui) {
             rec.set_route_status(RouteStatus::Withdrawn);
             rec.set_logical_time(ltime);
@@ -223,9 +256,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Active.
     pub fn mark_as_active_for_mui(&self, mui: u32, ltime: u64) {
-        let record_map = Arc::clone(&self.0);
-        let mut r_map = record_map.lock().unwrap();
-        if let Some(rec) = r_map.get_mut(&mui) {
+        // let record_map = Arc::clone(&self.0);
+        // let mut r_map = record_map.lock().unwrap();
+        let mut record_map = self.acquire_read_guard();
+        if let Some(rec) = record_map.get_mut(&mui) {
             rec.set_route_status(RouteStatus::Active);
             rec.set_logical_time(ltime);
         }
@@ -241,7 +275,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         new_rec: Record<M>,
     ) -> Result<(Option<(MultiMapValue<M>, usize)>, usize), PrefixStoreError>
     {
-        let (mut record_map, retry_count) = self.guard_with_retry(0);
+        let (mut record_map, retry_count) = self.acquire_write_lock()?;
         let key = new_rec.multi_uniq_id;
 
         match record_map.contains_key(&key) {
