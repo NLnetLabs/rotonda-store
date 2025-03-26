@@ -10,7 +10,7 @@ use crate::{rib::STRIDE_SIZE, types::AddressFamily};
 
 pub(crate) struct StrideStats<AF: AddressFamily> {
     pub(crate) created_nodes: Vec<CreatedNodes>,
-    pub(crate) prefixes_num: Vec<CreatedNodes>,
+    pub(crate) _prefixes_num: Vec<CreatedNodes>,
     _af: PhantomData<AF>,
 }
 
@@ -18,7 +18,7 @@ impl<AF: AddressFamily> StrideStats<AF> {
     pub fn new() -> Self {
         Self {
             created_nodes: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
-            prefixes_num: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
+            _prefixes_num: Self::nodes_vec(AF::BITS / STRIDE_SIZE),
             _af: PhantomData,
         }
     }
@@ -42,12 +42,16 @@ impl<AF: AddressFamily> StrideStats<AF> {
         vec
     }
 
-    pub fn inc(&mut self, depth_level: u8) {
-        self.created_nodes[depth_level as usize].count += 1;
+    pub fn _inc(&mut self, depth_level: u8) {
+        if let Some(n) = self.created_nodes.get_mut(depth_level as usize) {
+            n.count += 1
+        }
     }
 
-    pub fn inc_prefix_count(&mut self, depth_level: u8) {
-        self.prefixes_num[depth_level as usize].count += 1;
+    pub fn _inc_prefix_count(&mut self, depth_level: u8) {
+        if let Some(p) = self._prefixes_num.get_mut(depth_level as usize) {
+            p.count += 1;
+        }
     }
 }
 
@@ -134,11 +138,15 @@ impl Counters {
     }
 
     pub fn inc_prefixes_count(&self, len: u8) {
-        self.prefixes[len as usize].fetch_add(1, Ordering::Relaxed);
+        if let Some(p) = self.prefixes.get(len as usize) {
+            p.fetch_add(1, Ordering::Relaxed);
+        }
     }
 
     pub fn _dec_prefixes_count(&self, len: u8) {
-        self.prefixes[len as usize].fetch_sub(1, Ordering::Relaxed);
+        if let Some(p) = self.prefixes.get(len as usize) {
+            p.fetch_sub(1, Ordering::Relaxed);
+        }
     }
 
     pub fn get_prefix_stats(&self) -> Vec<CreatedNodes> {
@@ -164,6 +172,8 @@ impl Counters {
     }
 }
 
+// How can this unwrap in here ever fail?
+#[allow(clippy::unwrap_used)]
 impl Default for Counters {
     fn default() -> Self {
         let mut prefixes: Vec<AtomicUsize> = Vec::with_capacity(129);

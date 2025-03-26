@@ -12,7 +12,7 @@ use zerocopy::{
     Unaligned, U32, U64,
 };
 
-use crate::errors::{FatalError, FatalResult};
+use crate::errors::{FatalError, FatalResult, PrefixStoreError};
 use crate::prefix_record::Meta;
 use crate::stats::Counters;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -153,12 +153,19 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
         self.tree.insert::<&[u8], &[u8]>(key, value, 0)
     }
 
+    // This is not production code yet. To be re-evaluated if it does become
+    // production code.
+    #[allow(clippy::indexing_slicing)]
     pub fn _remove(&self, key: &[u8]) {
         self.tree.remove_weak(key, 0);
         // the first byte of the prefix holds the length of the prefix.
         self.counters._dec_prefixes_count(key[0]);
     }
 
+    // Based on the properties of the lsm_tree we can assume that the key and
+    // value concatenated in this method always has a lenght of greater than
+    // KEYS_SIZE, a global constant for the store per AF.
+    #[allow(clippy::indexing_slicing)]
     pub fn get_records_for_prefix(
         &self,
         prefix: PrefixId<AF>,
@@ -634,8 +641,17 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
         self.counters.get_prefixes_count().iter().sum()
     }
 
-    pub fn get_prefixes_count_for_len(&self, len: u8) -> usize {
-        self.counters.get_prefixes_count()[len as usize]
+    //
+    #[allow(clippy::indexing_slicing)]
+    pub fn get_prefixes_count_for_len(
+        &self,
+        len: u8,
+    ) -> Result<usize, PrefixStoreError> {
+        if len <= AF::BITS {
+            Ok(self.counters.get_prefixes_count()[len as usize])
+        } else {
+            Err(PrefixStoreError::StoreNotReadyError)
+        }
     }
 
     pub(crate) fn persist_record_w_long_key<M: Meta>(

@@ -5,6 +5,7 @@ use log::{debug, log_enabled};
 use roaring::RoaringBitmap;
 
 use crate::cht::{Cht, OnceBoxSlice, Value};
+use crate::errors::{FatalError, FatalResult};
 use crate::types::AddressFamily;
 
 use super::tree_bitmap_node::{StrideNodeId, TreeBitMapNode};
@@ -42,15 +43,12 @@ impl<AF: AddressFamily> NodeSet<AF> {
     pub(crate) fn update_rbm_index(
         &self,
         multi_uniq_id: u32,
-    ) -> Result<(u32, bool), PrefixStoreError>
+    ) -> FatalResult<(u32, bool)>
     where
         AF: crate::types::AddressFamily,
     {
         let try_count = 0;
-        let mut rbm = self
-            .1
-            .write()
-            .map_err(|_| PrefixStoreError::StoreNotReadyError)?;
+        let mut rbm = self.1.write().map_err(|_| FatalError)?;
         let absent = rbm.insert(multi_uniq_id);
 
         Ok((try_count, !absent))

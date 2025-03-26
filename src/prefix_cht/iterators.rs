@@ -1,11 +1,10 @@
-use log::trace;
-use roaring::RoaringBitmap;
-
 use crate::{
     tree_bitmap::{NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter},
     types::{AddressFamily, BitSpan, PrefixId},
     TreeBitMap,
 };
+use log::trace;
+use roaring::RoaringBitmap;
 
 // This iterator is unused right now: all iterators go over the in-memory
 // treebitmap, and retreive metadata based on the persist_strategy per prefix
@@ -13,7 +12,6 @@ use crate::{
 //
 // However this tree may ultimately be more efficient for the MemoryOnly
 // strategy.
-
 pub(crate) struct _MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,
@@ -32,6 +30,7 @@ pub(crate) struct _MoreSpecificPrefixIter<
     include_withdrawn: bool,
 }
 
+#[allow(clippy::unwrap_used)]
 impl<'a, AF: AddressFamily + 'a, const ROOT_SIZE: usize> Iterator
     for _MoreSpecificPrefixIter<'a, AF, ROOT_SIZE>
 {

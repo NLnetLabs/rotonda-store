@@ -24,6 +24,10 @@ impl<V: Value, const ROOT_SIZE: usize, const STRIDES_PER_BUCKET: usize>
         }))
     }
 
+    // There cannot be a root node for a prefix length that has NO slots,
+    // STRIDES_PER_BICKET (a instance wide const) should always be bigger
+    // than 0.
+    #[allow(clippy::indexing_slicing)]
     pub(crate) fn root_for_len(&self, len: u8) -> &V {
         &self.0[len as usize / STRIDES_PER_BUCKET]
     }

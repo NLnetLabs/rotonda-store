@@ -118,6 +118,8 @@ impl AsRef<[u8]> for PrefixAs {
     }
 }
 
+// This is no production code, crash all you want
+#[allow(clippy::unwrap_used)]
 impl From<Vec<u8>> for PrefixAs {
     fn from(value: Vec<u8>) -> Self {
         Self(*value.first_chunk::<4>().unwrap())

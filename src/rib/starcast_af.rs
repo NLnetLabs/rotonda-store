@@ -397,14 +397,24 @@ impl<
         }
     }
 
-    pub fn get_prefixes_count_for_len(&self, len: u8) -> UpsertCounters {
-        UpsertCounters {
-            in_memory_count: self.tree_bitmap.get_prefixes_count_for_len(len),
-            persisted_count: self
-                .persist_tree
-                .as_ref()
-                .map_or(0, |p| p.get_prefixes_count_for_len(len)),
-            total_count: self.counters.get_prefixes_count()[len as usize],
+    // the len check does it all.
+    #[allow(clippy::indexing_slicing, clippy::unwrap_used)]
+    pub fn get_prefixes_count_for_len(
+        &self,
+        len: u8,
+    ) -> Result<UpsertCounters, PrefixStoreError> {
+        if len <= AF::BITS {
+            Ok(UpsertCounters {
+                in_memory_count: self
+                    .tree_bitmap
+                    .get_prefixes_count_for_len(len)?,
+                persisted_count: self.persist_tree.as_ref().map_or(0, |p| {
+                    p.get_prefixes_count_for_len(len).unwrap()
+                }),
+                total_count: self.counters.get_prefixes_count()[len as usize],
+            })
+        } else {
+            Err(PrefixStoreError::PrefixLengthInvalid)
         }
     }
 

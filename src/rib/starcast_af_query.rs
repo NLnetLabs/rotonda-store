@@ -5,7 +5,7 @@ use zerocopy::TryFromBytes;
 
 use crate::errors::{FatalError, FatalResult};
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
-use crate::prefix_record::{PrefixRecord, RecordSet};
+use crate::prefix_record::RecordSet;
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::Record;
 use crate::AddressFamily;

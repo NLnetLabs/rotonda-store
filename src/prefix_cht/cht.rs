@@ -35,6 +35,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         Self(Arc::new(Mutex::new(record_map)))
     }
 
+    #[allow(clippy::type_complexity)]
     fn acquire_write_lock(
         &self,
     ) -> Result<
@@ -756,7 +757,10 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     // This function is used by the match_prefix, and [more|less]_specifics
     // public methods on the TreeBitMap (indirectly).
     #[allow(clippy::type_complexity)]
-    pub fn non_recursive_retrieve_prefix(
+    // This method can never run out of levels, since it only continues if it
+    // finds occupied child slots. The indexing can therefore not crash.
+    #[allow(clippy::indexing_slicing)]
+    pub(crate) fn non_recursive_retrieve_prefix(
         &self,
         id: PrefixId<AF>,
     ) -> (

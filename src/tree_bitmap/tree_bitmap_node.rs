@@ -440,6 +440,7 @@ impl<AF: AddressFamily> std::iter::Iterator
 //     _s: PhantomData<S>,
 // }
 
+#[allow(clippy::indexing_slicing)]
 pub const fn ms_prefix_mask_arr(bs: BitSpan) -> u32 {
     [
         0b_01111111111111111111111111111110, // bits = 0, len = 0

@@ -822,7 +822,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
     /// reading the value.
-    pub fn prefixes_v4_count_for_len(&self, len: u8) -> UpsertCounters {
+    pub fn prefixes_v4_count_for_len(
+        &self,
+        len: u8,
+    ) -> Result<UpsertCounters, PrefixStoreError> {
         self.v4.get_prefixes_count_for_len(len)
     }
 
@@ -841,7 +844,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// Note that this counter may be lower than the actual
     /// number in the store, due to contention at the time of
     /// reading the value.
-    pub fn prefixes_v6_count_for_len(&self, len: u8) -> UpsertCounters {
+    pub fn prefixes_v6_count_for_len(
+        &self,
+        len: u8,
+    ) -> Result<UpsertCounters, PrefixStoreError> {
         self.v6.get_prefixes_count_for_len(len)
     }
 

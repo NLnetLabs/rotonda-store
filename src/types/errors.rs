@@ -14,12 +14,20 @@ pub enum PrefixStoreError {
     /// been met, and may never be met. Retrying is safe, but may result in
     /// the same error. Therefore it should probably be retried only once.
     StoreNotReadyError,
+    /// An unrecoverable error occurred, most probably during disk IO, or a
+    /// poisoned lock while writing. The store is probably corrupt. The caller
+    /// should terminate the store, and probably also terminate itself. This
+    /// error variant is the same as the `FatalError` type, but is used as a
+    /// return for methods that can also return non-fatal errors.
+    FatalError,
     /// A best path was requested, but the selection procedure was performed
     /// on a route set that is now stale. A new best path calculation over the
     /// set should be performed before retrying.
     PathSelectionOutdated,
     /// The requested prefix was not found in the store.
     PrefixNotFound,
+    /// The requested prefix length cannot exist.
+    PrefixLengthInvalid,
     /// A best path was requested, but it was never calculated. Perform a best
     ///path selection first, before retrying.
     BestPathNotFound,
@@ -61,6 +69,9 @@ impl fmt::Display for PrefixStoreError {
             PrefixStoreError::PrefixNotFound => {
                 write!(f, "Error: The Prefix cannot be found.")
             }
+            PrefixStoreError::PrefixLengthInvalid => {
+                write!(f, "Error: The specified Prefix length is invalid.")
+            }
             PrefixStoreError::BestPathNotFound => {
                 write!(
                     f,
@@ -93,6 +104,14 @@ impl fmt::Display for PrefixStoreError {
                     f,
                     "Warning: The record is persisted, but the upsert \
                     counters cannot be reported for persist only strategy."
+                )
+            }
+            PrefixStoreError::FatalError => {
+                write!(
+                    f,
+                    "FATAL: An unrecoverable error occurred during disk I/O \
+                    or writing memory. All data in the store should be \
+                    considered corrupy and the application should terminate."
                 )
             }
         }

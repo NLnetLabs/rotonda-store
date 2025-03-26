@@ -89,6 +89,10 @@ impl<T> OnceBoxSlice<T> {
         }
     }
 
+    // This is a bit tricky: the caller of this method should make sure that
+    // the slice has enough elements. For performance reasons we are NOT
+    // checking that here.
+    #[allow(clippy::indexing_slicing)]
     pub fn get_or_init(
         &self,
         idx: usize,

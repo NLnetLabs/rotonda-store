@@ -306,6 +306,8 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<&'a PrefixRecord<M>>
 impl<M: Meta> std::ops::Index<usize> for RecordSet<M> {
     type Output = PrefixRecord<M>;
 
+    // This does not change the behaviour of the Index trait
+    #[allow(clippy::indexing_slicing)]
     fn index(&self, index: usize) -> &Self::Output {
         if index < self.v4.len() {
             &self.v4[index]

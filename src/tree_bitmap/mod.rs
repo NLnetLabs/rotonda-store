@@ -197,6 +197,7 @@ use zerocopy::FromZeros;
 // produce a fix for it).
 
 use crate::cht::{nodeset_size, prev_node_size, Cht, Value};
+use crate::errors::{FatalError, FatalResult};
 use crate::rib::STRIDE_SIZE;
 use crate::stats::Counters;
 use crate::types::{BitSpan, PrefixId};
@@ -270,7 +271,8 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
                 !self.default_route_exists.swap(true, Ordering::Acquire);
             return self
                 .update_default_route_prefix_meta(mui)
-                .map(|(rc, _mui_exists)| (rc, !prefix_new));
+                .map(|(rc, _mui_exists)| (rc, !prefix_new))
+                .map_err(|_| PrefixStoreError::StoreNotReadyError);
         }
 
         let mut stride_end: u8 = 0;
@@ -472,7 +474,7 @@ Giving up this node. This shouldn't happen!",
     fn update_default_route_prefix_meta(
         &self,
         mui: u32,
-    ) -> Result<(u32, bool), PrefixStoreError> {
+    ) -> FatalResult<(u32, bool)> {
         trace!("Updating the default route...");
 
         if let Some(_root_node) =
@@ -482,7 +484,7 @@ Giving up this node. This shouldn't happen!",
                 .root_for_len(self.get_root_node_id().len())
                 .update_rbm_index(mui)
         } else {
-            Err(PrefixStoreError::StoreNotReadyError)
+            Err(FatalError)
         }
     }
 
@@ -557,7 +559,7 @@ Giving up this node. This shouldn't happen!",
         id: StrideNodeId<AF>,
         multi_uniq_id: u32,
         new_node: TreeBitMapNode<AF>,
-    ) -> Result<(StrideNodeId<AF>, u32), PrefixStoreError> {
+    ) -> Result<(StrideNodeId<AF>, u32), FatalError> {
         if log_enabled!(log::Level::Trace) {
             debug!(
                 "{} store: Store node {}: {:?} mui {}",
@@ -697,11 +699,13 @@ Giving up this node. This shouldn't happen!",
                             next_bit_shift if next_bit_shift > 0 => {
                                 nodes = &stored_node.node_set;
                             }
-                            // There's no next level!
-                            _ => panic!(
-                                "out of storage levels, current level is {}",
-                                level
-                            ),
+                            // There's no next level anymore, we ran out of
+                            // the maximum number of levels for this AF. This
+                            // should happen under no circumstance, there's a
+                            // serious logic error here somewhere.
+                            _ => {
+                                return Err(FatalError);
+                            }
                         }
                     }
                 }
@@ -911,8 +915,17 @@ Giving up this node. This shouldn't happen!",
         self.counters.get_prefixes_count().iter().sum()
     }
 
-    pub fn get_prefixes_count_for_len(&self, len: u8) -> usize {
-        self.counters.get_prefixes_count()[len as usize]
+    // len checking does it all
+    #[allow(clippy::indexing_slicing)]
+    pub fn get_prefixes_count_for_len(
+        &self,
+        len: u8,
+    ) -> Result<usize, PrefixStoreError> {
+        if len <= AF::BITS {
+            Ok(self.counters.get_prefixes_count()[len as usize])
+        } else {
+            Err(PrefixStoreError::PrefixLengthInvalid)
+        }
     }
 
     // Stride related methods
@@ -1121,8 +1134,12 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> std::fmt::Display
                 _f,
                 "{}",
                 Colour::Green.paint(
-                    bars[((prefix_count as u32 % SCALE) / (SCALE / 7))
-                        as usize]
+                    *bars
+                        .get(
+                            ((prefix_count as u32 % SCALE) / (SCALE / 7))
+                                as usize
+                        )
+                        .unwrap_or(&"NaN")
                 ) //  = scale / 7
             )?;
 

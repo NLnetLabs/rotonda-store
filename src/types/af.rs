@@ -15,9 +15,6 @@ pub trait AddressFamily:
     + std::fmt::Debug
     + std::hash::Hash
     + std::fmt::Display
-    // + From<u32>
-    // + From<u16>
-    // + From<u8>
     + Eq
     + std::ops::BitAnd<Output = Self>
     + std::ops::BitOr<Output = Self>
@@ -25,7 +22,6 @@ pub trait AddressFamily:
     + std::ops::Shl<Output = Self>
     + std::ops::Shl<Self, Output = Self>
     + std::ops::Sub<Output = Self>
-    // + Zero
     + Copy
     + Ord
     + zerocopy::FromBytes
@@ -34,8 +30,6 @@ pub trait AddressFamily:
     + zerocopy::Immutable
     + zerocopy::Unaligned
 {
-    /// The byte representation of the family filled with 1s.
-    // const BITMASK: Self;
     /// The number of bits in the byte representation of the family.
     const BITS: u8;
     type Inner: Into<Self> + From<u32> + From<u8>;
@@ -62,23 +56,16 @@ pub trait AddressFamily:
 
     fn truncate_to_len(self, len: u8) -> Self;
 
-    // fn from_ipaddr(net: std::net::IpAddr) -> Self;
-
     fn into_ipaddr(self) -> std::net::IpAddr;
 
     // temporary function, this will botch IPv6 completely.
     fn dangerously_truncate_to_u32(self) -> u32;
-
-    // temporary function, this will botch IPv6 completely.
-    // fn dangerously_truncate_to_usize(self) -> usize;
 
     // For the sake of searching for 0/0, check the the right shift, since
     // since shifting with MAXLEN (32 in Ipv4, or 128 in IPv6) will panic
     // in debug mode. A failed check will simply retutrn zero. Used in
     // finding node_ids (always zero for 0/0).
     fn checked_shr_or_zero(self, rhs: u32) -> Self;
-
-    // fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE];
 }
 
 //-------------- Ipv4 Type --------------------------------------------------
@@ -87,7 +74,6 @@ pub trait AddressFamily:
 pub type IPv4 = zerocopy::U32<NetworkEndian>;
 
 impl AddressFamily for IPv4 {
-    // const BITMASK: u32 = 0x1u32.rotate_right(1);
     const BITS: u8 = 32;
     type Inner = u32;
     type InnerIpAddr = std::net::Ipv4Addr;
@@ -170,18 +156,6 @@ impl AddressFamily for IPv4 {
         (res, len + bs.len)
     }
 
-    // fn from_ipaddr(addr: std::net::IpAddr) -> U32<NetworkEndian> {
-    //     // Well, this is awkward.
-    //     if let std::net::IpAddr::V4(addr) = addr {
-    //         (addr.octets()[0] as u32) << 24
-    //             | (addr.octets()[1] as u32) << 16
-    //             | (addr.octets()[2] as u32) << 8
-    //             | (addr.octets()[3] as u32)
-    //     } else {
-    //         panic!("Can't convert IPv6 to IPv4");
-    //     }
-    // }
-
     fn into_ipaddr(self) -> std::net::IpAddr {
         std::net::IpAddr::V4(std::net::Ipv4Addr::from(u32::from(self)))
     }
@@ -191,11 +165,12 @@ impl AddressFamily for IPv4 {
         self.into()
     }
 
-    // fn dangerously_truncate_to_usize(self) -> usize {
-    //     // not dangerous at all.
-    //     <usize>::from(self)
-    // }
-
+    // We are totally allowing panic here: the panicking arm holds an
+    // invariant that's a super basic assumption of this whole store. If this
+    // panics than this whole library should not be used, and be checked for
+    // logic errors everywhere. For performance reasons we are leaving out the
+    // FatalResult wrapper.
+    #[allow(clippy::panic)]
     fn truncate_to_len(self, len: u8) -> Self {
         match len {
             0 => U32::new(0),
@@ -215,13 +190,6 @@ impl AddressFamily for IPv4 {
         }
         self >> U32::<NetworkEndian>::from(rhs)
     }
-
-    // fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
-    //     *self.as_bytes().first_chunk::<PREFIX_SIZE>().unwrap()
-    //     // *u32::to_be_bytes(*self)
-    //     //     .first_chunk::<PREFIX_SIZE>()
-    //     //     .unwrap()
-    // }
 }
 
 //-------------- Ipv6 Type --------------------------------------------------
@@ -295,6 +263,12 @@ impl AddressFamily for IPv6 {
         (res, len + bs.len)
     }
 
+    // We are totally allowing panic here: the panicking arm holds an
+    // invariant that's a super basic assumption of this whole store. If this
+    // panics than this whole library should not be used, and be checked for
+    // logic errors everywhere. For performance reasons we are leaving out the
+    // FatalResult wrapper.
+    #[allow(clippy::panic)]
     fn truncate_to_len(self, len: u8) -> Self {
         match len {
             0 => U128::new(0),
@@ -307,37 +281,6 @@ impl AddressFamily for IPv6 {
         }
     }
 
-    // fn truncate_to_len(self, len: u8) -> Self {
-    //     if (128 - len) == 0 {
-    //         0
-    //     } else {
-    //         (self >> (128 - len)) << (128 - len)
-    //     }
-    // }
-
-    // fn from_ipaddr(net: std::net::IpAddr) -> u128 {
-    //     if let std::net::IpAddr::V6(addr) = net {
-    //         addr.octets()[15] as u128
-    //             | (addr.octets()[14] as u128) << 8
-    //             | (addr.octets()[13] as u128) << 16
-    //             | (addr.octets()[12] as u128) << 24
-    //             | (addr.octets()[11] as u128) << 32
-    //             | (addr.octets()[10] as u128) << 40
-    //             | (addr.octets()[9] as u128) << 48
-    //             | (addr.octets()[8] as u128) << 56
-    //             | (addr.octets()[7] as u128) << 64
-    //             | (addr.octets()[6] as u128) << 72
-    //             | (addr.octets()[5] as u128) << 80
-    //             | (addr.octets()[4] as u128) << 88
-    //             | (addr.octets()[3] as u128) << 96
-    //             | (addr.octets()[2] as u128) << 104
-    //             | (addr.octets()[1] as u128) << 112
-    //             | (addr.octets()[0] as u128) << 120
-    //     } else {
-    //         panic!("Can't convert IPv4 to IPv6");
-    //     }
-    // }
-
     fn into_ipaddr(self) -> std::net::IpAddr {
         std::net::IpAddr::V6(std::net::Ipv6Addr::from(u128::from(self)))
     }
@@ -347,11 +290,6 @@ impl AddressFamily for IPv6 {
         u128::from(self) as u32
     }
 
-    // fn dangerously_truncate_to_usize(self) -> usize {
-    //     // this will chop off the high bits.
-    //     self as usize
-    // }
-
     fn checked_shr_or_zero(self, rhs: u32) -> Self {
         if rhs == 0 || rhs == 128 {
             return U128::from(0);
@@ -359,13 +297,6 @@ impl AddressFamily for IPv6 {
 
         self >> U128::from(rhs as u128)
     }
-
-    // fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
-    //     // *u128::to_be_bytes(*self)
-    //     //     .first_chunk::<PREFIX_SIZE>()
-    //     //     .unwrap()
-    //     *self.as_bytes().first_chunk::<PREFIX_SIZE>().unwrap()
-    // }
 
     fn from_u8(value: u8) -> Self {
         IPv6::from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, value])
