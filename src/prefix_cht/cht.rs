@@ -22,9 +22,11 @@ use crate::{
     },
 };
 
-// ----------- MultiMap ------------------------------------------------------
-// This is the record that holds the aggregates at the top-level for a given
-// prefix.
+//------------ MultiMap ------------------------------------------------------
+//
+// This is the collection of records or a given prefix, keyed on the multi
+// unique identifier ("mui"). Note that the record contains more than just
+// the // meta-data typed value ("M").
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
@@ -72,8 +74,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn _len(&self) -> usize {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
         let record_map = self.acquire_read_guard();
         record_map.len()
     }
@@ -83,8 +83,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         mui: u32,
         include_withdrawn: bool,
     ) -> Option<Record<M>> {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
         let record_map = self.acquire_read_guard();
 
         record_map.get(&mui).and_then(|r| -> Option<Record<M>> {
@@ -97,8 +95,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
         let record_map = self.acquire_read_guard();
         let ord_routes = record_map
             .iter()
@@ -114,9 +110,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Option<Record<M>> {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
-
         let record_map = self.acquire_read_guard();
         record_map.get(&mui).map(|r| {
             // We'll return a cloned record: the record in the store remains
@@ -190,8 +183,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Vec<Record<M>> {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
@@ -206,8 +197,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     }
 
     pub fn _as_records(&self) -> Vec<Record<M>> {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
@@ -222,8 +211,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         &self,
         bmin: &RoaringBitmap,
     ) -> Vec<Record<M>> {
-        // let c_map = Arc::clone(&self.0);
-        // let record_map = c_map.lock().unwrap();
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
@@ -241,8 +228,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Withdrawn.
     pub fn mark_as_withdrawn_for_mui(&self, mui: u32, ltime: u64) {
-        // let c_map = Arc::clone(&self.0);
-        // let mut record_map = c_map.lock().unwrap();
         let mut record_map = self.acquire_read_guard();
         if let Some(rec) = record_map.get_mut(&mui) {
             rec.set_route_status(RouteStatus::Withdrawn);
@@ -252,8 +237,6 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     // Change the local status of the record for this mui to Active.
     pub fn mark_as_active_for_mui(&self, mui: u32, ltime: u64) {
-        // let record_map = Arc::clone(&self.0);
-        // let mut r_map = record_map.lock().unwrap();
         let mut record_map = self.acquire_read_guard();
         if let Some(rec) = record_map.get_mut(&mui) {
             rec.set_route_status(RouteStatus::Active);
@@ -380,8 +363,6 @@ impl PathSelections {
 // don't have to go into them if there's nothing there and could stop early.
 #[derive(Debug)]
 pub struct StoredPrefix<AF: AddressFamily, M: Meta> {
-    // the serial number
-    // pub serial: usize,
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
@@ -422,7 +403,6 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         let rec_map = HashMap::new();
 
         StoredPrefix {
-            // serial: 1,
             prefix: pfx_id,
             path_selections: Atomic::init(PathSelections {
                 path_selection_muis: (None, None),
@@ -528,6 +508,11 @@ impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
         PrefixSet(OnceBoxSlice::new(size))
     }
 }
+
+//------------ PrefixCht -----------------------------------------------------
+
+// PrefixCht is a simple wrapper around Cht. It stores the meta-data for
+// in-memeory strategies.
 
 #[derive(Debug)]
 pub(crate) struct PrefixCht<
@@ -782,8 +767,6 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
             // The index of the prefix in this array (at this len and
             // level) is calculated by performing the hash function
             // over the prefix.
-
-            // HASHING FUNCTION
             let index = Self::hash_prefix_id(id, level);
 
             if let Some(stored_prefix) = prefix_set.0.get(index) {
@@ -816,24 +799,8 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     }
 
     pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
-        // And, this is all of our hashing function.
-        // let last_level = if level > 0 {
-        //     bits_for_len(id.get_len(), level.saturating_sub(1))
-        // } else {
-        //     0
-        // };
         let last_level = prev_node_size(id.len(), level);
-        // trace!(
-        //     "bits division {}; no of bits {}",
-        //     this_level,
-        //     this_level - last_level
-        // );
-        // trace!(
-        //     "calculated index ({} << {}) >> {}",
-        //     id.get_net(),
-        //     last_level,
-        //   net>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
-        // );
+
         // HASHING FUNCTION
         let size = nodeset_size(id.len(), level);
         ((id.bits() << AF::from_u32(last_level as u32))

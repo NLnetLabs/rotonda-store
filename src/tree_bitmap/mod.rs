@@ -11,9 +11,9 @@ pub(crate) use tree_bitmap_node::{
 };
 use zerocopy::FromZeros;
 
-// ----------- THE STORE ----------------------------------------------------
+// ----------- Dev Log for the RIB -------------------------------------------
 //
-// The CustomAllocStore provides in-memory storage for the BitTreeMapNodes
+// The StarCastAfRib provides in-memory storage for the TreeBitMapNodes
 // and for prefixes and their meta-data. The storage for node is on the
 // `buckets` field, and the prefixes are stored in, well, the `prefixes`
 // field. They are both organised in the same way, as chained hash tables,
@@ -47,18 +47,14 @@ use zerocopy::FromZeros;
 // node first and then go up the tree to the requested node. The lower nodes
 // of the tree (close to the root) would be a formidable bottle-neck then.
 //
-// Currently, the meta-data is an atomically stored value, that is required to
-// implement the `Meta` and the `Clone` trait. New meta-data
-// instances are stored atomically without further ado, but updates to a
-// piece of meta-data are done by merging the previous meta-data with the new
-// meta-data, through use of the `MergeUpdate` trait.
+// Previously, the meta-data was an atomically stored value, that was required
+// to implement the `Meta` and the `Clone` trait. New meta-data instances were
+// stored atomically without further ado, but updates to a piece of meta-data
+// were done by merging the previous meta-data with the new meta-data, through
+// use of the `MergeUpdate` trait.
 //
-// The `upsert_prefix` methods retrieve only the most recent insert
-// for a prefix (for now).
-//
-// Future work could have a user-configurable retention strategy that allows
-// the meta-data to be stored as a linked-list of references, where each
-// meta-data object has a reference to its predecessor.
+// The `upsert_prefix` methods were used to retrieve only the most recent
+// insert for a prefix (for now).
 //
 // Prefix example
 //
@@ -196,6 +192,30 @@ use zerocopy::FromZeros;
 // an actual memory leak in the mt-prefix-store (and even more if they can
 // produce a fix for it).
 
+// >= 0.4
+
+// The above scheme is outdated! After done a few day of bench marking, it was
+// found that storing the meta-data in `RwLock<HashMap>` structures actually
+// performs better in both time, and space. Also the overall performance
+// is  way more predictable and somewhat linearly related to the busyness of
+// the whole system. Furthermore it was found that using RwLock around the
+// HashMaps, instead of mutexes (from std) was around 2% slower at insert
+// time, while we believe (we haven't tested this), that read performance will
+// be superior to mutex. In terms of usability `RwLock<HasMap>` do not require
+// the user to implement the RCU-style `MergeUpdate` trait (it is removed
+// now).
+
+// Adding the possibilty of storing more than one piece of meta-data for a
+// prefix (through the use the MUI), made the RCU style storing very awkward:
+// all the previous pieces of meta-data (let's call them records), collected
+// in a HashMap, needed to copied out of the store, modified, and copied back
+// in, while being able to fail, and retried. Locking these HashMaps is way
+// more efficient, both in time (copying costs time), and memory (copying,
+// costs, well, memory). So what we have now, is a hybrid tree, where the
+// "core" consists of RCU-style, lock-free nodes (that can't be deleted!), and
+// locked structures at the "edges" (not leaves, because all nodes can carry
+// meta-data).
+
 use crate::cht::{nodeset_size, prev_node_size, Cht, Value};
 use crate::errors::{FatalError, FatalResult};
 use crate::rib::STRIDE_SIZE;
@@ -220,11 +240,19 @@ use ansi_term::Colour;
 
 //--------------------- TreeBitMap ------------------------------------------
 
+// The tree that holds the existence information for all prefixes for all
+//strategies. This tree is also used to find all less- and more-specifics and
+//iterate over them. It also holds a bitmap that contains RIB-wide withdrawn
+//muis (peers in most cases).
 #[derive(Debug)]
-pub struct TreeBitMap<AF: AddressFamily, const ROOT_SIZE: usize> {
+pub(crate) struct TreeBitMap<AF: AddressFamily, const ROOT_SIZE: usize> {
+    // the chained hash table that backs the treebitmap
     node_cht: NodeCht<AF, ROOT_SIZE>,
+    // the bitmap that holds RIB-wide withdrawn muis (e.g. peers)
     withdrawn_muis_bmin: Atomic<RoaringBitmap>,
+    // number of prefixes in the store, etc.
     counters: Counters,
+    // see the rant on update_default_route_prefix_meta
     default_route_exists: AtomicBool,
 }
 
@@ -553,12 +581,14 @@ Giving up this node. This shouldn't happen!",
         }
     }
 
+    // Store a new node in the tree, or merge the existing node with this
+    // node. This might fail disastrously, e.g. in case of failed I/O.
     fn store_node(
         &self,
         id: NodeId<AF>,
         multi_uniq_id: u32,
         new_node: TreeBitMapNode<AF>,
-    ) -> Result<(NodeId<AF>, u32), FatalError> {
+    ) -> FatalResult<(NodeId<AF>, u32)> {
         if log_enabled!(log::Level::Trace) {
             debug!(
                 "{} store: Store node {}: {:?} mui {}",
@@ -625,6 +655,7 @@ Giving up this node. This shouldn't happen!",
                             .node_set
                             .update_rbm_index(multi_uniq_id)?;
 
+                        // merge_with herre contains the critical section!
                         if !its_us && ptrbitarr != 0 {
                             retry_count += 1;
                             stored_node.node.ptrbitarr.merge_with(ptrbitarr);

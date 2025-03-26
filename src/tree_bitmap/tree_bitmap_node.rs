@@ -628,7 +628,7 @@ pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
 // a Prefix.
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct NodeId<AF: AddressFamily> {
+pub(crate) struct NodeId<AF: AddressFamily> {
     bits: AF,
     len: u8,
 }

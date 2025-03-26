@@ -25,10 +25,62 @@
 //!
 //! [^1]: <https://www.cs.cornell.edu/courses/cs419/2005sp/tree-bitmap.pdf>
 //! [^2]: <https://blog.nlnetlabs.nl/donkeys-mules-horses/>
+
+//                                ┌───────────────────┐
+//                                │    StarCastRib    │
+//                                └────────┬┬─────────┘
+//                        ┌────────────────┘└─────────────────┐
+//                     ┌──▼──┐                             ┌──▼──┐
+//                     │ v4  │                             │ v4  │
+//                     └──┬──┘                             └──┬──┘
+//            ┌───────────┼──────────┐            ┌───────────┼──────────┐
+//      ┌─────▼────┐┌─────▼────┐┌───▼─────┐┌─────▼────┐┌─────▼────┐┌────▼───┐
+//      │treebitmap││prefix_cht││lsm_tree ││treebitmap││prefix_cht││lsm_tree│
+//      └─────┬────┘└──────────┘└─────────┘└─────┬────┘└──────────┘└────────┘
+//     ┌──────┴─────┐                      ┌──────┴─────┐
+// ┌───▼────┐┌──────▼────┐             ┌───▼────┐┌──────▼────┐
+// │node_cht││muis_bitmap│             │node_cht││muis_bitmap│
+// └────────┘└───────────┘             └────────┘└───────────┘
+
+// Rotonda-store is a fairly layered repo, it uses three different
+// types of trees, that are all hidden behind one public interface.
+
+// `rib::starcast::StarCastRib`, holds that public API. This is the RIB
+// that stores (route-like) data for IPv4/IPv6 unicast and multicast (hence
+// *cast). This is a good starting point to dive into this repo.
+
+// `rib::starcast_af::StarCastAfRib` holds the three trees for a store, per
+// Address Family. From there `tree_bitmap` (the mod.rs file), holds the tree
+// bitmap, `tree_bit_map::node_cht` holds the CHT that stores the nodes for
+// the tree bitmap. Next to the tree, it also holds a bitmap that indexes all
+// muis that are withdrawn for the whole tree. The tree bitmap is used for
+// all strategies.
+
+// `prefix_cht::cht` holds the CHT that stores all the route-like data for the
+// in-memory strategies. This CHT is the same data-structure that is used for
+// the nodes, but it stores `MultiMap` typed values in its nodes (described in
+// the same file).
+
+// `lsm_tree` (again, in the mod.rs file) holds the log-structured merge tree
+// used for persistent storage on disk.
+
+//------------ Modules -------------------------------------------------------
+
+// the Chained Hash Table that is used by the treebitmap, and the CHT for the
+// prefixes (for in-menory storage of prefixes).
 mod cht;
+
+// The log-structured merge tree, used as persistent storage (on disk).
 mod lsm_tree;
+
+// The Chained Hash Table that stores the records for the prefixers in memory
 mod prefix_cht;
+
+// The Treebitmap, that stores the existence of all prefixes, and that is used
+//for all strategies.
 mod tree_bitmap;
+
+// Types, both public and private, that are used throughout the store.
 mod types;
 
 #[macro_use]

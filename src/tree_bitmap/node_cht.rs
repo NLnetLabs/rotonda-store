@@ -19,6 +19,8 @@ where
     Self: Sized,
     AF: AddressFamily,
 {
+    // the id of this node. since we're using linked lists to store nodes in
+    // first-come-first-served order, we need to store the actual node id.
     pub(crate) node_id: NodeId<AF>,
     // The ptrbitarr and pfxbitarr for this node
     pub(crate) node: TreeBitMapNode<AF>,

@@ -22,17 +22,30 @@ use crate::AddressFamily;
 
 use super::config::Config;
 
-// ----------- Rib -----------------------------------------------------------
-//
+//------------ StarCastAfRib -------------------------------------------------
+
 // A Routing Information Base that consists of multiple different trees for
-// in-memory and on-disk (persisted storage).
+// in-memory and on-disk (persisted storage) for one address family. Most of
+// the methods on this struct are meant to be publicly available, however they
+// are all behind the StarCastRib interface, that abstracts over the address
+// family.
 #[derive(Debug)]
 pub(crate) struct StarCastAfRib<
     AF: AddressFamily,
+    // The type that stores the route-like data
     M: Meta,
+    // The number of root nodes for the tree bitmap (one for each 4 prefix
+    // lengths, so that's 9 for IPv4, 33 for IPv6)
     const N_ROOT_SIZE: usize,
+    // The number of root nodes for the prefix CHT (one for each prefix length
+    // that can exists, so that's 33 for IPv4, and 129 for IPv6).
     const P_ROOT_SIZE: usize,
+    // The configuration, each persistence strategy implements its own type.
     C: Config,
+    // The size of the key in the persistence store, this varies per address
+    // family. This is 18 for IPv4 (1 octet prefix length, 4 octets address
+    // part prefix, 4 octets mui, 8 octets ltime, 1 octet RouteStatus). This
+    // corresponds to the `LongKey` struct. It's 30 for IPv6.
     const KEY_SIZE: usize,
 > {
     pub config: C,
