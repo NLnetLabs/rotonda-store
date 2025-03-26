@@ -4,7 +4,7 @@
     clippy::panic,
     clippy::indexing_slicing
 )]
-
+#![allow(clippy::multiple_crate_versions)]
 //! A library that provides abstractions for a BGP Routing Information Base
 //! (RIB) for different AFI/SAFI types, as a database.
 //!
