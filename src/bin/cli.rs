@@ -111,6 +111,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .prefixes_iter_v4(guard)
                                         .for_each(|pfx| {
+                                            let pfx = pfx.unwrap();
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
@@ -125,6 +126,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .prefixes_iter_v6(guard)
                                         .for_each(|pfx| {
+                                            let pfx = pfx.unwrap();
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
@@ -147,6 +149,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     tree_bitmap
                                         .prefixes_iter(guard)
                                         .for_each(|pfx| {
+                                            let pfx = pfx.unwrap();
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
@@ -235,7 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         include_history: IncludeHistory::None,
                                     },
                                     guard,
-                                );
+                                )?;
                                 println!("start query result");
                                 println!("{}", query_result);
                                 println!("end query result");
@@ -264,7 +267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard,
-                                        )
+                                        )?
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
@@ -278,7 +281,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard,
-                                        )
+                                        )?
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
@@ -300,7 +303,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 IncludeHistory::None
                                         },
                                         guard
-                                    )
+                                    )?
                                 );
                                 println!("--- numatch");
                                 println!("more specifics");
@@ -312,7 +315,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard,
-                                        )
+                                        )?
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
@@ -326,7 +329,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard
-                                        )
+                                        )?
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())

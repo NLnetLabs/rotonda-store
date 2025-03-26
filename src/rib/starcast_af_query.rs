@@ -3,7 +3,9 @@ use epoch::Guard;
 use log::trace;
 use zerocopy::TryFromBytes;
 
+use crate::errors::{FatalError, FatalResult};
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
+use crate::prefix_record::{PrefixRecord, RecordSet};
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::Record;
 use crate::AddressFamily;
@@ -33,45 +35,70 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> Option<Vec<Record<M>>> {
+    ) -> FatalResult<Option<Vec<Record<M>>>> {
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 trace!("get value from persist_store for {:?}", prefix_id);
-                self.persist_tree.as_ref().and_then(|tree| {
-                    tree.get_records_for_prefix(
-                        prefix_id,
-                        mui,
-                        include_withdrawn,
-                        self.tree_bitmap.withdrawn_muis_bmin(guard),
-                    )
-                    .map(|v| {
-                        v.iter()
-                            .map(|bytes| {
-                                let record: &ZeroCopyRecord<AF> =
-                                    ZeroCopyRecord::try_ref_from_bytes(
-                                        bytes.as_ref().unwrap(),
-                                    )
-                                    .unwrap();
-                                Record::<M> {
-                                    multi_uniq_id: record.multi_uniq_id,
-                                    ltime: record.ltime,
-                                    status: record.status,
-                                    meta: <Vec<u8>>::from(
-                                        record.meta.as_ref(),
-                                    )
-                                    .into(),
-                                }
-                            })
-                            .collect::<Vec<_>>()
+                self.persist_tree
+                    .as_ref()
+                    .and_then(|tree| {
+                        tree.get_records_for_prefix(
+                            prefix_id,
+                            mui,
+                            include_withdrawn,
+                            self.tree_bitmap.withdrawn_muis_bmin(guard),
+                        )
+                        .map(|v| {
+                            v.iter()
+                                .map(|bytes| {
+                                    if let Ok(b) = bytes.as_ref() {
+                                        let record: &ZeroCopyRecord<AF> =
+                                        ZeroCopyRecord::try_ref_from_bytes(b)
+                                            .map_err(|_| FatalError)?;
+                                        Ok(Record::<M> {
+                                            multi_uniq_id: record
+                                                .multi_uniq_id,
+                                            ltime: record.ltime,
+                                            status: record.status,
+                                            meta: <Vec<u8>>::from(
+                                                record.meta.as_ref(),
+                                            )
+                                            .into(),
+                                        })
+                                    } else {
+                                        Err(FatalError)
+                                    }
+                                })
+                                .collect::<FatalResult<Vec<_>>>()
+                            // let record: FatalResult<&ZeroCopyRecord<AF>> =
+                            //     ZeroCopyRecord::try_ref_from_bytes(
+                            //         bytes
+                            //             .as_ref()
+                            //             .map_err(|_| FatalError)
+                            //             .unwrap(),
+                            //     )
+                            //     .map_err(|_| FatalError);
+                            // Record::<M> {
+                            //     multi_uniq_id: record.multi_uniq_id,
+                            //     ltime: record.ltime,
+                            //     status: record.status,
+                            //     meta: <Vec<u8>>::from(
+                            //         record.meta.as_ref(),
+                            //     )
+                            //     .into(),
+                            // }
+                            // })
+                            // .collect::<Vec<_>>()
+                        })
                     })
-                })
+                    .transpose()
             }
-            _ => self.prefix_cht.get_records_for_prefix(
+            _ => Ok(self.prefix_cht.get_records_for_prefix(
                 prefix_id,
                 mui,
                 include_withdrawn,
                 self.tree_bitmap.withdrawn_muis_bmin(guard),
-            ),
+            )),
         }
     }
 
@@ -81,33 +108,38 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FatalResult<QueryResult<M>> {
         let prefix = if !self.contains(prefix_id, mui) {
             Some(Prefix::from(prefix_id))
         } else {
             None
         };
+
+        let prefix_meta = self
+            .get_value(prefix_id, mui, include_withdrawn, guard)?
+            .unwrap_or_default();
+
         let more_specifics = self
             .tree_bitmap
             .more_specific_prefix_iter_from(prefix_id)
             .map(|p| {
                 self.get_value(prefix_id, mui, include_withdrawn, guard)
-                    .map(|v| (p, v))
+                    .map(|res| res.map(|v| (p, v)))
             })
-            .collect();
+            .collect::<FatalResult<Option<RecordSet<M>>>>()?;
 
-        QueryResult {
+        Ok(QueryResult {
             prefix,
-            prefix_meta: prefix
-                .map(|_pfx| {
-                    self.get_value(prefix_id, mui, include_withdrawn, guard)
-                        .unwrap_or_default()
-                })
-                .unwrap_or(vec![]),
+            prefix_meta,
+            // prefix.map(|_pfx| {
+            //     self.get_value(prefix_id, mui, include_withdrawn, guard)?
+            //         .unwrap_or_default()
+            // })
+            // .unwrap_or(vec![]),
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
             more_specifics,
-        }
+        })
     }
 
     pub(crate) fn less_specifics_from(
@@ -116,31 +148,32 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FatalResult<QueryResult<M>> {
         let prefix = if !self.contains(prefix_id, mui) {
             Some(Prefix::from(prefix_id))
         } else {
             None
         };
+        let prefix_meta = self
+            .get_value(prefix_id, mui, include_withdrawn, guard)?
+            .unwrap_or_default();
 
         let less_specifics = self
             .tree_bitmap
             .less_specific_prefix_iter(prefix_id)
             .map(|p| {
                 self.get_value(prefix_id, mui, include_withdrawn, guard)
-                    .map(|v| (p, v))
+                    .map(|res| res.map(|v| (p, v)))
             })
-            .collect();
+            .collect::<FatalResult<Option<RecordSet<M>>>>()?;
 
-        QueryResult {
+        Ok(QueryResult {
             prefix,
-            prefix_meta: self
-                .get_value(prefix_id, mui, include_withdrawn, guard)
-                .unwrap_or_default(),
+            prefix_meta,
             match_type: MatchType::EmptyMatch,
             less_specifics,
             more_specifics: None,
-        }
+        })
     }
 
     pub(crate) fn more_specifics_iter_from(
@@ -149,7 +182,8 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<Record<M>>)> + 'a {
+    ) -> impl Iterator<Item = FatalResult<(PrefixId<AF>, Vec<Record<M>>)>> + 'a
+    {
         println!("more_specifics_iter_from fn");
         // If the user wanted a specific mui and not withdrawn prefixes, we
         // may return early if the mui is globally withdrawn.
@@ -163,7 +197,8 @@ impl<
                     .more_specific_prefix_iter_from(prefix_id)
                     .filter_map(move |p| {
                         self.get_value(p, mui, include_withdrawn, guard)
-                            .map(|v| (p, v))
+                            .map(|res| res.map(|v| (p, v)))
+                            .transpose()
                     }),
             )
         })
@@ -199,12 +234,14 @@ impl<
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (PrefixId<AF>, Vec<Record<M>>)> + 'a {
+    ) -> impl Iterator<Item = FatalResult<(PrefixId<AF>, Vec<Record<M>>)>> + 'a
+    {
         self.tree_bitmap
             .less_specific_prefix_iter(prefix_id)
             .filter_map(move |p| {
                 self.get_value(p, mui, include_withdrawn, guard)
-                    .map(|v| (p, v))
+                    .map(|res| res.map(|v| (p, v)))
+                    .transpose()
             })
     }
 
@@ -213,21 +250,23 @@ impl<
         search_pfx: PrefixId<AF>,
         options: &MatchOptions,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FatalResult<QueryResult<M>> {
         trace!("match_prefix rib {:?} {:?}", search_pfx, options);
         let res = self.tree_bitmap.match_prefix(search_pfx, options);
 
         trace!("res {:?}", res);
         let mut res = QueryResult::from(res);
 
-        if let Some(Some(m)) = res.prefix.map(|p| {
+        if let Some(Ok(Some(m))) = res.prefix.map(|p| {
             self.get_value(
                 p.into(),
                 options.mui,
                 options.include_withdrawn,
                 guard,
             )
-            .and_then(|v| if v.is_empty() { None } else { Some(v) })
+            .map(|res| {
+                res.and_then(|v| if v.is_empty() { None } else { Some(v) })
+            })
         }) {
             res.prefix_meta = m;
         } else {
@@ -236,45 +275,59 @@ impl<
         }
 
         if options.include_more_specifics {
-            res.more_specifics = res.more_specifics.map(|p| {
-                p.iter()
-                    .filter_map(|mut r| {
-                        if let Some(m) = self.get_value(
-                            r.prefix.into(),
-                            options.mui,
-                            options.include_withdrawn,
-                            guard,
-                        ) {
-                            r.meta = m;
-                            Some(r)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            });
+            res.more_specifics = res
+                .more_specifics
+                .map(|p| {
+                    p.iter()
+                        .filter_map(|mut r| {
+                            if let Ok(mm) = self.get_value(
+                                r.prefix.into(),
+                                options.mui,
+                                options.include_withdrawn,
+                                guard,
+                            ) {
+                                if let Some(m) = mm {
+                                    r.meta = m;
+                                    Some(Ok(r))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                Some(Err(FatalError))
+                            }
+                        })
+                        .collect::<FatalResult<RecordSet<M>>>()
+                })
+                .transpose()?;
         }
         if options.include_less_specifics {
-            res.less_specifics = res.less_specifics.map(|p| {
-                p.iter()
-                    .filter_map(|mut r| {
-                        if let Some(m) = self.get_value(
-                            r.prefix.into(),
-                            options.mui,
-                            options.include_withdrawn,
-                            guard,
-                        ) {
-                            r.meta = m;
-                            Some(r)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            });
+            res.less_specifics = res
+                .less_specifics
+                .map(|p| {
+                    p.iter()
+                        .filter_map(|mut r| {
+                            if let Ok(mm) = self.get_value(
+                                r.prefix.into(),
+                                options.mui,
+                                options.include_withdrawn,
+                                guard,
+                            ) {
+                                if let Some(m) = mm {
+                                    r.meta = m;
+                                    Some(Ok(r))
+                                } else {
+                                    None
+                                }
+                            } else {
+                                Some(Err(FatalError))
+                            }
+                        })
+                        .collect::<FatalResult<RecordSet<M>>>()
+                })
+                .transpose()?;
         }
 
-        res
+        Ok(res)
     }
 
     pub(crate) fn best_path(

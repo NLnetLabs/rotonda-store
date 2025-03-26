@@ -3,12 +3,12 @@ use std::path::Path;
 use inetnum::addr::Prefix;
 use log::{info, trace};
 
-use crate::errors::FatalError;
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
 use crate::stats::{Counters, UpsertCounters, UpsertReport};
 use crate::{epoch, Guard};
 
+use crate::errors::{FatalError, FatalResult};
 use crate::prefix_cht::cht::PrefixCht;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
 use crate::types::{PrefixId, RouteStatus};
@@ -68,12 +68,22 @@ impl<
         let persist_tree = match config.persist_strategy() {
             PersistStrategy::MemoryOnly => None,
             _ => {
-                let persist_path =
-                    &config.persist_path().unwrap_or_else(|| {
-                        "Missing persistence path".to_string()
-                    });
-                let pp_ref = &Path::new(persist_path);
-                Some(LsmTree::new(pp_ref))
+                let persist_path = if let Some(pp) = config.persist_path() {
+                    pp
+                } else {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Missing persistence path".to_string(),
+                    )
+                    .into());
+                };
+                let pp_ref = &Path::new(&persist_path);
+                Some(LsmTree::new(pp_ref).map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Cannot create persistence store",
+                    )
+                })?)
             }
         };
 
@@ -223,12 +233,20 @@ impl<
                     let stored_prefixes = p_tree
                         .get_records_with_keys_for_prefix_mui(prefix, mui);
 
-                    for s in stored_prefixes {
-                        let header = ValueHeader {
-                            ltime,
-                            status: RouteStatus::Withdrawn,
-                        };
-                        p_tree.rewrite_header_for_record(header, &s);
+                    for rkv in stored_prefixes {
+                        if let Ok(r) = rkv {
+                            let header = ValueHeader {
+                                ltime,
+                                status: RouteStatus::Withdrawn,
+                            };
+                            p_tree
+                                .rewrite_header_for_record(header, &r)
+                                .map_err(|_| {
+                                    PrefixStoreError::StoreNotReadyError
+                                })?;
+                        } else {
+                            return Err(PrefixStoreError::StoreNotReadyError);
+                        }
                     }
                 } else {
                     return Err(PrefixStoreError::StoreNotReadyError);
@@ -272,14 +290,14 @@ impl<
         prefix: PrefixId<AF>,
         mui: u32,
         ltime: u64,
-    ) -> Result<(), PrefixStoreError> {
+    ) -> FatalResult<()> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
                 let (stored_prefix, exists) =
                     self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
-                    return Err(PrefixStoreError::PrefixNotFound);
+                    return Err(FatalError);
                 }
                 stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
             }
@@ -292,10 +310,11 @@ impl<
                             ltime,
                             status: RouteStatus::Active,
                         };
-                        p_tree.rewrite_header_for_record(header, &record_b);
+                        p_tree
+                            .rewrite_header_for_record(header, &record_b)?;
                     }
                 } else {
-                    return Err(PrefixStoreError::StoreNotReadyError);
+                    return Err(FatalError);
                 }
             }
             PersistStrategy::PersistHistory => {
@@ -304,7 +323,7 @@ impl<
                     self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
 
                 if !exists {
-                    return Err(PrefixStoreError::PrefixNotFound);
+                    return Err(FatalError);
                 }
                 stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
 
@@ -316,7 +335,7 @@ impl<
                         if let Some(p_tree) = self.persist_tree.as_ref() {
                             p_tree
                         } else {
-                            return Err(PrefixStoreError::StoreNotReadyError);
+                            return Err(FatalError);
                         };
 
                     // Here we are keeping persisted history, so no removal of
@@ -392,13 +411,14 @@ impl<
     pub fn prefixes_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = (Prefix, Vec<Record<M>>)> + 'a {
+    ) -> impl Iterator<Item = FatalResult<(Prefix, Vec<Record<M>>)>> + 'a
+    {
         self.tree_bitmap.prefixes_iter().map(|p| {
-            (
-                p,
-                self.get_value(p.into(), None, true, guard)
-                    .unwrap_or_default(),
-            )
+            if let Ok(r) = self.get_value(p.into(), None, true, guard) {
+                Ok((p, r.unwrap_or_default()))
+            } else {
+                Err(FatalError)
+            }
         })
     }
 
@@ -410,39 +430,44 @@ impl<
 
     pub(crate) fn persist_prefixes_iter(
         &self,
-    ) -> impl Iterator<Item = Result<(Prefix, Vec<Record<M>>), FatalError>> + '_
+    ) -> impl Iterator<Item = FatalResult<(Prefix, Vec<Record<M>>)>> + '_
     {
-        if let Some(tree) = &self.persist_tree {
-            Some(tree.prefixes_iter().map(|recs| {
-                if let Ok(pfx) = ZeroCopyRecord::<AF>::from_bytes(&recs[0]) {
-                    Ok((
-                        Prefix::from(pfx.prefix),
-                        recs.iter()
-                            .filter_map(|rec| {
-                                if let Ok(rec) =
-                                    ZeroCopyRecord::<AF>::from_bytes(rec)
-                                {
-                                    Some(Record {
-                                        multi_uniq_id: rec.multi_uniq_id,
-                                        ltime: rec.ltime,
-                                        status: rec.status,
-                                        meta: rec.meta.to_vec().into(),
-                                    })
+        self.persist_tree
+            .as_ref()
+            .map(|tree| {
+                tree.prefixes_iter().map(|recs| {
+                    if let Some(Ok(first_rec)) = recs.first() {
+                        if let Ok(pfx) =
+                            ZeroCopyRecord::<AF>::from_bytes(first_rec)
+                        {
+                            let mut rec_vec: Vec<Record<M>> = vec![];
+                            for res_rec in recs.iter() {
+                                if let Ok(rec) = res_rec {
+                                    if let Ok(rec) =
+                                        ZeroCopyRecord::<AF>::from_bytes(rec)
+                                    {
+                                        rec_vec.push(Record {
+                                            multi_uniq_id: rec.multi_uniq_id,
+                                            ltime: rec.ltime,
+                                            status: rec.status,
+                                            meta: rec.meta.to_vec().into(),
+                                        });
+                                    }
                                 } else {
-                                    None
+                                    return Err(FatalError);
                                 }
-                            })
-                            .collect::<Vec<Record<M>>>(),
-                    ))
-                } else {
-                    Err(FatalError)
-                }
-            }))
-        } else {
-            None
-        }
-        .into_iter()
-        .flatten()
+                            }
+                            Ok((Prefix::from(pfx.prefix), rec_vec))
+                        } else {
+                            Err(FatalError)
+                        }
+                    } else {
+                        Err(FatalError)
+                    }
+                })
+            })
+            .into_iter()
+            .flatten()
     }
 
     pub(crate) fn flush_to_disk(&self) -> Result<(), PrefixStoreError> {

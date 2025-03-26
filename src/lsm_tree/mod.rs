@@ -51,12 +51,12 @@ pub(crate) trait KeySize<AF: AddressFamily, const KEY_SIZE: usize>:
             .map_err(|_| FatalError)
     }
 
-    fn _short_key(bytes: &[u8]) -> &ShortKey<AF> {
-        trace!("short key from bytes {:?}", bytes);
-        let s_b = &bytes[..(AF::BITS as usize / 8) + 6];
-        trace!("short key {:?}", s_b);
-        ShortKey::try_ref_from_prefix(bytes).unwrap().0
-    }
+    // fn _short_key(bytes: &[u8]) -> &ShortKey<AF> {
+    //     trace!("short key from bytes {:?}", bytes);
+    //     let s_b = &bytes[..(AF::BITS as usize / 8) + 6];
+    //     trace!("short key {:?}", s_b);
+    //     ShortKey::try_ref_from_prefix(bytes).unwrap().0
+    // }
 }
 
 #[derive(Debug, KnownLayout, Immutable, FromBytes, Unaligned, IntoBytes)]
@@ -87,17 +87,6 @@ pub struct LongKey<AF: AddressFamily> {
 impl<AF: AddressFamily, const KEY_SIZE: usize> KeySize<AF, KEY_SIZE>
     for ShortKey<AF>
 {
-    // fn new_write_key(
-    //     prefix: PrefixId<AF>,
-    //     mui: u32,
-    //     _ltime: u64,
-    //     _status: RouteStatus,
-    // ) -> [u8; KEY_SIZE] {
-    //     *Self::from((prefix, mui))
-    //         .as_bytes()
-    //         .first_chunk::<KEY_SIZE>()
-    //         .unwrap()
-    // }
 }
 
 impl<AF: AddressFamily> From<(PrefixId<AF>, u32)> for ShortKey<AF> {
@@ -112,17 +101,6 @@ impl<AF: AddressFamily> From<(PrefixId<AF>, u32)> for ShortKey<AF> {
 impl<AF: AddressFamily, const KEY_SIZE: usize> KeySize<AF, KEY_SIZE>
     for LongKey<AF>
 {
-    // fn new_write_key(
-    //     prefix: PrefixId<AF>,
-    //     mui: u32,
-    //     ltime: u64,
-    //     status: RouteStatus,
-    // ) -> [u8; KEY_SIZE] {
-    //     *Self::from((prefix, mui, ltime, status))
-    //         .as_bytes()
-    //         .first_chunk::<KEY_SIZE>()
-    //         .unwrap()
-    // }
 }
 
 impl<AF: AddressFamily> From<(PrefixId<AF>, u32, u64, RouteStatus)>
@@ -158,12 +136,16 @@ pub struct LsmTree<
 impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
     LsmTree<AF, K, KEY_SIZE>
 {
-    pub fn new(persist_path: &Path) -> LsmTree<AF, K, KEY_SIZE> {
-        LsmTree::<AF, K, KEY_SIZE> {
-            tree: lsm_tree::Config::new(persist_path).open().unwrap(),
-            counters: Counters::default(),
-            _af: PhantomData,
-            _k: PhantomData,
+    pub fn new(persist_path: &Path) -> FatalResult<LsmTree<AF, K, KEY_SIZE>> {
+        if let Ok(tree) = lsm_tree::Config::new(persist_path).open() {
+            Ok(LsmTree::<AF, K, KEY_SIZE> {
+                tree,
+                counters: Counters::default(),
+                _af: PhantomData,
+                _k: PhantomData,
+            })
+        } else {
+            Err(FatalError)
         }
     }
 
@@ -299,7 +281,7 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
                                 );
                                 Some(Ok(bytes))
                             } else {
-                                return Some(Err(FatalError));
+                                Some(Err(FatalError))
                             }
                         })
                         .transpose()
@@ -371,14 +353,15 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
         let key_b = ShortKey::from((prefix, mui));
         let mut res: FatalResult<Vec<u8>> = Err(FatalError);
 
-        for rkv in self.tree.prefix(key_b.as_bytes(), None, None).into_iter()
-        {
+        for rkv in self.tree.prefix(key_b.as_bytes(), None, None) {
             if let Ok(kvs) = rkv {
                 let kv = [kvs.0, kvs.1].concat();
                 if let Ok(h) = K::header(&kv) {
                     if let Ok(r) = &res {
-                        if K::header(&r).unwrap().ltime < h.ltime {
-                            res = Ok(kv);
+                        if let Ok(h_res) = K::header(r) {
+                            if h_res.ltime < h.ltime {
+                                res = Ok(kv);
+                            }
                         }
                     } else {
                         res = Ok(kv);
@@ -398,14 +381,17 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
-    ) -> Vec<Vec<u8>> {
+    ) -> Vec<FatalResult<Vec<u8>>> {
         let key_b = ShortKey::from((prefix, mui));
 
         (*self.tree.prefix(key_b.as_bytes(), None, None))
             .into_iter()
-            .map(|kv| {
-                let kv = kv.unwrap();
-                [kv.0, kv.1].concat()
+            .map(|rkv| {
+                if let Ok(kv) = rkv {
+                    Ok([kv.0, kv.1].concat())
+                } else {
+                    Err(FatalError)
+                }
             })
             .collect::<Vec<_>>()
     }
@@ -698,9 +684,9 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
         &self,
         header: ValueHeader,
         record_b: &[u8],
-    ) {
+    ) -> FatalResult<()> {
         let record = ZeroCopyRecord::<AF>::try_ref_from_prefix(record_b)
-            .unwrap()
+            .map_err(|_| FatalError)?
             .0;
         let key = ShortKey::from((record.prefix, record.multi_uniq_id));
         trace!("insert key {:?}", key);
@@ -711,6 +697,8 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
             .extend_from_slice(record.meta.as_ref());
 
         self.insert(key.as_bytes(), header.as_bytes());
+
+        Ok(())
     }
 
     pub(crate) fn insert_empty_record(
@@ -728,7 +716,7 @@ impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
 
     pub(crate) fn prefixes_iter(
         &self,
-    ) -> impl Iterator<Item = Vec<Vec<u8>>> + '_ {
+    ) -> impl Iterator<Item = Vec<FatalResult<Vec<u8>>>> + '_ {
         PersistedPrefixIter::<AF, K, KEY_SIZE> {
             tree_iter: self.tree.iter(None, None),
             cur_rec: None,
@@ -805,27 +793,19 @@ impl<
 pub(crate) struct PersistedPrefixIter<
     AF: AddressFamily,
     K: KeySize<AF, KEY_SIZE>,
-    // M: Meta,
-    // const PREFIX_SIZE: usize,
     const KEY_SIZE: usize,
 > {
-    cur_rec: Option<Vec<Vec<u8>>>,
+    cur_rec: Option<Vec<FatalResult<Vec<u8>>>>,
     tree_iter:
         Box<dyn DoubleEndedIterator<Item = Result<KvPair, lsm_tree::Error>>>,
     _af: PhantomData<AF>,
-    // _m: PhantomData<M>,
     _k: PhantomData<K>,
 }
 
-impl<
-        AF: AddressFamily,
-        K: KeySize<AF, KEY_SIZE>,
-        // M: Meta,
-        // const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    > Iterator for PersistedPrefixIter<AF, K, KEY_SIZE>
+impl<AF: AddressFamily, K: KeySize<AF, KEY_SIZE>, const KEY_SIZE: usize>
+    Iterator for PersistedPrefixIter<AF, K, KEY_SIZE>
 {
-    type Item = Vec<Vec<u8>>;
+    type Item = Vec<FatalResult<Vec<u8>>>;
     fn next(&mut self) -> Option<Self::Item> {
         let rec;
 
@@ -843,20 +823,7 @@ impl<
                     return None;
                 }
                 Some(Ok((k, v))) => {
-                    // let p_k =
-                    //     PersistTree::<AF, K, PREFIX_SIZE, KEY_SIZE>::parse_key(
-                    //         k.as_ref(),
-                    //     );
-                    // rec = Some((
-                    //     p_k.0,
-                    //     vec![PublicRecord::<M> {
-                    //         multi_uniq_id: p_k.1,
-                    //         ltime: p_k.2,
-                    //         status: p_k.3,
-                    //         meta: v.to_vec().into(),
-                    //     }],
-                    // ));
-                    rec = Some(vec![[k, v].concat()]);
+                    rec = Some(vec![Ok([k, v].concat())]);
                 }
                 Some(Err(_)) => {
                     // This is NOT GOOD. Both that it happens, and that we are
@@ -868,35 +835,26 @@ impl<
         };
 
         if let Some(mut r_rec) = rec {
-            let outer_pfx = K::header(&r_rec[0]).unwrap().prefix;
+            let outer_pfx = if let Some(Ok(Ok(rr))) =
+                r_rec.first().map(|v| v.as_ref().map(|h| K::header(h)))
+            {
+                rr.prefix
+            } else {
+                return Some(vec![Err(FatalError)]);
+            };
 
             for (k, v) in self.tree_iter.by_ref().flatten() {
-                // let (pfx, mui, ltime, status) =
-                //     PersistTree::<AF, PREFIX_SIZE, KEY_SIZE>::parse_key(
-                //         k.as_ref(),
-                //     );
                 let header = K::header(&k);
 
-                if header.unwrap().prefix == outer_pfx {
-                    r_rec.push([k, v].concat());
-                    // r_rec.1.push(PublicRecord {
-                    //     meta: v.to_vec().into(),
-                    //     multi_uniq_id: header.mui.into(),
-                    //     ltime: header.ltime.into(),
-                    //     status: header.status,
-                    // });
+                if let Ok(h) = header {
+                    if h.prefix == outer_pfx {
+                        r_rec.push(Ok([k, v].concat()));
+                    } else {
+                        self.cur_rec = Some(vec![Ok([k, v].concat())]);
+                        break;
+                    }
                 } else {
-                    self.cur_rec = Some(vec![[k, v].concat()]);
-                    // self.cur_rec = Some((
-                    //     header.prefix,
-                    //     vec![PublicRecord {
-                    //         meta: v.to_vec().into(),
-                    //         multi_uniq_id: header.mui.into(),
-                    //         ltime: header.ltime.into(),
-                    //         status: header.status.into(),
-                    //     }],
-                    // ));
-                    break;
+                    r_rec.push(Err(FatalError));
                 }
             }
 

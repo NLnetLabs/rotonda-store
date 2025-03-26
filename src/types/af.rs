@@ -1,5 +1,5 @@
 use log::trace;
-use zerocopy::{IntoBytes, NetworkEndian, U128, U32};
+use zerocopy::{NetworkEndian, U128, U32};
 
 use crate::types::BitSpan;
 
@@ -78,7 +78,7 @@ pub trait AddressFamily:
     // finding node_ids (always zero for 0/0).
     fn checked_shr_or_zero(self, rhs: u32) -> Self;
 
-    fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE];
+    // fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE];
 }
 
 //-------------- Ipv4 Type --------------------------------------------------
@@ -216,12 +216,12 @@ impl AddressFamily for IPv4 {
         self >> U32::<NetworkEndian>::from(rhs)
     }
 
-    fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
-        *self.as_bytes().first_chunk::<PREFIX_SIZE>().unwrap()
-        // *u32::to_be_bytes(*self)
-        //     .first_chunk::<PREFIX_SIZE>()
-        //     .unwrap()
-    }
+    // fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
+    //     *self.as_bytes().first_chunk::<PREFIX_SIZE>().unwrap()
+    //     // *u32::to_be_bytes(*self)
+    //     //     .first_chunk::<PREFIX_SIZE>()
+    //     //     .unwrap()
+    // }
 }
 
 //-------------- Ipv6 Type --------------------------------------------------
@@ -360,12 +360,12 @@ impl AddressFamily for IPv6 {
         self >> U128::from(rhs as u128)
     }
 
-    fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
-        // *u128::to_be_bytes(*self)
-        //     .first_chunk::<PREFIX_SIZE>()
-        //     .unwrap()
-        *self.as_bytes().first_chunk::<PREFIX_SIZE>().unwrap()
-    }
+    // fn to_be_bytes<const PREFIX_SIZE: usize>(&self) -> [u8; PREFIX_SIZE] {
+    //     // *u128::to_be_bytes(*self)
+    //     //     .first_chunk::<PREFIX_SIZE>()
+    //     //     .unwrap()
+    //     *self.as_bytes().first_chunk::<PREFIX_SIZE>().unwrap()
+    // }
 
     fn from_u8(value: u8) -> Self {
         IPv6::from([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, value])

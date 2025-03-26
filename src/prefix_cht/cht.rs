@@ -48,10 +48,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             // We're using lock(), which returns an Error only if another
             // thread has panicked while holding the lock. In that situtation
             // we are certainly not going to write anything.
-            if let Ok(guard) = self
-                .0
-                .lock()
-                .or_else(|_| Err(PrefixStoreError::ExternalError))
+            if let Ok(guard) =
+                self.0.lock().map_err(|_| PrefixStoreError::ExternalError)
             {
                 return Ok((guard, retry_count));
             }

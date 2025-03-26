@@ -99,7 +99,7 @@ impl fmt::Display for PrefixStoreError {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone)]
 pub struct FatalError;
 
 impl std::fmt::Display for FatalError {
@@ -113,3 +113,17 @@ impl std::fmt::Display for FatalError {
 }
 
 pub type FatalResult<T> = Result<T, FatalError>;
+
+impl std::error::Error for FatalError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        None
+    }
+
+    fn description(&self) -> &str {
+        "description() is deprecated; use Display"
+    }
+
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        self.source()
+    }
+}

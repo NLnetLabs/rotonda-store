@@ -79,7 +79,7 @@ pub(crate) struct ZeroCopyRecord<AF: AddressFamily> {
 
 impl<AF: AddressFamily> ZeroCopyRecord<AF> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
-        Self::try_ref_from_bytes(b).or_else(|_| Err(FatalError))
+        Self::try_ref_from_bytes(b).map_err(|_| FatalError)
     }
 }
 

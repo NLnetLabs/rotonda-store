@@ -7,6 +7,13 @@ use crate::{
     TreeBitMap,
 };
 
+// This iterator is unused right now: all iterators go over the in-memory
+// treebitmap, and retreive metadata based on the persist_strategy per prefix
+// from the relevant tree.
+//
+// However this tree may ultimately be more efficient for the MemoryOnly
+// strategy.
+
 pub(crate) struct _MoreSpecificPrefixIter<
     'a,
     AF: AddressFamily,

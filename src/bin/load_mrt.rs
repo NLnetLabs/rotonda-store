@@ -593,6 +593,7 @@ fn exec_for_store<'a, C: Config + Sync>(
             let values = store
                 .unwrap()
                 .get_records_for_prefix(&pfx, None, false)
+                .unwrap()
                 .unwrap();
             if values.is_empty() {
                 eprintln!("Found empty prefix on disk");
@@ -604,6 +605,7 @@ fn exec_for_store<'a, C: Config + Sync>(
                 let recs = store
                     .unwrap()
                     .get_records_for_prefix(&pfx, None, false)
+                    .unwrap()
                     .unwrap();
                 println!("LEN {} prefix: {}", max_len, pfx);
                 for rec in recs {

@@ -235,15 +235,17 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
             default_route_exists: AtomicBool::new(false),
         };
 
-        let _retry_count = tree_bitmap.store_node(
-            StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
-            0_u32,
-            TreeBitMapNode {
-                ptrbitarr: AtomicPtrBitArr(AtomicU16::new(0)),
-                pfxbitarr: AtomicPfxBitArr(AtomicU32::new(0)),
-                _af: PhantomData,
-            },
-        )?;
+        let _retry_count = tree_bitmap
+            .store_node(
+                StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
+                0_u32,
+                TreeBitMapNode {
+                    ptrbitarr: AtomicPtrBitArr(AtomicU16::new(0)),
+                    pfxbitarr: AtomicPfxBitArr(AtomicU32::new(0)),
+                    _af: PhantomData,
+                },
+            )
+            .map_err(|_| "Cannot create root for in memory tree")?;
 
         Ok(tree_bitmap)
     }
@@ -498,9 +500,11 @@ Giving up this node. This shouldn't happen!",
     ) -> Result<(), PrefixStoreError> {
         let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
-        new.remove(mui);
+        let mut new = unsafe { current.as_ref() }
+            .ok_or(PrefixStoreError::StoreNotReadyError)?
+            .clone();
 
+        new.remove(mui);
         self.update_withdrawn_muis_bmin(current, new, guard)
     }
 
@@ -511,7 +515,10 @@ Giving up this node. This shouldn't happen!",
     ) -> Result<(), PrefixStoreError> {
         let current = self.withdrawn_muis_bmin.load(Ordering::Acquire, guard);
 
-        let mut new = unsafe { current.as_ref() }.unwrap().clone();
+        let mut new = unsafe { current.as_ref() }
+            .ok_or(PrefixStoreError::StoreNotReadyError)?
+            .clone();
+
         new.insert(mui);
 
         self.update_withdrawn_muis_bmin(current, new, guard)
@@ -533,8 +540,9 @@ Giving up this node. This shouldn't happen!",
             ) {
                 Ok(_) => return Ok(()),
                 Err(updated) => {
-                    new =
-                        unsafe { updated.current.as_ref() }.unwrap().clone();
+                    new = unsafe { updated.current.as_ref() }
+                        .ok_or(PrefixStoreError::StoreNotReadyError)?
+                        .clone();
                 }
             }
         }
@@ -844,7 +852,6 @@ Giving up this node. This shouldn't happen!",
                     return None;
                 }
                 Some(this_node) => {
-                    // node = this_node;
                     // early return if the mui is not in the index
                     // stored in this node, meaning the mui does not
                     // appear anywhere in the sub-tree formed from

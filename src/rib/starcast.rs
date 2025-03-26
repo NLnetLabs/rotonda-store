@@ -4,7 +4,7 @@ use rand::prelude::*;
 
 use crate::{
     epoch,
-    errors::FatalError,
+    errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
@@ -122,7 +122,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         search_pfx: &Prefix,
         options: &MatchOptions,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FatalResult<QueryResult<M>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
                 PrefixId::<IPv4>::new(
@@ -275,7 +275,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FatalResult<QueryResult<M>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.more_specifics_from(
                 PrefixId::<IPv4>::new(
@@ -315,7 +315,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> QueryResult<M> {
+    ) -> FatalResult<QueryResult<M>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.less_specifics_from(
                 PrefixId::<IPv4>::new(
@@ -355,7 +355,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
         let (left, right) = match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => (
                 Some(
@@ -369,7 +369,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
                             include_withdrawn,
                             guard,
                         )
-                        .map(PrefixRecord::from),
+                        .map(|r| r.map(PrefixRecord::from)),
                 ),
                 None,
             ),
@@ -386,7 +386,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
                             include_withdrawn,
                             guard,
                         )
-                        .map(PrefixRecord::from),
+                        .map(|r| r.map(PrefixRecord::from)),
                 ),
             ),
         };
@@ -413,7 +413,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         mui: Option<u32>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
         let (left, right) = match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => (
                 Some(
@@ -427,7 +427,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
                             include_withdrawn,
                             guard,
                         )
-                        .map(PrefixRecord::from),
+                        .map(|r| r.map(PrefixRecord::from)),
                 ),
                 None,
             ),
@@ -444,7 +444,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
                             include_withdrawn,
                             guard,
                         )
-                        .map(PrefixRecord::from),
+                        .map(|r| r.map(PrefixRecord::from)),
                 ),
             ),
         };
@@ -466,7 +466,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         mui: u32,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
         if self.v4.mui_is_withdrawn(mui, guard) && !include_withdrawn {
             None
         } else {
@@ -481,7 +481,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
                         include_withdrawn,
                         guard,
                     )
-                    .map(PrefixRecord::from),
+                    .map(|r| r.map(PrefixRecord::from)),
             )
         }
         .into_iter()
@@ -500,7 +500,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         mui: u32,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
         if self.v6.mui_is_withdrawn(mui, guard) && !include_withdrawn {
             None
         } else {
@@ -515,7 +515,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
                         include_withdrawn,
                         guard,
                     )
-                    .map(PrefixRecord::from),
+                    .map(|r| r.map(PrefixRecord::from)),
             )
         }
         .into_iter()
@@ -555,11 +555,15 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
         self.v4
             .prefixes_iter(guard)
-            .map(PrefixRecord::from)
-            .chain(self.v6.prefixes_iter(guard).map(PrefixRecord::from))
+            .map(|r| r.map(PrefixRecord::from))
+            .chain(
+                self.v6
+                    .prefixes_iter(guard)
+                    .map(|r| r.map(PrefixRecord::from)),
+            )
     }
 
     /// Request an iterator over all IPv4 prefixes in the RIB.
@@ -568,8 +572,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     pub fn prefixes_iter_v4(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
-        self.v4.prefixes_iter(guard).map(PrefixRecord::from)
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+        self.v4
+            .prefixes_iter(guard)
+            .map(|r| r.map(PrefixRecord::from))
     }
 
     /// Request an iterator over all IPv6 prefixes in the RIB.
@@ -578,8 +584,10 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     pub fn prefixes_iter_v6(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = PrefixRecord<M>> + 'a {
-        self.v6.prefixes_iter(guard).map(PrefixRecord::from)
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+        self.v6
+            .prefixes_iter(guard)
+            .map(|r| r.map(PrefixRecord::from))
     }
 
     /// Request an iterator over all persisted prefixes.
@@ -679,7 +687,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         prefix: &Prefix,
         mui: u32,
         ltime: u64,
-    ) -> Result<(), PrefixStoreError> {
+    ) -> FatalResult<()> {
         match prefix.addr() {
             std::net::IpAddr::V4(_addr) => {
                 self.v4.mark_mui_as_active_for_prefix(
@@ -901,7 +909,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         prefix: &Prefix,
         mui: Option<u32>,
         include_withdrawn: bool,
-    ) -> Option<Vec<Record<M>>> {
+    ) -> FatalResult<Option<Vec<Record<M>>>> {
         let guard = &epoch::pin();
 
         match prefix.is_v4() {
