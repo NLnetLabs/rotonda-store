@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             include_history: IncludeHistory::None,
                         },
                         guard,
-                    ).unwrap().prefix_meta;
+                    ).unwrap().records;
                             x += 1;
                         }
 

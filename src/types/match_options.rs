@@ -4,6 +4,7 @@ use std::fmt;
 use inetnum::addr::Prefix;
 
 use super::prefix_record::Meta;
+use crate::rib::StarCastRib;
 
 //------------ MatchOptions / MatchType -------------------------------------
 
@@ -38,10 +39,19 @@ pub struct MatchOptions {
     pub include_history: IncludeHistory,
 }
 
+/// Option to set the match type for a prefix match. Type can be Exact,
+/// Longest, or Empty. The match type only applies to the `prefix` and
+/// `records` fields in the [QueryResult] that is returned by a
+/// [StarCastRib::match_prefix()] query.
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 pub enum MatchType {
+    /// Only return the requested prefix, and the associated records, if the
+    /// requested prefix exactly matches the found prefix(es) (if any).
     ExactMatch,
+    /// Return the longest matching prefix for the requested prefix (if
+    /// any). May match the prefix exactly.
     LongestMatch,
+    /// Return the longest matching prefix, or none at all.
     EmptyMatch,
 }
 
@@ -91,7 +101,7 @@ pub struct QueryResult<M: Meta> {
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
-    pub prefix_meta: Vec<Record<M>>,
+    pub records: Vec<Record<M>>,
     /// The less-specifics of the resulting prefix together with their meta
     /// data
     pub less_specifics: Option<RecordSet<M>>,
@@ -105,7 +115,7 @@ impl<M: Meta> QueryResult<M> {
         QueryResult {
             match_type: MatchType::EmptyMatch,
             prefix: None,
-            prefix_meta: vec![],
+            records: vec![],
             less_specifics: None,
             more_specifics: None,
         }
@@ -125,7 +135,7 @@ impl<M: Meta> fmt::Display for QueryResult<M> {
         writeln!(f, "match_type: {}", self.match_type)?;
         writeln!(f, "prefix: {}", pfx_str)?;
         write!(f, "meta: [ ")?;
-        for rec in &self.prefix_meta {
+        for rec in &self.records {
             write!(f, "{},", rec)?;
         }
         writeln!(f, " ]")?;

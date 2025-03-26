@@ -317,7 +317,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
         println!("strategy {:?}", tree_bitmap.persist_strategy());
         println!("PFX {}", res);
         assert_eq!(
-            res.prefix_meta
+            res.records
                 .iter()
                 .find(|m| m.multi_uniq_id == 2)
                 .unwrap()
@@ -510,7 +510,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         println!("RES {:#?}", res);
         assert_eq!(
             res.unwrap()
-                .prefix_meta
+                .records
                 .iter()
                 .find(|m| m.multi_uniq_id == 2)
                 .unwrap()

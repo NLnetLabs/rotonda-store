@@ -611,9 +611,9 @@ mod tests {
             guard,
         )?;
         print!(".pfx {:#?}.", all_recs_for_pfx);
-        assert_eq!(all_recs_for_pfx.prefix_meta.len(), 5);
+        assert_eq!(all_recs_for_pfx.records.len(), 5);
         let wd_rec = all_recs_for_pfx
-            .prefix_meta
+            .records
             .iter()
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
@@ -632,9 +632,9 @@ mod tests {
             },
             guard,
         )?;
-        assert_eq!(active_recs_for_pfx.prefix_meta.len(), 4);
+        assert_eq!(active_recs_for_pfx.records.len(), 4);
         assert!(!active_recs_for_pfx
-            .prefix_meta
+            .records
             .iter()
             .any(|r| r.multi_uniq_id == 1));
 
@@ -823,8 +823,8 @@ mod tests {
         println!("more_specifics match w/o withdrawn #2 {}", more_specifics);
         // We withdrew mui 1 for the requested prefix itself, since mui 2 was
         // already withdrawn above, we're left with 3 records
-        println!("PREFIX META: {:#?}", more_specifics.prefix_meta);
-        assert_eq!(more_specifics.prefix_meta.len(), 3);
+        println!("PREFIX META: {:#?}", more_specifics.records);
+        assert_eq!(more_specifics.records.len(), 3);
 
         let more_specifics = more_specifics.more_specifics.unwrap();
 
@@ -881,7 +881,7 @@ mod tests {
 
         // This prefix should not be found, since we withdrew all records
         // for it.
-        assert!(more_specifics.prefix_meta.is_empty());
+        assert!(more_specifics.records.is_empty());
 
         // ..as a result, its resulting match_type should be EmptyMatch
         assert_eq!(more_specifics.match_type, MatchType::EmptyMatch);
@@ -937,7 +937,7 @@ mod tests {
 
         trace!("{:#?}", query);
 
-        assert_eq!(query.prefix_meta.len(), 5);
+        assert_eq!(query.records.len(), 5);
 
         let less_specifics = query.less_specifics.unwrap();
 

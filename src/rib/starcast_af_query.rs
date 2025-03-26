@@ -130,7 +130,7 @@ impl<
 
         Ok(QueryResult {
             prefix,
-            prefix_meta,
+            records: prefix_meta,
             // prefix.map(|_pfx| {
             //     self.get_value(prefix_id, mui, include_withdrawn, guard)?
             //         .unwrap_or_default()
@@ -169,7 +169,7 @@ impl<
 
         Ok(QueryResult {
             prefix,
-            prefix_meta,
+            records: prefix_meta,
             match_type: MatchType::EmptyMatch,
             less_specifics,
             more_specifics: None,
@@ -268,7 +268,7 @@ impl<
                 res.and_then(|v| if v.is_empty() { None } else { Some(v) })
             })
         }) {
-            res.prefix_meta = m;
+            res.records = m;
         } else {
             res.prefix = None;
             res.match_type = MatchType::EmptyMatch;
@@ -394,7 +394,7 @@ impl<AF: AddressFamily, M: Meta> From<TreeQueryResult<AF>>
         Self {
             match_type: value.match_type,
             prefix: value.prefix.map(|p| p.into()),
-            prefix_meta: vec![],
+            records: vec![],
             less_specifics: value
                 .less_specifics
                 .map(|ls| ls.into_iter().map(|p| (p, vec![])).collect()),
@@ -436,7 +436,7 @@ impl<AF: AddressFamily, M: Meta> From<FamilyQueryResult<AF, M>>
         QueryResult {
             match_type: value.match_type,
             prefix: value.prefix.map(|p| p.into()),
-            prefix_meta: value.prefix_meta,
+            records: value.prefix_meta,
             less_specifics: value
                 .less_specifics
                 .map(|ls| ls.into_iter().collect()),

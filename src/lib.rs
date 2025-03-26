@@ -107,7 +107,7 @@ pub use types::prefix_record;
 /// Error types returned by a RIB
 pub use types::errors;
 
-/// Trait that defines the AFIs 1 (IPv4) and 2 (IPv6)
+/// Trait that defines the AFIs 1 (IPv4) and 2 (IPv6).
 pub use types::af::AddressFamily;
 
 /// The underlying value (u32) and trait impl for AFI 1.
