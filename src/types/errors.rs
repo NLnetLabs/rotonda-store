@@ -1,6 +1,8 @@
 use std::fmt;
 
-/// Possible errors returned by methods on a RIB
+/// Possible errors returned by methods on a RIB. Most of these errors are
+// recoverable, there is one variant [PrefixStoreError::FatalError] that is
+// unrecoverable, like the stand-alone type.
 #[derive(Debug, PartialEq, Eq)]
 pub enum PrefixStoreError {
     /// There is too much contention while creating a node: the store has
@@ -34,9 +36,6 @@ pub enum PrefixStoreError {
     /// A record was specifically requested from the in-memory data structure,
     /// but the record is not in memory. It may be persisted to disk.
     RecordNotInMemory,
-    /// An error external to to our execution happened, most notably another
-    ///thread panicking while trying to acquire a lock.
-    ExternalError,
     /// The method returning this error was trying to persist records to disk
     /// but failed. Retrying is safe, but may be yield the same result.
     PersistFailed,
@@ -92,13 +91,6 @@ impl fmt::Display for PrefixStoreError {
                     persisted."
                 )
             }
-            PrefixStoreError::ExternalError => {
-                write!(
-                f,
-                "Error: An action could not be completed, due to another \
-                thread panicking."
-            )
-            }
             PrefixStoreError::StatusUnknown => {
                 write!(
                     f,
@@ -118,6 +110,9 @@ impl fmt::Display for PrefixStoreError {
     }
 }
 
+/// An unrecoverable error, that can occur during disk I/O or writing memory.
+/// All data in the store should be considered corrupy and the application
+/// receiving this error should probably terminate.
 #[derive(Debug, Copy, Clone)]
 pub struct FatalError;
 
