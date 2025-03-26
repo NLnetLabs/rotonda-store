@@ -4,6 +4,7 @@ use zerocopy::{NetworkEndian, U128, U32};
 use crate::types::BitSpan;
 
 //------------ AddressFamily (trait) ----------------------------------------
+//
 /// The address family of an IP address as a Trait.
 ///
 /// The idea of this trait is that each family will have a separate type to be

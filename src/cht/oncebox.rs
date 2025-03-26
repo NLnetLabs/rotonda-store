@@ -2,6 +2,12 @@ use std::ptr::null_mut;
 use std::slice;
 use std::sync::atomic::{AtomicPtr, Ordering};
 
+//------------ OnceBox -------------------------------------------------------
+//
+// Create an atomic pointer once, never to be modified. The pointee can be
+// changed, if enough considerations around atomically updating values are
+// taken into account. Used by the Chained Hash Table (Cht) in `cht`.
+
 #[derive(Debug, Default)]
 pub struct OnceBox<T> {
     ptr: AtomicPtr<T>,
@@ -60,6 +66,10 @@ impl<T> Drop for OnceBox<T> {
         }
     }
 }
+
+//------------ OnceBoxSlice --------------------------------------------------
+//
+// A slice of OnceBoxes, subject to the same constraints. Used in Cht.
 
 #[derive(Debug, Default)]
 pub(crate) struct OnceBoxSlice<T> {

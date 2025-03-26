@@ -660,11 +660,6 @@ impl<AF: AddressFamily> NodeId<AF> {
         self.bits
     }
 
-    pub fn set_len(mut self, len: u8) -> Self {
-        self.len = len;
-        self
-    }
-
     pub(crate) fn add_to_len(mut self, len: u8) -> Self {
         self.len += len;
         self
