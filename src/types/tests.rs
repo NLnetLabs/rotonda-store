@@ -5,19 +5,18 @@ use std::error::Error;
 
 #[test]
 fn test_af_1() -> Result<(), Box<dyn Error>> {
-    use crate::tree_bitmap::StrideNodeId;
+    use crate::tree_bitmap::NodeId;
     use crate::types::BitSpan;
     use crate::AddressFamily;
     use crate::IPv4;
 
     let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111.into();
-    let base_prefix =
-        StrideNodeId::dangerously_new_with_id_as_is(bit_addr, 32);
+    let base_prefix = NodeId::dangerously_new_with_id_as_is(bit_addr, 32);
 
     assert_eq!(base_prefix.bits(), bit_addr);
     assert_eq!(base_prefix.truncate_to_len().bits(), base_prefix.bits());
     assert_eq!(
-        StrideNodeId::dangerously_new_with_id_as_is(
+        NodeId::dangerously_new_with_id_as_is(
             base_prefix.bits().truncate_to_len(28),
             28
         )
@@ -35,10 +34,10 @@ fn test_af_1() -> Result<(), Box<dyn Error>> {
 #[test]
 fn test_af_2() -> Result<(), Box<dyn Error>> {
     use crate::IPv4;
-    use crate::{tree_bitmap::StrideNodeId, types::BitSpan};
+    use crate::{tree_bitmap::NodeId, types::BitSpan};
 
     let bit_addr: IPv4 = 0b1111_1111_1111_1111_1111_1111_1111_1111.into();
-    let nu_prefix = StrideNodeId::dangerously_new_with_id_as_is(bit_addr, 8);
+    let nu_prefix = NodeId::dangerously_new_with_id_as_is(bit_addr, 8);
 
     assert_eq!(nu_prefix.bits(), bit_addr);
     assert_eq!(

@@ -122,7 +122,7 @@ impl<
                     }
                     report.cas_count += retry_count as usize;
                     if !exists {
-                        self.counters.inc_prefixes_count(prefix.get_len());
+                        self.counters.inc_prefixes_count(prefix.len());
                         report.prefix_new = true;
                     }
                     report

@@ -1,5 +1,7 @@
 use crate::rib::BIT_SPAN_SIZE;
 
+//------------ BitSpan -------------------------------------------------------
+
 // A bitspan is a bunch of bits representing the last stride in a NodeId
 // or PrefixId, as such it can have a length of 1, 2, or 3 bits, in a stride
 // length of 4 bits (which is the hard-coded value for all of the store

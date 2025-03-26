@@ -81,7 +81,7 @@ where
     // Iterate over the more specific prefixes ids contained in this node
     pub(crate) fn more_specific_pfx_iter(
         &self,
-        base_prefix: StrideNodeId<AF>,
+        base_prefix: NodeId<AF>,
         start_bs: BitSpan,
     ) -> NodeMoreSpecificsPrefixIter<AF> {
         debug_assert!(start_bs.check());
@@ -95,7 +95,7 @@ where
     // base_prefix and corresponding bit_span.
     pub(crate) fn more_specific_ptr_iter(
         &self,
-        base_prefix: StrideNodeId<AF>,
+        base_prefix: NodeId<AF>,
         start_bs: BitSpan,
     ) -> NodeMoreSpecificChildIter<AF> {
         debug_assert!(start_bs.check());
@@ -128,7 +128,7 @@ where
         bit_span: BitSpan,
         // all the bits of the search prefix, but with the length set to
         // the length of this stride. So bits are set beyond its length.
-        base_prefix: StrideNodeId<AF>,
+        base_prefix: NodeId<AF>,
         // stride_len: u8,
         is_last_stride: bool,
     ) -> (NewNodeOrIndex<AF>, u32) {
@@ -332,7 +332,7 @@ type PtrBitArr = u16;
 
 #[derive(Debug, Copy, Clone)]
 pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily> {
-    base_prefix: StrideNodeId<AF>,
+    base_prefix: NodeId<AF>,
     bitrange: PtrBitArr,
     start_bs: BitSpan,
     start_cursor: u8,
@@ -341,7 +341,7 @@ pub(crate) struct NodeMoreSpecificChildIter<AF: AddressFamily> {
 impl<AF: AddressFamily> std::iter::Iterator
     for NodeMoreSpecificChildIter<AF>
 {
-    type Item = StrideNodeId<AF>;
+    type Item = NodeId<AF>;
     fn next(&mut self) -> Option<Self::Item> {
         if self.bitrange == 0 {
             trace!("empty ptrbitarr. This iterator is done.");
@@ -563,7 +563,7 @@ pub(crate) fn ptr_range(ptrbitarr: u16, bs: BitSpan) -> (u16, u8) {
 // to go over a different amount of 1 << (5 - 4) = 2 iterations to reap the
 // next bit_spans of 0010 0 and 0010 1.
 pub(crate) struct NodeMoreSpecificsPrefixIter<AF: AddressFamily> {
-    base_prefix: StrideNodeId<AF>,
+    base_prefix: NodeId<AF>,
     pfxbitarr: u32,
 }
 
@@ -614,20 +614,26 @@ where
 
 pub(crate) enum NewNodeOrIndex<AF: AddressFamily> {
     NewNode(TreeBitMapNode<AF>),
-    ExistingNode(StrideNodeId<AF>),
+    ExistingNode(NodeId<AF>),
     NewPrefix,
     ExistingPrefix,
 }
 
-//--------------------- Per-Stride-Node-Id Type -----------------------------
+//--------------------- NodeId -----------------------------------------------
+
+// The type that acts as the id for a node in the treebitmap and the node CHT.
+// Its data structure is the same as [PrefixId], but its behaviour is subtly
+// different from PrefixId, i.e. a NodeId only exists at a stride boundary,
+// so it always stores multiples of 4 bits. It cannot be converted to/from
+// a Prefix.
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub struct StrideNodeId<AF: AddressFamily> {
+pub struct NodeId<AF: AddressFamily> {
     bits: AF,
     len: u8,
 }
 
-impl<AF: AddressFamily> StrideNodeId<AF> {
+impl<AF: AddressFamily> NodeId<AF> {
     pub(crate) fn dangerously_new_with_id_as_is(
         addr_bits: AF,
         len: u8,
@@ -666,7 +672,7 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
 
     #[inline]
     pub(crate) fn truncate_to_len(self) -> Self {
-        StrideNodeId::new_with_cleaned_id(self.bits, self.len)
+        NodeId::new_with_cleaned_id(self.bits, self.len)
     }
 
     // clean out all bits that are set beyond the len. This function should
@@ -683,23 +689,21 @@ impl<AF: AddressFamily> StrideNodeId<AF> {
     }
 }
 
-impl<AF: AddressFamily> std::fmt::Display for StrideNodeId<AF> {
+impl<AF: AddressFamily> std::fmt::Display for NodeId<AF> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}-{}", self.bits, self.len)
     }
 }
 
-impl<AF: AddressFamily> std::convert::From<StrideNodeId<AF>>
-    for PrefixId<AF>
-{
-    fn from(id: StrideNodeId<AF>) -> Self {
+impl<AF: AddressFamily> std::convert::From<NodeId<AF>> for PrefixId<AF> {
+    fn from(id: NodeId<AF>) -> Self {
         PrefixId::new(id.bits, id.len)
     }
 }
 
-impl<AF: AddressFamily> From<(AF, u8)> for StrideNodeId<AF> {
+impl<AF: AddressFamily> From<(AF, u8)> for NodeId<AF> {
     fn from(value: (AF, u8)) -> Self {
-        StrideNodeId {
+        NodeId {
             bits: value.0,
             len: value.1,
         }

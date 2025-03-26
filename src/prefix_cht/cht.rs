@@ -10,6 +10,7 @@ use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 use crate::cht::{nodeset_size, prev_node_size};
+use crate::errors::{FatalError, FatalResult};
 use crate::prefix_record::Meta;
 use crate::stats::UpsertReport;
 use crate::types::RouteStatus;
@@ -38,10 +39,8 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     #[allow(clippy::type_complexity)]
     fn acquire_write_lock(
         &self,
-    ) -> Result<
-        (MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize),
-        PrefixStoreError,
-    > {
+    ) -> FatalResult<(MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize)>
+    {
         let mut retry_count: usize = 0;
         let backoff = Backoff::new();
 
@@ -49,9 +48,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
             // We're using lock(), which returns an Error only if another
             // thread has panicked while holding the lock. In that situtation
             // we are certainly not going to write anything.
-            if let Ok(guard) =
-                self.0.lock().map_err(|_| PrefixStoreError::ExternalError)
-            {
+            if let Ok(guard) = self.0.lock().map_err(|_| FatalError) {
                 return Ok((guard, retry_count));
             }
 
@@ -272,8 +269,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
     pub(crate) fn upsert_record(
         &self,
         new_rec: Record<M>,
-    ) -> Result<(Option<(MultiMapValue<M>, usize)>, usize), PrefixStoreError>
-    {
+    ) -> FatalResult<(Option<(MultiMapValue<M>, usize)>, usize)> {
         let (mut record_map, retry_count) = self.acquire_write_lock()?;
         let key = new_rec.multi_uniq_id;
 
@@ -402,7 +398,7 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         // we're in.
         // let pfx_id = PrefixId::new(record.net, record.len);
         // let this_level = bits_for_len(pfx_id.get_len(), level);
-        let next_level = nodeset_size(pfx_id.get_len(), level + 1);
+        let next_level = nodeset_size(pfx_id.len(), level + 1);
 
         trace!("next level {}", next_level);
         let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
@@ -410,14 +406,14 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
                 1 << next_level,
-                pfx_id.get_len()
+                pfx_id.len()
             );
             PrefixSet::init_with_p2_children(next_level as usize)
         } else {
             debug!(
                 "{} store: INSERT at LAST LEVEL with empty bucket at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
-                pfx_id.get_len()
+                pfx_id.len()
             );
             PrefixSet::init_with_p2_children(next_level as usize)
         };
@@ -554,7 +550,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Option<Vec<Record<M>>> {
-        let mut prefix_set = self.0.root_for_len(prefix.get_len());
+        let mut prefix_set = self.0.root_for_len(prefix.len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
 
@@ -620,8 +616,10 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
                         );
                     }
 
-                    let (mui_count, retry_count) =
-                        stored_prefix.record_map.upsert_record(record)?;
+                    let (mui_count, retry_count) = stored_prefix
+                        .record_map
+                        .upsert_record(record)
+                        .map_err(|_| PrefixStoreError::FatalError)?;
 
                     // See if someone beat us to creating the record.
                     if mui_count.is_some() {
@@ -640,8 +638,8 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
                         std::thread::current()
                             .name()
                             .unwrap_or("unnamed-thread"),
-                        prefix.get_net(),
-                        prefix.get_len()
+                        prefix.bits(),
+                        prefix.len()
                     );
                     }
                     prefix_is_new = false;
@@ -650,8 +648,10 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
                     // caller's record.
                     stored_prefix.set_ps_outdated(guard)?;
 
-                    let (mui_count, retry_count) =
-                        stored_prefix.record_map.upsert_record(record)?;
+                    let (mui_count, retry_count) = stored_prefix
+                        .record_map
+                        .upsert_record(record)
+                        .map_err(|_| PrefixStoreError::FatalError)?;
                     mui_is_new = mui_count.is_none();
 
                     if let Some(tbi) = update_path_selections {
@@ -688,7 +688,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         search_prefix_id: PrefixId<AF>,
     ) -> (&StoredPrefix<AF, M>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
-        let mut prefix_set = self.0.root_for_len(search_prefix_id.get_len());
+        let mut prefix_set = self.0.root_for_len(search_prefix_id.len());
         let mut level: u8 = 0;
 
         trace!("root prefix_set {:?}", prefix_set);
@@ -720,8 +720,8 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
                             .get_or_init(index, || {
                                 StoredPrefix::new(
                                     PrefixId::new(
-                                        search_prefix_id.get_net(),
-                                        search_prefix_id.get_len(),
+                                        search_prefix_id.bits(),
+                                        search_prefix_id.len(),
                                     ),
                                     level,
                                 )
@@ -773,7 +773,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
             usize,
         )>,
     ) {
-        let mut prefix_set = self.0.root_for_len(id.get_len());
+        let mut prefix_set = self.0.root_for_len(id.len());
         let mut parents = [None; 32];
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -822,7 +822,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         // } else {
         //     0
         // };
-        let last_level = prev_node_size(id.get_len(), level);
+        let last_level = prev_node_size(id.len(), level);
         // trace!(
         //     "bits division {}; no of bits {}",
         //     this_level,
@@ -832,11 +832,11 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         //     "calculated index ({} << {}) >> {}",
         //     id.get_net(),
         //     last_level,
-        //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
+        //   net>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
         // );
         // HASHING FUNCTION
-        let size = nodeset_size(id.get_len(), level);
-        ((id.get_net() << AF::from_u32(last_level as u32))
+        let size = nodeset_size(id.len(), level);
+        ((id.bits() << AF::from_u32(last_level as u32))
             >> AF::from_u8((<AF>::BITS - size) % <AF>::BITS))
         .dangerously_truncate_to_u32() as usize
     }

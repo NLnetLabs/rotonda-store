@@ -3,9 +3,11 @@ use zerocopy::FromBytes;
 use crate::AddressFamily;
 
 //------------ PrefixId ------------------------------------------------------
+
 // The type that acts both as an id for every prefix node in the prefix CHT,
 // and as the internal prefix type. It's cut to size for an AF, unlike the
-// inetnum Prefix. We use the latter on the public API.
+// inetnum Prefix, as not to waste memory. We use the latter on the public
+// API.
 
 #[derive(
     Hash,
@@ -22,26 +24,30 @@ use crate::AddressFamily;
 )]
 #[repr(C)]
 pub struct PrefixId<AF: AddressFamily> {
+    // DO NOT CHANGE THE ORDER OF THESE FIELDS!
+    // zerocopy uses this to concatenate the bytes in this order, and the
+    // lsm_tree needs to have `len` first, and `net` second to create keys
+    // that are correctly sorted on prefix length.
     len: u8,
-    net: AF,
+    bits: AF,
 }
 
 impl<AF: AddressFamily> PrefixId<AF> {
     pub(crate) fn new(net: AF, len: u8) -> Self {
-        PrefixId { len, net }
+        PrefixId { len, bits: net }
     }
 
-    pub(crate) fn get_net(&self) -> AF {
-        self.net
+    pub(crate) fn bits(&self) -> AF {
+        self.bits
     }
 
-    pub(crate) fn get_len(&self) -> u8 {
+    pub(crate) fn len(&self) -> u8 {
         self.len
     }
 
     pub(crate) fn truncate_to_len(self, len: u8) -> Self {
         Self {
-            net: self.net.truncate_to_len(len),
+            bits: self.bits.truncate_to_len(len),
             len,
         }
     }
@@ -53,7 +59,7 @@ impl<AF: AddressFamily> PrefixId<AF> {
 impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     fn from(value: inetnum::addr::Prefix) -> Self {
         Self {
-            net: match value.addr() {
+            bits: match value.addr() {
                 std::net::IpAddr::V4(addr) => {
                     *AF::try_ref_from_bytes(&addr.octets()).unwrap()
                 }
@@ -71,7 +77,7 @@ impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
 #[allow(clippy::unwrap_used)]
 impl<AF: AddressFamily> From<PrefixId<AF>> for inetnum::addr::Prefix {
     fn from(value: PrefixId<AF>) -> Self {
-        Self::new(value.get_net().into_ipaddr(), value.get_len()).unwrap()
+        Self::new(value.bits().into_ipaddr(), value.len()).unwrap()
     }
 }
 
@@ -82,7 +88,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<[u8; PREFIX_SIZE]>
     fn from(value: [u8; PREFIX_SIZE]) -> Self {
         Self {
             // This cannot panic for values of PREFIX_SIZE greater than 1
-            net: *AF::ref_from_bytes(&value.as_slice()[1..]).unwrap(),
+            bits: *AF::ref_from_bytes(&value.as_slice()[1..]).unwrap(),
             len: value[0],
         }
     }

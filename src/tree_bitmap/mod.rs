@@ -6,7 +6,7 @@ mod tree_bitmap_node;
 mod tree_bitmap_query;
 
 pub(crate) use tree_bitmap_node::{
-    NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter, StrideNodeId,
+    NodeId, NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter,
     TreeBitMapNode,
 };
 use zerocopy::FromZeros;
@@ -239,7 +239,7 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
 
         let _retry_count = tree_bitmap
             .store_node(
-                StrideNodeId::dangerously_new_with_id_as_is(
+                NodeId::dangerously_new_with_id_as_is(
                     <AF as FromZeros>::new_zeroed(),
                     0,
                 ),
@@ -266,7 +266,7 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
         pfx: PrefixId<AF>,
         mui: u32,
     ) -> Result<(u32, bool), PrefixStoreError> {
-        if pfx.get_len() == 0 {
+        if pfx.len() == 0 {
             let prefix_new =
                 !self.default_route_exists.swap(true, Ordering::Acquire);
             return self
@@ -282,18 +282,17 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
 
         let retry_and_exists = loop {
             stride_end += STRIDE_SIZE;
-            let nibble_len = if pfx.get_len() < stride_end {
-                STRIDE_SIZE + pfx.get_len() - stride_end
+            let nibble_len = if pfx.len() < stride_end {
+                STRIDE_SIZE + pfx.len() - stride_end
             } else {
                 STRIDE_SIZE
             };
-
             let bit_span = AF::into_bit_span(
-                pfx.get_net(),
+                pfx.bits(),
                 stride_end - STRIDE_SIZE,
                 nibble_len,
             );
-            let is_last_stride = pfx.get_len() <= stride_end;
+            let is_last_stride = pfx.len() <= stride_end;
             let stride_start = stride_end - STRIDE_SIZE;
 
             // this counts the number of retry_count for this loop only,
@@ -310,8 +309,8 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
                         // All the bits of the search prefix, but with
                         // a length set to the start of the current
                         // stride.
-                        StrideNodeId::dangerously_new_with_id_as_is(
-                            pfx.get_net(),
+                        NodeId::dangerously_new_with_id_as_is(
+                            pfx.bits(),
                             stride_start,
                         ),
                         // the length of THIS stride
@@ -325,8 +324,8 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
 
                             // get a new identifier for the node we're
                             // going to create.
-                            let new_id = StrideNodeId::new_with_cleaned_id(
-                                pfx.get_net(),
+                            let new_id = NodeId::new_with_cleaned_id(
+                                pfx.bits(),
                                 stride_start + bit_span.len,
                             );
 
@@ -556,10 +555,10 @@ Giving up this node. This shouldn't happen!",
 
     fn store_node(
         &self,
-        id: StrideNodeId<AF>,
+        id: NodeId<AF>,
         multi_uniq_id: u32,
         new_node: TreeBitMapNode<AF>,
-    ) -> Result<(StrideNodeId<AF>, u32), FatalError> {
+    ) -> Result<(NodeId<AF>, u32), FatalError> {
         if log_enabled!(log::Level::Trace) {
             debug!(
                 "{} store: Store node {}: {:?} mui {}",
@@ -715,7 +714,7 @@ Giving up this node. This shouldn't happen!",
 
     pub fn retrieve_node_mut(
         &self,
-        id: StrideNodeId<AF>,
+        id: NodeId<AF>,
         mui: u32,
     ) -> Option<&TreeBitMapNode<AF>> {
         // HASHING FUNCTION
@@ -797,7 +796,7 @@ Giving up this node. This shouldn't happen!",
 
     pub fn retrieve_node(
         &self,
-        id: StrideNodeId<AF>,
+        id: NodeId<AF>,
     ) -> Option<&TreeBitMapNode<AF>> {
         // HASHING FUNCTION
         let mut level = 0;
@@ -839,7 +838,7 @@ Giving up this node. This shouldn't happen!",
 
     pub(crate) fn retrieve_node_for_mui(
         &self,
-        id: StrideNodeId<AF>,
+        id: NodeId<AF>,
         mui: u32,
     ) -> Option<&TreeBitMapNode<AF>> {
         // HASHING FUNCTION
@@ -900,8 +899,8 @@ Giving up this node. This shouldn't happen!",
         }
     }
 
-    pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
-        StrideNodeId::dangerously_new_with_id_as_is(
+    pub(crate) fn get_root_node_id(&self) -> NodeId<AF> {
+        NodeId::dangerously_new_with_id_as_is(
             <AF as FromZeros>::new_zeroed(),
             0,
         )
@@ -929,7 +928,6 @@ Giving up this node. This shouldn't happen!",
     }
 
     // Stride related methods
-
     // pub fn get_stride_sizes(&self) -> &[u8] {
     //     self.node_buckets.get_stride_sizes()
     // }
@@ -939,36 +937,32 @@ Giving up this node. This shouldn't happen!",
     pub(crate) fn get_node_id_for_prefix(
         &self,
         prefix: &PrefixId<AF>,
-    ) -> (StrideNodeId<AF>, BitSpan) {
+    ) -> (NodeId<AF>, BitSpan) {
         trace!(
             "prefix id bits: {:032b} len: {}",
-            prefix.get_net(),
-            prefix.get_len()
+            prefix.bits(),
+            prefix.len()
         );
         let mut acc = 0;
         // for i in self.get_stride_sizes() {
         loop {
             acc += STRIDE_SIZE;
-            if acc >= prefix.get_len() {
+            if acc >= prefix.len() {
                 let node_len = acc - STRIDE_SIZE;
                 return (
-                    StrideNodeId::new_with_cleaned_id(
-                        prefix.get_net(),
-                        node_len,
-                    ),
+                    NodeId::new_with_cleaned_id(prefix.bits(), node_len),
                     // NOT THE HASHING FUNCTION!
                     // Do the right shift in a checked manner, for the sake
                     // of 0/0. A search for 0/0 will perform a 0 << MAX_LEN,
                     // which will panic in debug mode (undefined behaviour
                     // in prod).
                     BitSpan::new(
-                        ((prefix.get_net() << AF::from_u8(node_len))
+                        ((prefix.bits() << AF::from_u8(node_len))
                             .checked_shr_or_zero(
-                                (AF::BITS - (prefix.get_len() - node_len))
-                                    .into(),
+                                (AF::BITS - (prefix.len() - node_len)).into(),
                             ))
                         .dangerously_truncate_to_u32(),
-                        prefix.get_len() - node_len,
+                        prefix.len() - node_len,
                     ),
                 );
             }
@@ -1025,7 +1019,7 @@ Giving up this node. This shouldn't happen!",
     // element, where each element in the list has an array of its own that
     // uses the hash function with the level incremented.
 
-    pub(crate) fn hash_node_id(id: StrideNodeId<AF>, level: u8) -> usize {
+    pub(crate) fn hash_node_id(id: NodeId<AF>, level: u8) -> usize {
         // And, this is all of our hashing function.
         // let last_level = if level > 0 {
         //     bits_for_len(id.len(), level - 1)

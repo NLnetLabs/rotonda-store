@@ -4,12 +4,11 @@ use log::{debug, log_enabled};
 
 use roaring::RoaringBitmap;
 
+use super::tree_bitmap_node::{NodeId, TreeBitMapNode};
 use crate::cht::{Cht, OnceBoxSlice, Value};
 use crate::errors::{FatalError, FatalResult};
-use crate::types::AddressFamily;
-
-use super::tree_bitmap_node::{StrideNodeId, TreeBitMapNode};
 use crate::types::errors::PrefixStoreError;
+use crate::types::AddressFamily;
 
 pub(crate) type NodeCht<AF, const ROOT_SIZE: usize> =
     Cht<NodeSet<AF>, ROOT_SIZE, 4>;
@@ -20,7 +19,7 @@ where
     Self: Sized,
     AF: AddressFamily,
 {
-    pub(crate) node_id: StrideNodeId<AF>,
+    pub(crate) node_id: NodeId<AF>,
     // The ptrbitarr and pfxbitarr for this node
     pub(crate) node: TreeBitMapNode<AF>,
     // Child nodes linked from this node

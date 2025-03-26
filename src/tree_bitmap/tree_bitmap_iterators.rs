@@ -187,7 +187,7 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> Iterator
         trace!("search lm prefix for {:?}", self.prefix);
 
         loop {
-            if self.prefix.get_len() == 0 {
+            if self.prefix.len() == 0 {
                 return None;
             }
 
@@ -195,8 +195,7 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> Iterator
                 return Some(self.prefix);
             }
 
-            self.prefix =
-                self.prefix.truncate_to_len(self.prefix.get_len() - 1);
+            self.prefix = self.prefix.truncate_to_len(self.prefix.len() - 1);
         }
     }
 }
@@ -263,7 +262,7 @@ impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
         trace!("more specifics for {:?}", start_prefix_id);
 
         // A v4 /32 or a v6 /128 doesn't have more specific prefixes 🤓.
-        if start_prefix_id.get_len() >= AF::BITS {
+        if start_prefix_id.len() >= AF::BITS {
             None
         } else {
             // calculate the node start_prefix_id lives in.
@@ -272,8 +271,8 @@ impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
             trace!("start node {}", start_node_id);
             trace!(
                 "start prefix id {:032b} (len {})",
-                start_prefix_id.get_net(),
-                start_prefix_id.get_len()
+                start_prefix_id.bits(),
+                start_prefix_id.len()
             );
             trace!(
                 "start node id   {:032b} (bits {} len {})",
@@ -331,13 +330,13 @@ impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
     ) -> impl Iterator<Item = PrefixId<AF>> + 'a {
         if log_enabled!(log::Level::Trace) {
             trace!("less specifics for {}", Prefix::from(start_prefix_id));
-            trace!("level {}, len {}", 0, start_prefix_id.get_len());
+            trace!("level {}, len {}", 0, start_prefix_id.len());
         }
 
         LessSpecificPrefixIter {
             tree: self,
             prefix: start_prefix_id,
-            cur_level: start_prefix_id.get_len(),
+            cur_level: start_prefix_id.len(),
         }
     }
 
