@@ -1,5 +1,18 @@
 use crate::rib::BIT_SPAN_SIZE;
 
+// A bitspan is a bunch of bits representing the last stride in a NodeId
+// or PrefixId, as such it can have a length of 1, 2, or 3 bits, in a stride
+// length of 4 bits (which is the hard-coded value for all of the store
+// currently).
+//
+// We are storing these bits in a u32, which may seem to be wasting space
+// on first glance. However:
+// - this bitspan is never stored in the store as
+// such, it is used for intermediary calculations. The assumption is that
+// modern CPUs always throw around values aligned on 4 bytes.
+// - even if wanted to optimise for space, we have to take into account that
+// we need to shift right and left beyond the size of the final result of a
+// series of calculations.
 #[derive(Copy, Clone, Debug)]
 pub struct BitSpan {
     pub bits: u32,

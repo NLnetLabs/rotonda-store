@@ -32,7 +32,13 @@ pub trait AddressFamily:
 {
     /// The number of bits in the byte representation of the family.
     const BITS: u8;
+
+    /// The type actually holding the value, u32 for IPv4, and u128 for IPv6.
     type Inner: Into<Self> + From<u32> + From<u8>;
+
+    /// The std::net that the value of self belongs to. So,
+    /// [std::net::Ipv4Addr], and [std::net::Ipv6Addr] for IPv4, and IPv6
+    /// respectively.
     type InnerIpAddr;
 
     fn new(value: Self::Inner) -> Self {
@@ -46,19 +52,22 @@ pub trait AddressFamily:
 
     fn zero() -> Self;
 
-    fn fmt_net(net: Self) -> String;
     // returns the specified nibble from `start_bit` to (and including)
     // `start_bit + len` and shifted to the right.
     fn into_bit_span(net: Self, start_bit: u8, len: u8) -> BitSpan;
 
-    /// Treat self as a prefix and append the given nibble to it.
+    /// Treat self as a prefix and append the given bitspan to it.
     fn add_bit_span(self, len: u8, bs: BitSpan) -> (Self, u8);
 
+    /// fill the bits after the specified len with zeros. Interpreted as an IP
+    /// Prefix, this means that self will be truncated to the specified len.
     fn truncate_to_len(self, len: u8) -> Self;
 
+    /// Turn self in to a [std::net::IpAddr].
     fn into_ipaddr(self) -> std::net::IpAddr;
 
-    // temporary function, this will botch IPv6 completely.
+    /// Truncate self to a u32. For IPv4 this is a NOP. For IPv6 this
+    /// truncates to 32 bits.
     fn dangerously_truncate_to_u32(self) -> u32;
 
     // For the sake of searching for 0/0, check the the right shift, since
@@ -94,10 +103,6 @@ impl AddressFamily for IPv4 {
         IPv4::from(ip_addr.octets())
     }
 
-    fn fmt_net(net: Self) -> String {
-        std::net::Ipv4Addr::from(u32::from(net)).to_string()
-    }
-
     fn into_bit_span(net: Self, start_bit: u8, len: u8) -> BitSpan {
         BitSpan {
             bits: ((net << <U32<NetworkEndian>>::from(start_bit as u32))
@@ -107,50 +112,6 @@ impl AddressFamily for IPv4 {
         }
     }
 
-    // You can't shift with the number of bits of self, so we'll just return
-    // zero for that case.
-    //
-    // Panics if len is greater than 32 (the number of bits of self).
-    // fn truncate_to_len(self, len: u8) -> Self {
-    //     match len {
-    //         0 => U32::new(0),
-    //         1..=31 => (self >> (32 - len as u32).into()) << (32 - len).into(),
-    //         32 => self,
-    //         _ => panic!("Can't truncate to more than 32 bits"),
-    //     }
-    // }
-
-    /// Treat self as a prefix and append the given nibble to it.
-    ///
-    /// Shifts the rightmost `nibble_len` bits of `nibble` to the left to a
-    /// position `len` bits from the left, then ORs the result into self.
-    ///
-    /// For example:
-    ///
-    /// ```
-    /// # use rotonda_store::IPv4;
-    /// # use rotonda_store::AddressFamily;
-    /// let prefix = 0b10101010_00000000_00000000_00000000_u32; // 8-bit prefix
-    /// let nibble = 0b1100110_u32;                             // 7-bit nibble
-    /// let (new_prefix, new_len) = prefix.add_nibble(8, nibble, 7);
-    /// assert_eq!(new_len, 8 + 7);
-    /// assert_eq!(new_prefix, 0b10101010_11001100_00000000_00000000);
-    /// //                       ^^^^^^^^ ^^^^^^^
-    /// //                       prefix   nibble
-    /// ```
-    ///
-    /// # Panics in debug mode!
-    ///
-    /// Will panic if there is insufficient space to add the given nibble,
-    /// i.e. if `len + nibble_len >= 32`.
-    ///
-    /// ```
-    /// # use rotonda_store::IPv4;
-    /// # use rotonda_store::AddressFamily;
-    /// let prefix = 0b10101010_00000000_00000000_00000100_u32; // 30-bit prefix
-    /// let nibble = 0b1100110_u32;                             // 7-bit nibble
-    /// let (new_prefix, new_len) = prefix.add_nibble(30, nibble, 7);
-    /// ```
     fn add_bit_span(self, len: u8, bs: BitSpan) -> (U32<NetworkEndian>, u8) {
         let res = self | (bs.bits << (32 - len - bs.len) as usize);
         (res, len + bs.len)
@@ -211,10 +172,6 @@ impl AddressFamily for IPv6 {
         IPv6::from(ip_addr.octets())
     }
 
-    fn fmt_net(net: Self) -> String {
-        std::net::Ipv6Addr::from(u128::from(net)).to_string()
-    }
-
     fn into_bit_span(net: Self, start_bit: u8, len: u8) -> BitSpan {
         BitSpan {
             bits: u128::from(
@@ -225,39 +182,6 @@ impl AddressFamily for IPv6 {
         }
     }
 
-    /// Treat self as a prefix and append the given nibble to it.
-    ///
-    /// Shifts the rightmost `nibble_len` bits of `nibble` to the left to a
-    /// position `len` bits from the left, then ORs the result into self.
-    ///
-    /// For example:
-    ///
-    /// ```
-    /// # use rotonda_store::IPv6;
-    /// # use rotonda_store::AddressFamily;
-    /// let prefix = 0xF0F0F0F0_F0000000_00000000_00000000u128; // 36-bit prefix
-    /// let nibble = 0xA8A8_u32;                                // 16-bit nibble
-    /// let (new_prefix, new_len) = prefix.add_nibble(36, nibble, 16);
-    /// assert_eq!(new_len, 36 + 16);
-    /// assert_eq!(new_prefix, 0xF0F0F0F0F_A8A8000_00000000_00000000u128);
-    /// //                       ^^^^^^^^^ ^^^^
-    /// //                       prefix    nibble
-    /// ```
-    ///
-    /// # Panics only in debug mode!
-    ///
-    /// In release mode this will be UB (Undefined Behaviour)!
-    ///
-    /// Will panic if there is insufficient space to add the given nibble,
-    /// i.e. if `len + nibble_len >= 128`.
-    ///
-    /// ```
-    /// # use rotonda_store::IPv6;
-    /// # use rotonda_store::AddressFamily;
-    /// let prefix = 0xFFFFFFFF_FFFFFFFF_FFFFFFFF_FFFF0000u128; // 112-bit prefix
-    /// let nibble = 0xF00FF00F_u32;                            // 32-bit nibble
-    /// let (new_prefix, new_len) = prefix.add_nibble(112, nibble, 32);
-    /// ```
     fn add_bit_span(self, len: u8, bs: BitSpan) -> (Self, u8) {
         let res = self | ((bs.bits as u128) << (128 - len - bs.len) as usize);
         (res, len + bs.len)

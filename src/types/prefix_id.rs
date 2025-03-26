@@ -3,6 +3,10 @@ use zerocopy::FromBytes;
 use crate::AddressFamily;
 
 //------------ PrefixId ------------------------------------------------------
+// The type that acts both as an id for every prefix node in the prefix CHT,
+// and as the internal prefix type. It's cut to size for an AF, unlike the
+// inetnum Prefix. We use the latter on the public API.
+
 #[derive(
     Hash,
     Eq,
@@ -36,35 +40,15 @@ impl<AF: AddressFamily> PrefixId<AF> {
     }
 
     pub(crate) fn truncate_to_len(self, len: u8) -> Self {
-        // trace!("orig {:032b}", self.net);
-        // trace!(
-        //     "new  {:032b}",
-        //     self.net >> (AF::BITS - len).into() << (AF::BITS - len).into()
-        // );
-        // trace!(
-        //     "truncate to net {} len {}",
-        //     self.net >> (AF::BITS - len).into() << (AF::BITS - len).into(),
-        //     len
-        // );
         Self {
             net: self.net.truncate_to_len(len),
             len,
         }
     }
-
-    // The lsm tree, used for persistence, stores the prefix in the key with
-    // len first, so that key range lookups can be made for more-specifics in
-    // each prefix length.
-    // pub fn len_first_bytes<const PREFIX_SIZE: usize>(
-    //     &self,
-    // ) -> [u8; PREFIX_SIZE] {
-    //     let bytes = &mut [0_u8; PREFIX_SIZE];
-    //     *bytes.last_chunk_mut::<4>().unwrap() = self.net.to_be_bytes();
-    //     bytes[0] = self.len;
-    //     *bytes
-    // }
 }
 
+// There is no reasonable way for this to panic, PrefixId and inetnum's Prefix
+// represent the same data in slightly different ways.
 #[allow(clippy::unwrap_used)]
 impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
     fn from(value: inetnum::addr::Prefix) -> Self {
