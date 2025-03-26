@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             include_history: IncludeHistory::None,
         },
         guard,
-    );
+    )?;
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());

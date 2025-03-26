@@ -62,7 +62,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix: {:?}", &expect_pfx);
         println!("result: {:#?}", &res);
         assert!(res.prefix.is_some());
@@ -96,7 +96,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
         Ok(())
@@ -361,8 +361,9 @@ mod tests {
         let guard = &epoch::pin();
         for pfx in tree_bitmap.prefixes_iter(guard) {
             // let pfx_nm = pfx.strip_meta();
+            let pfx = pfx.unwrap().prefix;
             let res = tree_bitmap.match_prefix(
-                &pfx.prefix,
+                &pfx,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_withdrawn: false,
@@ -372,10 +373,10 @@ mod tests {
                     include_history: IncludeHistory::None,
                 },
                 guard,
-            );
+            )?;
             println!("PFX {}", pfx);
             println!("RES {}", res);
-            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
         let res = tree_bitmap.match_prefix(
@@ -389,7 +390,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix {:?}", res.prefix);
         println!("res: {}", &res);
 
@@ -481,7 +482,7 @@ mod tests {
                             include_history: IncludeHistory::None,
                         },
                         guard,
-                    );
+                    )?;
                     println!("{:?}", pfx);
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);
@@ -575,6 +576,7 @@ mod tests {
             .iter_records_for_mui_v4(5, false, guard)
             .collect::<Vec<_>>()
         {
+            let rec = rec.unwrap();
             println!("{}", rec);
 
             assert_eq!(rec.meta.len(), 1);
@@ -585,7 +587,7 @@ mod tests {
             .iter_records_for_mui_v4(1, false, guard)
             .collect::<Vec<_>>()
         {
-            println!("{}", rec);
+            println!("{}", rec.unwrap());
         }
 
         // println!("all records");
@@ -607,7 +609,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         print!(".pfx {:#?}.", all_recs_for_pfx);
         assert_eq!(all_recs_for_pfx.prefix_meta.len(), 5);
         let wd_rec = all_recs_for_pfx
@@ -629,7 +631,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         assert_eq!(active_recs_for_pfx.prefix_meta.len(), 4);
         assert!(!active_recs_for_pfx
             .prefix_meta
@@ -644,11 +646,13 @@ mod tests {
         let all_recs = tree_bitmap.prefixes_iter(guard);
 
         for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
+            let rec = rec.unwrap();
             println!("{}", rec);
         }
 
-        let mui_2_recs =
-            all_recs.filter_map(|r| r.get_record_for_mui(2).cloned());
+        let mui_2_recs = all_recs.filter_map(|r| {
+            r.as_ref().unwrap().get_record_for_mui(2).cloned()
+        });
         let wd_2_rec = mui_2_recs
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
@@ -656,14 +660,22 @@ mod tests {
         assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
 
         let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
-            r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
+            r.as_ref()
+                .unwrap()
+                .get_record_for_mui(2)
+                .cloned()
+                .map(|rec| (r.as_ref().unwrap().prefix, rec))
         });
         println!("mui_2_recs prefixes_iter");
         for rec in mui_2_recs {
             println!("{} {:#?}", rec.0, rec.1);
         }
         let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
-            r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
+            r.as_ref()
+                .unwrap()
+                .get_record_for_mui(2)
+                .cloned()
+                .map(|rec| (r.as_ref().unwrap().prefix, rec))
         });
 
         let active_2_rec = mui_2_recs
@@ -675,6 +687,7 @@ mod tests {
         let mui_2_recs = tree_bitmap.iter_records_for_mui_v4(2, false, guard);
         println!("mui_2_recs iter_records_for_mui_v4");
         for rec in mui_2_recs {
+            let rec = rec.unwrap();
             println!("{} {:#?}", rec.prefix, rec.meta);
         }
 
@@ -692,7 +705,11 @@ mod tests {
         assert_eq!(mui_1_recs.len(), 4);
         println!("mui_1_recs iter_records_for_mui_v4 w/ withdrawn");
         for rec in mui_1_recs {
-            assert_eq!(rec.meta[0].status, RouteStatus::Withdrawn);
+            let rec = rec.unwrap();
+            assert_eq!(
+                rec.meta.first().unwrap().status,
+                RouteStatus::Withdrawn
+            );
         }
 
         //--------------
@@ -708,12 +725,13 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         println!("more_specifics match {} w/ withdrawn", more_specifics);
 
         let guard = &rotonda_store::epoch::pin();
         for p in tree_bitmap.prefixes_iter_v4(guard) {
+            let p = p.unwrap();
             println!("{}", p);
         }
 
@@ -754,7 +772,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         println!("more_specifics match {} w/o withdrawn", more_specifics);
         let more_specifics = more_specifics.more_specifics.unwrap();
@@ -800,7 +818,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         println!("more_specifics match w/o withdrawn #2 {}", more_specifics);
         // We withdrew mui 1 for the requested prefix itself, since mui 2 was
@@ -858,10 +876,11 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("more_specifics match w/o withdrawn #3 {}", more_specifics);
 
-        // This prefix should not be found, since we withdrew all records for it.
+        // This prefix should not be found, since we withdrew all records
+        // for it.
         assert!(more_specifics.prefix_meta.is_empty());
 
         // ..as a result, its resulting match_type should be EmptyMatch
@@ -914,7 +933,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         trace!("{:#?}", query);
 
@@ -931,7 +950,9 @@ mod tests {
         println!("less_specifics match w/o withdrawn #5");
 
         trace!("mark {} as active", wd_pfx);
-        tree_bitmap.mark_mui_as_active_for_prefix(&wd_pfx, 5, 1)?;
+        tree_bitmap
+            .mark_mui_as_active_for_prefix(&wd_pfx, 5, 1)
+            .unwrap();
 
         let less_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/17")?,
@@ -944,7 +965,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         let less_specifics = less_specifics.less_specifics.unwrap();
         println!("{:#?}", less_specifics);
 

@@ -189,7 +189,7 @@ fn test_more_specifics<C: Config>(
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         // println!("em/m-s: {:#?}", found_result);
         //
         println!("search prefix: {}", spfx.0.unwrap());
@@ -217,7 +217,7 @@ fn test_more_specifics<C: Config>(
         for (i, p) in tree_bitmap
             .prefixes_iter_v4(guard)
             .enumerate()
-            .map(|(i, p)| (i, p.prefix))
+            .map(|(i, p)| (i, p.as_ref().unwrap().prefix))
         {
             println!("ms {}: {}", i, p);
         }
@@ -303,7 +303,7 @@ fn test_brunos_more_specifics<C: Config>(
             include_history: IncludeHistory::None,
         },
         guard,
-    );
+    )?;
 
     assert!(found_result.more_specifics.unwrap().is_empty());
     Ok(())

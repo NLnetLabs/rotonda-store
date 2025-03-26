@@ -2,8 +2,9 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
+    errors::FatalResult,
     match_options::{IncludeHistory, MatchOptions, MatchType},
-    prefix_record::{Record, RouteStatus},
+    prefix_record::{PrefixRecord, Record, RouteStatus},
     rib::{
         config::{Config, MemoryOnlyConfig},
         StarCastRib,
@@ -27,6 +28,49 @@ rotonda_store::all_strategies![
     test_concurrent_updates_1;
     BeBytesAsn
 ];
+
+fn iter(
+    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfx: Prefix,
+) -> impl Iterator<Item = &Record<BeBytesAsn>> + '_ {
+    pfxs_iter
+        .iter()
+        .find(|p| p.as_ref().unwrap().prefix == pfx)
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .meta
+        .iter()
+}
+
+fn iter_len(
+    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfx: Prefix,
+) -> usize {
+    pfxs_iter
+        .iter()
+        .find(|p| p.as_ref().unwrap().prefix == pfx)
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .meta
+        .len()
+}
+
+fn first_meta(
+    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfx: Prefix,
+) -> BeBytesAsn {
+    pfxs_iter
+        .iter()
+        .find(|p| p.as_ref().unwrap().prefix == pfx)
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .meta[0]
+        .meta
+        .clone()
+}
 
 fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
     tree_bitmap: StarCastRib<BeBytesAsn, C>,
@@ -138,188 +182,89 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
     assert!(tree_bitmap.contains(&pfx, Some(1)));
     assert!(tree_bitmap.contains(&pfx, Some(2)));
 
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
 
     let pfx = Prefix::from_str("185.34.10.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
 
     let pfx = Prefix::from_str("185.34.11.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| pfx == p.as_ref().unwrap().prefix));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 || m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 || m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("185.34.11.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 || m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("185.34.12.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
 
     let pfx = Prefix::from_str("183.0.0.0/8")?;
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 || m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 && m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("186.0.0.0/8")?;
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("187.0.0.0/8")?;
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 && m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
 
     // Create Withdrawals
@@ -367,7 +312,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
 
     for pfx in pfx_vec_2 {
         let guard = rotonda_store::epoch::pin();
-        let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
+        let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard)?;
         assert_eq!(res.prefix, Some(pfx));
         println!("strategy {:?}", tree_bitmap.persist_strategy());
         println!("PFX {}", res);
@@ -472,145 +417,57 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
     let all_pfxs_iter = tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>();
 
     let pfx = Prefix::from_str("185.33.0.0/16").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 4 && m.meta == 65504.into()));
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        2
-    );
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 2);
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
 
     let pfx = Prefix::from_str("185.34.14.0/24").unwrap();
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
     assert_eq!(
         all_pfxs_iter
             .iter()
-            .find(|p| p.prefix == pfx)
+            .find(|p| p.as_ref().unwrap().prefix == pfx)
             .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
+            .as_ref()
+            .unwrap()
+            .meta[0]
+            .meta,
         Asn::from_u32(65503).into()
     );
 
     let pfx = Prefix::from_str("187.0.0.0/8").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65504).into()
-    );
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
+    assert_eq!(first_meta(&all_pfxs_iter, pfx), Asn::from_u32(65504).into());
 
     let pfx = Prefix::from_str("185.35.0.0/16").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65501).into()
-    );
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
+    assert_eq!(first_meta(&all_pfxs_iter, pfx), Asn::from_u32(65501).into());
 
     let pfx = Prefix::from_str("185.34.15.0/24").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        2
-    );
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 2);
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
 
     let pfx = Prefix::from_str("188.0.0.0/8").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65504).into()
-    );
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
+    assert_eq!(first_meta(&all_pfxs_iter, pfx), Asn::from_u32(65504).into());
 
     // Create Withdrawals
     let wd_pfxs = [pfx_vec_1[1], pfx_vec_2[1], pfx_vec_3[1]];
@@ -649,10 +506,11 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
     for pfx in wd_pfxs {
         let guard = rotonda_store::epoch::pin();
         let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
-        assert_eq!(res.prefix, Some(pfx));
+        assert_eq!(res.as_ref().unwrap().prefix, Some(pfx));
         println!("RES {:#?}", res);
         assert_eq!(
-            res.prefix_meta
+            res.unwrap()
+                .prefix_meta
                 .iter()
                 .find(|m| m.multi_uniq_id == 2)
                 .unwrap()
@@ -706,6 +564,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
             &match_options,
             &guard,
         )
+        .unwrap()
         .more_specifics
         .unwrap();
     println!("0/2 {}", mp02);
@@ -721,12 +580,18 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
 
     let active_len = all_pfxs_iter
         .iter()
-        .filter(|p| p.meta.iter().all(|m| m.status == RouteStatus::Active))
+        .filter(|p| {
+            p.as_ref()
+                .unwrap()
+                .meta
+                .iter()
+                .all(|m| m.status == RouteStatus::Active)
+        })
         .collect::<Vec<_>>()
         .len();
     assert_eq!(active_len, all_pfxs_iter.len());
     // let len_2 = res0.more_specifics.unwrap().v4.len()
-    assert_eq!(active_len, res128.more_specifics.unwrap().v4.len());
+    assert_eq!(active_len, res128?.more_specifics.unwrap().v4.len());
 
     Ok(())
 }
@@ -803,18 +668,18 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
 
     println!(
         "more specifics#0: {}",
-        m.more_specifics.as_ref().unwrap()[0]
+        m.as_ref().unwrap().more_specifics.as_ref().unwrap()[0]
     );
     println!(
         "more specifics#1: {}",
-        m.more_specifics.as_ref().unwrap()[1]
+        m.as_ref().unwrap().more_specifics.as_ref().unwrap()[1]
     );
     println!(
         "more specifics#2: {}",
-        m.more_specifics.as_ref().unwrap()[2]
+        m.as_ref().unwrap().more_specifics.as_ref().unwrap()[2]
     );
 
-    assert_eq!(m.more_specifics.map(|mp| mp.len()), Some(3));
+    assert_eq!(m.unwrap().more_specifics.map(|mp| mp.len()), Some(3));
 
     Ok(())
 }

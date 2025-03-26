@@ -150,10 +150,13 @@ mod tests {
                     guard,
                 );
 
-                if query.prefix.is_none() {
+                if query.as_ref().unwrap().prefix.is_none() {
                     panic!("STOPSTOPSTOPST");
                 } else {
-                    assert_eq!(query.prefix.unwrap(), pfx.prefix);
+                    assert_eq!(
+                        query.as_ref().unwrap().prefix.unwrap(),
+                        pfx.prefix
+                    );
                 }
             }
 
@@ -188,7 +191,7 @@ mod tests {
                             },
                             guard,
                         );
-                        if let Some(_pfx) = res.prefix {
+                        if let Some(_pfx) = res.as_ref().unwrap().prefix {
                             // println!("_pfx {:?}", _pfx);
                             // println!("pfx {:?}", pfx);
                             // println!("{:#?}", res);

@@ -63,7 +63,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix: {:?}", &expect_pfx);
         println!("result: {:#?}", &res);
         assert!(res.prefix.is_some());
@@ -114,7 +114,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix: {}", &expect_pfx.unwrap());
         println!("result: {}", &res);
         assert!(res.prefix.is_some());
@@ -157,7 +157,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
         Ok(())
@@ -330,9 +330,9 @@ mod tests {
 
         let guard = &epoch::pin();
         for pfx in tree_bitmap.prefixes_iter(guard) {
-            // let pfx_nm = pfx.strip_meta();
+            let pfx = pfx.as_ref().unwrap().prefix;
             let res = tree_bitmap.match_prefix(
-                &pfx.prefix,
+                &pfx,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_withdrawn: false,
@@ -342,9 +342,9 @@ mod tests {
                     include_history: IncludeHistory::None,
                 },
                 guard,
-            );
+            )?;
             println!("{}", pfx);
-            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
         Ok(())
@@ -611,9 +611,9 @@ mod tests {
 
         let guard = &epoch::pin();
         for pfx in tree_bitmap.prefixes_iter(guard) {
-            // let pfx_nm = pfx.strip_meta();
+            let pfx = pfx.unwrap().prefix;
             let res = tree_bitmap.match_prefix(
-                &pfx.prefix,
+                &pfx,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_withdrawn: false,
@@ -623,9 +623,9 @@ mod tests {
                     include_history: IncludeHistory::None,
                 },
                 guard,
-            );
+            )?;
             println!("{}", pfx);
-            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
         let res = tree_bitmap.match_prefix(
@@ -642,7 +642,7 @@ mod tests {
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix {:?}", res.prefix);
         println!("res: {:#?}", &res);
 
@@ -731,7 +731,7 @@ mod tests {
                             include_history: IncludeHistory::None,
                         },
                         guard,
-                    );
+                    )?;
                     println!("{:?}", pfx);
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);
@@ -793,7 +793,7 @@ mod tests {
                             include_history: IncludeHistory::None,
                         },
                         guard,
-                    );
+                    )?;
                     println!("{:?}", pfx);
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);

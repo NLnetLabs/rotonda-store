@@ -190,7 +190,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
         &rotonda_store::epoch::pin(),
     );
 
-    println!("{:?}", res.prefix_meta);
+    println!("{:?}", res.as_ref().unwrap().prefix_meta);
     let best_path = tree_bitmap.best_path(&pfx, &rotonda_store::epoch::pin());
     println!(
         "ps outdated? {}",

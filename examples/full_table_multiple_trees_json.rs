@@ -99,7 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     include_history: IncludeHistory::None,
                                 },
                                 guard,
-                            );
+                            )?;
                         }
                     }
                 }

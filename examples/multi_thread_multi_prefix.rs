@@ -87,6 +87,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     },
                                     guard,
                                 )
+                                .unwrap()
                                 .prefix_meta;
                             x += 1;
                         }

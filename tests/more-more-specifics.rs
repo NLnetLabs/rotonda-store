@@ -96,11 +96,12 @@ fn test_more_specifics_without_less_specifics<C: Config>(
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("em/m-s: {:#?}", found_result);
 
         let more_specifics = found_result
             .more_specifics
+            .as_ref()
             .unwrap()
             .iter()
             .filter(|p| p.prefix != spfx.0.unwrap())
@@ -194,7 +195,7 @@ fn test_more_specifics_with_less_specifics<C: Config>(
                 include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("em/m-s: {}", found_result);
 
         let more_specifics = found_result
