@@ -501,9 +501,7 @@ pub(crate) fn ptr_range(ptrbitarr: u16, bs: BitSpan) -> (u16, u8) {
     let stop: u8 = start + (1 << (4 - bs.len));
     let mask: u16 = (((1_u32 << (stop as u32 - start as u32)) - 1)
         .rotate_right(stop as u32)
-        >> 16)
-        .try_into()
-        .unwrap();
+        >> 16) as u16;
     if log_enabled!(log::Level::Trace) {
         trace!("- mask      {:032b}", mask);
         trace!("- ptrbitarr {:032b}", ptrbitarr);

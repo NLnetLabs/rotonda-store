@@ -28,7 +28,7 @@ pub trait AddressFamily:
     // + Zero
     + Copy
     + Ord
-    + zerocopy::TryFromBytes
+    + zerocopy::FromBytes
     + zerocopy::IntoBytes
     + zerocopy::KnownLayout
     + zerocopy::Immutable

@@ -1,4 +1,4 @@
-use zerocopy::TryFromBytes;
+use zerocopy::{FromBytes, TryFromBytes};
 
 use crate::AddressFamily;
 
@@ -10,7 +10,7 @@ use crate::AddressFamily;
     Debug,
     Copy,
     Clone,
-    zerocopy::TryFromBytes,
+    zerocopy::FromBytes,
     zerocopy::IntoBytes,
     zerocopy::KnownLayout,
     zerocopy::Immutable,
@@ -104,7 +104,7 @@ impl<AF: AddressFamily, const PREFIX_SIZE: usize> From<[u8; PREFIX_SIZE]>
 {
     fn from(value: [u8; PREFIX_SIZE]) -> Self {
         Self {
-            net: *AF::try_ref_from_bytes(&value.as_slice()[1..]).unwrap(),
+            net: *AF::ref_from_bytes(&value.as_slice()[1..]).unwrap(),
             len: value[0],
         }
     }
@@ -114,6 +114,6 @@ impl<'a, AF: AddressFamily, const PREFIX_SIZE: usize>
     From<&'a [u8; PREFIX_SIZE]> for &'a PrefixId<AF>
 {
     fn from(value: &'a [u8; PREFIX_SIZE]) -> Self {
-        PrefixId::try_ref_from_bytes(value.as_slice()).unwrap()
+        PrefixId::ref_from_bytes(value.as_slice()).unwrap()
     }
 }

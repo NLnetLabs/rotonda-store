@@ -9,6 +9,7 @@ pub(crate) use tree_bitmap_node::{
     NodeMoreSpecificChildIter, NodeMoreSpecificsPrefixIter, StrideNodeId,
     TreeBitMapNode,
 };
+use zerocopy::FromZeros;
 
 // ----------- THE STORE ----------------------------------------------------
 //
@@ -237,7 +238,10 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
 
         let _retry_count = tree_bitmap
             .store_node(
-                StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0),
+                StrideNodeId::dangerously_new_with_id_as_is(
+                    <AF as FromZeros>::new_zeroed(),
+                    0,
+                ),
                 0_u32,
                 TreeBitMapNode {
                     ptrbitarr: AtomicPtrBitArr(AtomicU16::new(0)),
@@ -857,7 +861,18 @@ Giving up this node. This shouldn't happen!",
                     // appear anywhere in the sub-tree formed from
                     // this node.
                     node = this_node;
-                    let bmin = this_node.node_set.rbm().read().unwrap();
+
+                    let bmin = match this_node.node_set.rbm().read() {
+                        Ok(bmin) => bmin,
+                        // if this lock is poisened, we are still going to
+                        // work with the bmin. The data in the bmin may be
+                        // stale, because of the lock poisoning, but this may
+                        // also happen because of delays in other parts of the
+                        // store in normal circumstances. We are counting on a
+                        // future call to a write method to actually propagate
+                        // a FatalError to the user of the store.
+                        Err(bmin) => bmin.into_inner(),
+                    };
                     if !bmin.contains(mui) {
                         return None;
                     }
@@ -882,7 +897,10 @@ Giving up this node. This shouldn't happen!",
     }
 
     pub(crate) fn get_root_node_id(&self) -> StrideNodeId<AF> {
-        StrideNodeId::dangerously_new_with_id_as_is(AF::zero(), 0)
+        StrideNodeId::dangerously_new_with_id_as_is(
+            <AF as FromZeros>::new_zeroed(),
+            0,
+        )
     }
 
     pub fn get_nodes_count(&self) -> usize {
