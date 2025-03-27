@@ -110,19 +110,21 @@ impl Debug for CreatedNodes {
 }
 
 //------------ Counters -----------------------------------------------------
+//
+// This is the struct that's part of the data structure of each tree type.
 
 #[derive(Debug)]
 pub(crate) struct Counters {
-    // number of created nodes in the in-mem tree
+    // number of created nodes in the TreeBitMap. Set to 0 for other trees.
     nodes: AtomicUsize,
-    // number of unique prefixes in the store
+    // number of unique prefixes in the tree
     prefixes: [AtomicUsize; 129],
-    // number of unique (prefix, mui) values inserted in the in-mem tree
+    // number of unique (prefix, mui) values inserted in the tree.
     routes: AtomicUsize,
 }
 
 impl Counters {
-    pub fn get_nodes_count(&self) -> usize {
+    pub fn nodes_count(&self) -> usize {
         self.nodes.load(Ordering::Relaxed)
     }
 
@@ -130,7 +132,7 @@ impl Counters {
         self.nodes.fetch_add(1, Ordering::Relaxed);
     }
 
-    pub fn get_prefixes_count(&self) -> Vec<usize> {
+    pub fn prefixes_count(&self) -> Vec<usize> {
         self.prefixes
             .iter()
             .map(|pc| pc.load(Ordering::Relaxed))
@@ -149,7 +151,7 @@ impl Counters {
         }
     }
 
-    pub fn get_prefix_stats(&self) -> Vec<CreatedNodes> {
+    pub fn prefix_stats(&self) -> Vec<CreatedNodes> {
         self.prefixes
             .iter()
             .enumerate()
@@ -165,6 +167,10 @@ impl Counters {
                 }
             })
             .collect()
+    }
+
+    pub fn routes_count(&self) -> usize {
+        self.routes.load(Ordering::Relaxed)
     }
 
     pub fn inc_routes_count(&self) {
@@ -188,6 +194,11 @@ impl Default for Counters {
         }
     }
 }
+
+//------------ UpsertCounters ------------------------------------------------
+//
+// The Counters struct holds atomic values, so this struct exists to return a
+// set of counters from the RIB to users.
 
 #[derive(Debug)]
 pub struct UpsertCounters {
@@ -215,9 +226,9 @@ impl UpsertCounters {
 
 impl std::fmt::Display for UpsertCounters {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
-        write!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
-        write!(f, "Total inserted Items:\t{}", self.total_count)
+        writeln!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
+        writeln!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
+        writeln!(f, "Total inserted Items:\t{}", self.total_count)
     }
 }
 
@@ -241,7 +252,7 @@ impl std::ops::Add for UpsertCounters {
     }
 }
 
-//------------ StoreStats ----------------------------------------------
+//------------ StoreStats ----------------------------------------------------
 
 #[derive(Debug)]
 pub struct StoreStats {

@@ -157,7 +157,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     // value concatenated in this method always has a length of greater than
     // KEYS_SIZE, a global constant for the store per AF.
     #[allow(clippy::indexing_slicing)]
-    pub fn get_records_for_prefix(
+    pub fn records_for_prefix(
         &self,
         prefix: PrefixId<AF>,
         mui: Option<u32>,
@@ -341,7 +341,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
         }
     }
 
-    pub fn get_most_recent_record_for_prefix_mui(
+    pub fn most_recent_record_for_prefix_mui(
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
@@ -374,7 +374,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
         res.map(|r| Some(r.to_vec()))
     }
 
-    pub(crate) fn get_records_with_keys_for_prefix_mui(
+    pub(crate) fn records_with_keys_for_prefix_mui(
         &self,
         prefix: PrefixId<AF>,
         mui: u32,
@@ -415,17 +415,21 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
         self.tree.disk_space()
     }
 
-    pub fn get_prefixes_count(&self) -> usize {
-        self.counters.get_prefixes_count().iter().sum()
+    pub fn prefixes_count(&self) -> usize {
+        self.counters.prefixes_count().iter().sum()
+    }
+
+    pub fn routes_count(&self) -> usize {
+        self.counters.routes_count()
     }
 
     #[allow(clippy::indexing_slicing)]
-    pub fn get_prefixes_count_for_len(
+    pub fn prefixes_count_for_len(
         &self,
         len: u8,
     ) -> Result<usize, PrefixStoreError> {
         if len <= AF::BITS {
-            Ok(self.counters.get_prefixes_count()[len as usize])
+            Ok(self.counters.prefixes_count()[len as usize])
         } else {
             Err(PrefixStoreError::StoreNotReadyError)
         }

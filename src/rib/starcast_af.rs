@@ -214,7 +214,7 @@ impl<
     }
 
     pub fn get_nodes_count(&self) -> usize {
-        self.tree_bitmap.get_nodes_count()
+        self.tree_bitmap.nodes_count()
     }
 
     // Change the status of the record for the specified (prefix, mui)
@@ -243,8 +243,8 @@ impl<
                     prefix, mui
                 );
                 if let Some(p_tree) = self.persist_tree.as_ref() {
-                    let stored_prefixes = p_tree
-                        .get_records_with_keys_for_prefix_mui(prefix, mui);
+                    let stored_prefixes =
+                        p_tree.records_with_keys_for_prefix_mui(prefix, mui);
 
                     for rkv in stored_prefixes {
                         if let Ok(r) = rkv {
@@ -316,8 +316,8 @@ impl<
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
-                    if let Ok(Some(record_b)) = p_tree
-                        .get_most_recent_record_for_prefix_mui(prefix, mui)
+                    if let Ok(Some(record_b)) =
+                        p_tree.most_recent_record_for_prefix_mui(prefix, mui)
                     {
                         let header = ValueHeader {
                             ltime,
@@ -399,20 +399,31 @@ impl<
         !self.tree_bitmap.withdrawn_muis_bmin(guard).contains(mui)
     }
 
-    pub(crate) fn get_prefixes_count(&self) -> UpsertCounters {
+    pub(crate) fn prefixes_count(&self) -> UpsertCounters {
         UpsertCounters {
-            in_memory_count: self.tree_bitmap.get_prefixes_count(),
+            in_memory_count: self.prefix_cht.prefixes_count(),
             persisted_count: self
                 .persist_tree
                 .as_ref()
-                .map_or(0, |p| p.get_prefixes_count()),
-            total_count: self.counters.get_prefixes_count().iter().sum(),
+                .map_or(0, |p| p.prefixes_count()),
+            total_count: self.counters.prefixes_count().iter().sum(),
+        }
+    }
+
+    pub(crate) fn routes_count(&self) -> UpsertCounters {
+        UpsertCounters {
+            in_memory_count: self.prefix_cht.routes_count(),
+            persisted_count: self
+                .persist_tree
+                .as_ref()
+                .map_or(0, |p| p.routes_count()),
+            total_count: self.counters.routes_count(),
         }
     }
 
     // the len check does it all.
     #[allow(clippy::indexing_slicing, clippy::unwrap_used)]
-    pub fn get_prefixes_count_for_len(
+    pub fn prefixes_count_for_len(
         &self,
         len: u8,
     ) -> Result<UpsertCounters, PrefixStoreError> {
@@ -420,11 +431,12 @@ impl<
             Ok(UpsertCounters {
                 in_memory_count: self
                     .tree_bitmap
-                    .get_prefixes_count_for_len(len)?,
-                persisted_count: self.persist_tree.as_ref().map_or(0, |p| {
-                    p.get_prefixes_count_for_len(len).unwrap()
-                }),
-                total_count: self.counters.get_prefixes_count()[len as usize],
+                    .prefixes_count_for_len(len)?,
+                persisted_count: self
+                    .persist_tree
+                    .as_ref()
+                    .map_or(0, |p| p.prefixes_count_for_len(len).unwrap()),
+                total_count: self.counters.prefixes_count()[len as usize],
             })
         } else {
             Err(PrefixStoreError::PrefixLengthInvalid)

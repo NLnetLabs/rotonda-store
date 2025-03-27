@@ -800,11 +800,8 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     }
 
     /// Request the number of all prefixes in the store.
-    ///
-    /// Note that this method will actually traverse the complete
-    /// tree.
     pub fn prefixes_count(&self) -> UpsertCounters {
-        self.v4.get_prefixes_count() + self.v6.get_prefixes_count()
+        self.v4.prefixes_count() + self.v6.prefixes_count()
     }
 
     /// Request the number of all IPv4 prefixes in the store.
@@ -813,7 +810,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// number in the store, due to contention at the time of
     /// reading the value.
     pub fn prefixes_v4_count(&self) -> UpsertCounters {
-        self.v4.get_prefixes_count()
+        self.v4.prefixes_count()
     }
 
     /// Request the number of all IPv4 prefixes with the
@@ -826,7 +823,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         &self,
         len: u8,
     ) -> Result<UpsertCounters, PrefixStoreError> {
-        self.v4.get_prefixes_count_for_len(len)
+        self.v4.prefixes_count_for_len(len)
     }
 
     /// Request the number of all IPv6 prefixes in the store.
@@ -835,7 +832,7 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     /// number in the store, due to contention at the time of
     /// reading the value.
     pub fn prefixes_v6_count(&self) -> UpsertCounters {
-        self.v6.get_prefixes_count()
+        self.v6.prefixes_count()
     }
 
     /// Returns the number of all IPv6 prefixes with the
@@ -848,7 +845,22 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
         &self,
         len: u8,
     ) -> Result<UpsertCounters, PrefixStoreError> {
-        self.v6.get_prefixes_count_for_len(len)
+        self.v6.prefixes_count_for_len(len)
+    }
+
+    /// Request the number of all routes in the store.
+    pub fn routes_count(&self) -> UpsertCounters {
+        self.v4.routes_count() + self.v6.routes_count()
+    }
+
+    /// Request the number of all IPv4 routes in the store.
+    pub fn routes_count_v4(&self) -> UpsertCounters {
+        self.v4.routes_count()
+    }
+
+    /// Request the number of all IPv6 routes in the store.
+    pub fn routes_count_v6(&self) -> UpsertCounters {
+        self.v6.routes_count()
     }
 
     /// Request the number of nodes in the store.
@@ -890,8 +902,8 @@ impl<'a, M: Meta, C: Config> StarCastRib<M, C> {
     // The Store statistics.
     pub fn stats(&self) -> StoreStats {
         StoreStats {
-            v4: self.v4.counters.get_prefix_stats(),
-            v6: self.v6.counters.get_prefix_stats(),
+            v4: self.v4.counters.prefix_stats(),
+            v6: self.v6.counters.prefix_stats(),
         }
     }
 

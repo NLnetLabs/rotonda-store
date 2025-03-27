@@ -12,7 +12,7 @@ use roaring::RoaringBitmap;
 use crate::cht::{nodeset_size, prev_node_size};
 use crate::errors::{FatalError, FatalResult};
 use crate::prefix_record::Meta;
-use crate::stats::UpsertReport;
+use crate::stats::{Counters, UpsertReport};
 use crate::types::RouteStatus;
 use crate::{
     cht::{Cht, OnceBoxSlice, Value},
@@ -519,13 +519,19 @@ pub(crate) struct PrefixCht<
     AF: AddressFamily,
     M: Meta,
     const ROOT_SIZE: usize,
->(Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>);
+> {
+    bush: Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>,
+    counters: Counters,
+}
 
 impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     PrefixCht<AF, M, ROOT_SIZE>
 {
     pub(crate) fn init() -> Self {
-        Self(<Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>>::init())
+        Self {
+            bush: <Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>>::init(),
+            counters: Counters::default(),
+        }
     }
 
     pub(crate) fn get_records_for_prefix(
@@ -535,7 +541,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Option<Vec<Record<M>>> {
-        let mut prefix_set = self.0.root_for_len(prefix.len());
+        let mut prefix_set = self.bush.root_for_len(prefix.len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
 
@@ -610,8 +616,14 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
                     if mui_count.is_some() {
                         mui_is_new = false;
                         prefix_is_new = false;
+                    } else {
+                        self.counters.inc_routes_count();
                     }
 
+                    if prefix_is_new {
+                        self.counters
+                            .inc_prefixes_count(stored_prefix.prefix.len());
+                    }
                     (mui_count, retry_count)
                 }
                 // There already is a StoredPrefix with a record at this
@@ -637,7 +649,13 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
                         .record_map
                         .upsert_record(record)
                         .map_err(|_| PrefixStoreError::FatalError)?;
-                    mui_is_new = mui_count.is_none();
+
+                    // if the mui is new, we didn't overwrite an existing
+                    // route, so that's a new one!
+                    if mui_count.is_none() {
+                        mui_is_new = true;
+                        self.counters.inc_routes_count();
+                    };
 
                     if let Some(tbi) = update_path_selections {
                         stored_prefix
@@ -673,7 +691,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         search_prefix_id: PrefixId<AF>,
     ) -> (&StoredPrefix<AF, M>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
-        let mut prefix_set = self.0.root_for_len(search_prefix_id.len());
+        let mut prefix_set = self.bush.root_for_len(search_prefix_id.len());
         let mut level: u8 = 0;
 
         trace!("root prefix_set {:?}", prefix_set);
@@ -758,7 +776,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
             usize,
         )>,
     ) {
-        let mut prefix_set = self.0.root_for_len(id.len());
+        let mut prefix_set = self.bush.root_for_len(id.len());
         let mut parents = [None; 32];
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -798,7 +816,15 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         }
     }
 
-    pub(crate) fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
+    pub(crate) fn prefixes_count(&self) -> usize {
+        self.counters.prefixes_count().iter().sum()
+    }
+
+    pub(crate) fn routes_count(&self) -> usize {
+        self.counters.nodes_count()
+    }
+
+    fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
         let last_level = prev_node_size(id.len(), level);
 
         // HASHING FUNCTION

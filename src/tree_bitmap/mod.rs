@@ -323,9 +323,6 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
             let is_last_stride = pfx.len() <= stride_end;
             let stride_start = stride_end - STRIDE_SIZE;
 
-            // this counts the number of retry_count for this loop only,
-            // but ultimately we will return the accumulated count of all
-            // retry_count from this macro.
             let node_result = {
                 let local_retry_count = 0;
                 // retrieve_node_mut updates the bitmap index if
@@ -341,8 +338,6 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE> {
                             pfx.bits(),
                             stride_start,
                         ),
-                        // the length of THIS stride
-                        // stride,
                         is_last_stride,
                     ) {
                         (NewNodeOrIndex::NewNode(n), retry_count) => {
@@ -448,7 +443,7 @@ Giving up this node. This shouldn't happen!",
 
     pub fn prefix_exists(&self, prefix_id: PrefixId<AF>) -> bool {
         trace!("pe exists {:?}?", prefix_id);
-        let (node_id, bs) = self.get_node_id_for_prefix(&prefix_id);
+        let (node_id, bs) = self.node_id_for_prefix(&prefix_id);
 
         match self.retrieve_node(node_id) {
             Some(n) => {
@@ -465,7 +460,7 @@ Giving up this node. This shouldn't happen!",
         mui: u32,
     ) -> bool {
         trace!("pe exists {:?}?", prefix_id);
-        let (node_id, bs) = self.get_node_id_for_prefix(&prefix_id);
+        let (node_id, bs) = self.node_id_for_prefix(&prefix_id);
 
         match self.retrieve_node_for_mui(node_id, mui) {
             Some(n) => {
@@ -937,35 +932,30 @@ Giving up this node. This shouldn't happen!",
         )
     }
 
-    pub fn get_nodes_count(&self) -> usize {
-        self.counters.get_nodes_count()
+    pub fn nodes_count(&self) -> usize {
+        self.counters.nodes_count()
     }
 
-    pub fn get_prefixes_count(&self) -> usize {
-        self.counters.get_prefixes_count().iter().sum()
+    pub fn prefixes_count(&self) -> usize {
+        self.counters.prefixes_count().iter().sum()
     }
 
     // len checking does it all
     #[allow(clippy::indexing_slicing)]
-    pub fn get_prefixes_count_for_len(
+    pub fn prefixes_count_for_len(
         &self,
         len: u8,
     ) -> Result<usize, PrefixStoreError> {
         if len <= AF::BITS {
-            Ok(self.counters.get_prefixes_count()[len as usize])
+            Ok(self.counters.prefixes_count()[len as usize])
         } else {
             Err(PrefixStoreError::PrefixLengthInvalid)
         }
     }
 
-    // Stride related methods
-    // pub fn get_stride_sizes(&self) -> &[u8] {
-    //     self.node_buckets.get_stride_sizes()
-    // }
-
     // Calculates the id of the node that COULD host a prefix in its
     // ptrbitarr.
-    pub(crate) fn get_node_id_for_prefix(
+    pub(crate) fn node_id_for_prefix(
         &self,
         prefix: &PrefixId<AF>,
     ) -> (NodeId<AF>, BitSpan) {
@@ -975,7 +965,6 @@ Giving up this node. This shouldn't happen!",
             prefix.len()
         );
         let mut acc = 0;
-        // for i in self.get_stride_sizes() {
         loop {
             acc += STRIDE_SIZE;
             if acc >= prefix.len() {
@@ -1110,18 +1099,9 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> std::fmt::Display
     for TreeBitMap<AF, ROOT_SIZE>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(_f, "{} prefixes created", self.get_prefixes_count())?;
-        writeln!(_f, "{} nodes created", self.get_nodes_count())?;
+        writeln!(_f, "{} prefixes created", self.prefixes_count())?;
+        writeln!(_f, "{} nodes created", self.nodes_count())?;
         writeln!(_f)?;
-
-        // writeln!(
-        //     _f,
-        //     "stride division {:?}",
-        //     self.get_stride_sizes()
-        //         .iter()
-        //         .map_while(|s| if s > &0 { Some(*s) } else { None })
-        //         .collect::<Vec<_>>()
-        // )?;
 
         writeln!(
             _f,
@@ -1131,20 +1111,10 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> std::fmt::Display
 
         let bars = ["▏", "▎", "▍", "▌", "▋", "▊", "▉"];
         const SCALE: u32 = 5500;
-
-        // trace!(
-        //     "stride_sizes {:?}",
-        //     self.get_stride_sizes()
-        //         .iter()
-        //         .map_while(|s| if s > &0 { Some(*s) } else { None })
-        //         .enumerate()
-        //         .collect::<Vec<(usize, u8)>>()
-        // );
-
         for crate::stats::CreatedNodes {
             depth_level: len,
             count: prefix_count,
-        } in self.counters.get_prefix_stats()
+        } in self.counters.prefix_stats()
         {
             let max_pfx = u128::overflowing_pow(2, len as u32);
             let n = (prefix_count as u32 / SCALE) as usize;

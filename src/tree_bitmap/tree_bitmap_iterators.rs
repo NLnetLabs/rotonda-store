@@ -267,7 +267,7 @@ impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
         } else {
             // calculate the node start_prefix_id lives in.
             let (start_node_id, start_bs) =
-                self.get_node_id_for_prefix(&start_prefix_id);
+                self.node_id_for_prefix(&start_prefix_id);
             trace!("start node {}", start_node_id);
             trace!(
                 "start prefix id {:032b} (len {})",

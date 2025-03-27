@@ -42,7 +42,7 @@ impl<
                 self.persist_tree
                     .as_ref()
                     .and_then(|tree| {
-                        tree.get_records_for_prefix(
+                        tree.records_for_prefix(
                             prefix_id,
                             mui,
                             include_withdrawn,
@@ -70,25 +70,6 @@ impl<
                                     }
                                 })
                                 .collect::<FatalResult<Vec<_>>>()
-                            // let record: FatalResult<&ZeroCopyRecord<AF>> =
-                            //     ZeroCopyRecord::try_ref_from_bytes(
-                            //         bytes
-                            //             .as_ref()
-                            //             .map_err(|_| FatalError)
-                            //             .unwrap(),
-                            //     )
-                            //     .map_err(|_| FatalError);
-                            // Record::<M> {
-                            //     multi_uniq_id: record.multi_uniq_id,
-                            //     ltime: record.ltime,
-                            //     status: record.status,
-                            //     meta: <Vec<u8>>::from(
-                            //         record.meta.as_ref(),
-                            //     )
-                            //     .into(),
-                            // }
-                            // })
-                            // .collect::<Vec<_>>()
                         })
                     })
                     .transpose()
@@ -115,7 +96,7 @@ impl<
             None
         };
 
-        let prefix_meta = self
+        let records = self
             .get_value(prefix_id, mui, include_withdrawn, guard)?
             .unwrap_or_default();
 
@@ -130,12 +111,7 @@ impl<
 
         Ok(QueryResult {
             prefix,
-            records: prefix_meta,
-            // prefix.map(|_pfx| {
-            //     self.get_value(prefix_id, mui, include_withdrawn, guard)?
-            //         .unwrap_or_default()
-            // })
-            // .unwrap_or(vec![]),
+            records,
             match_type: MatchType::EmptyMatch,
             less_specifics: None,
             more_specifics,
@@ -204,28 +180,6 @@ impl<
         })
         .into_iter()
         .flatten()
-        // .chain(
-        //     (if mui.is_some_and(|m| {
-        //         self.config.persist_strategy == PersistStrategy::WriteAhead
-        //             || (!include_withdrawn && self.mui_is_withdrawn(m, guard))
-        //     }) {
-        //         None
-        //     } else {
-        //         let global_withdrawn_bmin =
-        //             self.in_memory_tree.withdrawn_muis_bmin(guard);
-        //         self.persist_tree.as_ref().map(|persist_tree| {
-        //             persist_tree.more_specific_prefix_iter_from(
-        //                 prefix_id,
-        //                 vec![],
-        //                 mui,
-        //                 global_withdrawn_bmin,
-        //                 include_withdrawn,
-        //             )
-        //         })
-        //     })
-        //     .into_iter()
-        //     .flatten(),
-        // )
     }
 
     pub(crate) fn less_specifics_iter_from(
