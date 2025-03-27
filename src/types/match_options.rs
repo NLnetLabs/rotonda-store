@@ -4,7 +4,6 @@ use std::fmt;
 use inetnum::addr::Prefix;
 
 use super::prefix_record::Meta;
-use crate::rib::StarCastRib;
 
 //------------ MatchOptions / MatchType -------------------------------------
 
