@@ -127,22 +127,11 @@ impl AddressFamily for IPv4 {
         self.into()
     }
 
-    // We are totally allowing panic here: the panicking arm holds an
-    // invariant that's a super basic assumption of this whole store. If this
-    // panics than this whole library should not be used, and be checked for
-    // logic errors everywhere. For performance reasons we are leaving out the
-    // FatalResult wrapper.
-    #[allow(clippy::panic)]
     fn truncate_to_len(self, len: u8) -> Self {
-        match len {
-            0 => U32::new(0),
-            1..=31 => {
-                (self >> U32::from(32 - len as u32))
-                    << U32::from(32 - len as u32)
-            }
-            32 => self,
-            len => panic!("Can't truncate to more than 128 bits: {}", len),
-        }
+        self & ((1_u32.rotate_right(len as u32)
+            ^ 1_u32.saturating_sub(len as u32))
+        .wrapping_sub(1)
+            ^ u32::MAX)
     }
 
     fn checked_shr_or_zero(self, rhs: u32) -> Self {
@@ -188,22 +177,11 @@ impl AddressFamily for IPv6 {
         (res, len + bs.len)
     }
 
-    // We are totally allowing panic here: the panicking arm holds an
-    // invariant that's a super basic assumption of this whole store. If this
-    // panics than this whole library should not be used, and be checked for
-    // logic errors everywhere. For performance reasons we are leaving out the
-    // FatalResult wrapper.
-    #[allow(clippy::panic)]
     fn truncate_to_len(self, len: u8) -> Self {
-        match len {
-            0 => U128::new(0),
-            1..=127 => {
-                (self >> U128::from(128 - len as u128))
-                    << U128::from(128 - len as u128)
-            }
-            128 => self,
-            len => panic!("Can't truncate to more than 128 bits: {}", len),
-        }
+        self & ((1_u128.rotate_right(len as u32)
+            ^ 1_u128.saturating_sub(len as u128))
+        .wrapping_sub(1)
+            ^ u128::MAX)
     }
 
     fn into_ipaddr(self) -> std::net::IpAddr {

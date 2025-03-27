@@ -671,7 +671,7 @@ impl<AF: AddressFamily> NodeId<AF> {
     }
 
     // clean out all bits that are set beyond the len. This function should
-    // be used before doing any ORing to add a nibble.
+    // be used before doing any ORing to add a bitspan.
     #[inline]
     pub(crate) fn with_cleaned_id(&self) -> (AF, u8) {
         (self.bits.truncate_to_len(self.len), self.len)
