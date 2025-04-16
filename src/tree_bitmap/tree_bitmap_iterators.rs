@@ -236,7 +236,6 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> Iterator
 
             let lvl_pfx = self.prefix.truncate_to_len(self.cur_level);
             if self.tree.prefix_exists(lvl_pfx) {
-                self.cur_level = self.cur_level.saturating_sub(1);
                 return Some(lvl_pfx);
             }
 
