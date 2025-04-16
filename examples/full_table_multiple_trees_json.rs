@@ -134,7 +134,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             println!("\"inserts_num\": {},", inserts_num);
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
             println!(
-                "\"global_prefix_vec_size\": {},",
+                "\"global_prefix_vec_size\": {:?},",
                 tree_bitmap.prefixes_count()
             );
             println!(

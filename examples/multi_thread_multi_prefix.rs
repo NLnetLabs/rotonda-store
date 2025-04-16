@@ -122,7 +122,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             "increased pfx to {}",
             pfx_arc.clone().load(std::sync::atomic::Ordering::Relaxed)
         );
-        println!("prefix count: {}", tree_bitmap.prefixes_count());
+        println!("prefix count: {:?}", tree_bitmap.prefixes_count());
 
         threads.clone().for_each(|t| {
             t.thread().unpark();

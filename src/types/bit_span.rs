@@ -43,7 +43,6 @@ impl BitSpan {
     }
 
     pub(crate) fn check(&self) -> bool {
-        println!("check bit span: {:?}", self);
         if self.len == 0 && self.bits == 0 {
             return true;
         };

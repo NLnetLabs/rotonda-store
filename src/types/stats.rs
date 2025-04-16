@@ -224,13 +224,13 @@ impl UpsertCounters {
     }
 }
 
-impl std::fmt::Display for UpsertCounters {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
-        writeln!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
-        writeln!(f, "Total inserted Items:\t{}", self.total_count)
-    }
-}
+// impl std::fmt::Display for UpsertCounters {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         writeln!(f, "Unique Items in-memory:\t{}", self.in_memory_count)?;
+//         writeln!(f, "Unique persisted Items:\t{}", self.persisted_count)?;
+//         writeln!(f, "Total inserted Items:\t{}", self.total_count)
+//     }
+// }
 
 impl std::ops::AddAssign for UpsertCounters {
     fn add_assign(&mut self, rhs: Self) {

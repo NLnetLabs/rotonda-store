@@ -118,7 +118,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             );
                                         });
                                     println!(
-                                        "ipv4 prefixes :\t{}",
+                                        "ipv4 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v4_count()
                                     );
                                 }
@@ -133,17 +133,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             );
                                         });
                                     println!(
-                                        "ipv6 prefixes :\t{}",
+                                        "ipv6 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v6_count()
                                     );
                                 }
                                 _ => {
                                     println!(
-                                        "ipv4 prefixes :\t{}",
+                                        "ipv4 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v4_count()
                                     );
                                     println!(
-                                        "ipv6 prefixes :\t{}",
+                                        "ipv6 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v6_count()
                                     );
                                     tree_bitmap
@@ -156,7 +156,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             );
                                         });
                                     println!(
-                                        "total prefixes :\t{}",
+                                        "total prefixes :\t{:?}",
                                         tree_bitmap.prefixes_count()
                                     );
                                 }

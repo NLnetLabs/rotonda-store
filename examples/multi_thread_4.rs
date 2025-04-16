@@ -103,7 +103,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if x % 1_000_000 == 0 {
                             println!(
-                                "{:?} {} (prefixes count: {},
+                                "{:?} {} (prefixes count: {:?},
                                 nodes count: {}",
                                 std::thread::current().name(),
                                 x,
