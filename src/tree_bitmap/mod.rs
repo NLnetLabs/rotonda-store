@@ -938,6 +938,7 @@ Giving up this node. This shouldn't happen!",
         self.counters.nodes_count()
     }
 
+    #[cfg(feature = "cli")]
     pub fn prefixes_count(&self) -> usize {
         self.counters.prefixes_count().iter().sum()
     }
