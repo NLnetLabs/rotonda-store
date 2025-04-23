@@ -1,20 +1,24 @@
+use inetnum::addr::Prefix;
 use log::trace;
-use std::time::Duration;
+use rotonda_store::prefix_record::Record;
+use rotonda_store::prefix_record::RouteStatus;
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::IntoIpAddr;
 use std::thread;
+use std::time::Duration;
 
 use rand::Rng;
 
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-
-use rotonda_store::meta_examples::PrefixAs;
+use rotonda_store::test_types::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+    let tree_bitmap =
+        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
     // let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let mut pfx_int = 0_u32;
@@ -28,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .name(1_u8.to_string())
         .spawn(move || -> Result<(), Box<dyn std::error::Error + Send>> {
             // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
-            let mut rng= rand::thread_rng();
+            let mut rng = rand::rng();
 
             println!("park thread {}", 1);
             thread::park();
@@ -38,17 +42,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             // let mut x = 0;
             while pfx_int <= 24 {
                 pfx_int += 1;
-                let pfx = Prefix::new_relaxed(
-                    pfx_int.into_ipaddr(),
-                    32,
-                );
+                let pfx = Prefix::new_relaxed(pfx_int.into_ipaddr(), 32);
                 // x += 1;
                 // print!("{}-", i);
-                let asn: u32 = rng.gen();
+                let asn: u32 = rng.random();
                 match tree_bitmap.insert(
                     &pfx.unwrap(),
-                    Record::new(0, 0, RouteStatus::Active, PrefixAs(asn)),
-                    None
+                    Record::new(
+                        0,
+                        0,
+                        RouteStatus::Active,
+                        PrefixAs::new_from_u32(asn),
+                    ),
+                    None,
                 ) {
                     Ok(_) => {}
                     Err(e) => {

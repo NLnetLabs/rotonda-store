@@ -2,8 +2,14 @@ use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
 use rotonda_store::{
-    prelude::multi::{Record, RouteStatus},
-    MatchOptions, MultiThreadedStore,
+    errors::FatalResult,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{PrefixRecord, Record, RouteStatus},
+    rib::{
+        config::{Config, MemoryOnlyConfig},
+        StarCastRib,
+    },
+    test_types::{BeBytesAsn, NoMeta},
 };
 
 mod common {
@@ -17,8 +23,58 @@ mod common {
     }
 }
 
-#[test]
-fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
+rotonda_store::all_strategies![
+    test_cc_updates_1;
+    test_concurrent_updates_1;
+    BeBytesAsn
+];
+
+fn iter(
+    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfx: Prefix,
+) -> impl Iterator<Item = &Record<BeBytesAsn>> + '_ {
+    pfxs_iter
+        .iter()
+        .find(|p| p.as_ref().unwrap().prefix == pfx)
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .meta
+        .iter()
+}
+
+fn iter_len(
+    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfx: Prefix,
+) -> usize {
+    pfxs_iter
+        .iter()
+        .find(|p| p.as_ref().unwrap().prefix == pfx)
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .meta
+        .len()
+}
+
+fn first_meta(
+    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfx: Prefix,
+) -> BeBytesAsn {
+    pfxs_iter
+        .iter()
+        .find(|p| p.as_ref().unwrap().prefix == pfx)
+        .unwrap()
+        .as_ref()
+        .unwrap()
+        .meta[0]
+        .meta
+        .clone()
+}
+
+fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
+    tree_bitmap: StarCastRib<BeBytesAsn, C>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     let pfx_vec_1 = vec![
@@ -48,7 +104,15 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         pfxs: Vec<Prefix>,
     }
 
-    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<Asn>::new()?);
+    // let store_config = StoreConfig {
+    //     persist_strategy: rotonda_store::rib::PersistStrategy::PersistOnly,
+    //     persist_path: "/tmp/rotonda/".into(),
+    // };
+
+    // let store = std::sync::Arc::new(
+    //     MultiThreadedStore::<BeBytesAsn>::new_with_config(store_config)?,
+    // );
+    let guard = &rotonda_store::epoch::pin();
 
     let mui_data_1 = MuiData {
         mui: 1,
@@ -69,12 +133,12 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
-
+    let tree_bitmap = std::sync::Arc::new(tree_bitmap);
     let _: Vec<_> = vec![mui_data_1, mui_data_2, mui_data_3]
         .into_iter()
         .map(|data: MuiData| {
-            let tree_bitmap = tree_bitmap.clone();
             let cur_ltime = cur_ltime.clone();
+            let tbm = tree_bitmap.clone();
 
             std::thread::Builder::new()
                 .name(data.mui.to_string())
@@ -83,13 +147,13 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
                     for pfx in data.pfxs {
                         let _ = cur_ltime.fetch_add(1, Ordering::Release);
 
-                        match tree_bitmap.insert(
+                        match tbm.insert(
                             &pfx,
                             Record::new(
                                 data.mui,
                                 cur_ltime.load(Ordering::Acquire),
                                 RouteStatus::Active,
-                                data.asn,
+                                data.asn.into(),
                             ),
                             None,
                         ) {
@@ -107,193 +171,100 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         .map(|t| t.join())
         .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter().collect::<Vec<_>>());
+    println!("COUNT {:?}", tree_bitmap.prefixes_count());
 
-    let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
+    let all_pfxs_iter = tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>();
+    println!("all_pfxs_iter {:#?}", all_pfxs_iter);
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
+
+    assert!(tree_bitmap.contains(&pfx, None));
+    assert!(tree_bitmap.contains(&pfx, Some(1)));
+    assert!(tree_bitmap.contains(&pfx, Some(2)));
+
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
 
     let pfx = Prefix::from_str("185.34.10.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
 
     let pfx = Prefix::from_str("185.34.11.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| pfx == p.as_ref().unwrap().prefix));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 || m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 || m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("185.34.11.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 || m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("185.34.12.0/24").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
 
     let pfx = Prefix::from_str("183.0.0.0/8")?;
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 || m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 && m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("186.0.0.0/8")?;
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("187.0.0.0/8")?;
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 2 && m.meta == 65502.into())));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
 
     // Create Withdrawals
@@ -312,7 +283,7 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
                     tree_bitmap
-                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2)
+                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2, 10)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");
@@ -322,22 +293,31 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
         .map(|t| t.join())
         .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter().collect::<Vec<_>>());
+    println!(
+        "prefixes_iter {:#?}",
+        tree_bitmap
+            .as_ref()
+            .prefixes_iter(guard)
+            .collect::<Vec<_>>()
+    );
 
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::ExactMatch,
+        match_type: MatchType::ExactMatch,
         include_withdrawn: true,
         include_less_specifics: false,
         include_more_specifics: false,
         mui: None,
+        include_history: IncludeHistory::None,
     };
 
     for pfx in pfx_vec_2 {
         let guard = rotonda_store::epoch::pin();
-        let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
+        let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard)?;
         assert_eq!(res.prefix, Some(pfx));
+        println!("strategy {:?}", tree_bitmap.persist_strategy());
+        println!("PFX {}", res);
         assert_eq!(
-            res.prefix_meta
+            res.records
                 .iter()
                 .find(|m| m.multi_uniq_id == 2)
                 .unwrap()
@@ -348,8 +328,15 @@ fn test_concurrent_updates_1() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+// rotonda_store::all_strategies_arced![
+//     test_cc_updates_2;
+//     test_concurrent_updates_2;
+//     BeBytesAsn
+// ];
+
 #[test]
-fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
+fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>,
+) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     let pfx_vec_1 = vec![
@@ -373,28 +360,22 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         Prefix::from_str("188.0.0.0/8")?,
     ];
 
-    #[derive(Debug)]
-    struct MuiData {
-        asn: u32,
-    }
-
-    let tree_bitmap = std::sync::Arc::new(MultiThreadedStore::<Asn>::new()?);
-
-    const MUI_DATA: [MuiData; 4] = [
-        MuiData { asn: 65501 },
-        MuiData { asn: 65502 },
-        MuiData { asn: 65503 },
-        MuiData { asn: 65504 },
-    ];
+    const MUI_DATA: [u32; 4] = [65501, 65502, 65503, 65504];
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+
+    let tree_bitmap = std::sync::Arc::new(StarCastRib::<
+        BeBytesAsn,
+        MemoryOnlyConfig,
+    >::try_default()?);
+    let guard = &rotonda_store::epoch::pin();
 
     let _: Vec<_> =
         vec![pfx_vec_1.clone(), pfx_vec_2.clone(), pfx_vec_3.clone()]
             .into_iter()
             .enumerate()
             .map(|(n, pfxs)| {
-                let tree_bitmap = tree_bitmap.clone();
+                let tbm = std::sync::Arc::clone(&tree_bitmap);
                 let cur_ltime = cur_ltime.clone();
 
                 std::thread::Builder::new()
@@ -404,19 +385,19 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
                         for (i, pfx) in pfxs.iter().enumerate() {
                             let _ = cur_ltime.fetch_add(1, Ordering::Release);
 
-                            match tree_bitmap.insert(
+                            match tbm.insert(
                                 pfx,
                                 Record::new(
                                     i as u32 + 1,
                                     cur_ltime.load(Ordering::Acquire),
                                     RouteStatus::Active,
-                                    MUI_DATA[i].asn.into(),
+                                    Asn::from(MUI_DATA[i]).into(),
                                 ),
                                 None,
                             ) {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    println!("{}", e);
+                                    println!("Err: {}", e);
                                 }
                             };
                         }
@@ -428,150 +409,65 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
             .map(|t| t.join())
             .collect();
 
-    println!("{:#?}", tree_bitmap.prefixes_iter().collect::<Vec<_>>());
+    println!(
+        "prefixes_iter#1 :{:#?}",
+        tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>()
+    );
 
-    let all_pfxs_iter = tree_bitmap.prefixes_iter().collect::<Vec<_>>();
+    let all_pfxs_iter = tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>();
 
     let pfx = Prefix::from_str("185.33.0.0/16").unwrap();
-    assert!(all_pfxs_iter.iter().any(|p| p.prefix == pfx));
     assert!(all_pfxs_iter
         .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+        .any(|p| p.as_ref().unwrap().prefix == pfx));
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 4 && m.meta == 65504.into()));
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        2
-    );
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 2);
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
 
     let pfx = Prefix::from_str("185.34.14.0/24").unwrap();
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
     assert_eq!(
         all_pfxs_iter
             .iter()
-            .find(|p| p.prefix == pfx)
+            .find(|p| p.as_ref().unwrap().prefix == pfx)
             .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65503)
+            .as_ref()
+            .unwrap()
+            .meta[0]
+            .meta,
+        Asn::from_u32(65503).into()
     );
 
     let pfx = Prefix::from_str("187.0.0.0/8").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65504)
-    );
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
+    assert_eq!(first_meta(&all_pfxs_iter, pfx), Asn::from_u32(65504).into());
 
     let pfx = Prefix::from_str("185.35.0.0/16").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65501)
-    );
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
+    assert_eq!(first_meta(&all_pfxs_iter, pfx), Asn::from_u32(65501).into());
 
     let pfx = Prefix::from_str("185.34.15.0/24").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        2
-    );
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 2);
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
-    assert!(all_pfxs_iter
-        .iter()
-        .find(|p| p.prefix == pfx)
-        .unwrap()
-        .meta
-        .iter()
+    assert!(iter(&all_pfxs_iter, pfx)
         .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
 
     let pfx = Prefix::from_str("188.0.0.0/8").unwrap();
-    assert_eq!(
-        all_pfxs_iter
-            .iter()
-            .find(|p| p.prefix == pfx)
-            .unwrap()
-            .meta
-            .len(),
-        1
-    );
-    assert_eq!(
-        all_pfxs_iter.iter().find(|p| p.prefix == pfx).unwrap().meta[0].meta,
-        Asn::from_u32(65504)
-    );
+    assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
+    assert_eq!(first_meta(&all_pfxs_iter, pfx), Asn::from_u32(65504).into());
 
     // Create Withdrawals
     let wd_pfxs = [pfx_vec_1[1], pfx_vec_2[1], pfx_vec_3[1]];
@@ -579,7 +475,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
     let _: Vec<_> = wd_pfxs
         .into_iter()
         .map(|pfx: Prefix| {
-            let tree_bitmap = tree_bitmap.clone();
+            let tbm = std::sync::Arc::clone(&tree_bitmap);
             let cur_ltime = cur_ltime.clone();
 
             std::thread::Builder::new()
@@ -588,8 +484,7 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
                     print!("\nstart withdraw {} ---", 2);
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
-                    tree_bitmap
-                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2)
+                    tbm.mark_mui_as_withdrawn_for_prefix(&pfx, 2, 15)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");
@@ -600,19 +495,22 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         .collect();
 
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::ExactMatch,
+        match_type: MatchType::ExactMatch,
         include_withdrawn: true,
         include_less_specifics: false,
         include_more_specifics: false,
         mui: None,
+        include_history: IncludeHistory::None,
     };
 
     for pfx in wd_pfxs {
         let guard = rotonda_store::epoch::pin();
         let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
-        assert_eq!(res.prefix, Some(pfx));
+        assert_eq!(res.as_ref().unwrap().prefix, Some(pfx));
+        println!("RES {:#?}", res);
         assert_eq!(
-            res.prefix_meta
+            res.unwrap()
+                .records
                 .iter()
                 .find(|m| m.multi_uniq_id == 2)
                 .unwrap()
@@ -621,28 +519,167 @@ fn test_concurrent_updates_2() -> Result<(), Box<dyn std::error::Error>> {
         );
     }
 
+    println!("get all prefixes");
     let match_options = MatchOptions {
-        match_type: rotonda_store::MatchType::ExactMatch,
+        match_type: MatchType::EmptyMatch,
         include_withdrawn: false,
         include_less_specifics: false,
         include_more_specifics: true,
         mui: None,
+        include_history: IncludeHistory::None,
     };
 
-    let pfx = Prefix::from_str("0.0.0.0/0").unwrap();
+    println!("strategy {:?}", tree_bitmap.persist_strategy());
+    // should cover all the prefixes
+    // let pfx0 = Prefix::from_str("184.0.0.0/6").unwrap();
+    let pfx128 = Prefix::from_str("128.0.0.0/1").unwrap();
     let guard = rotonda_store::epoch::pin();
-    let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
+    // let res0 = tree_bitmap.match_prefix(&pfx0, &match_options, &guard);
 
-    println!("{:#?}", res);
+    // println!("000 {:#?}", res0);
+
+    assert!(tree_bitmap
+        .contains(&Prefix::from_str("185.34.14.0/24").unwrap(), None));
+
+    tree_bitmap
+        .insert(
+            &Prefix::from_str("32.0.0.0/4").unwrap(),
+            Record::new(
+                1,
+                cur_ltime.load(Ordering::Acquire),
+                RouteStatus::Active,
+                Asn::from(653400).into(),
+            ),
+            None,
+        )
+        .unwrap();
+
+    assert!(
+        tree_bitmap.contains(&Prefix::from_str("32.0.0.0/4").unwrap(), None)
+    );
+
+    let mp02 = tree_bitmap
+        .match_prefix(
+            &Prefix::from_str("0.0.0.0/2").unwrap(),
+            &match_options,
+            &guard,
+        )
+        .unwrap()
+        .more_specifics
+        .unwrap();
+    println!("0/2 {}", mp02);
+    assert_eq!(mp02.len(), 1);
+
+    let res128 = tree_bitmap.match_prefix(&pfx128, &match_options, &guard);
+    println!("128 {:#?}", res128);
+    // let guard = rotonda_store::epoch::pin();
+    // println!(
+    //     "more_specifics_iter_from {:#?}",
+    //     tree_bitmap.more_specifics_keys_from(&pfx128)
+    // );
 
     let active_len = all_pfxs_iter
         .iter()
-        .filter(|p| p.meta.iter().all(|m| m.status == RouteStatus::Active))
+        .filter(|p| {
+            p.as_ref()
+                .unwrap()
+                .meta
+                .iter()
+                .all(|m| m.status == RouteStatus::Active)
+        })
         .collect::<Vec<_>>()
         .len();
     assert_eq!(active_len, all_pfxs_iter.len());
-    let len_2 = res.more_specifics.unwrap().v4.len();
-    assert_eq!(active_len, len_2);
+    // let len_2 = res0.more_specifics.unwrap().v4.len()
+    assert_eq!(active_len, res128?.more_specifics.unwrap().v4.len());
+
+    Ok(())
+}
+
+#[test]
+fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
+    crate::common::init();
+
+    println!("PersistOnly strategy starting...");
+    let tree_bitmap = std::sync::Arc::new(StarCastRib::<
+        NoMeta,
+        MemoryOnlyConfig,
+    >::try_default()?);
+    let match_options = MatchOptions {
+        match_type: MatchType::EmptyMatch,
+        include_withdrawn: false,
+        include_less_specifics: false,
+        include_more_specifics: true,
+        mui: None,
+        include_history: IncludeHistory::None,
+    };
+
+    let pfx1 = Prefix::from_str("185.34.0.0/16")?;
+    let pfx2 = Prefix::from_str("185.34.3.0/24")?;
+    let pfx3 = Prefix::from_str("185.34.4.0/24")?;
+
+    tree_bitmap
+        .insert(
+            &pfx1,
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )
+        .unwrap();
+
+    tree_bitmap
+        .insert(
+            &pfx2,
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )
+        .unwrap();
+
+    tree_bitmap
+        .insert(
+            &pfx3,
+            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )
+        .unwrap();
+
+    let guard = rotonda_store::epoch::pin();
+
+    assert!(tree_bitmap.contains(&pfx1, None));
+    assert!(tree_bitmap.contains(&pfx2, None));
+    assert!(tree_bitmap.contains(&pfx3, None));
+
+    println!("-------------------");
+    // let search_pfx = Prefix::from_str("0.0.0.0/0")?;
+    // let mp = tree_bitmap
+    //     .more_specifics_iter_from(&search_pfx, None, false, &guard)
+    //     .collect::<Vec<_>>();
+
+    // println!("more specifics : {:#?}", mp);
+
+    // assert_eq!(mp.len(), 2);
+
+    let search_pfx = Prefix::from_str("128.0.0.0/1")?;
+
+    let m = tree_bitmap.match_prefix(&search_pfx, &match_options, &guard);
+
+    // let mp = tree_bitmap
+    //     .more_specifics_iter_from(&search_pfx, None, false, &guard)
+    //     .collect::<Vec<_>>();
+
+    println!(
+        "more specifics#0: {}",
+        m.as_ref().unwrap().more_specifics.as_ref().unwrap()[0]
+    );
+    println!(
+        "more specifics#1: {}",
+        m.as_ref().unwrap().more_specifics.as_ref().unwrap()[1]
+    );
+    println!(
+        "more specifics#2: {}",
+        m.as_ref().unwrap().more_specifics.as_ref().unwrap()[2]
+    );
+
+    assert_eq!(m.unwrap().more_specifics.map(|mp| mp.len()), Some(3));
 
     Ok(())
 }

@@ -1,61 +1,52 @@
+use inetnum::addr::Prefix;
+use inetnum::asn::Asn;
 use log::trace;
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{Meta, Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::IntoIpAddr;
 use std::time::Duration;
 use std::{sync::Arc, thread};
 
+#[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
+pub struct BytesPrefixAs(pub [u8; 4]);
 
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-
-#[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
-pub struct ComplexPrefixAs(pub Vec<u32>);
-
-// impl MergeUpdate for ComplexPrefixAs {
-//     type UserDataIn = ();
-//     type UserDataOut = ();
-
-//     fn merge_update(
-//         &mut self,
-//         update_record: ComplexPrefixAs,
-//         _: Option<&Self::UserDataIn>,
-//     ) -> Result<(), Box<dyn std::error::Error>> {
-//         self.0 = update_record.0;
-//         Ok(())
-//     }
-
-//     fn clone_merge_update(
-//         &self,
-//         update_meta: &Self,
-//         _: Option<&Self::UserDataIn>,
-//     ) -> Result<(Self, Self::UserDataOut), Box<dyn std::error::Error>>
-//     where
-//         Self: std::marker::Sized,
-//     {
-//         let mut new_meta = update_meta.0.clone();
-//         new_meta.push(self.0[0]);
-//         Ok((ComplexPrefixAs(new_meta), ()))
-//     }
-// }
-
-impl Meta for ComplexPrefixAs {
-    type Orderable<'a> = ComplexPrefixAs;
-    type TBI = ();
-    
-    fn as_orderable(&self, _tbi: Self::TBI) -> ComplexPrefixAs {
-        self.clone()
+impl AsRef<[u8]> for BytesPrefixAs {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
     }
 }
 
-impl std::fmt::Display for ComplexPrefixAs {
+impl From<Vec<u8>> for BytesPrefixAs {
+    fn from(value: Vec<u8>) -> Self {
+        Self(*value.first_chunk::<4>().unwrap())
+    }
+}
+
+impl Meta for BytesPrefixAs {
+    type Orderable<'a> = Asn;
+    type TBI = ();
+
+    fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
+        u32::from_be_bytes(self.0).into()
+    }
+}
+
+impl std::fmt::Display for BytesPrefixAs {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "AS{:?}", self.0)
     }
 }
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = Arc::new(MultiThreadedStore::<ComplexPrefixAs>::new()?);
+    let tree_bitmap = Arc::new(
+        StarCastRib::<BytesPrefixAs, MemoryOnlyConfig>::try_default()?,
+    );
     let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let pfx = Prefix::new_relaxed(
@@ -87,13 +78,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 0,
                                 0,
                                 RouteStatus::Active,
-                                ComplexPrefixAs([i as u32].to_vec()),
+                                BytesPrefixAs((i as u32).to_be_bytes()),
                             ),
-                            None
+                            None,
                         ) {
                             Ok(metrics) => {
                                 if metrics.cas_count > 0 {
-                                    eprintln!("{} {} {:?} retry count: {},", std::thread::current().name().unwrap(), metrics.prefix_new, pfx, metrics.cas_count);
+                                    eprintln!(
+                                        "{} {} {:?}
+                                        retry count: {},",
+                                        std::thread::current()
+                                            .name()
+                                            .unwrap(),
+                                        metrics.prefix_new,
+                                        pfx,
+                                        metrics.cas_count
+                                    );
                                 }
                             }
                             Err(e) => {
@@ -103,15 +103,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                         if x % 1_000_000 == 0 {
                             println!(
-                                "{:?} {} (prefixes count: {}, nodes count: {}",
+                                "{:?} {} (prefixes count: {:?},
+                                nodes count: {}",
                                 std::thread::current().name(),
                                 x,
                                 tree_bitmap.prefixes_count(),
                                 tree_bitmap.nodes_count()
                             );
                         }
-
-                    
                     }
                 },
             )
@@ -127,19 +126,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("------ end of inserts\n");
 
-    let guard = &epoch::pin();
+    let guard = &rotonda_store::epoch::pin();
 
     let s_spfx = tree_bitmap.match_prefix(
         &pfx.unwrap(),
         &MatchOptions {
-            match_type: rotonda_store::MatchType::ExactMatch,
+            match_type: MatchType::ExactMatch,
             include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
-            mui: None
+            mui: None,
+            include_history: IncludeHistory::None,
         },
         guard,
-    );
+    )?;
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());

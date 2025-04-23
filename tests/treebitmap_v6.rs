@@ -11,16 +11,31 @@ mod common {
 
 #[cfg(test)]
 mod tests {
-    use inetnum::addr::Prefix;
     use rotonda_store::{
-        meta_examples::NoMeta, meta_examples::PrefixAs, prelude::multi::*,
-        prelude::*,
+        addr::Prefix,
+        epoch,
+        match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_record::{Record, RouteStatus},
+        rib::{
+            config::{Config, MemoryOnlyConfig, PersistOnlyConfig},
+            StarCastRib,
+        },
+        test_types::{NoMeta, PrefixAs},
+        IntoIpAddr,
     };
 
-    #[test]
-    fn test_arbitrary_insert_ipv6() -> Result<(), Box<dyn std::error::Error>>
-    {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
+    rotonda_store::all_strategies![
+        tests_ipv6;
+        test_arbitrary_insert_ipv6;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_arbitrary_insert_ipv6<C: Config>(
+        trie: StarCastRib<NoMeta, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+        // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
         let guard = &epoch::pin();
         let a_pfx = Prefix::new_relaxed(
             ("2001:67c:1bfc::").parse::<std::net::Ipv6Addr>()?.into(),
@@ -45,20 +60,32 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix: {:?}", &expect_pfx);
         println!("result: {:#?}", &res);
         assert!(res.prefix.is_some());
+
         assert_eq!(res.prefix, Some(expect_pfx?));
 
         Ok(())
     }
 
-    #[test]
-    fn test_insert_extremes_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
+    rotonda_store::all_strategies![
+        tests_ipv6_2;
+        test_insert_extremes_ipv6;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_insert_extremes_ipv6<C: Config>(
+        trie: StarCastRib<NoMeta, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        crate::common::init();
+
+        // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv6Addr::new(0, 0, 0, 0, 0, 0, 0, 0).into(),
             1,
@@ -84,17 +111,21 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
-        println!("prefix: {:?}", &expect_pfx);
-        println!("result: {:#?}", &res);
+        )?;
+        println!("prefix: {}", &expect_pfx.unwrap());
+        println!("result: {}", &res);
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
 
         let max_pfx = Prefix::new_relaxed(
-            std::net::Ipv6Addr::new(255, 255, 255, 255, 255, 255, 255, 255)
-                .into(),
+            std::net::Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                0xffff,
+            )
+            .into(),
             128,
         );
 
@@ -105,11 +136,15 @@ mod tests {
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
-            std::net::Ipv6Addr::new(255, 255, 255, 255, 255, 255, 255, 255)
-                .into(),
+            std::net::Ipv6Addr::new(
+                0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff,
+                0xffff,
+            )
+            .into(),
             128,
         );
 
+        println!("done inserting...");
         let guard = &epoch::pin();
         let res = trie.match_prefix(
             &expect_pfx?,
@@ -119,23 +154,32 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
         Ok(())
     }
 
+    rotonda_store::all_strategies![
+        max_levels;
+        test_max_levels;
+        PrefixAs
+    ];
+
     // This test aims to fill all the levels available in the PrefixBuckets
     // mapping. This tests the prefix-length-to-bucket-sizes-per-storage-
     // level mapping, most notably if the exit condition is met (a zero at
     // the end of a prefix-length array).
-    #[test]
-    fn test_max_levels() -> Result<(), Box<dyn std::error::Error>> {
+    // #[test]
+    fn test_max_levels<C: Config>(
+        tree_bitmap: StarCastRib<PrefixAs, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // 0-7
             Prefix::new_relaxed(
@@ -274,35 +318,49 @@ mod tests {
         for pfx in pfxs.into_iter() {
             tree_bitmap.insert(
                 &pfx?,
-                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
+                Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new_from_u32(666),
+                ),
                 None,
             )?;
         }
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter() {
-            // let pfx_nm = pfx.strip_meta();
+        for pfx in tree_bitmap.prefixes_iter(guard) {
+            let pfx = pfx.as_ref().unwrap().prefix;
             let res = tree_bitmap.match_prefix(
-                &pfx.prefix,
+                &pfx,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
                 guard,
-            );
+            )?;
             println!("{}", pfx);
-            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
         Ok(())
     }
 
-    #[test]
-    fn test_tree_ipv6() -> Result<(), Box<dyn std::error::Error>> {
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+    rotonda_store::all_strategies![
+        tree_ipv6_2;
+        test_tree_ipv6;
+        PrefixAs
+    ];
+
+    // #[test]
+    fn test_tree_ipv6<C: Config>(
+        tree_bitmap: StarCastRib<PrefixAs, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u128.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -535,7 +593,12 @@ mod tests {
         for pfx in pfxs.into_iter() {
             tree_bitmap.insert(
                 &pfx?,
-                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
+                Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new_from_u32(666),
+                ),
                 None,
             )?;
         }
@@ -547,21 +610,22 @@ mod tests {
         // };
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter() {
-            // let pfx_nm = pfx.strip_meta();
+        for pfx in tree_bitmap.prefixes_iter(guard) {
+            let pfx = pfx.unwrap().prefix;
             let res = tree_bitmap.match_prefix(
-                &pfx.prefix,
+                &pfx,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
                 guard,
-            );
+            )?;
             println!("{}", pfx);
-            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
         let res = tree_bitmap.match_prefix(
@@ -575,9 +639,10 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix {:?}", res.prefix);
         println!("res: {:#?}", &res);
 
@@ -612,10 +677,13 @@ mod tests {
         Ok(())
     }
 
+    // This test cannot be run with the current test creation macro. The
+    // test recreates the store for each outer loop!
     #[test]
-    fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    fn test_ranges_ipv6_mo() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+            let tree_bitmap =
+                StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -660,9 +728,72 @@ mod tests {
                             include_less_specifics: false,
                             include_more_specifics: false,
                             mui: None,
+                            include_history: IncludeHistory::None,
                         },
                         guard,
-                    );
+                    )?;
+                    println!("{:?}", pfx);
+
+                    assert_eq!(res.prefix.unwrap(), res_pfx?);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn test_ranges_ipv6_po() -> Result<(), Box<dyn std::error::Error>> {
+        for i_net in 0..255 {
+            let tree_bitmap =
+                StarCastRib::<NoMeta, PersistOnlyConfig>::try_default()?;
+
+            let pfx_vec: Vec<Prefix> = (1..32)
+                .collect::<Vec<u8>>()
+                .into_iter()
+                .map(|i_len| {
+                    Prefix::new_relaxed(
+                        std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
+                            .into(),
+                        i_len,
+                    )
+                    .unwrap()
+                })
+                .collect();
+
+            let mut i_len_s = 0;
+            for pfx in pfx_vec {
+                i_len_s += 1;
+                tree_bitmap.insert(
+                    &pfx,
+                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                    None,
+                )?;
+
+                let res_pfx = Prefix::new_relaxed(
+                    std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
+                        .into(),
+                    i_len_s,
+                );
+
+                let guard = &epoch::pin();
+                for s_len in i_len_s..32 {
+                    let pfx = Prefix::new_relaxed(
+                        std::net::Ipv6Addr::new(i_net, 0, 0, 0, 0, 0, 0, 0)
+                            .into(),
+                        s_len,
+                    )?;
+                    let res = tree_bitmap.match_prefix(
+                        &pfx,
+                        &MatchOptions {
+                            match_type: MatchType::LongestMatch,
+                            include_withdrawn: false,
+                            include_less_specifics: false,
+                            include_more_specifics: false,
+                            mui: None,
+                            include_history: IncludeHistory::None,
+                        },
+                        guard,
+                    )?;
                     println!("{:?}", pfx);
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);

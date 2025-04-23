@@ -12,11 +12,8 @@ authors.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
-[workspace]
-members   = ["proc_macros"]
-
 [workspace.package]
-version = "0.4.2"
+version = "0.5.0"
 edition = "2021"
 authors = ["NLnet Labs <routing-team@nlnetlabs.nl>"]
 license = "BSD-3-Clause"
@@ -25,36 +22,39 @@ rust-version = "1.82"
 [dependencies]
 crossbeam-epoch = "^0.9"
 crossbeam-utils = "^0.8"
+parking_lot_core = "0.9.10"
 
 inetnum   = "0.1"
 log       = "^0.4"
 roaring 	= "0.10.3"
-rotonda-macros = { path = "proc_macros", version = "0.4.0" }
-routecore       = { version = "0.5", features = ["bgp", "bmp", "fsm", "serde"] }
-
+routecore       = { version = "0.5.2", features = ["bgp", "bmp", "fsm", "serde", "mrt"] }
 ansi_term   = { version = "0.12", optional = true }
 csv         = { version = "1", optional = true }
-rustyline   = { version = "13", optional = true }
-parking_lot_core = "0.9.10"
+rustyline   = { version = "15", optional = true }
+clap        = { version = "4.4", optional = true, features = ["derive"] }
+rayon = { version = "1.10", optional = true }
+memmap2 = { version = "0.9", optional = true }
+rand = { version = "0.9" }
+lsm-tree = { version = "2.6.6" }
+serde = "1.0.216"
+serde_derive = "1.0.216"
+serde_json = "1.0.133"
+num-traits = "0.2.19"
+zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [dev-dependencies]
 csv         = { version = "1" }
-env_logger  = { version = "0.10" }
-rand        = "^0.8"
+env_logger  = { version = "0.11" }
 
 [features]
 cli = ["ansi_term", "rustyline", "csv"]
+mrt = ["clap", "rayon"]
 default = []
 
 [[bin]]
 name = "cli"
 required-features = ["cli"]
 
-[lints.clippy]
-needless_lifetimes = "allow"
-extra_unused_lifetimes = "allow"
-empty_line_after_outer_attr = "allow"
-empty_line_after_doc_comments = "allow"
-
-[lints.rust]
-elided_named_lifetimes = "allow"
+[[bin]]
+name = "load_mrt"
+required-features = ["mrt"]

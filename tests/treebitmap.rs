@@ -14,15 +14,26 @@ mod tests {
     use std::str::FromStr;
 
     use inetnum::addr::Prefix;
+    use log::trace;
     use rotonda_store::{
-        meta_examples::{NoMeta, PrefixAs},
-        prelude::multi::*,
-        prelude::*,
+        epoch,
+        match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_record::{Record, RouteStatus},
+        rib::{config::Config, StarCastRib},
+        test_types::{NoMeta, PrefixAs},
+        IntoIpAddr,
     };
 
-    #[test]
-    fn test_insert_extremes_ipv4() -> Result<(), Box<dyn std::error::Error>> {
-        let trie = &mut MultiThreadedStore::<NoMeta>::new()?;
+    rotonda_store::all_strategies![
+        test_treebitmap;
+        test_insert_extremes_ipv4;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_insert_extremes_ipv4<C: Config>(
+        trie: StarCastRib<NoMeta, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
             1,
@@ -48,9 +59,10 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix: {:?}", &expect_pfx);
         println!("result: {:#?}", &res);
         assert!(res.prefix.is_some());
@@ -81,19 +93,28 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         assert!(res.prefix.is_some());
         assert_eq!(res.prefix, Some(expect_pfx?));
         Ok(())
     }
 
-    #[test]
-    fn test_tree_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    rotonda_store::all_strategies![
+        tree_ipv4;
+        test_tree_ipv4;
+        PrefixAs
+    ];
+
+    // #[test]
+    fn test_tree_ipv4<C: Config>(
+        tree_bitmap: StarCastRib<PrefixAs, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+        // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
             // Prefix::new_relaxed(0b0000_0000_0000_0000_0000_0000_0000_000 0_u32.into_ipaddr(), 0),
             Prefix::new_relaxed(
@@ -321,7 +342,12 @@ mod tests {
         for pfx in pfxs.into_iter() {
             tree_bitmap.insert(
                 &pfx?,
-                Record::new(0, 0, RouteStatus::Active, PrefixAs(666)),
+                Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new_from_u32(666),
+                ),
                 None,
             )?;
         }
@@ -333,21 +359,24 @@ mod tests {
         // };
 
         let guard = &epoch::pin();
-        for pfx in tree_bitmap.prefixes_iter() {
+        for pfx in tree_bitmap.prefixes_iter(guard) {
             // let pfx_nm = pfx.strip_meta();
+            let pfx = pfx.unwrap().prefix;
             let res = tree_bitmap.match_prefix(
-                &pfx.prefix,
+                &pfx,
                 &MatchOptions {
                     match_type: MatchType::LongestMatch,
                     include_withdrawn: false,
                     include_less_specifics: false,
                     include_more_specifics: false,
                     mui: None,
+                    include_history: IncludeHistory::None,
                 },
                 guard,
-            );
-            println!("{}", pfx);
-            assert_eq!(res.prefix.unwrap(), pfx.prefix);
+            )?;
+            println!("PFX {}", pfx);
+            println!("RES {}", res);
+            assert_eq!(res.prefix.unwrap(), pfx);
         }
 
         let res = tree_bitmap.match_prefix(
@@ -358,18 +387,16 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("prefix {:?}", res.prefix);
-        println!("res: {:#?}", &res);
+        println!("res: {}", &res);
 
         assert_eq!(
             res.prefix.unwrap(),
-            Prefix::new_relaxed(
-                std::net::Ipv4Addr::new(192, 0, 0, 0).into(),
-                23
-            )?
+            Prefix::new(std::net::Ipv4Addr::new(192, 0, 0, 0).into(), 23)?
         );
 
         let less_specifics = res.less_specifics.unwrap();
@@ -393,10 +420,24 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn test_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    rotonda_store::all_strategies![
+        ranges_ipv4;
+        test_ranges_ipv4;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_ranges_ipv4<C: Config>(
+        _tree_bitmap: StarCastRib<NoMeta, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // for persist_strategy in [
+        //     PersistStrategy::MemoryOnly,
+        //     // PersistStrategy::PersistOnly,
+        //     // PersistStrategy::WriteAhead,
+        //     // PersistStrategy::PersistHistory,
+
         for i_net in 0..255 {
-            let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+            let tree_bitmap = StarCastRib::<NoMeta, C>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -438,23 +479,34 @@ mod tests {
                             include_less_specifics: false,
                             include_more_specifics: false,
                             mui: None,
+                            include_history: IncludeHistory::None,
                         },
                         guard,
-                    );
+                    )?;
                     println!("{:?}", pfx);
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);
                 }
             }
         }
+
         Ok(())
     }
 
-    #[test]
-    fn test_multi_ranges_ipv4() -> Result<(), Box<dyn std::error::Error>> {
+    rotonda_store::all_strategies![
+        multi_ranges;
+        test_multi_ranges_ipv4;
+        NoMeta
+    ];
+
+    // #[test]
+    fn test_multi_ranges_ipv4<C: Config>(
+        tree_bitmap: StarCastRib<NoMeta, C>,
+    ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
-        let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+        // let tree_bitmap =
+        //     MultiThreadedStore::<NoMeta, PersistOnlyConfig>::try_default()?;
         for mui in [1_u32, 2, 3, 4, 5] {
             println!("Multi Uniq ID {mui}");
 
@@ -506,6 +558,7 @@ mod tests {
                                 include_less_specifics: false,
                                 include_more_specifics: false,
                                 mui: Some(mui),
+                                include_history: IncludeHistory::None,
                             },
                             guard,
                         );
@@ -523,6 +576,7 @@ mod tests {
             .iter_records_for_mui_v4(5, false, guard)
             .collect::<Vec<_>>()
         {
+            let rec = rec.unwrap();
             println!("{}", rec);
 
             assert_eq!(rec.meta.len(), 1);
@@ -533,7 +587,7 @@ mod tests {
             .iter_records_for_mui_v4(1, false, guard)
             .collect::<Vec<_>>()
         {
-            println!("{}", rec);
+            println!("{}", rec.unwrap());
         }
 
         // println!("all records");
@@ -552,13 +606,14 @@ mod tests {
                 include_less_specifics: false,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         print!(".pfx {:#?}.", all_recs_for_pfx);
-        assert_eq!(all_recs_for_pfx.prefix_meta.len(), 5);
+        assert_eq!(all_recs_for_pfx.records.len(), 5);
         let wd_rec = all_recs_for_pfx
-            .prefix_meta
+            .records
             .iter()
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
@@ -573,43 +628,54 @@ mod tests {
                 include_less_specifics: false,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
-        assert_eq!(active_recs_for_pfx.prefix_meta.len(), 4);
+        )?;
+        assert_eq!(active_recs_for_pfx.records.len(), 4);
         assert!(!active_recs_for_pfx
-            .prefix_meta
+            .records
             .iter()
             .any(|r| r.multi_uniq_id == 1));
 
         let wd_pfx = Prefix::from_str("1.0.0.0/16")?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2, 1)?;
 
         println!("all records");
 
-        let all_recs = tree_bitmap.prefixes_iter();
+        let all_recs = tree_bitmap.prefixes_iter(guard);
 
-        for rec in tree_bitmap.prefixes_iter().collect::<Vec<_>>() {
+        for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
+            let rec = rec.unwrap();
             println!("{}", rec);
         }
 
-        let mui_2_recs =
-            all_recs.filter_map(|r| r.get_record_for_mui(2).cloned());
+        let mui_2_recs = all_recs.filter_map(|r| {
+            r.as_ref().unwrap().get_record_for_mui(2).cloned()
+        });
         let wd_2_rec = mui_2_recs
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
         assert_eq!(wd_2_rec.len(), 1);
         assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
 
-        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
-            r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
+        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
+            r.as_ref()
+                .unwrap()
+                .get_record_for_mui(2)
+                .cloned()
+                .map(|rec| (r.as_ref().unwrap().prefix, rec))
         });
         println!("mui_2_recs prefixes_iter");
         for rec in mui_2_recs {
             println!("{} {:#?}", rec.0, rec.1);
         }
-        let mui_2_recs = tree_bitmap.prefixes_iter().filter_map(|r| {
-            r.get_record_for_mui(2).cloned().map(|rec| (r.prefix, rec))
+        let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
+            r.as_ref()
+                .unwrap()
+                .get_record_for_mui(2)
+                .cloned()
+                .map(|rec| (r.as_ref().unwrap().prefix, rec))
         });
 
         let active_2_rec = mui_2_recs
@@ -621,6 +687,7 @@ mod tests {
         let mui_2_recs = tree_bitmap.iter_records_for_mui_v4(2, false, guard);
         println!("mui_2_recs iter_records_for_mui_v4");
         for rec in mui_2_recs {
+            let rec = rec.unwrap();
             println!("{} {:#?}", rec.prefix, rec.meta);
         }
 
@@ -638,7 +705,11 @@ mod tests {
         assert_eq!(mui_1_recs.len(), 4);
         println!("mui_1_recs iter_records_for_mui_v4 w/ withdrawn");
         for rec in mui_1_recs {
-            assert_eq!(rec.meta[0].status, RouteStatus::Withdrawn);
+            let rec = rec.unwrap();
+            assert_eq!(
+                rec.meta.first().unwrap().status,
+                RouteStatus::Withdrawn
+            );
         }
 
         //--------------
@@ -651,15 +722,24 @@ mod tests {
                 include_less_specifics: false,
                 include_more_specifics: true,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         println!("more_specifics match {} w/ withdrawn", more_specifics);
+
+        let guard = &rotonda_store::epoch::pin();
+        for p in tree_bitmap.prefixes_iter_v4(guard) {
+            let p = p.unwrap();
+            println!("{}", p);
+        }
+
         let more_specifics = more_specifics.more_specifics.unwrap();
+        let ms_v4 = more_specifics.v4.iter().collect::<Vec<_>>();
         assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
         assert_eq!(more_specifics.meta.len(), 5);
         assert_eq!(
@@ -689,15 +769,21 @@ mod tests {
                 include_less_specifics: false,
                 include_more_specifics: true,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         println!("more_specifics match {} w/o withdrawn", more_specifics);
         let more_specifics = more_specifics.more_specifics.unwrap();
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
         assert_eq!(more_specifics.meta.len(), 4);
         assert_eq!(
@@ -718,7 +804,7 @@ mod tests {
 
         //------------------
 
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 1)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 1, 10)?;
         tree_bitmap.mark_mui_as_active_v4(1)?;
 
         let more_specifics = tree_bitmap.match_prefix(
@@ -729,19 +815,27 @@ mod tests {
                 include_less_specifics: false,
                 include_more_specifics: true,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
         println!("more_specifics match w/o withdrawn #2 {}", more_specifics);
         // We withdrew mui 1 for the requested prefix itself, since mui 2 was
         // already withdrawn above, we're left with 3 records
-        assert_eq!(more_specifics.prefix_meta.len(), 3);
+        println!("PREFIX META: {:#?}", more_specifics.records);
+        assert_eq!(more_specifics.records.len(), 3);
 
         let more_specifics = more_specifics.more_specifics.unwrap();
+
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
 
         // one more more_specific should have been added due to mui 1 being
@@ -766,10 +860,10 @@ mod tests {
         assert!(rec.is_empty());
 
         // withdraw muis 2,3,4,5 for the requested prefix
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 3)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 4)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 5)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2, 11)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 3, 12)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 4, 13)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 5, 14)?;
 
         let more_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/16")?,
@@ -779,21 +873,28 @@ mod tests {
                 include_less_specifics: false,
                 include_more_specifics: true,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("more_specifics match w/o withdrawn #3 {}", more_specifics);
 
-        // This prefix should not be found, since we withdrew all records for it.
-        assert!(more_specifics.prefix_meta.is_empty());
+        // This prefix should not be found, since we withdrew all records
+        // for it.
+        assert!(more_specifics.records.is_empty());
 
         // ..as a result, its resulting match_type should be EmptyMatch
         assert_eq!(more_specifics.match_type, MatchType::EmptyMatch);
 
         let more_specifics = more_specifics.more_specifics.unwrap();
+        let ms_v4 = more_specifics
+            .v4
+            .iter()
+            .filter(|p| p.prefix != Prefix::from_str("1.0.0.0/16").unwrap())
+            .collect::<Vec<_>>();
         assert_eq!(more_specifics.len(), 1);
-        assert_eq!(more_specifics.v4.len(), 1);
-        let more_specifics = &more_specifics.v4[0];
+        assert_eq!(ms_v4.len(), 1);
+        let more_specifics = &ms_v4[0];
         assert_eq!(more_specifics.prefix, Prefix::from_str("1.0.0.0/17")?);
 
         // all muis should be visible for the more specifics
@@ -818,9 +919,10 @@ mod tests {
 
         //----------------------
 
+        trace!("less_specifics match w/o withdrawn #4");
         // Change the requested prefix to the more specific from the former
         // queries.
-        let less_specifics = tree_bitmap.match_prefix(
+        let query = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/17")?,
             &MatchOptions {
                 match_type: MatchType::ExactMatch,
@@ -828,21 +930,29 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
 
-        println!("less_specifics match w/o withdrawn #4 {}", less_specifics);
+        trace!("{:#?}", query);
 
-        assert_eq!(less_specifics.prefix_meta.len(), 5);
+        assert_eq!(query.records.len(), 5);
 
-        let less_specifics = less_specifics.less_specifics.unwrap();
-        // All records for the less specific /16 are withdrawn, so this should be empty.
+        let less_specifics = query.less_specifics.unwrap();
+
+        // All records for the less specific /16 are withdrawn, so this should
+        // be empty.
         assert!(less_specifics.is_empty());
 
         //--------------------
 
-        tree_bitmap.mark_mui_as_active_for_prefix(&wd_pfx, 5)?;
+        println!("less_specifics match w/o withdrawn #5");
+
+        trace!("mark {} as active", wd_pfx);
+        tree_bitmap
+            .mark_mui_as_active_for_prefix(&wd_pfx, 5, 1)
+            .unwrap();
 
         let less_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/17")?,
@@ -852,11 +962,12 @@ mod tests {
                 include_less_specifics: true,
                 include_more_specifics: false,
                 mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
-        println!("more_specifics match w/o withdrawn #5 {}", less_specifics);
+        )?;
         let less_specifics = less_specifics.less_specifics.unwrap();
+        println!("{:#?}", less_specifics);
 
         assert_eq!(less_specifics.v4.len(), 1);
         let less_specifics = &less_specifics.v4[0];

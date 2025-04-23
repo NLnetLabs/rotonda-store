@@ -1,35 +1,49 @@
 use std::{sync::Arc, thread};
 
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::meta_examples::NoMeta;
+use inetnum::addr::Prefix;
+use rotonda_store::{
+    epoch,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    rib::{config::MemoryOnlyConfig, StarCastRib},
+    test_types::NoMeta,
+    IntoIpAddr,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = Arc::new(MultiThreadedStore::<NoMeta>::new()?);
+    let tree_bitmap =
+        Arc::new(StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?);
 
     let _: Vec<_> = (0..16)
         .map(|i: i32| {
             let tree_bitmap = tree_bitmap.clone();
 
-            thread::Builder::new().name(i.to_string()).spawn(move || {
-                let pfxs = get_pfx();
+            thread::Builder::new()
+                .name(i.to_string())
+                .spawn(move || {
+                    let pfxs = get_pfx();
 
-                for pfx in pfxs.into_iter() {
-                    println!("insert {}", pfx.unwrap());
+                    for pfx in pfxs.into_iter() {
+                        println!("insert {}", pfx.unwrap());
 
-                    match tree_bitmap
-                        .insert(
-                            &pfx.unwrap(), 
-                            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-                            None
-                    ) {
-                        Ok(_) => {}
-                        Err(e) => {
-                            println!("{}", e);
-                        }
-                    };
-                }
-            }).unwrap()
+                        match tree_bitmap.insert(
+                            &pfx.unwrap(),
+                            Record::new(
+                                0,
+                                0,
+                                RouteStatus::Active,
+                                NoMeta::Empty,
+                            ),
+                            None,
+                        ) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("{}", e);
+                            }
+                        };
+                    }
+                })
+                .unwrap()
         })
         .map(|t| t.join())
         .collect();
@@ -43,14 +57,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let s_spfx = tree_bitmap.match_prefix(
             &spfx.unwrap(),
             &MatchOptions {
-                match_type: rotonda_store::MatchType::ExactMatch,
+                match_type: MatchType::ExactMatch,
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: true,
-                mui: None
+                mui: None,
+                include_history: IncludeHistory::None,
             },
             guard,
-        );
+        )?;
         println!("query result");
         println!("{}", s_spfx);
         println!("{}", s_spfx.more_specifics.unwrap());

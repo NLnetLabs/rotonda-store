@@ -1,12 +1,20 @@
 use inetnum::addr::Prefix;
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::meta_examples::NoMeta;
+use rotonda_store::match_options::IncludeHistory;
+use rotonda_store::match_options::MatchOptions;
+use rotonda_store::match_options::MatchType;
+use rotonda_store::prefix_record::Record;
+use rotonda_store::prefix_record::RouteStatus;
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::test_types::NoMeta;
+use rotonda_store::IntoIpAddr;
 
 type Prefix4<'a> = Prefix;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = MultiThreadedStore::new()?;
+type Type = Result<(), Box<dyn std::error::Error>>;
+
+fn main() -> Type {
+    let tree_bitmap = StarCastRib::<_, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -185,9 +193,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
         tree_bitmap.insert(
-            &pfx.unwrap(), 
+            &pfx.unwrap(),
             Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
-            None
+            None,
         )?;
     }
     println!("------ end of inserts\n");
@@ -289,7 +297,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         println!("search for: {:?}", spfx);
         // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
-        let guard = &epoch::pin();
+        let guard = &rotonda_store::epoch::pin();
         let s_spfx = tree_bitmap.match_prefix(
             &spfx.unwrap(),
             &MatchOptions {
@@ -297,9 +305,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_withdrawn: false,
                 include_less_specifics: true,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
+                include_history: IncludeHistory::None,
             },
-            guard
+            guard,
         );
         println!("lmp: {:?}", s_spfx);
         println!("-----------");

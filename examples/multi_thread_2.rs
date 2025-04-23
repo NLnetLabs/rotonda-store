@@ -1,18 +1,21 @@
+use inetnum::addr::Prefix;
 use log::trace;
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::test_types::PrefixAs;
+use rotonda_store::{epoch, IntoIpAddr};
 use std::time::Duration;
 use std::{sync::Arc, thread};
-
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-
-use rotonda_store::meta_examples::PrefixAs;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(feature = "cli")]
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap = Arc::new(MultiThreadedStore::<PrefixAs>::new()?);
+    let tree_bitmap =
+        Arc::new(StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?);
     let f = Arc::new(std::sync::atomic::AtomicBool::new(false));
 
     let pfx = Prefix::new_relaxed(
@@ -32,13 +35,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     thread::park();
                 }
 
-                match tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, PrefixAs(i as u32)), None) {
+                match tree_bitmap.insert(
+                    &pfx.unwrap(),
+                    Record::new(
+                        0,
+                        0,
+                        RouteStatus::Active,
+                        PrefixAs::new((i as u32).into()),
+                    ),
+                    None,
+                ) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
                     }
                 };
-
             })
             .unwrap()
     });
@@ -57,14 +68,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let s_spfx = tree_bitmap.match_prefix(
         &pfx.unwrap(),
         &MatchOptions {
-            match_type: rotonda_store::MatchType::ExactMatch,
+            match_type: MatchType::ExactMatch,
             include_withdrawn: true,
             include_less_specifics: true,
             include_more_specifics: true,
-            mui: None
+            mui: None,
+            include_history: IncludeHistory::None,
         },
         guard,
-    );
+    )?;
     println!("query result");
     println!("{}", s_spfx);
     println!("{}", s_spfx.more_specifics.unwrap());

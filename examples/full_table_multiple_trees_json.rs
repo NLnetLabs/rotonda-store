@@ -1,17 +1,20 @@
-// extern crate self as roto;
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::meta_examples::PrefixAs;
+use inetnum::addr::Prefix;
+use rotonda_store::epoch;
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
+use rotonda_store::test_types::PrefixAs;
 
 use std::error::Error;
 use std::fs::File;
 use std::process;
 
-#[create_store((
-    [4, 4, 4, 4, 4, 4, 4, 4],
-    [3,4,5,4]
-))]
-struct MyStore;
+// #[create_store((
+//     ([4, 4, 4, 4, 4, 4, 4, 4], 5, 17),
+//     ([3, 4, 5, 4], 17, 29)
+// ))]
+// struct MyStore;
 
 fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
@@ -32,7 +35,12 @@ fn main() -> Result<(), Box<dyn Error>> {
             let asn: u32 = record[2].parse().unwrap();
             let pfx = PrefixRecord::<PrefixAs>::new(
                 Prefix::new(net.into(), len)?,
-                vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
+                vec![Record::new(
+                    0,
+                    0,
+                    RouteStatus::Active,
+                    PrefixAs::new(asn.into()),
+                )],
             );
             pfxs.push(pfx);
         }
@@ -46,7 +54,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         println!("[");
         for n in 1..6 {
             let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
-            let tree_bitmap = MyStore::<PrefixAs>::new()?;
+            let config = MemoryOnlyConfig;
+            let tree_bitmap =
+                StarCastRib::<PrefixAs, _>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);
@@ -85,10 +95,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                                     include_withdrawn: false,
                                     include_less_specifics: false,
                                     include_more_specifics: false,
-                                    mui: None
+                                    mui: None,
+                                    include_history: IncludeHistory::None,
                                 },
-                                guard
-                            );
+                                guard,
+                            )?;
                         }
                     }
                 }
@@ -101,31 +112,29 @@ fn main() -> Result<(), Box<dyn Error>> {
 
             println!("{{");
             println!("\"type\": \"treebitmap_univec\",");
-            println!(
-                "\"strides v4 \": {:?},",
-                &tree_bitmap
-                    .v4
-                    .store
-                    .get_stride_sizes()
-                    .iter()
-                    .map_while(|s| if s > &0 { Some(*s) } else { None })
-                    .collect::<Vec<_>>()
-            );
-            println!(
-                "\"strides v6 \": {:?},",
-                &tree_bitmap
-                    .v6
-                    .store
-                    .get_stride_sizes()
-                    .iter()
-                    .map_while(|s| if s > &0 { Some(*s) } else { None })
-                    .collect::<Vec<_>>()
-            );
+            // println!(
+            //     "\"strides v4 \": {:?},",
+            //     &tree_bitmap
+            //         .v4
+            //         .get_stride_sizes()
+            //         .iter()
+            //         .map_while(|s| if s > &0 { Some(*s) } else { None })
+            //         .collect::<Vec<_>>()
+            // );
+            // println!(
+            //     "\"strides v6 \": {:?},",
+            //     &tree_bitmap
+            //         .v6
+            //         .get_stride_sizes()
+            //         .iter()
+            //         .map_while(|s| if s > &0 { Some(*s) } else { None })
+            //         .collect::<Vec<_>>()
+            // );
             println!("\"run_no\": {},", n);
             println!("\"inserts_num\": {},", inserts_num);
             println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
             println!(
-                "\"global_prefix_vec_size\": {},",
+                "\"global_prefix_vec_size\": {:?},",
                 tree_bitmap.prefixes_count()
             );
             println!(

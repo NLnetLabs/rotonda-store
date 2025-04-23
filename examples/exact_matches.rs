@@ -1,10 +1,19 @@
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-use rotonda_store::meta_examples::NoMeta;
+use inetnum::addr::Prefix;
+use rotonda_store::match_options::IncludeHistory;
+use rotonda_store::prefix_record::{Record, RouteStatus};
+// use rotonda_store::prelude::multi::*;
+use rotonda_store::{
+    epoch,
+    match_options::{MatchOptions, MatchType},
+    rib::config::MemoryOnlyConfig,
+    rib::StarCastRib,
+    test_types::NoMeta,
+    IntoIpAddr,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
-    let tree_bitmap = MultiThreadedStore::<NoMeta>::new()?;
+    let tree_bitmap = StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -258,7 +267,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         println!("insert {}", pfx?);
         // let p : rotonda_store::Prefix<u32, PrefixAs> = pfx.into();
-        tree_bitmap.insert(&pfx.unwrap(), Record::new(0, 0, RouteStatus::Active, NoMeta::Empty), None)?;
+        tree_bitmap.insert(
+            &pfx.unwrap(),
+            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            None,
+        )?;
     }
     println!("------ end of inserts\n");
     // println!(
@@ -343,9 +356,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 include_withdrawn: false,
                 include_less_specifics: false,
                 include_more_specifics: false,
-                mui: None
+                mui: None,
+                include_history: IncludeHistory::None,
             },
-            guard
+            guard,
         );
         println!("exact match: {:?}", s_spfx);
         println!("-----------");

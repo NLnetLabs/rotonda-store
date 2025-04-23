@@ -1,14 +1,14 @@
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::prelude::*;
-use rotonda_store::prelude::multi::*;
-
-use rotonda_store::AddressFamily;
 use inetnum::addr::Prefix;
+use rotonda_store::{
+    epoch,
+    match_options::{IncludeHistory, MatchOptions, MatchType},
+    prefix_record::{Record, RouteStatus},
+    rib::{config::MemoryOnlyConfig, StarCastRib},
+    test_types::PrefixAs,
+    IntoIpAddr,
+};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // type StoreType = InMemStorage<u32, PrefixAs>;
-    let tree_bitmap =
-        MultiThreadedStore::<PrefixAs>::new()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -215,7 +215,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
         let p: Prefix = pfx.unwrap();
-        tree_bitmap.insert(&p, Record::new(0,0, RouteStatus::Active, PrefixAs(666)), None)?;
+        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?.insert(
+            &p,
+            Record::new(0, 0, RouteStatus::Active, PrefixAs::new(666.into())),
+            None,
+        )?;
     }
     println!("------ end of inserts\n");
     // println!(
@@ -277,17 +281,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ] {
         println!("search for: {:?}", spfx);
         let guard = &epoch::pin();
-        let s_spfx = tree_bitmap.match_prefix(
-            &spfx.unwrap(),
-            &MatchOptions {
-                match_type: MatchType::ExactMatch,
-                include_withdrawn: false,
-                include_less_specifics: true,
-                include_more_specifics: true,
-                mui: None
-            },
-            guard
-        );
+        let s_spfx =
+            StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?
+                .match_prefix(
+                    &spfx.unwrap(),
+                    &MatchOptions {
+                        match_type: MatchType::ExactMatch,
+                        include_withdrawn: false,
+                        include_less_specifics: true,
+                        include_more_specifics: true,
+                        mui: None,
+                        include_history: IncludeHistory::None,
+                    },
+                    guard,
+                );
         println!("em/m-s: {:#?}", s_spfx);
         println!("-----------");
     }

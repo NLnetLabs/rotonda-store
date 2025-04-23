@@ -1,11 +1,14 @@
 #![cfg(feature = "cli")]
 use ansi_term::Colour;
+use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
+use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::StarCastRib;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
 use inetnum::addr::Prefix;
-use rotonda_store::meta_examples::PrefixAs;
-use rotonda_store::prelude::{multi::*, *};
+use rotonda_store::test_types::PrefixAs;
 use rustyline::history::DefaultHistory;
 
 use std::env;
@@ -40,7 +43,12 @@ fn load_prefixes(
         let asn: u32 = record[2].parse().unwrap();
         let pfx = PrefixRecord::new(
             Prefix::new(ip, len)?,
-            vec![Record::new(0, 0, RouteStatus::Active, PrefixAs(asn))],
+            vec![Record::new(
+                0,
+                0,
+                RouteStatus::Active,
+                PrefixAs::new_from_u32(asn),
+            )],
         );
 
         // let ip: Vec<_> = record[0]
@@ -61,7 +69,8 @@ fn load_prefixes(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
-    let tree_bitmap = MultiThreadedStore::<PrefixAs>::new()?;
+    let tree_bitmap =
+        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);
@@ -82,7 +91,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // tree_bitmap.print_funky_stats();
     // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
-    let guard = &epoch::pin();
+    let guard = &rotonda_store::epoch::pin();
 
     let mut rl = Editor::<(), DefaultHistory>::new()?;
     if rl.load_history("/tmp/rotonda-store-history.txt").is_err() {
@@ -99,52 +108,55 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match cmd.to_string().as_ref() {
                             "p" => match line.chars().as_str() {
                                 "p4" => {
-                                    tree_bitmap.prefixes_iter_v4().for_each(
-                                        |pfx| {
+                                    tree_bitmap
+                                        .prefixes_iter_v4(guard)
+                                        .for_each(|pfx| {
+                                            let pfx = pfx.unwrap();
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        },
-                                    );
+                                        });
                                     println!(
-                                        "ipv4 prefixes :\t{}",
+                                        "ipv4 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v4_count()
                                     );
                                 }
                                 "p6" => {
-                                    tree_bitmap.prefixes_iter_v6().for_each(
-                                        |pfx| {
+                                    tree_bitmap
+                                        .prefixes_iter_v6(guard)
+                                        .for_each(|pfx| {
+                                            let pfx = pfx.unwrap();
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        },
-                                    );
+                                        });
                                     println!(
-                                        "ipv6 prefixes :\t{}",
+                                        "ipv6 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v6_count()
                                     );
                                 }
                                 _ => {
                                     println!(
-                                        "ipv4 prefixes :\t{}",
+                                        "ipv4 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v4_count()
                                     );
                                     println!(
-                                        "ipv6 prefixes :\t{}",
+                                        "ipv6 prefixes :\t{:?}",
                                         tree_bitmap.prefixes_v6_count()
                                     );
-                                    tree_bitmap.prefixes_iter().for_each(
-                                        |pfx| {
+                                    tree_bitmap
+                                        .prefixes_iter(guard)
+                                        .for_each(|pfx| {
+                                            let pfx = pfx.unwrap();
                                             println!(
                                                 "{} {}",
                                                 pfx.prefix, pfx.meta[0]
                                             );
-                                        },
-                                    );
+                                        });
                                     println!(
-                                        "total prefixes :\t{}",
+                                        "total prefixes :\t{:?}",
                                         tree_bitmap.prefixes_count()
                                     );
                                 }
@@ -223,9 +235,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         include_less_specifics: true,
                                         include_more_specifics: true,
                                         mui: None,
+                                        include_history: IncludeHistory::None,
                                     },
                                     guard,
-                                );
+                                )?;
                                 println!("start query result");
                                 println!("{}", query_result);
                                 println!("end query result");
@@ -254,7 +267,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard,
-                                        )
+                                        )?
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
@@ -268,7 +281,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard,
-                                        )
+                                        )?
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
@@ -285,10 +298,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             include_withdrawn: true,
                                             include_less_specifics: true,
                                             include_more_specifics: true,
-                                            mui: None
+                                            mui: None,
+                                            include_history:
+                                                IncludeHistory::None
                                         },
                                         guard
-                                    )
+                                    )?
                                 );
                                 println!("--- numatch");
                                 println!("more specifics");
@@ -300,7 +315,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard,
-                                        )
+                                        )?
                                         .more_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())
@@ -314,7 +329,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             None,
                                             false,
                                             guard
-                                        )
+                                        )?
                                         .less_specifics
                                         .map_or("None".to_string(), |x| x
                                             .to_string())

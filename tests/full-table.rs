@@ -1,11 +1,13 @@
 #![cfg(feature = "csv")]
 #[cfg(test)]
 mod tests {
-    use inetnum::asn::Asn;
     use inetnum::addr::Prefix;
+    use inetnum::asn::Asn;
     use rotonda_store::{
-        prelude::*, 
-        prelude::multi::*,
+        epoch,
+        match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_record::{Meta, PrefixRecord, Record, RouteStatus},
+        rib::{config::Config, StarCastRib},
     };
 
     use std::error::Error;
@@ -13,25 +15,58 @@ mod tests {
     use std::process;
 
     #[derive(Debug, Clone, PartialOrd, Ord, PartialEq, Eq)]
-    pub struct ComplexPrefixAs(pub Vec<u32>);
+    pub struct AsnList(Vec<u8>);
 
-    impl std::fmt::Display for ComplexPrefixAs {
+    // pub struct ComplexPrefixAs(pub Vec<u32>);
+
+    impl std::fmt::Display for AsnList {
         fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
             write!(f, "AS{:?}", self.0)
         }
     }
 
-    impl Meta for ComplexPrefixAs {
+    impl Meta for AsnList {
         type Orderable<'a> = Asn;
         type TBI = ();
 
         fn as_orderable(&self, _tbi: Self::TBI) -> Asn {
-            Asn::from(self.0[0])
+            Asn::from(u32::from_be_bytes(*self.0.first_chunk::<4>().unwrap()))
         }
     }
 
-    #[test]
-    fn test_full_table_from_csv() -> Result<(), Box<dyn Error>> {
+    impl AsRef<[u8]> for AsnList {
+        fn as_ref(&self) -> &[u8] {
+            &self.0
+        }
+    }
+
+    impl From<Vec<u32>> for AsnList {
+        fn from(value: Vec<u32>) -> Self {
+            AsnList(
+                value
+                    .into_iter()
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect::<Vec<u8>>(),
+            )
+        }
+    }
+
+    impl From<Vec<u8>> for AsnList {
+        fn from(value: Vec<u8>) -> Self {
+            Self(value)
+        }
+    }
+
+    rotonda_store::all_strategies![
+        full_table_1;
+        test_full_table_from_csv;
+        AsnList
+    ];
+
+    // #[test]
+    fn test_full_table_from_csv<C: Config>(
+        tree_bitmap: StarCastRib<AsnList, C>,
+    ) -> Result<(), Box<dyn Error>> {
         // These constants are all contingent on the exact csv file,
         // being loaded!
 
@@ -44,7 +79,7 @@ mod tests {
         let guard = &epoch::pin();
 
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<ComplexPrefixAs>>,
+            pfxs: &mut Vec<PrefixRecord<AsnList>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -64,7 +99,7 @@ mod tests {
                         0,
                         0,
                         RouteStatus::Active,
-                        ComplexPrefixAs(vec![asn])
+                        vec![asn].into(),
                     )],
                 );
                 pfxs.push(pfx);
@@ -79,9 +114,9 @@ mod tests {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<ComplexPrefixAs>> = vec![];
-            let tree_bitmap = MultiThreadedStore::<ComplexPrefixAs>::new()?;
-                // .with_user_data("Testing".to_string());
+            let mut pfxs: Vec<PrefixRecord<AsnList>> = vec![];
+            // let tree_bitmap = MultiThreadedStore::<AsnList>::try_default()?;
+            // .with_user_data("Testing".to_string());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
                 println!("error running example: {}", err);
@@ -90,7 +125,11 @@ mod tests {
 
             let inserts_num = pfxs.len();
             for pfx in pfxs.into_iter() {
-                match tree_bitmap.insert(&pfx.prefix, pfx.meta[0].clone(), None) {
+                match tree_bitmap.insert(
+                    &pfx.prefix,
+                    pfx.meta[0].clone(),
+                    None,
+                ) {
                     Ok(_) => {}
                     Err(e) => {
                         println!("{}", e);
@@ -98,25 +137,30 @@ mod tests {
                     }
                 };
 
-                let query = tree_bitmap.match_prefix(&pfx.prefix,
-                        &MatchOptions {
+                let query = tree_bitmap.match_prefix(
+                    &pfx.prefix,
+                    &MatchOptions {
                         match_type: MatchType::LongestMatch,
                         include_withdrawn: false,
                         include_less_specifics: false,
                         include_more_specifics: false,
-                        mui: None
+                        mui: None,
+                        include_history: IncludeHistory::None,
                     },
-                    guard
+                    guard,
                 );
 
-                if query.prefix.is_none() { panic!("STOPSTOPSTOPST"); }
-                else { 
-                    assert_eq!(query.prefix.unwrap(), pfx.prefix);
+                if query.as_ref().unwrap().prefix.is_none() {
+                    panic!("STOPSTOPSTOPST");
+                } else {
+                    assert_eq!(
+                        query.as_ref().unwrap().prefix.unwrap(),
+                        pfx.prefix
+                    );
                 }
             }
 
             println!("done inserting {} prefixes", inserts_num);
-
 
             let inet_max = 255;
             let len_max = 32;
@@ -128,7 +172,6 @@ mod tests {
             (0..inet_max).for_each(|i_net| {
                 len_count = 0;
                 (0..len_max).for_each(|s_len| {
-
                     (0..inet_max).for_each(|ii_net| {
                         let pfx = Prefix::new_relaxed(
                             std::net::Ipv4Addr::new(i_net, ii_net, 0, 0)
@@ -143,11 +186,12 @@ mod tests {
                                 include_withdrawn: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
-                                mui: None
+                                mui: None,
+                                include_history: IncludeHistory::None,
                             },
                             guard,
                         );
-                        if let Some(_pfx) = res.prefix {
+                        if let Some(_pfx) = res.as_ref().unwrap().prefix {
                             // println!("_pfx {:?}", _pfx);
                             // println!("pfx {:?}", pfx);
                             // println!("{:#?}", res);
@@ -180,7 +224,10 @@ mod tests {
 
             assert_eq!(searches_num, SEARCHES_NUM as u128);
             assert_eq!(inserts_num, INSERTS_NUM);
-            assert_eq!(tree_bitmap.prefixes_count(), GLOBAL_PREFIXES_VEC_SIZE);
+            assert_eq!(
+                tree_bitmap.prefixes_count().total(),
+                GLOBAL_PREFIXES_VEC_SIZE
+            );
             assert_eq!(found_counter, FOUND_PREFIXES);
             assert_eq!(not_found_counter, SEARCHES_NUM - FOUND_PREFIXES);
         }
