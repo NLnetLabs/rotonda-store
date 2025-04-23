@@ -1,5 +1,19 @@
 # Change Log
 
+### unreleased version
+
+Released yyyy-mm-dd.
+
+Breaking changes
+
+New
+
+Bug fixes
+
+Other changes
+
+Known limitations
+
 
 ## 0.5.0
 
