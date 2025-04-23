@@ -221,6 +221,8 @@ use crate::errors::{FatalError, FatalResult};
 use crate::rib::STRIDE_SIZE;
 use crate::stats::Counters;
 use crate::types::{BitSpan, PrefixId};
+#[cfg(test)]
+use crate::IPv6;
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use log::{debug, error, log_enabled, trace};
 use node_cht::{NodeCht, NodeSet, StoredNode};
@@ -1040,21 +1042,7 @@ Giving up this node. This shouldn't happen!",
     // uses the hash function with the level incremented.
 
     pub(crate) fn hash_node_id(id: NodeId<AF>, level: u8) -> usize {
-        // And, this is all of our hashing function.
-        // let last_level = if level > 0 {
-        //     bits_for_len(id.len(), level - 1)
-        // } else {
-        //     0
-        // };
         let last_level = prev_node_size(id.len(), level);
-        // trace!("bits division {}", this_level);
-        // trace!(
-        //     "calculated index ({} << {}) >> {}",
-        //     id.get_id().0,
-        //     last_level,
-        //     ((<AF>::BITS - (this_level - last_level)) % <AF>::BITS) as usize
-        // );
-        // HASHING FUNCTION
         let size = nodeset_size(id.len(), level);
 
         // shifting left and right here should never overflow for inputs
@@ -1072,8 +1060,22 @@ Giving up this node. This shouldn't happen!",
             >> AF::from_u8((<AF>::BITS - size) % <AF>::BITS))
         .dangerously_truncate_to_u32() as usize
     }
+
+    #[cfg(test)]
+    fn test_valid_range() {
+        for len in 0..128 {
+            for lvl in 0..(len / 4) {
+                let n_id = NodeId::<AF>::from((AF::from_u32(0), len));
+                Self::hash_node_id(n_id, lvl);
+            }
+        }
+    }
 }
 
+#[test]
+fn test_hashing_node_id_valid_range() {
+    TreeBitMap::<IPv6, 129>::test_valid_range()
+}
 // Partition for stride 4
 //
 // ptr bits never happen in the first half of the bitmap for the stride-size. Consequently the ptrbitarr can be an integer type

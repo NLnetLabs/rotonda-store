@@ -104,6 +104,28 @@ pub fn nodeset_size(len: u8, lvl: u8) -> u8 {
     4_u8.saturating_sub((4 * (lvl + 1)).saturating_sub(len))
 }
 
+// This test tests both that the outocome of our optimized nodeset_size
+// function is the same as our 'naive' approach, and that we do not rely on
+// undefined behaviour because of overflowing multiplication or addition.
+#[test]
+fn test_nodeset_size_valid_range() {
+    for len in 0..128 {
+        for lvl in 0..(len / 4) {
+            let res = 4 * (lvl + 1);
+            let nss = if res < len {
+                4
+            } else if res >= len + 4 {
+                0
+            } else if len % 4 == 0 {
+                4
+            } else {
+                len % 4
+            };
+            debug_assert_eq!(nss, nodeset_size(len, lvl));
+        }
+    }
+}
+
 // The value of the set of the parent of this one. used to calculate the shift
 // offset in the hash for the CHT, so this is basically the `nodeset_size`
 // shifted one (len, lvl) combination downwards.
@@ -144,4 +166,15 @@ pub fn prev_node_size(len: u8, lvl: u8) -> u8 {
     // that behaviour.
     debug_assert!(4_u8.checked_mul(lvl).is_some());
     (lvl * 4) - lvl.saturating_sub(len >> 2) * ((lvl * 4).saturating_sub(len))
+}
+
+// In this test we're only testing to no rely on undefined behaviour for all
+// inputs in the valid range
+#[test]
+fn test_prev_node_size_valid_range() {
+    for len in 0..128 {
+        for lvl in 0..(len / 4) {
+            prev_node_size(len, lvl);
+        }
+    }
 }
