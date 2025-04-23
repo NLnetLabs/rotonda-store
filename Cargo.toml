@@ -27,10 +27,10 @@ parking_lot_core = "0.9.10"
 inetnum   = "0.1"
 log       = "^0.4"
 roaring 	= "0.10.3"
-routecore       = { git = "https://github.com/nlnetlabs/routecore", branch = "dev", version = "0.5.2-dev", features = ["bgp", "bmp", "fsm", "serde", "mrt"] }
+routecore       = { version = "0.5.2", features = ["bgp", "bmp", "fsm", "serde", "mrt"] }
 ansi_term   = { version = "0.12", optional = true }
 csv         = { version = "1", optional = true }
-rustyline   = { version = "13", optional = true }
+rustyline   = { version = "15", optional = true }
 clap        = { version = "4.4", optional = true, features = ["derive"] }
 rayon = { version = "1.10", optional = true }
 memmap2 = { version = "0.9", optional = true }
@@ -44,7 +44,7 @@ zerocopy = { version = "0.8.17", features = ["derive"] }
 
 [dev-dependencies]
 csv         = { version = "1" }
-env_logger  = { version = "0.10" }
+env_logger  = { version = "0.11" }
 
 [features]
 cli = ["ansi_term", "rustyline", "csv"]
