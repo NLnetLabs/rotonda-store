@@ -76,6 +76,11 @@ pub trait AddressFamily:
     // in debug mode. A failed check will simply retutrn zero. Used in
     // finding node_ids (always zero for 0/0).
     fn checked_shr_or_zero(self, rhs: u32) -> Self;
+    fn checked_shl_or_zero(self, rhs: u32) -> Self;
+
+    // These checked shifts are for use in debug asserts only.
+    fn checked_shr(self, rhs: u32) -> Option<Self::Inner>;
+    fn checked_shl(self, rhs: u32) -> Option<Self::Inner>;
 }
 
 //-------------- Ipv4 Type --------------------------------------------------
@@ -141,6 +146,22 @@ impl AddressFamily for IPv4 {
         }
         self >> U32::<NetworkEndian>::from(rhs)
     }
+
+    fn checked_shl_or_zero(self, rhs: u32) -> Self {
+        trace!("CHECKED_SHL_OR_ZERO {} >> {}", u32::from(self), rhs);
+        if rhs == 0 || rhs >= 32 {
+            return 0.into();
+        }
+        self << U32::<NetworkEndian>::from(rhs)
+    }
+
+    fn checked_shr(self, rhs: u32) -> Option<u32> {
+        u32::from(self).checked_shr(rhs)
+    }
+
+    fn checked_shl(self, rhs: u32) -> Option<u32> {
+        u32::from(self).checked_shl(rhs)
+    }
 }
 
 //-------------- Ipv6 Type --------------------------------------------------
@@ -199,6 +220,22 @@ impl AddressFamily for IPv6 {
         };
 
         self >> U128::from(rhs as u128)
+    }
+
+    fn checked_shl_or_zero(self, rhs: u32) -> Self {
+        if rhs >= 128 {
+            return U128::from(0);
+        };
+
+        self << U128::from(rhs as u128)
+    }
+
+    fn checked_shr(self, rhs: u32) -> Option<u128> {
+        u128::from(self).checked_shr(rhs)
+    }
+
+    fn checked_shl(self, rhs: u32) -> Option<u128> {
+        u128::from(self).checked_shl(rhs)
     }
 
     fn from_u8(value: u8) -> Self {

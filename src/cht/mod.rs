@@ -93,12 +93,20 @@ impl<V: Value, const ROOT_SIZE: usize, const STRIDES_PER_BUCKET: usize>
 // 10   00   04 4
 // ...
 pub fn nodeset_size(len: u8, lvl: u8) -> u8 {
+    // The multiplication here will only ever overflow if the (len, lvl) input
+    // is out of bounds for IPv4 or IPv6 prefixes. Therefore we are including
+    // a debug_assert here to panic in debug mode if this happens.  In release
+    // compiles this may NOT be noticable, because the undefined behaviour
+    // is most probably the desired behaviour (saturating). But it's UB for a
+    // reason, so we should not rely on it, and verify that we are not hitting
+    // that behaviour.
+    debug_assert!(4_u8.checked_mul(lvl + 1).is_some());
     4_u8.saturating_sub((4 * (lvl + 1)).saturating_sub(len))
 }
 
 // The value of the set of the parent of this one. used to calculate the shift
 // offset in the hash for the CHT, so this is basically the `nodeset_size`
-// shifted on (len, lvl) combination downwards.
+// shifted one (len, lvl) combination downwards.
 //
 // len lvl prev
 // 00  00  00
@@ -127,5 +135,13 @@ pub fn nodeset_size(len: u8, lvl: u8) -> u8 {
 // 09  02  08
 // 09  03  09
 pub fn prev_node_size(len: u8, lvl: u8) -> u8 {
-    (lvl * 4) - lvl.saturating_sub(len >> 2) * ((lvl * 4) - len)
+    // The multiplication here will only ever overflow if the (len, lvl) input
+    // is out of bounds for IPv4 or IPv6 prefixes. Therefore we are including
+    // a debug_assert here to panic in debug mode if this happens.  In release
+    // compiles this may NOT be noticable, because the undefined behaviour
+    // is most probably the desired behaviour (saturating). But it's UB for a
+    // reason, so we should not rely on it, and verify that we are not hitting
+    // that behaviour.
+    debug_assert!(4_u8.checked_mul(lvl).is_some());
+    (lvl * 4) - lvl.saturating_sub(len >> 2) * ((lvl * 4).saturating_sub(len))
 }

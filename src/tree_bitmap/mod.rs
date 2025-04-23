@@ -1056,6 +1056,18 @@ Giving up this node. This shouldn't happen!",
         // );
         // HASHING FUNCTION
         let size = nodeset_size(id.len(), level);
+
+        // shifting left and right here should never overflow for inputs
+        // (NodeId, level) that are valid for IPv4 and IPv6. In release
+        // compiles this may NOT be noticable, because the undefined behaviour
+        // is most probably the desired behaviour (saturating). But it's UB
+        // for a reason, so we should not rely on it, and verify that we are
+        // not hitting that behaviour.
+        debug_assert!(id.bits().checked_shl(last_level as u32).is_some());
+        debug_assert!((id.bits() << AF::from_u8(last_level))
+            .checked_shr(u32::from((<AF>::BITS - size) % <AF>::BITS))
+            .is_some());
+
         ((id.bits() << AF::from_u8(last_level))
             >> AF::from_u8((<AF>::BITS - size) % <AF>::BITS))
         .dangerously_truncate_to_u32() as usize
