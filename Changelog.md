@@ -1,16 +1,51 @@
 # Change Log
 
-## Unreleased new version
 
-Released yyyy-mm-dd.
+## 0.5.0
+
+Released 2025-04-23.
 
 Breaking Changes
 
+  * Almost all of the public API has been reorganised on the module
+    level, most notably the store is exposed through the `rib` module,
+    which hosts the `StartCastRib` struct. The `StarCastRib` replaces the
+    `CustomAllocStorage`.
+  * Configuration is done through one of the structs in the `config` module.
+
 New
+
+  * Routes can now be persited to disk, both current and historical.
+  * The structs in the `config` module allow picking a `PersistStrategy`,
+    that handles how routes are stored in the RIB, in memory, on disk, or a
+    combination of both. They also regulate the storage of historical records.
+  * Methods to handle disk storage, i.e. `flush_to_disk` for RIBs.
+  * The `MatchOptions` has a new field `include_history`.
 
 Bug fixes
 
+  * Under certain circumstances existing more specific prefixes for a
+    requested prefix were ignored. This is now fixed.
+
 Other changes
+
+  * the Treebitmap and the backing Chained Hash Tables (CHTs) have been
+    completely separated logically.
+  * All iterators have been thoroughly reworked and optmised to avoid looping
+    and branching as much as possible.
+  * Internally only a stride size of 4 is used for both the CHTs and the
+    treebitmap. This speeds up hopping from stride to stride, since no table
+    lookups have to be performed anymore. Also, stride size 4 turned out to
+    be the most memory efficient layout. PrefixSet and NodeSet sizes in the
+    CHTs remain max. 16. This allowed for:
+  * The removal of almost all macros, increasing the readability of the code
+    immensely.
+    
+Known Limitations
+
+  * The persist to disk feature only works with manual `flush_to_disk` calls
+    from the user currently.
+
 
 ## 0.4.1
 
