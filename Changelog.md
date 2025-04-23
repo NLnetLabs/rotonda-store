@@ -15,7 +15,7 @@ Breaking Changes
 
 New
 
-  * Routes can now be persited to disk, both current and historical.
+  * Routes can now be persisted to disk, both current and historical.
   * The structs in the `config` module allow picking a `PersistStrategy`,
     that handles how routes are stored in the RIB, in memory, on disk, or a
     combination of both. They also regulate the storage of historical records.
