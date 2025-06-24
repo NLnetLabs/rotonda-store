@@ -26,11 +26,13 @@ use crate::{
     },
 };
 
+use super::compound_multi_map::MapType;
+
 //------------ MultiMap ------------------------------------------------------
 //
 // This is the collection of records or a given prefix, keyed on the multi
 // unique identifier ("mui"). Note that the record contains more than just
-// the // meta-data typed value ("M").
+// the meta-data typed value ("M").
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
@@ -276,6 +278,11 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 }
+
+impl<M: Meta> MapType for MultiMap<M> {
+    type Inner = u32;
+}
+
 #[derive(Clone, Debug)]
 pub(crate) struct MultiMapValue<M> {
     meta: M,
