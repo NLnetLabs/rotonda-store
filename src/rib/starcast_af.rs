@@ -1,3 +1,4 @@
+use std::io;
 use std::path::Path;
 
 use inetnum::addr::Prefix;
@@ -84,18 +85,14 @@ impl<
                 let persist_path = if let Some(pp) = config.persist_path() {
                     pp
                 } else {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
+                    return Err(io::Error::other(
                         "Missing persistence path".to_string(),
                     )
                     .into());
                 };
                 let pp_ref = &Path::new(&persist_path);
                 Some(LsmTree::new(pp_ref).map_err(|_| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Cannot create persistence store",
-                    )
+                    io::Error::other("Cannot create persistence store")
                 })?)
             }
         };
