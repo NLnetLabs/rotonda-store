@@ -5,6 +5,7 @@ use zerocopy::TryFromBytes;
 
 use crate::errors::{FatalError, FatalResult};
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
+use crate::prefix_cht::compound_multi_map::{MapType, RecordKey};
 use crate::prefix_record::RecordSet;
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::Record;
@@ -23,19 +24,20 @@ impl<
         'a,
         AF: AddressFamily,
         M: Meta,
+        MT: MapType<M>,
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     pub(crate) fn get_value(
         &'a self,
         prefix_id: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<MT::Key>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> FatalResult<Option<Vec<Record<M>>>> {
+    ) -> FatalResult<Option<Vec<Record<MT::Key, M>>>> {
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 trace!("get value from persist_store for {:?}", prefix_id);
@@ -52,10 +54,10 @@ impl<
                             v.iter()
                                 .map(|bytes| {
                                     if let Ok(b) = bytes.as_ref() {
-                                        let record: &ZeroCopyRecord<AF> =
+                                        let record: &ZeroCopyRecord<AF, MT::Key> =
                                         ZeroCopyRecord::try_ref_from_bytes(b)
                                             .map_err(|_| FatalError)?;
-                                        Ok(Record::<M> {
+                                        Ok(Record::<MT::Key, M> {
                                             multi_uniq_id: record
                                                 .multi_uniq_id,
                                             ltime: record.ltime,
@@ -86,10 +88,10 @@ impl<
     pub(crate) fn more_specifics_from(
         &'a self,
         prefix_id: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<MT::Key>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> FatalResult<QueryResult<M>> {
+    ) -> FatalResult<QueryResult<MT::Key, M>> {
         let prefix = if !self.contains(prefix_id, mui) {
             Some(Prefix::from(prefix_id))
         } else {
@@ -107,7 +109,7 @@ impl<
                 self.get_value(prefix_id, mui, include_withdrawn, guard)
                     .map(|res| res.map(|v| (p, v)))
             })
-            .collect::<FatalResult<Option<RecordSet<M>>>>()?;
+            .collect::<FatalResult<Option<RecordSet<MT::Key, M>>>>()?;
 
         Ok(QueryResult {
             prefix,
@@ -121,10 +123,10 @@ impl<
     pub(crate) fn less_specifics_from(
         &'a self,
         prefix_id: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<MT::Key>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> FatalResult<QueryResult<M>> {
+    ) -> FatalResult<QueryResult<MT::Key, M>> {
         let prefix = if !self.contains(prefix_id, mui) {
             Some(Prefix::from(prefix_id))
         } else {
@@ -141,7 +143,7 @@ impl<
                 self.get_value(prefix_id, mui, include_withdrawn, guard)
                     .map(|res| res.map(|v| (p, v)))
             })
-            .collect::<FatalResult<Option<RecordSet<M>>>>()?;
+            .collect::<FatalResult<Option<RecordSet<MT::Key, M>>>>()?;
 
         Ok(QueryResult {
             prefix,
@@ -155,11 +157,12 @@ impl<
     pub(crate) fn more_specifics_iter_from(
         &'a self,
         prefix_id: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<MT::Key>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<(PrefixId<AF>, Vec<Record<M>>)>> + 'a
-    {
+    ) -> impl Iterator<
+        Item = FatalResult<(PrefixId<AF>, Vec<Record<MT::Key, M>>)>,
+    > + 'a {
         println!("more_specifics_iter_from fn");
         // If the user wanted a specific mui and not withdrawn prefixes, we
         // may return early if the mui is globally withdrawn.
@@ -185,11 +188,12 @@ impl<
     pub(crate) fn less_specifics_iter_from(
         &'a self,
         prefix_id: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<MT::Key>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<(PrefixId<AF>, Vec<Record<M>>)>> + 'a
-    {
+    ) -> impl Iterator<
+        Item = FatalResult<(PrefixId<AF>, Vec<Record<MT::Key, M>>)>,
+    > + 'a {
         self.tree_bitmap
             .less_specific_prefix_iter(prefix_id)
             .filter_map(move |p| {
@@ -202,9 +206,9 @@ impl<
     pub(crate) fn match_prefix(
         &'a self,
         search_pfx: PrefixId<AF>,
-        options: &MatchOptions,
+        options: &MatchOptions<MT::Key>,
         guard: &'a Guard,
-    ) -> FatalResult<QueryResult<M>> {
+    ) -> FatalResult<QueryResult<MT::Key, M>> {
         trace!("match_prefix rib {:?} {:?}", search_pfx, options);
         let res = self.tree_bitmap.match_prefix(search_pfx, options);
 
@@ -250,7 +254,7 @@ impl<
                                 Some(Err(FatalError))
                             }
                         })
-                        .collect::<FatalResult<RecordSet<M>>>()
+                        .collect::<FatalResult<RecordSet<MT::Key, M>>>()
                 })
                 .transpose()?;
         }
@@ -276,7 +280,7 @@ impl<
                                 Some(Err(FatalError))
                             }
                         })
-                        .collect::<FatalResult<RecordSet<M>>>()
+                        .collect::<FatalResult<RecordSet<MT::Key, M>>>()
                 })
                 .transpose()?;
         }
@@ -288,7 +292,7 @@ impl<
         &'a self,
         search_pfx: PrefixId<AF>,
         guard: &Guard,
-    ) -> Option<Result<Record<M>, PrefixStoreError>> {
+    ) -> Option<Result<Record<MT::Key, M>, PrefixStoreError>> {
         self.prefix_cht
             .non_recursive_retrieve_prefix(search_pfx)
             .0
@@ -310,7 +314,7 @@ impl<
         search_pfx: PrefixId<AF>,
         tbi: &<M as Meta>::TBI,
         guard: &Guard,
-    ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
+    ) -> Result<(Option<MT::Key>, Option<MT::Key>), PrefixStoreError> {
         self.prefix_cht
             .non_recursive_retrieve_prefix(search_pfx)
             .0
@@ -341,8 +345,8 @@ pub(crate) struct TreeQueryResult<AF: AddressFamily> {
     pub more_specifics: Option<Vec<PrefixId<AF>>>,
 }
 
-impl<AF: AddressFamily, M: Meta> From<TreeQueryResult<AF>>
-    for QueryResult<M>
+impl<AF: AddressFamily, K: Copy + std::fmt::Debug + Eq, M: Meta>
+    From<TreeQueryResult<AF>> for QueryResult<K, M>
 {
     fn from(value: TreeQueryResult<AF>) -> Self {
         Self {
@@ -359,8 +363,8 @@ impl<AF: AddressFamily, M: Meta> From<TreeQueryResult<AF>>
     }
 }
 
-impl<AF: AddressFamily, M: Meta> From<TreeQueryResult<AF>>
-    for FamilyQueryResult<AF, M>
+impl<AF: AddressFamily, K, M: Meta> From<TreeQueryResult<AF>>
+    for FamilyQueryResult<AF, K, M>
 {
     fn from(value: TreeQueryResult<AF>) -> Self {
         Self {
@@ -373,20 +377,21 @@ impl<AF: AddressFamily, M: Meta> From<TreeQueryResult<AF>>
     }
 }
 
-pub(crate) type FamilyRecord<AF, M> = Vec<(PrefixId<AF>, Vec<Record<M>>)>;
+pub(crate) type FamilyRecord<AF, K, M> =
+    Vec<(PrefixId<AF>, Vec<Record<K, M>>)>;
 
-pub(crate) struct FamilyQueryResult<AF: AddressFamily, M: Meta> {
+pub(crate) struct FamilyQueryResult<AF: AddressFamily, K, M: Meta> {
     pub match_type: MatchType,
     pub prefix: Option<PrefixId<AF>>,
-    pub prefix_meta: Vec<Record<M>>,
-    pub less_specifics: Option<FamilyRecord<AF, M>>,
-    pub more_specifics: Option<FamilyRecord<AF, M>>,
+    pub prefix_meta: Vec<Record<K, M>>,
+    pub less_specifics: Option<FamilyRecord<AF, K, M>>,
+    pub more_specifics: Option<FamilyRecord<AF, K, M>>,
 }
 
-impl<AF: AddressFamily, M: Meta> From<FamilyQueryResult<AF, M>>
-    for QueryResult<M>
+impl<AF: AddressFamily, K: Copy + Eq + std::fmt::Debug, M: Meta>
+    From<FamilyQueryResult<AF, K, M>> for QueryResult<K, M>
 {
-    fn from(value: FamilyQueryResult<AF, M>) -> Self {
+    fn from(value: FamilyQueryResult<AF, K, M>) -> Self {
         QueryResult {
             match_type: value.match_type,
             prefix: value.prefix.map(|p| p.into()),

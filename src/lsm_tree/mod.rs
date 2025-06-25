@@ -11,6 +11,7 @@ use zerocopy::{
 };
 
 use crate::errors::{FatalError, FatalResult, PrefixStoreError};
+use crate::prefix_cht::compound_multi_map::RecordKey;
 use crate::prefix_record::Meta;
 use crate::stats::Counters;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -24,20 +25,22 @@ use crate::types::{PrefixId, RouteStatus};
 // pairs, whereas long keys append values with existing (prefix, mui), thus
 // creating persisted historical records.
 
-pub(crate) trait Key<AF: AddressFamily, const KEY_SIZE: usize>:
+pub(crate) trait Key<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>:
     TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
 {
     // Try to extract a header from the bytes for reading only. If this
     // somehow fails, we don't know what to do anymore. Data may be corrupted,
     // so it probably should not be retried.
-    fn header(bytes: &[u8]) -> Result<&LongKey<AF>, FatalError> {
+    fn header(bytes: &[u8]) -> Result<&LongKey<AF, K>, FatalError> {
         LongKey::try_ref_from_bytes(bytes.as_bytes()).map_err(|_| FatalError)
     }
 
     // Try to extract a header for writing. If this somehow fails, we most
-    //probably cannot write to it anymore. This is fatal. The application
-    //should exit, data integrity (on disk) should be verified.
-    fn header_mut(bytes: &mut [u8]) -> Result<&mut LongKey<AF>, FatalError> {
+    // probably cannot write to it anymore. This is fatal. The application
+    // should exit, data integrity (on disk) should be verified.
+    fn header_mut(
+        bytes: &mut [u8],
+    ) -> Result<&mut LongKey<AF, K>, FatalError> {
         trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
         LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
@@ -47,9 +50,9 @@ pub(crate) trait Key<AF: AddressFamily, const KEY_SIZE: usize>:
 
 #[derive(Debug, KnownLayout, Immutable, FromBytes, Unaligned, IntoBytes)]
 #[repr(C)]
-pub struct ShortKey<AF: AddressFamily> {
+pub struct ShortKey<AF: AddressFamily, K: RecordKey> {
     prefix: PrefixId<AF>,
-    mui: U32<NativeEndian>,
+    mui: K,
 }
 
 #[derive(
@@ -63,20 +66,22 @@ pub struct ShortKey<AF: AddressFamily> {
     IntoBytes,
 )]
 #[repr(C)]
-pub struct LongKey<AF: AddressFamily> {
+pub struct LongKey<AF: AddressFamily, K: RecordKey> {
     prefix: PrefixId<AF>,     // 1 + (4 or 16)
-    mui: U32<NativeEndian>,   // 4
+    mui: K, // 4 (mui), 4 + 4 (mui + path_id), 4 + 4 + 8 (mui + path_id + rd)
     ltime: U64<NativeEndian>, // 8
-    status: RouteStatus,      // 1
+    status: RouteStatus, // 1
 } // 18 or 30
 
-impl<AF: AddressFamily, const KEY_SIZE: usize> Key<AF, KEY_SIZE>
-    for ShortKey<AF>
+impl<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>
+    Key<AF, K, KEY_SIZE> for ShortKey<AF, K>
 {
 }
 
-impl<AF: AddressFamily> From<(PrefixId<AF>, u32)> for ShortKey<AF> {
-    fn from(value: (PrefixId<AF>, u32)) -> Self {
+impl<AF: AddressFamily, K: RecordKey> From<(PrefixId<AF>, K)>
+    for ShortKey<AF, K>
+{
+    fn from(value: (PrefixId<AF>, K)) -> Self {
         Self {
             prefix: value.0,
             mui: value.1.into(),
@@ -84,15 +89,15 @@ impl<AF: AddressFamily> From<(PrefixId<AF>, u32)> for ShortKey<AF> {
     }
 }
 
-impl<AF: AddressFamily, const KEY_SIZE: usize> Key<AF, KEY_SIZE>
-    for LongKey<AF>
+impl<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>
+    Key<AF, K, KEY_SIZE> for LongKey<AF, K>
 {
 }
 
-impl<AF: AddressFamily> From<(PrefixId<AF>, u32, u64, RouteStatus)>
-    for LongKey<AF>
+impl<AF: AddressFamily, K: RecordKey>
+    From<(PrefixId<AF>, K, u64, RouteStatus)> for LongKey<AF, K>
 {
-    fn from(value: (PrefixId<AF>, u32, u64, RouteStatus)) -> Self {
+    fn from(value: (PrefixId<AF>, K, u64, RouteStatus)) -> Self {
         Self {
             prefix: value.0,
             mui: value.1.into(),
@@ -109,11 +114,12 @@ impl<AF: AddressFamily> From<(PrefixId<AF>, u32, u64, RouteStatus)>
 pub struct LsmTree<
     // The address family that this tree stores. IPv4 or IPv6.
     AF: AddressFamily,
+    RK: RecordKey,
     // The Key type for this tree. This can basically be a long key, if the
     // store needs to store historical records, or a short key, if it should
     // overwrite records for (prefix, mui) pairs, effectively only keeping the
     // current state.
-    K: Key<AF, KEY_SIZE>,
+    K: Key<AF, RK, KEY_SIZE>,
     // The size in bytes of the complete key in the persisted storage, this
     // is PREFIX_SIZE bytes (4; 16) + mui size (4) + ltime (8)
     const KEY_SIZE: usize,
@@ -122,18 +128,26 @@ pub struct LsmTree<
     counters: Counters,
     _af: PhantomData<AF>,
     _k: PhantomData<K>,
+    _rk: PhantomData<RK>,
 }
 
-impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
-    LsmTree<AF, K, KEY_SIZE>
+impl<
+        AF: AddressFamily,
+        RK: RecordKey,
+        K: Key<AF, RK, KEY_SIZE>,
+        const KEY_SIZE: usize,
+    > LsmTree<AF, RK, K, KEY_SIZE>
 {
-    pub fn new(persist_path: &Path) -> FatalResult<LsmTree<AF, K, KEY_SIZE>> {
+    pub fn new(
+        persist_path: &Path,
+    ) -> FatalResult<LsmTree<AF, RK, K, KEY_SIZE>> {
         if let Ok(tree) = lsm_tree::Config::new(persist_path).open() {
-            Ok(LsmTree::<AF, K, KEY_SIZE> {
+            Ok(LsmTree::<AF, RK, K, KEY_SIZE> {
                 tree,
                 counters: Counters::default(),
                 _af: PhantomData,
                 _k: PhantomData,
+                _rk: PhantomData,
             })
         } else {
             Err(FatalError)
@@ -160,7 +174,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub fn records_for_prefix(
         &self,
         prefix: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<RK>,
         include_withdrawn: bool,
         withdrawn_muis_bmin: &RoaringBitmap,
     ) -> Option<Vec<FatalResult<Vec<u8>>>> {
@@ -180,7 +194,9 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
                             // If mui is in the global withdrawn muis table,
                             // then rewrite the routestatus of the record
                             // to withdrawn.
-                            if withdrawn_muis_bmin.contains(key.mui.into()) {
+                            if withdrawn_muis_bmin
+                                .contains(key.mui.mui().into())
+                            {
                                 key.status = RouteStatus::Withdrawn;
                             }
                             Ok(bytes)
@@ -217,7 +233,9 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
                             let key = K::header_mut(&mut bytes[..KEY_SIZE])?;
                             trace!("key {:?}", key);
                             trace!("wm_bmin {:?}", withdrawn_muis_bmin);
-                            if withdrawn_muis_bmin.contains(key.mui.into()) {
+                            if withdrawn_muis_bmin
+                                .contains(key.mui.mui().into())
+                            {
                                 trace!("rewrite status");
                                 key.status = RouteStatus::Withdrawn;
                             }
@@ -262,7 +280,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
                                 );
                                 if header.status == RouteStatus::Withdrawn
                                     || withdrawn_muis_bmin
-                                        .contains(header.mui.into())
+                                        .contains(header.mui.mui().into())
                                 {
                                     trace!(
                                         "NOT returning {} {}",
@@ -301,7 +319,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
             (Some(mui), false) => {
                 // get the records from the persist store for the (prefix,
                 // mui) tuple only.
-                let prefix_b = ShortKey::<AF>::from((prefix, mui));
+                let prefix_b = ShortKey::<AF, RK>::from((prefix, mui));
                 self.tree
                     .prefix(prefix_b.as_bytes(), None, None)
                     .filter_map(|kv| {
@@ -313,7 +331,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
                                 // table, then skip this record
                                 if key.status == RouteStatus::Withdrawn
                                     || withdrawn_muis_bmin
-                                        .contains(key.mui.into())
+                                        .contains(key.mui.mui().into())
                                 {
                                     return None;
                                 }
@@ -344,7 +362,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub fn most_recent_record_for_prefix_mui(
         &self,
         prefix: PrefixId<AF>,
-        mui: u32,
+        mui: RK,
     ) -> FatalResult<Option<Vec<u8>>> {
         trace!("get most recent record for prefix mui combo");
         let key_b = ShortKey::from((prefix, mui));
@@ -377,7 +395,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub(crate) fn records_with_keys_for_prefix_mui(
         &self,
         prefix: PrefixId<AF>,
-        mui: u32,
+        mui: RK,
     ) -> Vec<FatalResult<Vec<u8>>> {
         let key_b = ShortKey::from((prefix, mui));
 
@@ -438,7 +456,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub(crate) fn persist_record_w_long_key<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
-        record: &Record<M>,
+        record: &Record<RK, M>,
     ) {
         self.insert(
             LongKey::from((
@@ -455,7 +473,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub(crate) fn persist_record_w_short_key<M: Meta>(
         &self,
         prefix: PrefixId<AF>,
-        record: &Record<M>,
+        record: &Record<RK, M>,
     ) {
         trace!("Record to persist {}", record);
         let mut value = ValueHeader {
@@ -482,7 +500,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
         header: ValueHeader,
         record_b: &[u8],
     ) -> FatalResult<()> {
-        let record = ZeroCopyRecord::<AF>::try_ref_from_prefix(record_b)
+        let record = ZeroCopyRecord::<AF, RK>::try_ref_from_prefix(record_b)
             .map_err(|_| FatalError)?
             .0;
         let key = ShortKey::from((record.prefix, record.multi_uniq_id));
@@ -501,7 +519,7 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub(crate) fn insert_empty_record(
         &self,
         prefix: PrefixId<AF>,
-        mui: u32,
+        mui: RK,
         ltime: u64,
     ) {
         self.insert(
@@ -514,21 +532,23 @@ impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize>
     pub(crate) fn prefixes_iter(
         &self,
     ) -> impl Iterator<Item = Vec<FatalResult<Vec<u8>>>> + '_ {
-        PersistedPrefixIter::<AF, K, KEY_SIZE> {
+        PersistedPrefixIter::<AF, RK, K, KEY_SIZE> {
             tree_iter: self.tree.iter(None, None),
             cur_rec: None,
             _af: PhantomData,
             _k: PhantomData,
+            _rk: PhantomData,
         }
     }
 }
 
 impl<
         AF: AddressFamily,
-        K: Key<AF, KEY_SIZE>,
+        RK: RecordKey,
+        K: Key<AF, RK, KEY_SIZE>,
         // const PREFIX_SIZE: usize,
         const KEY_SIZE: usize,
-    > std::fmt::Debug for LsmTree<AF, K, KEY_SIZE>
+    > std::fmt::Debug for LsmTree<AF, RK, K, KEY_SIZE>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
@@ -540,7 +560,8 @@ impl<
 // specified offset.
 pub(crate) struct PersistedPrefixIter<
     AF: AddressFamily,
-    K: Key<AF, KEY_SIZE>,
+    RK: RecordKey,
+    K: Key<AF, RK, KEY_SIZE>,
     const KEY_SIZE: usize,
 > {
     cur_rec: Option<Vec<FatalResult<Vec<u8>>>>,
@@ -548,10 +569,15 @@ pub(crate) struct PersistedPrefixIter<
         Box<dyn DoubleEndedIterator<Item = Result<KvPair, lsm_tree::Error>>>,
     _af: PhantomData<AF>,
     _k: PhantomData<K>,
+    _rk: PhantomData<RK>,
 }
 
-impl<AF: AddressFamily, K: Key<AF, KEY_SIZE>, const KEY_SIZE: usize> Iterator
-    for PersistedPrefixIter<AF, K, KEY_SIZE>
+impl<
+        AF: AddressFamily,
+        RK: RecordKey,
+        K: Key<AF, RK, KEY_SIZE>,
+        const KEY_SIZE: usize,
+    > Iterator for PersistedPrefixIter<AF, RK, K, KEY_SIZE>
 {
     type Item = Vec<FatalResult<Vec<u8>>>;
     fn next(&mut self) -> Option<Self::Item> {

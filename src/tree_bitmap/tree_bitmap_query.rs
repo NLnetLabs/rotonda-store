@@ -1,4 +1,5 @@
 use crate::match_options::{MatchOptions, MatchType};
+use crate::prefix_cht::compound_multi_map::RecordKey;
 use crate::types::AddressFamily;
 
 use crate::rib::starcast_af_query::TreeQueryResult;
@@ -10,10 +11,10 @@ impl<AF, const ROOT_SIZE: usize> TreeBitMap<AF, ROOT_SIZE>
 where
     AF: AddressFamily,
 {
-    pub(crate) fn match_prefix(
+    pub(crate) fn match_prefix<K: RecordKey>(
         &self,
         search_pfx: PrefixId<AF>,
-        options: &MatchOptions,
+        options: &MatchOptions<K>,
     ) -> TreeQueryResult<AF> {
         let mut ls_pfxs = None;
         let mut ms_pfxs = None;

@@ -8,6 +8,7 @@ use crossbeam_utils::Backoff;
 use inetnum::addr::Prefix;
 use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
+use zerocopy::{NativeEndian, U32};
 
 use crate::cht::{nodeset_size, prev_node_size};
 use crate::errors::{FatalError, FatalResult};
@@ -26,7 +27,7 @@ use crate::{
     },
 };
 
-use super::compound_multi_map::MapType;
+use super::compound_multi_map::{MapType, Mui, RecordKey};
 
 //------------ MultiMap ------------------------------------------------------
 //
@@ -36,18 +37,18 @@ use super::compound_multi_map::MapType;
 
 #[derive(Debug)]
 pub struct MultiMap<M: Meta>(
-    Arc<Mutex<std::collections::HashMap<u32, MultiMapValue<M>>>>,
+    Arc<Mutex<std::collections::HashMap<Mui, MultiMapValue<M>>>>,
 );
 
 impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
-    pub(crate) fn new(record_map: HashMap<u32, MultiMapValue<M>>) -> Self {
+    pub(crate) fn new(record_map: HashMap<Mui, MultiMapValue<M>>) -> Self {
         Self(Arc::new(Mutex::new(record_map)))
     }
 
     #[allow(clippy::type_complexity)]
     fn acquire_write_lock(
         &self,
-    ) -> FatalResult<(MutexGuard<HashMap<u32, MultiMapValue<M>>>, usize)>
+    ) -> FatalResult<(MutexGuard<HashMap<Mui, MultiMapValue<M>>>, usize)>
     {
         let mut retry_count: usize = 0;
         let backoff = Backoff::new();
@@ -67,7 +68,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     fn acquire_read_guard(
         &self,
-    ) -> MutexGuard<HashMap<u32, MultiMapValue<M>>> {
+    ) -> MutexGuard<HashMap<Mui, MultiMapValue<M>>> {
         let backoff = Backoff::new();
 
         loop {
@@ -84,44 +85,18 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         record_map.len()
     }
 
-    pub fn get_record_for_mui(
-        &self,
-        mui: u32,
-        include_withdrawn: bool,
-    ) -> Option<Record<M>> {
-        let record_map = self.acquire_read_guard();
-
-        record_map.get(&mui).and_then(|r| -> Option<Record<M>> {
-            if include_withdrawn || r.route_status() == RouteStatus::Active {
-                Some(Record::from((mui, r)))
-            } else {
-                None
-            }
-        })
-    }
-
-    pub fn best_backup(&self, tbi: M::TBI) -> (Option<u32>, Option<u32>) {
-        let record_map = self.acquire_read_guard();
-        let ord_routes = record_map
-            .iter()
-            .map(|r| (r.1.meta().as_orderable(tbi), *r.0));
-        let (best, bckup) =
-            routecore::bgp::path_selection::best_backup_generic(ord_routes);
-        (best.map(|b| b.1), bckup.map(|b| b.1))
-    }
-
     pub(crate) fn get_record_for_mui_with_rewritten_status(
         &self,
-        mui: u32,
+        mui: Mui,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
-    ) -> Option<Record<M>> {
+    ) -> Option<Record<Mui, M>> {
         let record_map = self.acquire_read_guard();
         record_map.get(&mui).map(|r| {
             // We'll return a cloned record: the record in the store remains
             // untouched.
             let mut r = r.clone();
-            if bmin.contains(mui) {
+            if bmin.contains(mui.mui().into()) {
                 r.set_route_status(rewrite_status);
             }
             Record::from((mui, &r))
@@ -130,10 +105,10 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
 
     pub fn get_filtered_record_for_mui(
         &self,
-        mui: u32,
+        mui: Mui,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Record<M>> {
+    ) -> Option<Record<Mui, M>> {
         match include_withdrawn {
             false => self.get_record_for_mui(mui, include_withdrawn),
             true => self.get_record_for_mui_with_rewritten_status(
@@ -144,14 +119,130 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
+    // return all records regardless of their local status, or any globally
+    // set status for the mui of the record. However, the local status for a
+    // record whose mui appears in the specified bitmap index, will be
+    // rewritten with the specified RouteStatus.
+    pub fn as_records_with_rewritten_status(
+        &self,
+        bmin: &RoaringBitmap,
+        rewrite_status: RouteStatus,
+    ) -> Vec<Record<Mui, M>> {
+        let record_map = self.acquire_read_guard();
+        record_map
+            .iter()
+            .map(move |r| {
+                let mut rec = r.1.clone();
+                if bmin.contains(r.0.mui().into()) {
+                    rec.set_route_status(rewrite_status);
+                }
+                Record::from((*r.0, &rec))
+            })
+            .collect::<Vec<_>>()
+    }
+
+    pub fn _as_records(&self) -> Vec<Record<Mui, M>> {
+        let record_map = self.acquire_read_guard();
+        record_map
+            .iter()
+            .map(|r| Record::from((*r.0, r.1)))
+            .collect::<Vec<_>>()
+    }
+
+    // Returns a vec of records whose keys are not in the supplied bitmap
+    // index, and whose local Status is set to Active. Used to filter out
+    // withdrawn routes.
+    pub fn as_active_records_not_in_bmin(
+        &self,
+        bmin: &RoaringBitmap,
+    ) -> Vec<Record<Mui, M>> {
+        let record_map = self.acquire_read_guard();
+        record_map
+            .iter()
+            .filter_map(|r| {
+                if r.1.route_status() == RouteStatus::Active
+                    && !bmin.contains(r.0.mui().into())
+                {
+                    Some(Record::from((*r.0, r.1)))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+}
+
+impl<M: Meta> MapType<M> for MultiMap<M> {
+    type Key = Mui;
+
+    fn new() -> Self {
+        Self(Arc::new(Mutex::new(HashMap::new())))
+    }
+
+    fn best_backup(&self, tbi: M::TBI) -> (Option<Mui>, Option<Mui>) {
+        let record_map = self.acquire_read_guard();
+        let ord_routes = record_map
+            .iter()
+            .map(|r| (r.1.meta().as_orderable(tbi), *r.0));
+        let (best, bckup) =
+            routecore::bgp::path_selection::best_backup_generic(ord_routes);
+        (best.map(|b| b.1), bckup.map(|b| b.1))
+    }
+
+    // Change the local status of the record for this mui to Withdrawn.
+    fn mark_as_withdrawn_for_mui(&self, mui: Mui, ltime: u64) {
+        let mut record_map = self.acquire_read_guard();
+        if let Some(rec) = record_map.get_mut(&mui) {
+            rec.set_route_status(RouteStatus::Withdrawn);
+            rec.set_logical_time(ltime);
+        }
+    }
+
+    // Change the local status of the record for this mui to Active.
+    fn mark_as_active_for_mui(&self, mui: Mui, ltime: u64) {
+        let mut record_map = self.acquire_read_guard();
+        if let Some(rec) = record_map.get_mut(&mui) {
+            rec.set_route_status(RouteStatus::Active);
+            rec.set_logical_time(ltime);
+        }
+    }
+
+    // Insert or replace the PublicRecord in the HashMap for the key of
+    // record.multi_uniq_id. Returns the number of entries in the HashMap
+    // after updating it, if it's more than 1. Returns None if this is the
+    // first entry.
+    #[allow(clippy::type_complexity)]
+    fn upsert_record(
+        &self,
+        new_rec: Record<Mui, M>,
+    ) -> FatalResult<(Option<(MultiMapValue<M>, usize)>, usize)> {
+        let (mut record_map, retry_count) = self.acquire_write_lock()?;
+        let key = new_rec.multi_uniq_id;
+
+        match record_map.contains_key(&key) {
+            true => {
+                let old_rec = record_map
+                    .insert(key, MultiMapValue::from(new_rec))
+                    .map(|r| (r, record_map.len()));
+                Ok((old_rec, retry_count))
+            }
+            false => {
+                let new_rec = MultiMapValue::from(new_rec);
+                let old_rec = record_map.insert(key, new_rec);
+                assert!(old_rec.is_none());
+                Ok((None, retry_count))
+            }
+        }
+    }
+
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    pub fn get_filtered_records(
+    fn get_filtered_records(
         &self,
-        mui: Option<u32>,
+        mui: Option<Mui>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<M>>> {
+    ) -> Option<Vec<Record<Mui, M>>> {
         if let Some(mui) = mui {
             self.get_filtered_record_for_mui(mui, include_withdrawn, bmin)
                 .map(|r| vec![r])
@@ -180,107 +271,42 @@ impl<M: Send + Sync + Debug + Display + Meta> MultiMap<M> {
         }
     }
 
-    // return all records regardless of their local status, or any globally
-    // set status for the mui of the record. However, the local status for a
-    // record whose mui appears in the specified bitmap index, will be
-    // rewritten with the specified RouteStatus.
-    pub fn as_records_with_rewritten_status(
+    fn get_records_for_mui(
         &self,
-        bmin: &RoaringBitmap,
-        rewrite_status: RouteStatus,
-    ) -> Vec<Record<M>> {
+        mui: Mui,
+        include_withdrawn: bool,
+    ) -> Vec<Record<Mui, M>> {
         let record_map = self.acquire_read_guard();
-        record_map
-            .iter()
-            .map(move |r| {
-                let mut rec = r.1.clone();
-                if bmin.contains(*r.0) {
-                    rec.set_route_status(rewrite_status);
-                }
-                Record::from((*r.0, &rec))
-            })
-            .collect::<Vec<_>>()
+        let mut res = vec![];
+
+        if let Some(r) = record_map.get(&mui) {
+            if include_withdrawn || r.route_status() == RouteStatus::Active {
+                res.push(Record::from((mui, r)));
+            }
+        }
+
+        res
     }
 
-    pub fn _as_records(&self) -> Vec<Record<M>> {
-        let record_map = self.acquire_read_guard();
-        record_map
-            .iter()
-            .map(|r| Record::from((*r.0, r.1)))
-            .collect::<Vec<_>>()
-    }
-
-    // Returns a vec of records whose keys are not in the supplied bitmap
-    // index, and whose local Status is set to Active. Used to filter out
-    // withdrawn routes.
-    pub fn as_active_records_not_in_bmin(
+    fn get_record_for_mui(
         &self,
-        bmin: &RoaringBitmap,
-    ) -> Vec<Record<M>> {
+        mui: Mui,
+        include_withdrawn: bool,
+    ) -> Option<Record<Mui, M>> {
         let record_map = self.acquire_read_guard();
+
         record_map
-            .iter()
-            .filter_map(|r| {
-                if r.1.route_status() == RouteStatus::Active
-                    && !bmin.contains(*r.0)
+            .get(&mui)
+            .and_then(|r| -> Option<Record<Mui, M>> {
+                if include_withdrawn
+                    || r.route_status() == RouteStatus::Active
                 {
-                    Some(Record::from((*r.0, r.1)))
+                    Some(Record::from((mui, r)))
                 } else {
                     None
                 }
             })
-            .collect::<Vec<_>>()
     }
-
-    // Change the local status of the record for this mui to Withdrawn.
-    pub fn mark_as_withdrawn_for_mui(&self, mui: u32, ltime: u64) {
-        let mut record_map = self.acquire_read_guard();
-        if let Some(rec) = record_map.get_mut(&mui) {
-            rec.set_route_status(RouteStatus::Withdrawn);
-            rec.set_logical_time(ltime);
-        }
-    }
-
-    // Change the local status of the record for this mui to Active.
-    pub fn mark_as_active_for_mui(&self, mui: u32, ltime: u64) {
-        let mut record_map = self.acquire_read_guard();
-        if let Some(rec) = record_map.get_mut(&mui) {
-            rec.set_route_status(RouteStatus::Active);
-            rec.set_logical_time(ltime);
-        }
-    }
-
-    // Insert or replace the PublicRecord in the HashMap for the key of
-    // record.multi_uniq_id. Returns the number of entries in the HashMap
-    // after updating it, if it's more than 1. Returns None if this is the
-    // first entry.
-    #[allow(clippy::type_complexity)]
-    pub(crate) fn upsert_record(
-        &self,
-        new_rec: Record<M>,
-    ) -> FatalResult<(Option<(MultiMapValue<M>, usize)>, usize)> {
-        let (mut record_map, retry_count) = self.acquire_write_lock()?;
-        let key = new_rec.multi_uniq_id;
-
-        match record_map.contains_key(&key) {
-            true => {
-                let old_rec = record_map
-                    .insert(key, MultiMapValue::from(new_rec))
-                    .map(|r| (r, record_map.len()));
-                Ok((old_rec, retry_count))
-            }
-            false => {
-                let new_rec = MultiMapValue::from(new_rec);
-                let old_rec = record_map.insert(key, new_rec);
-                assert!(old_rec.is_none());
-                Ok((None, retry_count))
-            }
-        }
-    }
-}
-
-impl<M: Meta> MapType for MultiMap<M> {
-    type Inner = u32;
 }
 
 #[derive(Clone, Debug)]
@@ -324,8 +350,8 @@ impl<M: Meta> std::fmt::Display for MultiMapValue<M> {
     }
 }
 
-impl<M: Meta> From<Record<M>> for MultiMapValue<M> {
-    fn from(value: Record<M>) -> Self {
+impl<K, M: Meta> From<Record<K, M>> for MultiMapValue<M> {
+    fn from(value: Record<K, M>) -> Self {
         Self {
             ltime: value.ltime,
             route_status: value.status,
@@ -334,16 +360,16 @@ impl<M: Meta> From<Record<M>> for MultiMapValue<M> {
     }
 }
 
-impl<M: Meta> From<(u32, &MultiMapValue<M>)> for Record<M> {
-    fn from(value: (u32, &MultiMapValue<M>)) -> Self {
-        Self {
-            multi_uniq_id: value.0,
-            meta: value.1.meta().clone(),
-            ltime: value.1.ltime,
-            status: value.1.route_status,
-        }
-    }
-}
+// impl<M: Meta> From<(u32, &MultiMapValue<M>)> for Record<u32, M> {
+//     fn from(value: (u32, &MultiMapValue<M>)) -> Self {
+//         Self {
+//             multi_uniq_id: value.0,
+//             meta: value.1.meta().clone(),
+//             ltime: value.1.ltime,
+//             status: value.1.route_status,
+//         }
+//     }
+// }
 
 impl<M: Meta> Clone for MultiMap<M> {
     fn clone(&self) -> Self {
@@ -353,17 +379,17 @@ impl<M: Meta> Clone for MultiMap<M> {
 
 // ----------- Prefix related structs ---------------------------------------
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct PathSelections {
-    pub(crate) path_selection_muis: (Option<u32>, Option<u32>),
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub struct PathSelections<RK: RecordKey> {
+    pub(crate) path_selection_muis: (Option<RK>, Option<RK>),
 }
 
-impl PathSelections {
-    pub fn best(&self) -> Option<u32> {
+impl<RK: RecordKey> PathSelections<RK> {
+    pub fn best(&self) -> Option<RK> {
         self.path_selection_muis.0
     }
 
-    pub fn _backup(&self) -> Option<u32> {
+    pub fn _backup(&self) -> Option<RK> {
         self.path_selection_muis.1
     }
 }
@@ -373,18 +399,18 @@ impl PathSelections {
 // records that are stored inside it, so that iterators over its linked lists
 // don't have to go into them if there's nothing there and could stop early.
 #[derive(Debug)]
-pub struct StoredPrefix<AF: AddressFamily, M: Meta> {
+pub struct StoredPrefix<AF: AddressFamily, M: Meta, MT: MapType<M>> {
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
-    pub record_map: MultiMap<M>,
+    pub record_map: MT,
     // (mui of best path entry, mui of backup path entry) from the record_map
-    path_selections: Atomic<PathSelections>,
+    path_selections: Atomic<PathSelections<MT::Key>>,
     // the reference to the next set of records for this prefix, if any.
-    pub next_bucket: PrefixSet<AF, M>,
+    pub next_bucket: PrefixSet<AF, M, MT>,
 }
 
-impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
+impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
     pub(crate) fn new(pfx_id: PrefixId<AF>, level: u8) -> Self {
         // start calculation size of next set, it's dependent on the level
         // we're in.
@@ -393,7 +419,7 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         let next_level = nodeset_size(pfx_id.len(), level + 1);
 
         trace!("next level {}", next_level);
-        let next_bucket: PrefixSet<AF, M> = if next_level > 0 {
+        let next_bucket: PrefixSet<AF, M, MT> = if next_level > 0 {
             debug!(
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
@@ -411,14 +437,14 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         };
         // End of calculation
 
-        let rec_map = HashMap::new();
+        // let rec_map = MT::new();
 
         StoredPrefix {
             prefix: pfx_id,
             path_selections: Atomic::init(PathSelections {
                 path_selection_muis: (None, None),
             }),
-            record_map: MultiMap::new(rec_map),
+            record_map: MT::new(),
             next_bucket,
         }
     }
@@ -427,7 +453,10 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         self.prefix
     }
 
-    pub fn get_path_selections(&self, guard: &Guard) -> PathSelections {
+    pub fn get_path_selections(
+        &self,
+        guard: &Guard,
+    ) -> PathSelections<MT::Key> {
         let path_selections =
             self.path_selections.load(Ordering::Acquire, guard);
 
@@ -435,13 +464,13 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
             PathSelections {
                 path_selection_muis: (None, None),
             },
-            |ps| *ps,
+            |ps| ps.clone(),
         )
     }
 
     pub(crate) fn set_path_selections(
         &self,
-        path_selections: PathSelections,
+        path_selections: PathSelections<MT::Key>,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
         let current = self.path_selections.load(Ordering::SeqCst, guard);
@@ -484,7 +513,7 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
         &'a self,
         tbi: &M::TBI,
         guard: &'a Guard,
-    ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
+    ) -> Result<(Option<MT::Key>, Option<MT::Key>), PrefixStoreError> {
         let path_selection_muis = self.record_map.best_backup(*tbi);
 
         self.set_path_selections(
@@ -509,11 +538,13 @@ impl<AF: AddressFamily, M: Meta> StoredPrefix<AF, M> {
 
 #[derive(Debug)]
 #[repr(align(8))]
-pub struct PrefixSet<AF: AddressFamily, M: Meta>(
-    pub OnceBoxSlice<StoredPrefix<AF, M>>,
+pub struct PrefixSet<AF: AddressFamily, M: Meta, MT: MapType<M>>(
+    pub OnceBoxSlice<StoredPrefix<AF, M, MT>>,
 );
 
-impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
+impl<AF: AddressFamily, M: Meta, MT: MapType<M>> Value
+    for PrefixSet<AF, M, MT>
+{
     fn init_with_p2_children(p2_size: usize) -> Self {
         let size = if p2_size == 0 { 0 } else { 1 << p2_size };
         PrefixSet(OnceBoxSlice::new(size))
@@ -529,18 +560,19 @@ impl<AF: AddressFamily, M: Meta> Value for PrefixSet<AF, M> {
 pub(crate) struct PrefixCht<
     AF: AddressFamily,
     M: Meta,
+    MT: MapType<M>,
     const ROOT_SIZE: usize,
 > {
-    bush: Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>,
+    bush: Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, 1>,
     counters: Counters,
 }
 
-impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
-    PrefixCht<AF, M, ROOT_SIZE>
+impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
+    PrefixCht<AF, M, MT, ROOT_SIZE>
 {
     pub(crate) fn init() -> Self {
         Self {
-            bush: <Cht<PrefixSet<AF, M>, ROOT_SIZE, 1>>::init(),
+            bush: <Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, 1>>::init(),
             counters: Counters::default(),
         }
     }
@@ -548,10 +580,10 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     pub(crate) fn get_records_for_prefix(
         &self,
         prefix: PrefixId<AF>,
-        mui: Option<u32>,
+        mui: Option<MT::Key>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<M>>> {
+    ) -> Option<Vec<Record<MT::Key, M>>> {
         let mut prefix_set = self.bush.root_for_len(prefix.len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -596,7 +628,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     pub(crate) fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: Record<M>,
+        record: Record<MT::Key, M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<(UpsertReport, Option<MultiMapValue<M>>), PrefixStoreError>
@@ -700,7 +732,7 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
     pub(crate) fn non_recursive_retrieve_prefix_mut(
         &self,
         search_prefix_id: PrefixId<AF>,
-    ) -> (&StoredPrefix<AF, M>, bool) {
+    ) -> (&StoredPrefix<AF, M, MT>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
         let mut prefix_set = self.bush.root_for_len(search_prefix_id.len());
         let mut level: u8 = 0;
@@ -778,12 +810,12 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
         &self,
         id: PrefixId<AF>,
     ) -> (
-        Option<&StoredPrefix<AF, M>>,
+        Option<&StoredPrefix<AF, M, MT>>,
         Option<(
             PrefixId<AF>,
             u8,
-            &PrefixSet<AF, M>,
-            [Option<(&PrefixSet<AF, M>, usize)>; 32],
+            &PrefixSet<AF, M, MT>,
+            [Option<(&PrefixSet<AF, M, MT>, usize)>; 32],
             usize,
         )>,
     ) {
@@ -875,5 +907,5 @@ impl<AF: AddressFamily, M: Meta, const ROOT_SIZE: usize>
 
 #[test]
 fn test_hashing_prefix_id_valid_range() {
-    PrefixCht::<IPv6, NoMeta, 129>::test_valid_range()
+    PrefixCht::<IPv6, NoMeta, MultiMap<NoMeta>, 129>::test_valid_range()
 }

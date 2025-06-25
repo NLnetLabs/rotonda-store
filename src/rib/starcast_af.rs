@@ -4,6 +4,7 @@ use std::path::Path;
 use inetnum::addr::Prefix;
 use log::{info, trace};
 
+use crate::prefix_cht::compound_multi_map::{MapType, RecordKey};
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
 use crate::stats::{Counters, UpsertCounters, UpsertReport};
@@ -35,6 +36,9 @@ pub(crate) struct StarCastAfRib<
     AF: AddressFamily,
     // The type that stores the route-like data
     M: Meta,
+    // The Map type that store multiple routes for one prefix, e.g. a HashMap
+    // for routes per MUI, or a BTreeMap per (mui, path_id).
+    MT: MapType<M>,
     // The number of root nodes for the tree bitmap (one for each 4 prefix
     // lengths, so that's 9 for IPv4, 33 for IPv6)
     const N_ROOT_SIZE: usize,
@@ -51,27 +55,29 @@ pub(crate) struct StarCastAfRib<
 > {
     pub config: C,
     pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
-    pub(crate) prefix_cht: PrefixCht<AF, M, P_ROOT_SIZE>,
-    pub(crate) persist_tree: Option<LsmTree<AF, LongKey<AF>, KEY_SIZE>>,
+    pub(crate) prefix_cht: PrefixCht<AF, M, MT, P_ROOT_SIZE>,
+    pub(crate) persist_tree:
+        Option<LsmTree<AF, MT::Key, LongKey<AF, MT::Key>, KEY_SIZE>>,
     pub counters: Counters,
 }
 
 impl<
         AF: AddressFamily,
         M: Meta,
+        MT: MapType<M>,
         const P_ROOT_SIZE: usize,
         const N_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     pub(crate) fn new(
         config: C,
     ) -> Result<
-        StarCastAfRib<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>,
+        StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>,
         Box<dyn std::error::Error>,
     > {
-        StarCastAfRib::<AF, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>::init(
+        StarCastAfRib::<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>::init(
             config,
         )
     }
@@ -102,7 +108,7 @@ impl<
             tree_bitmap: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
             persist_tree,
             counters: Counters::default(),
-            prefix_cht: PrefixCht::<AF, M, P_ROOT_SIZE>::init(),
+            prefix_cht: PrefixCht::<AF, M, MT, P_ROOT_SIZE>::init(),
         };
 
         Ok(store)
@@ -111,13 +117,13 @@ impl<
     pub(crate) fn insert(
         &self,
         prefix: PrefixId<AF>,
-        record: Record<M>,
+        record: Record<MT::Key, M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         trace!("try insertingf {:?}", prefix);
         let guard = &epoch::pin();
         self.tree_bitmap
-            .set_prefix_exists(prefix, record.multi_uniq_id)
+            .set_prefix_exists(prefix, record.multi_uniq_id.mui().into())
             .and_then(|(retry_count, exists)| {
                 trace!("exists, upsert it");
                 self.upsert_prefix(
@@ -143,7 +149,7 @@ impl<
     fn upsert_prefix(
         &self,
         prefix: PrefixId<AF>,
-        record: Record<M>,
+        record: Record<MT::Key, M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
@@ -185,9 +191,11 @@ impl<
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    let (retry_count, exists) = self
-                        .tree_bitmap
-                        .set_prefix_exists(prefix, record.multi_uniq_id)?;
+                    let (retry_count, exists) =
+                        self.tree_bitmap.set_prefix_exists(
+                            prefix,
+                            record.multi_uniq_id.mui().into(),
+                        )?;
                     persist_tree.persist_record_w_short_key(prefix, &record);
                     Ok(UpsertReport {
                         cas_count: retry_count as usize,
@@ -202,9 +210,14 @@ impl<
         }
     }
 
-    pub fn contains(&self, prefix: PrefixId<AF>, mui: Option<u32>) -> bool {
+    pub fn contains(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: Option<MT::Key>,
+    ) -> bool {
         if let Some(mui) = mui {
-            self.tree_bitmap.prefix_exists_for_mui(prefix, mui)
+            self.tree_bitmap
+                .prefix_exists_for_mui(prefix, mui.mui().into())
         } else {
             self.tree_bitmap.prefix_exists(prefix)
         }
@@ -219,7 +232,7 @@ impl<
     pub fn mark_mui_as_withdrawn_for_prefix(
         &self,
         prefix: PrefixId<AF>,
-        mui: u32,
+        mui: MT::Key,
         ltime: u64,
     ) -> Result<(), PrefixStoreError> {
         match self.persist_strategy() {
@@ -298,7 +311,7 @@ impl<
     pub fn mark_mui_as_active_for_prefix(
         &self,
         prefix: PrefixId<AF>,
-        mui: u32,
+        mui: MT::Key,
         ltime: u64,
     ) -> FatalResult<()> {
         match self.persist_strategy() {
@@ -364,28 +377,31 @@ impl<
     // functions will by default not return any records for this mui.
     pub fn mark_mui_as_withdrawn(
         &self,
-        mui: u32,
+        mui: MT::Key,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        self.tree_bitmap.mark_mui_as_withdrawn(mui, guard)
+        self.tree_bitmap
+            .mark_mui_as_withdrawn(mui.mui().into(), guard)
     }
 
     // Change the status of the mui globally to Active. Iterators and match
     // functions will default to the status on the record itself.
     pub fn mark_mui_as_active(
         &self,
-        mui: u32,
+        mui: MT::Key,
         guard: &Guard,
     ) -> Result<(), PrefixStoreError> {
-        self.tree_bitmap.mark_mui_as_active(mui, guard)
+        self.tree_bitmap.mark_mui_as_active(mui.mui().into(), guard)
     }
 
     // Whether this mui is globally withdrawn. Note that this overrules
     // (by default) any (prefix, mui) combination in iterators and match
     // functions.
-    pub fn mui_is_withdrawn(&self, mui: u32, guard: &Guard) -> bool {
+    pub fn mui_is_withdrawn(&self, mui: MT::Key, guard: &Guard) -> bool {
         // unsafe {
-        self.tree_bitmap.withdrawn_muis_bmin(guard).contains(mui)
+        self.tree_bitmap
+            .withdrawn_muis_bmin(guard)
+            .contains(mui.mui().into())
     }
 
     // Whether this mui is globally active. Note that the local statuses of
@@ -443,7 +459,7 @@ impl<
     pub fn prefixes_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<(Prefix, Vec<Record<M>>)>> + 'a
+    ) -> impl Iterator<Item = FatalResult<(Prefix, Vec<Record<MT::Key, M>>)>> + 'a
     {
         self.tree_bitmap.prefixes_iter().map(|p| {
             if let Ok(r) = self.get_value(p.into(), None, true, guard) {
@@ -462,7 +478,7 @@ impl<
 
     pub(crate) fn persist_prefixes_iter(
         &self,
-    ) -> impl Iterator<Item = FatalResult<(Prefix, Vec<Record<M>>)>> + '_
+    ) -> impl Iterator<Item = FatalResult<(Prefix, Vec<Record<MT::Key, M>>)>> + '_
     {
         self.persist_tree
             .as_ref()
@@ -470,14 +486,19 @@ impl<
                 tree.prefixes_iter().map(|recs| {
                     if let Some(Ok(first_rec)) = recs.first() {
                         if let Ok(pfx) =
-                            ZeroCopyRecord::<AF>::from_bytes(first_rec)
+                            ZeroCopyRecord::<AF, MT::Key>::from_bytes(
+                                first_rec,
+                            )
                         {
-                            let mut rec_vec: Vec<Record<M>> = vec![];
+                            let mut rec_vec: Vec<Record<MT::Key, M>> = vec![];
                             for res_rec in recs.iter() {
                                 if let Ok(rec) = res_rec {
-                                    if let Ok(rec) =
-                                        ZeroCopyRecord::<AF>::from_bytes(rec)
-                                    {
+                                    if let Ok(rec) = ZeroCopyRecord::<
+                                        AF,
+                                        MT::Key,
+                                    >::from_bytes(
+                                        rec
+                                    ) {
                                         rec_vec.push(Record {
                                             multi_uniq_id: rec.multi_uniq_id,
                                             ltime: rec.ltime,
@@ -530,12 +551,13 @@ impl<
 
 impl<
         M: Meta,
+        MT: MapType<M>,
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
     > std::fmt::Display
-    for StarCastAfRib<IPv4, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    for StarCastAfRib<IPv4, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv4, {}>", std::any::type_name::<M>())
@@ -544,12 +566,13 @@ impl<
 
 impl<
         M: Meta,
+        MT: MapType<M>,
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
         const KEY_SIZE: usize,
     > std::fmt::Display
-    for StarCastAfRib<IPv6, M, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    for StarCastAfRib<IPv6, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())

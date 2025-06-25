@@ -1,7 +1,11 @@
 use std::fmt;
 use std::fmt::Debug;
 
-use crate::{errors::FatalError, types::AddressFamily};
+use crate::{
+    errors::FatalError,
+    prefix_cht::{cht::MultiMapValue, compound_multi_map::RecordKey},
+    types::AddressFamily,
+};
 use inetnum::addr::Prefix;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 
@@ -34,16 +38,16 @@ where
 //------------ PublicRecord --------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct Record<M> {
-    pub multi_uniq_id: u32,
+pub struct Record<K, M> {
+    pub multi_uniq_id: K,
     pub ltime: u64,
     pub status: RouteStatus,
     pub meta: M,
 }
 
-impl<M> Record<M> {
+impl<K: Copy + Clone + Debug + PartialEq + Eq, M> Record<K, M> {
     pub fn new(
-        multi_uniq_id: u32,
+        multi_uniq_id: K,
         ltime: u64,
         status: RouteStatus,
         meta: M,
@@ -57,7 +61,22 @@ impl<M> Record<M> {
     }
 }
 
-impl<M: std::fmt::Display> std::fmt::Display for Record<M> {
+impl<K: Copy + Clone + Debug + Eq, M: Meta> From<(K, &MultiMapValue<M>)>
+    for Record<K, M>
+{
+    fn from(value: (K, &MultiMapValue<M>)) -> Self {
+        Self {
+            multi_uniq_id: value.0,
+            ltime: value.1.logical_time(),
+            status: value.1.route_status(),
+            meta: value.1.meta().clone(),
+        }
+    }
+}
+
+impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
+    for Record<K, M>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
@@ -69,22 +88,22 @@ impl<M: std::fmt::Display> std::fmt::Display for Record<M> {
 
 #[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
 #[repr(C, packed)]
-pub(crate) struct ZeroCopyRecord<AF: AddressFamily> {
+pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: RecordKey> {
     pub prefix: PrefixId<AF>,
-    pub multi_uniq_id: u32,
+    pub multi_uniq_id: K,
     pub ltime: u64,
     pub status: RouteStatus,
     pub meta: [u8],
 }
 
-impl<AF: AddressFamily> ZeroCopyRecord<AF> {
+impl<AF: AddressFamily, K: RecordKey> ZeroCopyRecord<AF, K> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
         Self::try_ref_from_bytes(b).map_err(|_| FatalError)
     }
 }
 
-impl<AF: AddressFamily + std::fmt::Display> std::fmt::Display
-    for ZeroCopyRecord<AF>
+impl<AF: AddressFamily + std::fmt::Display, K: RecordKey> std::fmt::Display
+    for ZeroCopyRecord<AF, K>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mui = self.multi_uniq_id;
@@ -114,27 +133,27 @@ impl std::fmt::Display for ValueHeader {
 //------------ PublicPrefixRecord --------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct PrefixRecord<M: Meta> {
+pub struct PrefixRecord<K, M: Meta> {
     pub prefix: Prefix,
-    pub meta: Vec<Record<M>>,
+    pub meta: Vec<Record<K, M>>,
 }
 
-impl<M: Meta> PrefixRecord<M> {
-    pub fn new(prefix: Prefix, meta: Vec<Record<M>>) -> Self {
+impl<K: Copy + Debug + PartialEq + Eq, M: Meta> PrefixRecord<K, M> {
+    pub fn new(prefix: Prefix, meta: Vec<Record<K, M>>) -> Self {
         Self { prefix, meta }
     }
 
-    pub fn get_record_for_mui(&self, mui: u32) -> Option<&Record<M>> {
+    pub fn get_record_for_mui(&self, mui: K) -> Option<&Record<K, M>> {
         self.meta.iter().find(|r| r.multi_uniq_id == mui)
     }
 }
 
-impl<AF, M> From<(PrefixId<AF>, Vec<Record<M>>)> for PrefixRecord<M>
+impl<AF, K, M> From<(PrefixId<AF>, Vec<Record<K, M>>)> for PrefixRecord<K, M>
 where
     AF: AddressFamily,
     M: Meta,
 {
-    fn from(record: (PrefixId<AF>, Vec<Record<M>>)) -> Self {
+    fn from(record: (PrefixId<AF>, Vec<Record<K, M>>)) -> Self {
         Self {
             prefix: record.0.into(),
             meta: record.1,
@@ -142,7 +161,9 @@ where
     }
 }
 
-impl<M: Meta + std::fmt::Display> std::fmt::Display for PrefixRecord<M> {
+impl<K: Copy + fmt::Display, M: Meta + std::fmt::Display> fmt::Display
+    for PrefixRecord<K, M>
+{
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: [", self.prefix)?;
         for rec in &self.meta {
@@ -152,8 +173,8 @@ impl<M: Meta + std::fmt::Display> std::fmt::Display for PrefixRecord<M> {
     }
 }
 
-impl<M: Meta> From<(Prefix, Vec<Record<M>>)> for PrefixRecord<M> {
-    fn from((prefix, meta): (Prefix, Vec<Record<M>>)) -> Self {
+impl<K, M: Meta> From<(Prefix, Vec<Record<K, M>>)> for PrefixRecord<K, M> {
+    fn from((prefix, meta): (Prefix, Vec<Record<K, M>>)) -> Self {
         Self { prefix, meta }
     }
 }
@@ -161,12 +182,12 @@ impl<M: Meta> From<(Prefix, Vec<Record<M>>)> for PrefixRecord<M> {
 //------------ RecordSet -----------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct RecordSet<M: Meta> {
-    pub v4: Vec<PrefixRecord<M>>,
-    pub v6: Vec<PrefixRecord<M>>,
+pub struct RecordSet<K, M: Meta> {
+    pub v4: Vec<PrefixRecord<K, M>>,
+    pub v6: Vec<PrefixRecord<K, M>>,
 }
 
-impl<M: Meta> RecordSet<M> {
+impl<K: Copy + Debug + Eq, M: Meta> RecordSet<K, M> {
     pub fn new() -> Self {
         Self {
             v4: Default::default(),
@@ -174,7 +195,7 @@ impl<M: Meta> RecordSet<M> {
         }
     }
 
-    pub fn push(&mut self, prefix: Prefix, meta: Vec<Record<M>>) {
+    pub fn push(&mut self, prefix: Prefix, meta: Vec<Record<K, M>>) {
         match prefix.addr() {
             std::net::IpAddr::V4(_) => &mut self.v4,
             std::net::IpAddr::V6(_) => &mut self.v6,
@@ -186,7 +207,7 @@ impl<M: Meta> RecordSet<M> {
         self.v4.is_empty() && self.v6.is_empty()
     }
 
-    pub fn iter(&self) -> RecordSetIter<M> {
+    pub fn iter(&self) -> RecordSetIter<K, M> {
         RecordSetIter {
             v4: if self.v4.is_empty() {
                 None
@@ -198,7 +219,7 @@ impl<M: Meta> RecordSet<M> {
     }
 
     #[must_use]
-    pub fn reverse(mut self) -> RecordSet<M> {
+    pub fn reverse(mut self) -> RecordSet<K, M> {
         self.v4.reverse();
         self.v6.reverse();
         self
@@ -209,13 +230,13 @@ impl<M: Meta> RecordSet<M> {
     }
 }
 
-impl<M: Meta> Default for RecordSet<M> {
+impl<K: Copy + Debug + Eq, M: Meta> Default for RecordSet<K, M> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<M: Meta> fmt::Display for RecordSet<M> {
+impl<K: Copy + fmt::Display, M: Meta> fmt::Display for RecordSet<K, M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let arr_str_v4 =
             self.v4.iter().fold("".to_string(), |pfx_arr, pfx| {
@@ -230,16 +251,22 @@ impl<M: Meta> fmt::Display for RecordSet<M> {
     }
 }
 
-impl<M: Meta> From<(Vec<PrefixRecord<M>>, Vec<PrefixRecord<M>>)>
-    for RecordSet<M>
+impl<K, M: Meta> From<(Vec<PrefixRecord<K, M>>, Vec<PrefixRecord<K, M>>)>
+    for RecordSet<K, M>
 {
-    fn from((v4, v6): (Vec<PrefixRecord<M>>, Vec<PrefixRecord<M>>)) -> Self {
+    fn from(
+        (v4, v6): (Vec<PrefixRecord<K, M>>, Vec<PrefixRecord<K, M>>),
+    ) -> Self {
         Self { v4, v6 }
     }
 }
 
-impl<M: Meta> std::iter::FromIterator<PrefixRecord<M>> for RecordSet<M> {
-    fn from_iter<I: IntoIterator<Item = PrefixRecord<M>>>(iter: I) -> Self {
+impl<K: Copy + Debug + Eq, M: Meta>
+    std::iter::FromIterator<PrefixRecord<K, M>> for RecordSet<K, M>
+{
+    fn from_iter<I: IntoIterator<Item = PrefixRecord<K, M>>>(
+        iter: I,
+    ) -> Self {
         let mut v4 = vec![];
         let mut v6 = vec![];
         for pfx in iter {
@@ -257,10 +284,13 @@ impl<M: Meta> std::iter::FromIterator<PrefixRecord<M>> for RecordSet<M> {
     }
 }
 
-impl<AF: AddressFamily, M: Meta>
-    std::iter::FromIterator<(PrefixId<AF>, Vec<Record<M>>)> for RecordSet<M>
+impl<AF: AddressFamily, K: Copy + Debug + Eq, M: Meta>
+    std::iter::FromIterator<(PrefixId<AF>, Vec<Record<K, M>>)>
+    for RecordSet<K, M>
 {
-    fn from_iter<I: IntoIterator<Item = (PrefixId<AF>, Vec<Record<M>>)>>(
+    fn from_iter<
+        I: IntoIterator<Item = (PrefixId<AF>, Vec<Record<K, M>>)>,
+    >(
         iter: I,
     ) -> Self {
         let mut v4 = vec![];
@@ -280,10 +310,10 @@ impl<AF: AddressFamily, M: Meta>
     }
 }
 
-impl<'a, M: Meta + 'a> std::iter::FromIterator<&'a PrefixRecord<M>>
-    for RecordSet<M>
+impl<'a, K: Copy + Debug + Eq, M: Meta + 'a>
+    std::iter::FromIterator<&'a PrefixRecord<K, M>> for RecordSet<K, M>
 {
-    fn from_iter<I: IntoIterator<Item = &'a PrefixRecord<M>>>(
+    fn from_iter<I: IntoIterator<Item = &'a PrefixRecord<K, M>>>(
         iter: I,
     ) -> Self {
         let mut v4 = vec![];
@@ -303,8 +333,8 @@ impl<'a, M: Meta + 'a> std::iter::FromIterator<&'a PrefixRecord<M>>
     }
 }
 
-impl<M: Meta> std::ops::Index<usize> for RecordSet<M> {
-    type Output = PrefixRecord<M>;
+impl<K, M: Meta> std::ops::Index<usize> for RecordSet<K, M> {
+    type Output = PrefixRecord<K, M>;
 
     // This does not change the behaviour of the Index trait
     #[allow(clippy::indexing_slicing)]
@@ -320,13 +350,13 @@ impl<M: Meta> std::ops::Index<usize> for RecordSet<M> {
 //------------ RecordSetIter -------------------------------------------------
 
 #[derive(Clone, Debug)]
-pub struct RecordSetIter<'a, M: Meta> {
-    v4: Option<std::slice::Iter<'a, PrefixRecord<M>>>,
-    v6: std::slice::Iter<'a, PrefixRecord<M>>,
+pub struct RecordSetIter<'a, K, M: Meta> {
+    v4: Option<std::slice::Iter<'a, PrefixRecord<K, M>>>,
+    v6: std::slice::Iter<'a, PrefixRecord<K, M>>,
 }
 
-impl<M: Meta> Iterator for RecordSetIter<'_, M> {
-    type Item = PrefixRecord<M>;
+impl<K: Copy, M: Meta> Iterator for RecordSetIter<'_, K, M> {
+    type Item = PrefixRecord<K, M>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.v4.is_none() {

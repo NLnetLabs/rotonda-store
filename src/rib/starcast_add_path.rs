@@ -6,6 +6,7 @@ use crate::{
     epoch,
     errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
+    prefix_cht::compound_multi_map::{AddPathMultiMap, MuiPathId},
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
     types::{errors::PrefixStoreError, PrefixId},
@@ -24,8 +25,7 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 ///
 /// Routes can be kept in memory, persisted to disk, or both. Also, historical
 /// records can be persisted.
-///
-/// A RIB stores "route-like" data. A `route` according to RFC4271 would be
+////// A RIB stores "route-like" data. A `route` according to RFC4271 would be
 /// specified as an IP prefix and a set of path attributes. Our StarCastRib,
 /// on the other hand, does not really care whether it stores path attributes,
 /// or any other type of record, for a given IP prefix.
@@ -56,8 +56,8 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 /// chosen by the user, for a `StarCastRib` determines what happens with key
 /// collisions in this multi map.
 pub struct StarCastAddPathRib<M: Meta, C: Config> {
-    v4: StarCastAfRib<IPv4, M, 9, 33, C, 18>,
-    v6: StarCastAfRib<IPv6, M, 33, 129, C, 30>,
+    v4: StarCastAfRib<IPv4, M, AddPathMultiMap<M>, 9, 33, C, 18>,
+    v6: StarCastAfRib<IPv6, M, AddPathMultiMap<M>, 33, 129, C, 30>,
     config: C,
 }
 
@@ -120,9 +120,9 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn match_prefix(
         &'a self,
         search_pfx: &Prefix,
-        options: &MatchOptions,
+        options: &MatchOptions<MuiPathId>,
         guard: &'a Guard,
-    ) -> FatalResult<QueryResult<M>> {
+    ) -> FatalResult<QueryResult<MuiPathId, M>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.match_prefix(
                 PrefixId::<IPv4>::new(
@@ -146,7 +146,11 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// Search the RIB for a prefix.
     ///
     /// Returns a bool indicating whether the prefix was found. Regardless of the chosen persist strategy
-    pub fn contains(&'a self, prefix: &Prefix, mui: Option<u32>) -> bool {
+    pub fn contains(
+        &'a self,
+        prefix: &Prefix,
+        mui: Option<MuiPathId>,
+    ) -> bool {
         match prefix.addr() {
             std::net::IpAddr::V4(_addr) => {
                 self.v4.contains(PrefixId::<IPv4>::from(*prefix), mui)
@@ -169,7 +173,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
         &'a self,
         search_pfx: &Prefix,
         guard: &Guard,
-    ) -> Option<Result<Record<M>, PrefixStoreError>> {
+    ) -> Option<Result<Record<MuiPathId, M>, PrefixStoreError>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.best_path(
                 PrefixId::<IPv4>::new(
@@ -204,7 +208,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
         search_pfx: &Prefix,
         tbi: &<M as Meta>::TBI,
         guard: &Guard,
-    ) -> Result<(Option<u32>, Option<u32>), PrefixStoreError> {
+    ) -> Result<(Option<MuiPathId>, Option<MuiPathId>), PrefixStoreError>
+    {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => {
                 self.v4.calculate_and_store_best_and_backup_path(
@@ -272,10 +277,10 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn more_specifics_from(
         &'a self,
         search_pfx: &Prefix,
-        mui: Option<u32>,
+        mui: Option<MuiPathId>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> FatalResult<QueryResult<M>> {
+    ) -> FatalResult<QueryResult<MuiPathId, M>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.more_specifics_from(
                 PrefixId::<IPv4>::new(
@@ -312,10 +317,10 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn less_specifics_from(
         &'a self,
         search_pfx: &Prefix,
-        mui: Option<u32>,
+        mui: Option<MuiPathId>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> FatalResult<QueryResult<M>> {
+    ) -> FatalResult<QueryResult<MuiPathId, M>> {
         match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => self.v4.less_specifics_from(
                 PrefixId::<IPv4>::new(
@@ -352,10 +357,11 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn less_specifics_iter_from(
         &'a self,
         search_pfx: &Prefix,
-        mui: Option<u32>,
+        mui: Option<MuiPathId>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         let (left, right) = match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => (
                 Some(
@@ -410,10 +416,11 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn more_specifics_iter_from(
         &'a self,
         search_pfx: &Prefix,
-        mui: Option<u32>,
+        mui: Option<MuiPathId>,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         let (left, right) = match search_pfx.addr() {
             std::net::IpAddr::V4(addr) => (
                 Some(
@@ -463,10 +470,11 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// Returns an iterator over [PrefixRecord].
     pub fn iter_records_for_mui_v4(
         &'a self,
-        mui: u32,
+        mui: MuiPathId,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         if self.v4.mui_is_withdrawn(mui, guard) && !include_withdrawn {
             None
         } else {
@@ -497,10 +505,11 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// Returns an iterator over [PrefixRecord].
     pub fn iter_records_for_mui_v6(
         &'a self,
-        mui: u32,
+        mui: MuiPathId,
         include_withdrawn: bool,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         if self.v6.mui_is_withdrawn(mui, guard) && !include_withdrawn {
             None
         } else {
@@ -532,7 +541,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn insert(
         &self,
         prefix: &Prefix,
-        record: Record<M>,
+        record: Record<MuiPathId, M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         match prefix.addr() {
@@ -555,7 +564,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn prefixes_iter(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         self.v4
             .prefixes_iter(guard)
             .map(|r| r.map(PrefixRecord::from))
@@ -572,7 +582,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn prefixes_iter_v4(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         self.v4
             .prefixes_iter(guard)
             .map(|r| r.map(PrefixRecord::from))
@@ -584,7 +595,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn prefixes_iter_v6(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = FatalResult<PrefixRecord<M>>> + 'a {
+    ) -> impl Iterator<Item = FatalResult<PrefixRecord<MuiPathId, M>>> + 'a
+    {
         self.v6
             .prefixes_iter(guard)
             .map(|r| r.map(PrefixRecord::from))
@@ -595,7 +607,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// Returns an over [PrefixRecord].
     pub fn persist_prefixes_iter(
         &'a self,
-    ) -> impl Iterator<Item = Result<PrefixRecord<M>, FatalError>> + 'a {
+    ) -> impl Iterator<Item = Result<PrefixRecord<MuiPathId, M>, FatalError>> + 'a
+    {
         self.v4
             .persist_prefixes_iter()
             .map(|rr| rr.map(PrefixRecord::from))
@@ -612,7 +625,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// crate::prefix_record::PrefixRecord).
     pub fn persist_prefixes_iter_v4(
         &'a self,
-    ) -> impl Iterator<Item = Result<PrefixRecord<M>, FatalError>> + 'a {
+    ) -> impl Iterator<Item = Result<PrefixRecord<MuiPathId, M>, FatalError>> + 'a
+    {
         self.v4
             .persist_prefixes_iter()
             .map(|rr| rr.map(PrefixRecord::from))
@@ -623,7 +637,8 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// Returns an iterator over [PrefixRecord].
     pub fn persist_prefixes_iter_v6(
         &'a self,
-    ) -> impl Iterator<Item = Result<PrefixRecord<M>, FatalError>> + 'a {
+    ) -> impl Iterator<Item = Result<PrefixRecord<MuiPathId, M>, FatalError>> + 'a
+    {
         self.v6
             .persist_prefixes_iter()
             .map(|rr| rr.map(PrefixRecord::from))
@@ -657,7 +672,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn mark_mui_as_withdrawn_for_prefix(
         &self,
         prefix: &Prefix,
-        mui: u32,
+        mui: MuiPathId,
         ltime: u64,
     ) -> Result<(), PrefixStoreError> {
         match prefix.addr() {
@@ -685,7 +700,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn mark_mui_as_active_for_prefix(
         &self,
         prefix: &Prefix,
-        mui: u32,
+        mui: MuiPathId,
         ltime: u64,
     ) -> FatalResult<()> {
         match prefix.addr() {
@@ -712,7 +727,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// record.
     pub fn mark_mui_as_active_v4(
         &self,
-        mui: u32,
+        mui: MuiPathId,
     ) -> Result<(), PrefixStoreError> {
         let guard = &epoch::pin();
 
@@ -727,7 +742,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// status is changed to `Active`.
     pub fn mark_mui_as_withdrawn_v4(
         &self,
-        mui: u32,
+        mui: MuiPathId,
     ) -> Result<(), PrefixStoreError> {
         let guard = &epoch::pin();
 
@@ -741,7 +756,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// status of the record.
     pub fn mark_mui_as_active_v6(
         &self,
-        mui: u32,
+        mui: MuiPathId,
     ) -> Result<(), PrefixStoreError> {
         let guard = &epoch::pin();
 
@@ -757,7 +772,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// changed to `Active`.
     pub fn mark_mui_as_withdrawn_v6(
         &self,
-        mui: u32,
+        mui: MuiPathId,
     ) -> Result<(), PrefixStoreError> {
         let guard = &epoch::pin();
 
@@ -773,7 +788,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     /// either or both fail, an error is returned.
     pub fn mark_mui_as_withdrawn(
         &self,
-        mui: u32,
+        mui: MuiPathId,
     ) -> Result<(), PrefixStoreError> {
         let guard = &epoch::pin();
 
@@ -785,7 +800,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
 
     /// Request whether the global status for IPv4 prefixes and the specified
     /// `multi_uniq_id` is set to `Withdrawn`.
-    pub fn mui_is_withdrawn_v4(&self, mui: u32) -> bool {
+    pub fn mui_is_withdrawn_v4(&self, mui: MuiPathId) -> bool {
         let guard = &epoch::pin();
 
         self.v4.mui_is_withdrawn(mui, guard)
@@ -793,7 +808,7 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
 
     /// Request whether the global status for IPv6 prefixes and the specified
     /// `multi_uniq_id` is set to `Active`.
-    pub fn mui_is_withdrawn_v6(&self, mui: u32) -> bool {
+    pub fn mui_is_withdrawn_v6(&self, mui: MuiPathId) -> bool {
         let guard = &epoch::pin();
 
         self.v6.mui_is_withdrawn(mui, guard)
@@ -925,9 +940,9 @@ impl<'a, M: Meta, C: Config> StarCastAddPathRib<M, C> {
     pub fn get_records_for_prefix(
         &self,
         prefix: &Prefix,
-        mui: Option<u32>,
+        mui: Option<MuiPathId>,
         include_withdrawn: bool,
-    ) -> FatalResult<Option<Vec<Record<M>>>> {
+    ) -> FatalResult<Option<Vec<Record<MuiPathId, M>>>> {
         let guard = &epoch::pin();
 
         match prefix.is_v4() {

@@ -1,4 +1,7 @@
-use crate::types::{prefix_record::RecordSet, Record};
+use crate::{
+    prefix_cht::compound_multi_map::RecordKey,
+    types::{prefix_record::RecordSet, Record},
+};
 use std::fmt;
 
 use inetnum::addr::Prefix;
@@ -17,7 +20,7 @@ use super::prefix_record::Meta;
 ///
 /// See [crate::rib::StarCastRib::match_prefix] for more details.
 #[derive(Debug, Clone)]
-pub struct MatchOptions {
+pub struct MatchOptions<K: RecordKey> {
     /// The requested [MatchType]
     pub match_type: MatchType,
     /// Unused
@@ -28,7 +31,7 @@ pub struct MatchOptions {
     pub include_more_specifics: bool,
     /// Whether to return records for a specific multi_uniq_id, None indicates
     /// all records.
-    pub mui: Option<u32>,
+    pub mui: Option<K>,
     /// Whether to include historical records, i.e. records that have been
     /// superceded by updates. `SearchPrefix` means only historical records
     /// for the search prefix will be included (if present), `All` means
@@ -94,22 +97,22 @@ pub enum IncludeHistory {
 /// See [crate::rib::StarCastRib::match_prefix] for more details.
 
 #[derive(Clone, Debug)]
-pub struct QueryResult<M: Meta> {
+pub struct QueryResult<K, M: Meta> {
     /// The match type of the resulting prefix
     pub match_type: MatchType,
     /// The resulting prefix record
     pub prefix: Option<Prefix>,
     /// The meta data associated with the resulting prefix record
-    pub records: Vec<Record<M>>,
+    pub records: Vec<Record<K, M>>,
     /// The less-specifics of the resulting prefix together with their meta
     /// data
-    pub less_specifics: Option<RecordSet<M>>,
+    pub less_specifics: Option<RecordSet<K, M>>,
     /// The more-specifics of the resulting prefix together with their meta
     //// data
-    pub more_specifics: Option<RecordSet<M>>,
+    pub more_specifics: Option<RecordSet<K, M>>,
 }
 
-impl<M: Meta> QueryResult<M> {
+impl<K, M: Meta> QueryResult<K, M> {
     pub fn empty() -> Self {
         QueryResult {
             match_type: MatchType::EmptyMatch,
@@ -121,7 +124,7 @@ impl<M: Meta> QueryResult<M> {
     }
 }
 
-impl<M: Meta> fmt::Display for QueryResult<M> {
+impl<K: Copy + fmt::Display, M: Meta> fmt::Display for QueryResult<K, M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
             Some(pfx) => format!("{}", pfx),
