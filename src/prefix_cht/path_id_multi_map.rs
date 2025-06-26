@@ -1,14 +1,9 @@
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
-use std::ops::Bound;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crossbeam_utils::Backoff;
 use roaring::RoaringBitmap;
-use zerocopy::{
-    Immutable, IntoBytes, KnownLayout, NativeEndian, TryFromBytes, Unaligned,
-    U32,
-};
 
 use crate::errors::{FatalError, FatalResult};
 use crate::prefix_record::Meta;
@@ -16,144 +11,20 @@ use crate::types::prefix_record::Record;
 use crate::types::RouteStatus;
 
 use super::cht::MultiMapValue;
+use super::map_type::{MapType, MuiPathId, RecordKey};
 
-pub trait RecordKey:
-    Copy
-    + Debug
-    + TryFromBytes
-    + Immutable
-    + Display
-    + IntoBytes
-    + Unaligned
-    + KnownLayout
-    + std::hash::Hash
-    + PartialEq
-    + Eq
-{
-    fn mui(&self) -> U32<NativeEndian>;
-    fn path_id(&self) -> Option<[u8; 4]> {
-        None
-    }
-    fn route_distuingisher(&self) -> Option<[u8; 8]> {
-        None
-    }
-}
+//------------ PatIdhMultiMap ------------------------------------------------
+//
+// This is the collection of records or a given prefix, keyed on the multi
+// unique identifier ("mui"). Note that the record contains more than just the
+// meta-data typed value ("M").
 
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Immutable,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    TryFromBytes,
-    IntoBytes,
-    Unaligned,
-    KnownLayout,
-    Hash,
-)]
-pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
+#[derive(Debug)]
+pub struct PathIdMultiMap<M: Meta>(
+    Arc<Mutex<BTreeMap<MuiPathId, MultiMapValue<M>>>>,
+);
 
-impl RecordKey for MuiPathId {
-    fn mui(&self) -> U32<NativeEndian> {
-        self.0
-    }
-
-    fn path_id(&self) -> Option<[u8; 4]> {
-        if self.2 {
-            Some(self.1)
-        } else {
-            None
-        }
-    }
-}
-
-impl MuiPathId {
-    fn mui_range(mui: MuiPathId) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
-        (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4], false)),
-        )
-    }
-}
-
-impl Display for MuiPathId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.0, u32::from_be_bytes(self.1))
-    }
-}
-
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Immutable,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    TryFromBytes,
-    IntoBytes,
-    Unaligned,
-    KnownLayout,
-    Hash,
-)]
-pub struct Mui(U32<NativeEndian>);
-
-impl RecordKey for Mui {
-    fn mui(&self) -> U32<NativeEndian> {
-        self.0
-    }
-}
-
-impl Display for Mui {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.0)
-    }
-}
-
-impl From<u32> for Mui {
-    fn from(value: u32) -> Self {
-        Self(value.into())
-    }
-}
-
-pub trait MapType<M: Meta>: Debug {
-    type Key: RecordKey;
-    fn new() -> Self;
-    fn best_backup(
-        &self,
-        tbi: M::TBI,
-    ) -> (Option<Self::Key>, Option<Self::Key>);
-    fn mark_as_withdrawn_for_mui(&self, mui: Self::Key, ltime: u64);
-    fn mark_as_active_for_mui(&self, mui: Self::Key, ltime: u64);
-    fn upsert_record(
-        &self,
-        new_rec: Record<Self::Key, M>,
-    ) -> FatalResult<(Option<(MultiMapValue<M>, usize)>, usize)>;
-    fn get_filtered_records(
-        &self,
-        mui: Option<Self::Key>,
-        include_withdrawn: bool,
-        bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<Self::Key, M>>>;
-    fn get_records_for_mui(
-        &self,
-        mui: Self::Key,
-        include_withdrawn: bool,
-    ) -> Vec<Record<Self::Key, M>>;
-    fn get_record_for_mui(
-        &self,
-        key: Self::Key,
-        include_withdrawn: bool,
-    ) -> Option<Record<Self::Key, M>>;
-}
-
-impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
+impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
     type Key = MuiPathId;
     fn new() -> Self {
         let m = BTreeMap::new();
@@ -275,52 +146,35 @@ impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
         for r in record_map.range(range) {
             if include_withdrawn || r.1.route_status() == RouteStatus::Active
             {
-                res.push(Record::from((mui, r.1)))
+                res.push(Record::<MuiPathId, M>::from((mui, r.1)))
             }
         }
 
         res
     }
 
-    fn get_record_for_mui(
+    fn get_record_for_key(
         &self,
         mui: MuiPathId,
         include_withdrawn: bool,
     ) -> Option<Record<Self::Key, M>> {
         let record_map = self.acquire_read_guard();
-        let mut res = vec![];
 
-        let range = Self::Key::mui_range(mui);
-
-        for r in record_map.range(range) {
-            if include_withdrawn || r.1.route_status() == RouteStatus::Active
-            {
-                res.push(Record::from((mui, r.1)))
-            }
-        }
-
-        res.first().cloned()
+        record_map
+            .get(&mui)
+            .and_then(|r| -> Option<Record<MuiPathId, M>> {
+                if include_withdrawn
+                    || r.route_status() == RouteStatus::Active
+                {
+                    Some(Record::<MuiPathId, M>::from((mui, r)))
+                } else {
+                    None
+                }
+            })
     }
 }
 
-//------------ AddPathMultiMap -----------------------------------------------
-//
-// This is the collection of records or a given prefix, keyed on the multi
-// unique identifier ("mui"). Note that the record contains more than just
-// the meta-data typed value ("M").
-
-#[derive(Debug)]
-pub struct AddPathMultiMap<M: Meta>(
-    Arc<Mutex<BTreeMap<MuiPathId, MultiMapValue<M>>>>,
-);
-
-impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
-    pub(crate) fn new(
-        record_map: BTreeMap<MuiPathId, MultiMapValue<M>>,
-    ) -> Self {
-        Self(Arc::new(Mutex::new(record_map)))
-    }
-
+impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
     #[allow(clippy::type_complexity)]
     fn acquire_write_lock(
         &self,
@@ -356,32 +210,28 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
         }
     }
 
-    pub fn _len(&self) -> usize {
+    fn _len(&self) -> usize {
         let record_map = self.acquire_read_guard();
         record_map.len()
     }
 
-    pub fn get_record_for_mui_and_path_id(
+    fn get_record_for_mui_and_path_id(
         &self,
         mui: MuiPathId,
         include_withdrawn: bool,
     ) -> Option<Record<MuiPathId, M>> {
         let record_map = self.acquire_read_guard();
 
-        record_map.get(&MuiPathId(mui.0, mui.1, true)).and_then(
-            |r| -> Option<Record<_, _>> {
-                if include_withdrawn
-                    || r.route_status() == RouteStatus::Active
-                {
-                    Some(Record::from((mui, r)))
-                } else {
-                    None
-                }
-            },
-        )
+        record_map.get(&mui).and_then(|r| -> Option<Record<_, _>> {
+            if include_withdrawn || r.route_status() == RouteStatus::Active {
+                Some(Record::<MuiPathId, M>::from((mui, r)))
+            } else {
+                None
+            }
+        })
     }
 
-    pub(crate) fn get_records_for_mui_with_rewritten_status(
+    fn get_records_for_mui_with_rewritten_status(
         &self,
         mui: MuiPathId,
         bmin: &RoaringBitmap,
@@ -394,16 +244,16 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
             // We'll return a cloned record: the record in the store remains
             // untouched.
             let mut rec = r.1.clone();
-            if bmin.contains(mui.0.into()) {
+            if bmin.contains(mui.mui().into()) {
                 rec.set_route_status(rewrite_status);
             }
-            res.push(Record::from((mui, &rec)));
+            res.push(Record::<MuiPathId, M>::from((mui, &rec)));
         }
 
         res
     }
 
-    pub fn get_filtered_record_for_mui(
+    fn get_filtered_record_for_mui(
         &self,
         mui: MuiPathId,
         include_withdrawn: bool,
@@ -423,7 +273,7 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
     // set status for the mui of the record. However, the local status for a
     // record whose mui appears in the specified bitmap index, will be
     // rewritten with the specified RouteStatus.
-    pub fn as_records_with_rewritten_status(
+    fn as_records_with_rewritten_status(
         &self,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
@@ -433,10 +283,10 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
             .iter()
             .map(move |r| {
                 let mut rec = r.1.clone();
-                if bmin.contains(r.0 .0.into()) {
+                if bmin.contains(r.0.mui().into()) {
                     rec.set_route_status(rewrite_status);
                 }
-                Record::from((*r.0, &rec))
+                Record::<MuiPathId, M>::from((*r.0, &rec))
             })
             .collect::<Vec<_>>()
     }
@@ -445,14 +295,14 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
-            .map(|r| Record::from((*r.0, r.1)))
+            .map(|r| Record::<MuiPathId, M>::from((*r.0, r.1)))
             .collect::<Vec<_>>()
     }
 
     // Returns a vec of records whose keys are not in the supplied bitmap
     // index, and whose local Status is set to Active. Used to filter out
     // withdrawn routes.
-    pub fn as_active_records_not_in_bmin(
+    fn as_active_records_not_in_bmin(
         &self,
         bmin: &RoaringBitmap,
     ) -> Vec<Record<MuiPathId, M>> {
@@ -461,9 +311,9 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
             .iter()
             .filter_map(|r| {
                 if r.1.route_status() == RouteStatus::Active
-                    && !bmin.contains(r.0 .0.into())
+                    && !bmin.contains(r.0.mui().into())
                 {
-                    Some(Record::from((*r.0, r.1)))
+                    Some(Record::<MuiPathId, M>::from((*r.0, r.1)))
                 } else {
                     None
                 }
@@ -472,7 +322,7 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
     }
 }
 
-impl<M: Meta> Clone for AddPathMultiMap<M> {
+impl<M: Meta> Clone for PathIdMultiMap<M> {
     fn clone(&self) -> Self {
         Self(Arc::clone(&self.0))
     }
