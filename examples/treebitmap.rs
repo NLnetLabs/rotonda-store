@@ -5,7 +5,7 @@ use rotonda_store::match_options::MatchType;
 use rotonda_store::prefix_record::Record;
 use rotonda_store::prefix_record::RouteStatus;
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::StarCastRib;
+use rotonda_store::rib::MuiStarCastRib;
 use rotonda_store::test_types::NoMeta;
 use rotonda_store::IntoIpAddr;
 
@@ -14,7 +14,7 @@ type Prefix4<'a> = Prefix;
 type Type = Result<(), Box<dyn std::error::Error>>;
 
 fn main() -> Type {
-    let tree_bitmap = StarCastRib::<_, MemoryOnlyConfig>::try_default()?;
+    let tree_bitmap = MuiStarCastRib::<_, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -194,7 +194,7 @@ fn main() -> Type {
         // println!("insert {:?}", pfx);
         tree_bitmap.insert(
             &pfx.unwrap(),
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
     }

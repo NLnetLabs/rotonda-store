@@ -7,7 +7,7 @@ mod tests {
         epoch,
         match_options::{IncludeHistory, MatchOptions, MatchType},
         prefix_record::{Meta, PrefixRecord, Record, RouteStatus},
-        rib::{config::Config, StarCastRib},
+        rib::{config::Config, Mui, MuiStarCastRib},
     };
 
     use std::error::Error;
@@ -65,7 +65,7 @@ mod tests {
 
     // #[test]
     fn test_full_table_from_csv<C: Config>(
-        tree_bitmap: StarCastRib<AsnList, C>,
+        tree_bitmap: MuiStarCastRib<AsnList, C>,
     ) -> Result<(), Box<dyn Error>> {
         // These constants are all contingent on the exact csv file,
         // being loaded!
@@ -79,7 +79,7 @@ mod tests {
         let guard = &epoch::pin();
 
         fn load_prefixes(
-            pfxs: &mut Vec<PrefixRecord<AsnList>>,
+            pfxs: &mut Vec<PrefixRecord<Mui, AsnList>>,
         ) -> Result<(), Box<dyn Error>> {
             let file = File::open(CSV_FILE_PATH)?;
 
@@ -96,7 +96,7 @@ mod tests {
                 let pfx = PrefixRecord::new(
                     Prefix::new(net.into(), len)?,
                     vec![Record::new(
-                        0,
+                        Mui::from(0),
                         0,
                         RouteStatus::Active,
                         vec![asn].into(),
@@ -114,7 +114,7 @@ mod tests {
             // vec![3, 4, 4, 6, 7, 8],
         ];
         for _strides in strides_vec.iter().enumerate() {
-            let mut pfxs: Vec<PrefixRecord<AsnList>> = vec![];
+            let mut pfxs: Vec<PrefixRecord<Mui, AsnList>> = vec![];
             // let tree_bitmap = MultiThreadedStore::<AsnList>::try_default()?;
             // .with_user_data("Testing".to_string());
 

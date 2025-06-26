@@ -3,7 +3,7 @@ use log::trace;
 use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
 use rotonda_store::prefix_record::{Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::StarCastRib;
+use rotonda_store::rib::MuiStarCastRib;
 use rotonda_store::IntoIpAddr;
 
 use std::sync::atomic::AtomicU32;
@@ -20,8 +20,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     env_logger::init();
 
     trace!("Starting multi-threaded yolo testing....");
-    let tree_bitmap =
-        Arc::new(StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?);
+    let tree_bitmap = Arc::new(
+        MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?,
+    );
     // let pfx = Prefix::new_relaxed(
     //     0b1111_1111_1111_1111_1111_1111_1111_1111_u32.into_ipaddr(),
     //     32,
@@ -59,7 +60,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             let asn = PrefixAs::new_from_u32(rng.random());
                             match tree_bitmap.insert(
                                 &pfx,
-                                Record::new(0, 0, RouteStatus::Active, asn),
+                                Record::new(
+                                    0.into(),
+                                    0,
+                                    RouteStatus::Active,
+                                    asn,
+                                ),
                                 None,
                             ) {
                                 Ok(metrics) => {

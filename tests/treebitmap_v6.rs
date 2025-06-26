@@ -18,7 +18,7 @@ mod tests {
         prefix_record::{Record, RouteStatus},
         rib::{
             config::{Config, MemoryOnlyConfig, PersistOnlyConfig},
-            StarCastRib,
+            MuiStarCastRib,
         },
         test_types::{NoMeta, PrefixAs},
         IntoIpAddr,
@@ -32,7 +32,7 @@ mod tests {
 
     // #[test]
     fn test_arbitrary_insert_ipv6<C: Config>(
-        trie: StarCastRib<NoMeta, C>,
+        trie: MuiStarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
         // let trie = &mut MultiThreadedStore::<NoMeta>::try_default()?;
@@ -45,7 +45,7 @@ mod tests {
 
         trie.insert(
             &a_pfx,
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
@@ -81,7 +81,7 @@ mod tests {
 
     // #[test]
     fn test_insert_extremes_ipv6<C: Config>(
-        trie: StarCastRib<NoMeta, C>,
+        trie: MuiStarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -94,7 +94,7 @@ mod tests {
 
         trie.insert(
             &min_pfx,
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
@@ -132,7 +132,7 @@ mod tests {
         // drop(locks);
         trie.insert(
             &max_pfx?,
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
@@ -175,7 +175,7 @@ mod tests {
     // the end of a prefix-length array).
     // #[test]
     fn test_max_levels<C: Config>(
-        tree_bitmap: StarCastRib<PrefixAs, C>,
+        tree_bitmap: MuiStarCastRib<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -319,7 +319,7 @@ mod tests {
             tree_bitmap.insert(
                 &pfx?,
                 Record::new(
-                    0,
+                    0.into(),
                     0,
                     RouteStatus::Active,
                     PrefixAs::new_from_u32(666),
@@ -358,7 +358,7 @@ mod tests {
 
     // #[test]
     fn test_tree_ipv6<C: Config>(
-        tree_bitmap: StarCastRib<PrefixAs, C>,
+        tree_bitmap: MuiStarCastRib<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // let tree_bitmap = MultiThreadedStore::<PrefixAs>::try_default()?;
         let pfxs = vec![
@@ -594,7 +594,7 @@ mod tests {
             tree_bitmap.insert(
                 &pfx?,
                 Record::new(
-                    0,
+                    0.into(),
                     0,
                     RouteStatus::Active,
                     PrefixAs::new_from_u32(666),
@@ -683,7 +683,7 @@ mod tests {
     fn test_ranges_ipv6_mo() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
             let tree_bitmap =
-                StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
+                MuiStarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -703,7 +703,12 @@ mod tests {
                 i_len_s += 1;
                 tree_bitmap.insert(
                     &pfx,
-                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                    Record::new(
+                        0.into(),
+                        0,
+                        RouteStatus::Active,
+                        NoMeta::Empty,
+                    ),
                     None,
                 )?;
 
@@ -745,7 +750,7 @@ mod tests {
     fn test_ranges_ipv6_po() -> Result<(), Box<dyn std::error::Error>> {
         for i_net in 0..255 {
             let tree_bitmap =
-                StarCastRib::<NoMeta, PersistOnlyConfig>::try_default()?;
+                MuiStarCastRib::<NoMeta, PersistOnlyConfig>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -765,7 +770,12 @@ mod tests {
                 i_len_s += 1;
                 tree_bitmap.insert(
                     &pfx,
-                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                    Record::new(
+                        0.into(),
+                        0,
+                        RouteStatus::Active,
+                        NoMeta::Empty,
+                    ),
                     None,
                 )?;
 

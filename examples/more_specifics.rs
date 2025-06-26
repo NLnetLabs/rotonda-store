@@ -3,7 +3,7 @@ use rotonda_store::{
     epoch,
     match_options::{IncludeHistory, MatchOptions, MatchType},
     prefix_record::{Record, RouteStatus},
-    rib::{config::MemoryOnlyConfig, StarCastRib},
+    rib::{config::MemoryOnlyConfig, MuiStarCastRib, StarCastRib},
     test_types::PrefixAs,
     IntoIpAddr,
 };
@@ -215,9 +215,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     for pfx in pfxs.into_iter() {
         // println!("insert {:?}", pfx);
         let p: Prefix = pfx.unwrap();
-        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?.insert(
+        MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?.insert(
             &p,
-            Record::new(0, 0, RouteStatus::Active, PrefixAs::new(666.into())),
+            Record::new(
+                0.into(),
+                0,
+                RouteStatus::Active,
+                PrefixAs::new(666.into()),
+            ),
             None,
         )?;
     }
@@ -282,7 +287,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("search for: {:?}", spfx);
         let guard = &epoch::pin();
         let s_spfx =
-            StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?
+            MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?
                 .match_prefix(
                     &spfx.unwrap(),
                     &MatchOptions {

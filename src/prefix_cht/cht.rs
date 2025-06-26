@@ -8,7 +8,6 @@ use crossbeam_utils::Backoff;
 use inetnum::addr::Prefix;
 use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
-use zerocopy::{NativeEndian, U32};
 
 use crate::cht::{nodeset_size, prev_node_size};
 use crate::errors::{FatalError, FatalResult};
@@ -464,7 +463,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
             PathSelections {
                 path_selection_muis: (None, None),
             },
-            |ps| ps.clone(),
+            |ps| *ps,
         )
     }
 

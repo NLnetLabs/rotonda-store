@@ -19,7 +19,7 @@ mod tests {
         epoch,
         match_options::{IncludeHistory, MatchOptions, MatchType},
         prefix_record::{Record, RouteStatus},
-        rib::{config::Config, StarCastRib},
+        rib::{config::Config, Mui, MuiStarCastRib},
         test_types::{NoMeta, PrefixAs},
         IntoIpAddr,
     };
@@ -32,7 +32,7 @@ mod tests {
 
     // #[test]
     fn test_insert_extremes_ipv4<C: Config>(
-        trie: StarCastRib<NoMeta, C>,
+        trie: MuiStarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let min_pfx = Prefix::new_relaxed(
             std::net::Ipv4Addr::new(0, 0, 0, 0).into(),
@@ -42,7 +42,7 @@ mod tests {
 
         trie.insert(
             &min_pfx,
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
@@ -76,7 +76,7 @@ mod tests {
         // drop(locks);
         trie.insert(
             &max_pfx?,
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         let expect_pfx = Prefix::new_relaxed(
@@ -110,7 +110,7 @@ mod tests {
 
     // #[test]
     fn test_tree_ipv4<C: Config>(
-        tree_bitmap: StarCastRib<PrefixAs, C>,
+        tree_bitmap: MuiStarCastRib<PrefixAs, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -343,7 +343,7 @@ mod tests {
             tree_bitmap.insert(
                 &pfx?,
                 Record::new(
-                    0,
+                    0.into(),
                     0,
                     RouteStatus::Active,
                     PrefixAs::new_from_u32(666),
@@ -428,7 +428,7 @@ mod tests {
 
     // #[test]
     fn test_ranges_ipv4<C: Config>(
-        _tree_bitmap: StarCastRib<NoMeta, C>,
+        _tree_bitmap: MuiStarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         // for persist_strategy in [
         //     PersistStrategy::MemoryOnly,
@@ -437,7 +437,7 @@ mod tests {
         //     // PersistStrategy::PersistHistory,
 
         for i_net in 0..255 {
-            let tree_bitmap = StarCastRib::<NoMeta, C>::try_default()?;
+            let tree_bitmap = MuiStarCastRib::<NoMeta, C>::try_default()?;
 
             let pfx_vec: Vec<Prefix> = (1..32)
                 .collect::<Vec<u8>>()
@@ -456,7 +456,12 @@ mod tests {
                 i_len_s += 1;
                 tree_bitmap.insert(
                     &pfx,
-                    Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+                    Record::new(
+                        0.into(),
+                        0,
+                        RouteStatus::Active,
+                        NoMeta::Empty,
+                    ),
                     None,
                 )?;
 
@@ -501,7 +506,7 @@ mod tests {
 
     // #[test]
     fn test_multi_ranges_ipv4<C: Config>(
-        tree_bitmap: StarCastRib<NoMeta, C>,
+        tree_bitmap: MuiStarCastRib<NoMeta, C>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         crate::common::init();
 
@@ -530,7 +535,7 @@ mod tests {
                     tree_bitmap.insert(
                         pfx,
                         Record::new(
-                            mui,
+                            Mui::from(mui),
                             0,
                             RouteStatus::Active,
                             NoMeta::Empty,
@@ -557,7 +562,7 @@ mod tests {
                                 include_withdrawn: false,
                                 include_less_specifics: false,
                                 include_more_specifics: false,
-                                mui: Some(mui),
+                                mui: Some(mui.into()),
                                 include_history: IncludeHistory::None,
                             },
                             guard,
@@ -573,18 +578,18 @@ mod tests {
         let guard = &epoch::pin();
         println!("records for mui {}", 5);
         for rec in tree_bitmap
-            .iter_records_for_mui_v4(5, false, guard)
+            .iter_records_for_mui_v4(5.into(), false, guard)
             .collect::<Vec<_>>()
         {
             let rec = rec.unwrap();
             println!("{}", rec);
 
             assert_eq!(rec.meta.len(), 1);
-            assert_eq!(rec.meta[0].multi_uniq_id, 5);
+            assert_eq!(rec.meta[0].multi_uniq_id, 5.into());
             assert_eq!(rec.meta[0].status, RouteStatus::Active);
         }
         for rec in tree_bitmap
-            .iter_records_for_mui_v4(1, false, guard)
+            .iter_records_for_mui_v4(1.into(), false, guard)
             .collect::<Vec<_>>()
         {
             println!("{}", rec.unwrap());
@@ -596,7 +601,7 @@ mod tests {
         // };
 
         // Withdraw records for mui 1 globally.
-        tree_bitmap.mark_mui_as_withdrawn_v4(1)?;
+        tree_bitmap.mark_mui_as_withdrawn_v4(1.into())?;
 
         let all_recs_for_pfx = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/16")?,
@@ -618,7 +623,7 @@ mod tests {
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
         assert_eq!(wd_rec.len(), 1);
-        assert_eq!(wd_rec[0].multi_uniq_id, 1);
+        assert_eq!(wd_rec[0].multi_uniq_id, 1.into());
 
         let active_recs_for_pfx = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/16")?,
@@ -636,10 +641,10 @@ mod tests {
         assert!(!active_recs_for_pfx
             .records
             .iter()
-            .any(|r| r.multi_uniq_id == 1));
+            .any(|r| r.multi_uniq_id == 1.into()));
 
         let wd_pfx = Prefix::from_str("1.0.0.0/16")?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2, 1)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2.into(), 1)?;
 
         println!("all records");
 
@@ -651,18 +656,18 @@ mod tests {
         }
 
         let mui_2_recs = all_recs.filter_map(|r| {
-            r.as_ref().unwrap().get_record_for_mui(2).cloned()
+            r.as_ref().unwrap().get_record_for_mui(2.into()).cloned()
         });
         let wd_2_rec = mui_2_recs
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
         assert_eq!(wd_2_rec.len(), 1);
-        assert_eq!(wd_2_rec[0].multi_uniq_id, 2);
+        assert_eq!(wd_2_rec[0].multi_uniq_id, 2.into());
 
         let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
             r.as_ref()
                 .unwrap()
-                .get_record_for_mui(2)
+                .get_record_for_mui(2.into())
                 .cloned()
                 .map(|rec| (r.as_ref().unwrap().prefix, rec))
         });
@@ -673,7 +678,7 @@ mod tests {
         let mui_2_recs = tree_bitmap.prefixes_iter(guard).filter_map(|r| {
             r.as_ref()
                 .unwrap()
-                .get_record_for_mui(2)
+                .get_record_for_mui(2.into())
                 .cloned()
                 .map(|rec| (r.as_ref().unwrap().prefix, rec))
         });
@@ -684,7 +689,8 @@ mod tests {
         assert_eq!(active_2_rec.len(), 3);
         assert!(!active_2_rec.iter().any(|r| r.0 == wd_pfx));
 
-        let mui_2_recs = tree_bitmap.iter_records_for_mui_v4(2, false, guard);
+        let mui_2_recs =
+            tree_bitmap.iter_records_for_mui_v4(2.into(), false, guard);
         println!("mui_2_recs iter_records_for_mui_v4");
         for rec in mui_2_recs {
             let rec = rec.unwrap();
@@ -692,7 +698,7 @@ mod tests {
         }
 
         let mui_1_recs = tree_bitmap
-            .iter_records_for_mui_v4(1, false, guard)
+            .iter_records_for_mui_v4(1.into(), false, guard)
             .collect::<Vec<_>>();
         assert!(mui_1_recs.is_empty());
 
@@ -700,7 +706,7 @@ mod tests {
         assert!(mui_1_recs.is_empty());
 
         let mui_1_recs = tree_bitmap
-            .iter_records_for_mui_v4(1, true, guard)
+            .iter_records_for_mui_v4(1.into(), true, guard)
             .collect::<Vec<_>>();
         assert_eq!(mui_1_recs.len(), 4);
         println!("mui_1_recs iter_records_for_mui_v4 w/ withdrawn");
@@ -757,7 +763,7 @@ mod tests {
             .filter(|r| r.status == RouteStatus::Withdrawn)
             .collect::<Vec<_>>();
         assert_eq!(rec.len(), 1);
-        assert_eq!(rec[0].multi_uniq_id, 1);
+        assert_eq!(rec[0].multi_uniq_id, 1.into());
 
         //---------------
 
@@ -804,8 +810,12 @@ mod tests {
 
         //------------------
 
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 1, 10)?;
-        tree_bitmap.mark_mui_as_active_v4(1)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(
+            &wd_pfx,
+            1.into(),
+            10,
+        )?;
+        tree_bitmap.mark_mui_as_active_v4(1.into())?;
 
         let more_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/16")?,
@@ -860,10 +870,26 @@ mod tests {
         assert!(rec.is_empty());
 
         // withdraw muis 2,3,4,5 for the requested prefix
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 2, 11)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 3, 12)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 4, 13)?;
-        tree_bitmap.mark_mui_as_withdrawn_for_prefix(&wd_pfx, 5, 14)?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(
+            &wd_pfx,
+            2.into(),
+            11,
+        )?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(
+            &wd_pfx,
+            3.into(),
+            12,
+        )?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(
+            &wd_pfx,
+            4.into(),
+            13,
+        )?;
+        tree_bitmap.mark_mui_as_withdrawn_for_prefix(
+            &wd_pfx,
+            5.into(),
+            14,
+        )?;
 
         let more_specifics = tree_bitmap.match_prefix(
             &Prefix::from_str("1.0.0.0/16")?,
@@ -951,7 +977,7 @@ mod tests {
 
         trace!("mark {} as active", wd_pfx);
         tree_bitmap
-            .mark_mui_as_active_for_prefix(&wd_pfx, 5, 1)
+            .mark_mui_as_active_for_prefix(&wd_pfx, 5.into(), 1)
             .unwrap();
 
         let less_specifics = tree_bitmap.match_prefix(
@@ -974,7 +1000,7 @@ mod tests {
         assert_eq!(less_specifics.prefix, Prefix::from_str("1.0.0.0/16")?);
         // We should only see the record for mui 5
         assert_eq!(less_specifics.meta.len(), 1);
-        assert_eq!(less_specifics.meta[0].multi_uniq_id, 5);
+        assert_eq!(less_specifics.meta[0].multi_uniq_id, 5.into());
         assert_eq!(less_specifics.meta[0].status, RouteStatus::Active);
 
         Ok(())

@@ -7,5 +7,8 @@ pub(crate) mod starcast_af_query;
 pub(crate) use starcast::BIT_SPAN_SIZE;
 pub(crate) use starcast::STRIDE_SIZE;
 
+pub use starcast::MuiPathIdStarCastRib;
+pub use starcast::MuiStarCastRib;
 pub use starcast::StarCastRib;
-pub use starcast_add_path::StarCastAddPathRib;
+
+pub use super::prefix_cht::compound_multi_map::Mui;

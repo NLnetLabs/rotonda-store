@@ -18,7 +18,7 @@ use rotonda_store::{
             Config, MemoryOnlyConfig, PersistHistoryConfig,
             PersistOnlyConfig, PersistStrategy, WriteAheadConfig,
         },
-        StarCastRib,
+        Mui, MuiStarCastRib,
     },
     stats::UpsertReport,
 };
@@ -180,14 +180,14 @@ struct Cli {
 type Type = rotonda_store::errors::PrefixStoreError;
 
 fn insert<C: Config, T: Meta>(
-    store: &StarCastRib<T, C>,
+    store: &MuiStarCastRib<T, C>,
     prefix: &Prefix,
     mui: u32,
     ltime: u64,
     route_status: RouteStatus,
     value: T,
 ) -> Result<UpsertReport, Type> {
-    let record = Record::new(mui, ltime, route_status, value);
+    let record = Record::new(Mui::from(mui), ltime, route_status, value);
     store
         .insert(prefix, record, None)
         .inspect_err(|e| eprintln!("Error in test_store: {e}"))
@@ -227,7 +227,7 @@ fn par_load_prefixes(
 
 fn mt_parse_and_insert_table<C: Config + Sync>(
     tables: TableDumpIterator<&[u8]>,
-    store: Option<&StarCastRib<PaBytes, C>>,
+    store: Option<&MuiStarCastRib<PaBytes, C>>,
     ltime: u64,
 ) -> (UpsertCounters, Vec<Prefix>) {
     let persist_strategy =
@@ -339,7 +339,7 @@ fn mt_parse_and_insert_table<C: Config + Sync>(
 
 fn st_parse_and_insert_table<C: Config>(
     entries: RibEntryIterator<&[u8]>,
-    store: Option<&StarCastRib<PaBytes, C>>,
+    store: Option<&MuiStarCastRib<PaBytes, C>>,
     ltime: u64,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
@@ -370,7 +370,7 @@ fn st_parse_and_insert_table<C: Config>(
 
 fn mt_prime_store<C: Config + Sync>(
     prefixes: &Vec<(Prefix, u16)>,
-    store: &StarCastRib<PaBytes, C>,
+    store: &MuiStarCastRib<PaBytes, C>,
 ) -> UpsertCounters {
     let t0 = std::time::Instant::now();
 
@@ -403,7 +403,7 @@ fn mt_prime_store<C: Config + Sync>(
 
 fn st_prime_store<C: Config>(
     prefixes: &Vec<(Prefix, u16)>,
-    store: &StarCastRib<PaBytes, C>,
+    store: &MuiStarCastRib<PaBytes, C>,
 ) -> UpsertCounters {
     let mut counters = UpsertCounters::default();
 
@@ -423,7 +423,7 @@ fn st_prime_store<C: Config>(
     counters
 }
 
-type Stores<C> = Vec<StarCastRib<PaBytes, C>>;
+type Stores<C> = Vec<MuiStarCastRib<PaBytes, C>>;
 
 // Create all the stores necessary, and if at least one is created, create
 // a reference to the first one.
@@ -431,7 +431,7 @@ fn create_stores<'a, C: Config + Sync>(
     stores: &'a mut Stores<C>,
     args: &'a Cli,
     store_config: C,
-) -> Option<&'a StarCastRib<PaBytes, C>> {
+) -> Option<&'a MuiStarCastRib<PaBytes, C>> {
     match &args {
         a if a.single_store && a.parse_only => {
             eprintln!(
@@ -442,7 +442,7 @@ fn create_stores<'a, C: Config + Sync>(
         }
         a if a.single_store => {
             stores.push(
-                StarCastRib::<PaBytes, C>::new_with_config(
+                MuiStarCastRib::<PaBytes, C>::new_with_config(
                     store_config.clone(),
                 )
                 .unwrap(),
@@ -461,8 +461,9 @@ fn create_stores<'a, C: Config + Sync>(
         }
         _ => {
             for _ in &args.mrt_files {
-                stores
-                    .push(StarCastRib::<PaBytes, C>::try_default().unwrap());
+                stores.push(
+                    MuiStarCastRib::<PaBytes, C>::try_default().unwrap(),
+                );
             }
             println!("Number of created stores: {}", stores.len());
             println!("store config: {:?}", store_config);
@@ -473,7 +474,7 @@ fn create_stores<'a, C: Config + Sync>(
 }
 
 fn exec_for_store<'a, C: Config + Sync>(
-    mut store: Option<&'a StarCastRib<PaBytes, C>>,
+    mut store: Option<&'a MuiStarCastRib<PaBytes, C>>,
     inner_stores: &'a Stores<C>,
     args: &'a Cli,
 ) {

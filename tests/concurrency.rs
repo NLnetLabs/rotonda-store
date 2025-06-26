@@ -7,7 +7,7 @@ use rotonda_store::{
     prefix_record::{PrefixRecord, Record, RouteStatus},
     rib::{
         config::{Config, MemoryOnlyConfig},
-        StarCastRib,
+        Mui, MuiStarCastRib,
     },
     test_types::{BeBytesAsn, NoMeta},
 };
@@ -30,9 +30,9 @@ rotonda_store::all_strategies![
 ];
 
 fn iter(
-    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfxs_iter: &[FatalResult<PrefixRecord<Mui, BeBytesAsn>>],
     pfx: Prefix,
-) -> impl Iterator<Item = &Record<BeBytesAsn>> + '_ {
+) -> impl Iterator<Item = &Record<Mui, BeBytesAsn>> + '_ {
     pfxs_iter
         .iter()
         .find(|p| p.as_ref().unwrap().prefix == pfx)
@@ -44,7 +44,7 @@ fn iter(
 }
 
 fn iter_len(
-    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfxs_iter: &[FatalResult<PrefixRecord<Mui, BeBytesAsn>>],
     pfx: Prefix,
 ) -> usize {
     pfxs_iter
@@ -58,7 +58,7 @@ fn iter_len(
 }
 
 fn first_meta(
-    pfxs_iter: &[FatalResult<PrefixRecord<BeBytesAsn>>],
+    pfxs_iter: &[FatalResult<PrefixRecord<Mui, BeBytesAsn>>],
     pfx: Prefix,
 ) -> BeBytesAsn {
     pfxs_iter
@@ -73,7 +73,7 @@ fn first_meta(
 }
 
 fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
-    tree_bitmap: StarCastRib<BeBytesAsn, C>,
+    tree_bitmap: MuiStarCastRib<BeBytesAsn, C>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
@@ -150,7 +150,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
                         match tbm.insert(
                             &pfx,
                             Record::new(
-                                data.mui,
+                                data.mui.into(),
                                 cur_ltime.load(Ordering::Acquire),
                                 RouteStatus::Active,
                                 data.asn.into(),
@@ -179,93 +179,93 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
 
     assert!(tree_bitmap.contains(&pfx, None));
-    assert!(tree_bitmap.contains(&pfx, Some(1)));
-    assert!(tree_bitmap.contains(&pfx, Some(2)));
+    assert!(tree_bitmap.contains(&pfx, Some(1.into())));
+    assert!(tree_bitmap.contains(&pfx, Some(2.into())));
 
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() && m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
 
     let pfx = Prefix::from_str("185.34.10.0/24").unwrap();
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() && m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
+        .any(|m| m.multi_uniq_id == 3.into() && m.meta == 65503.into()));
 
     let pfx = Prefix::from_str("185.34.11.0/24").unwrap();
     assert!(all_pfxs_iter
         .iter()
         .any(|p| pfx == p.as_ref().unwrap().prefix));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() && m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 2 || m.meta == 65502.into())));
+        .all(|m| !(m.multi_uniq_id == 2.into() || m.meta == 65502.into())));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 3 || m.meta == 65503.into())));
+        .all(|m| !(m.multi_uniq_id == 3.into() || m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("185.34.11.0/24").unwrap();
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() && m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 2 || m.meta == 65502.into())));
+        .all(|m| !(m.multi_uniq_id == 2.into() || m.meta == 65502.into())));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
+        .all(|m| !(m.multi_uniq_id == 3.into() && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("185.34.12.0/24").unwrap();
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
+        .any(|m| m.multi_uniq_id == 3.into() && m.meta == 65503.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
+        .all(|m| !(m.multi_uniq_id == 1.into() || m.meta == 65501.into())));
 
     let pfx = Prefix::from_str("183.0.0.0/8")?;
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 || m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() || m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 2 && m.meta == 65502.into())));
+        .all(|m| !(m.multi_uniq_id == 2.into() && m.meta == 65502.into())));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
+        .all(|m| !(m.multi_uniq_id == 3.into() && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("186.0.0.0/8")?;
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
+        .all(|m| !(m.multi_uniq_id == 1.into() || m.meta == 65501.into())));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 3 && m.meta == 65503.into())));
+        .all(|m| !(m.multi_uniq_id == 3.into() && m.meta == 65503.into())));
 
     let pfx = Prefix::from_str("187.0.0.0/8")?;
     assert!(all_pfxs_iter
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
+        .any(|m| m.multi_uniq_id == 3.into() && m.meta == 65503.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 2 && m.meta == 65502.into())));
+        .all(|m| !(m.multi_uniq_id == 2.into() && m.meta == 65502.into())));
     assert!(iter(&all_pfxs_iter, pfx)
-        .all(|m| !(m.multi_uniq_id == 1 || m.meta == 65501.into())));
+        .all(|m| !(m.multi_uniq_id == 1.into() || m.meta == 65501.into())));
 
     // Create Withdrawals
 
@@ -283,7 +283,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
                     tree_bitmap
-                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2, 10)
+                        .mark_mui_as_withdrawn_for_prefix(&pfx, 2.into(), 10)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");
@@ -319,7 +319,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
         assert_eq!(
             res.records
                 .iter()
-                .find(|m| m.multi_uniq_id == 2)
+                .find(|m| m.multi_uniq_id == 2.into())
                 .unwrap()
                 .status,
             RouteStatus::Withdrawn
@@ -364,7 +364,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
 
     let cur_ltime = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
 
-    let tree_bitmap = std::sync::Arc::new(StarCastRib::<
+    let tree_bitmap = std::sync::Arc::new(MuiStarCastRib::<
         BeBytesAsn,
         MemoryOnlyConfig,
     >::try_default()?);
@@ -388,7 +388,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
                             match tbm.insert(
                                 pfx,
                                 Record::new(
-                                    i as u32 + 1,
+                                    Mui::from(i as u32 + 1),
                                     cur_ltime.load(Ordering::Acquire),
                                     RouteStatus::Active,
                                     Asn::from(MUI_DATA[i]).into(),
@@ -421,20 +421,20 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         .iter()
         .any(|p| p.as_ref().unwrap().prefix == pfx));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() && m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
+        .any(|m| m.multi_uniq_id == 3.into() && m.meta == 65503.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 4 && m.meta == 65504.into()));
+        .any(|m| m.multi_uniq_id == 4.into() && m.meta == 65504.into()));
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
     assert_eq!(iter_len(&all_pfxs_iter, pfx), 2);
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 1 && m.meta == 65501.into()));
+        .any(|m| m.multi_uniq_id == 1.into() && m.meta == 65501.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
 
     let pfx = Prefix::from_str("185.34.14.0/24").unwrap();
     assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
@@ -461,9 +461,9 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
     let pfx = Prefix::from_str("185.34.15.0/24").unwrap();
     assert_eq!(iter_len(&all_pfxs_iter, pfx), 2);
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 2 && m.meta == 65502.into()));
+        .any(|m| m.multi_uniq_id == 2.into() && m.meta == 65502.into()));
     assert!(iter(&all_pfxs_iter, pfx)
-        .any(|m| m.multi_uniq_id == 3 && m.meta == 65503.into()));
+        .any(|m| m.multi_uniq_id == 3.into() && m.meta == 65503.into()));
 
     let pfx = Prefix::from_str("188.0.0.0/8").unwrap();
     assert_eq!(iter_len(&all_pfxs_iter, pfx), 1);
@@ -484,7 +484,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
                     print!("\nstart withdraw {} ---", 2);
 
                     let _ = cur_ltime.fetch_add(1, Ordering::Release);
-                    tbm.mark_mui_as_withdrawn_for_prefix(&pfx, 2, 15)
+                    tbm.mark_mui_as_withdrawn_for_prefix(&pfx, 2.into(), 15)
                         .unwrap();
 
                     println!("--thread withdraw 2 done.");
@@ -512,7 +512,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
             res.unwrap()
                 .records
                 .iter()
-                .find(|m| m.multi_uniq_id == 2)
+                .find(|m| m.multi_uniq_id == 2.into())
                 .unwrap()
                 .status,
             RouteStatus::Withdrawn
@@ -545,7 +545,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         .insert(
             &Prefix::from_str("32.0.0.0/4").unwrap(),
             Record::new(
-                1,
+                1.into(),
                 cur_ltime.load(Ordering::Acquire),
                 RouteStatus::Active,
                 Asn::from(653400).into(),
@@ -601,7 +601,7 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     crate::common::init();
 
     println!("PersistOnly strategy starting...");
-    let tree_bitmap = std::sync::Arc::new(StarCastRib::<
+    let tree_bitmap = std::sync::Arc::new(MuiStarCastRib::<
         NoMeta,
         MemoryOnlyConfig,
     >::try_default()?);
@@ -621,7 +621,7 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     tree_bitmap
         .insert(
             &pfx1,
-            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(1.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )
         .unwrap();
@@ -629,7 +629,7 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     tree_bitmap
         .insert(
             &pfx2,
-            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(1.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )
         .unwrap();
@@ -637,7 +637,7 @@ fn more_specifics_short_lengths() -> Result<(), Box<dyn std::error::Error>> {
     tree_bitmap
         .insert(
             &pfx3,
-            Record::new(1, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(1.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )
         .unwrap();

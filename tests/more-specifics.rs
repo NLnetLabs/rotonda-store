@@ -4,7 +4,7 @@ use rotonda_store::{
     epoch,
     match_options::{IncludeHistory, MatchOptions, MatchType},
     prefix_record::{Record, RouteStatus},
-    rib::{config::Config, StarCastRib},
+    rib::{config::Config, MuiStarCastRib},
     test_types::PrefixAs,
 };
 
@@ -29,7 +29,7 @@ rotonda_store::all_strategies![
 
 // #[test]
 fn test_more_specifics<C: Config>(
-    tree_bitmap: StarCastRib<PrefixAs, C>,
+    tree_bitmap: MuiStarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -72,7 +72,7 @@ fn test_more_specifics<C: Config>(
         tree_bitmap.insert(
             pfx,
             Record::new(
-                0,
+                0.into(),
                 0,
                 RouteStatus::Active,
                 PrefixAs::new_from_u32(666),
@@ -270,23 +270,38 @@ rotonda_store::all_strategies![
 ];
 
 fn test_brunos_more_specifics<C: Config>(
-    tree_bitmap: StarCastRib<PrefixAs, C>,
+    tree_bitmap: MuiStarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     tree_bitmap.insert(
         &Prefix::new(std::net::Ipv4Addr::new(168, 181, 224, 0).into(), 22)
             .unwrap(),
-        Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(666)),
+        Record::new(
+            0.into(),
+            0,
+            RouteStatus::Active,
+            PrefixAs::new_from_u32(666),
+        ),
         None,
     )?;
     tree_bitmap.insert(
         &Prefix::new(std::net::Ipv4Addr::new(168, 181, 120, 0).into(), 24)?,
-        Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(666)),
+        Record::new(
+            0.into(),
+            0,
+            RouteStatus::Active,
+            PrefixAs::new_from_u32(666),
+        ),
         None,
     )?;
     tree_bitmap.insert(
         &Prefix::new(std::net::Ipv4Addr::new(168, 181, 121, 0).into(), 24)
             .unwrap(),
-        Record::new(0, 0, RouteStatus::Active, PrefixAs::new_from_u32(666)),
+        Record::new(
+            0.into(),
+            0,
+            RouteStatus::Active,
+            PrefixAs::new_from_u32(666),
+        ),
         None,
     )?;
 

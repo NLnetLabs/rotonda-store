@@ -2,7 +2,7 @@ use inetnum::addr::Prefix;
 use log::trace;
 use rotonda_store::prefix_record::{Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::StarCastRib;
+use rotonda_store::rib::MuiStarCastRib;
 use rotonda_store::IntoIpAddr;
 use std::thread;
 use std::time::Duration;
@@ -17,7 +17,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     trace!("Starting one-threaded yolo testing....");
     let tree_bitmap =
-        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
+        MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
     let mut pfx_int = 0_u32;
 
@@ -40,7 +40,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match tree_bitmap.insert(
                     &pfx.unwrap(),
                     Record::new(
-                        1,
+                        1.into(),
                         0,
                         RouteStatus::Active,
                         PrefixAs::new_from_u32(asn),

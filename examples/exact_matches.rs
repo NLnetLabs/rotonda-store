@@ -1,19 +1,20 @@
 use inetnum::addr::Prefix;
 use rotonda_store::match_options::IncludeHistory;
 use rotonda_store::prefix_record::{Record, RouteStatus};
+use rotonda_store::rib::MuiStarCastRib;
 // use rotonda_store::prelude::multi::*;
 use rotonda_store::{
     epoch,
     match_options::{MatchOptions, MatchType},
     rib::config::MemoryOnlyConfig,
-    rib::StarCastRib,
     test_types::NoMeta,
     IntoIpAddr,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let guard = &epoch::pin();
-    let tree_bitmap = StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
+    let tree_bitmap =
+        MuiStarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
     let pfxs = vec![
         Prefix::new_relaxed(
             0b0000_0000_0000_0000_0000_0000_0000_0000_u32.into_ipaddr(),
@@ -269,7 +270,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // let p : rotonda_store::Prefix<u32, PrefixAs> = pfx.into();
         tree_bitmap.insert(
             &pfx.unwrap(),
-            Record::new(0, 0, RouteStatus::Active, NoMeta::Empty),
+            Record::new(0.into(), 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
     }

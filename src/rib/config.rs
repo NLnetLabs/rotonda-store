@@ -9,11 +9,11 @@
 //!
 //! ```
 //! use rotonda_store::test_types::PrefixAs;
-//! use rotonda_store::rib::StarCastRib;
+//! use rotonda_store::rib::MuiStarCastRib;
 //! use rotonda_store::rib::config::PersistOnlyConfig;
 //!
 //! let config = PersistOnlyConfig::default();
-//! let tree_bitmap = StarCastRib::<PrefixAs, _>::new_with_config(config);
+//! let tree_bitmap = MuiStarCastRib::<PrefixAs, _>::new_with_config(config);
 //! ```
 
 /// Defines where records are stored: in-memory and/or persisted (to disk),

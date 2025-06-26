@@ -1,7 +1,7 @@
 use inetnum::addr::Prefix;
 use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::StarCastRib;
+use rotonda_store::rib::{Mui, MuiStarCastRib};
 use rotonda_store::test_types::PrefixAs;
 
 use std::env;
@@ -25,7 +25,7 @@ fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
 }
 
 fn load_prefixes(
-    pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+    pfxs: &mut Vec<PrefixRecord<Mui, PrefixAs>>,
 ) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
@@ -43,10 +43,10 @@ fn load_prefixes(
         let net = IpAddr::V4(Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]));
         let len: u8 = record[1].parse().unwrap();
         let asn: u32 = record[2].parse().unwrap();
-        let pfx = PrefixRecord::<PrefixAs>::new(
+        let pfx = PrefixRecord::<Mui, PrefixAs>::new(
             Prefix::new(net, len)?,
             vec![Record::new(
-                0,
+                0.into(),
                 0,
                 RouteStatus::Active,
                 PrefixAs::new_from_u32(asn),
@@ -63,9 +63,9 @@ fn main() -> Result<(), Box<dyn Error>> {
     let strides_vec = [vec![4, 4, 4, 4, 4, 4, 4, 4], vec![3, 4, 5, 4]];
 
     for _strides in strides_vec.iter() {
-        let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
+        let mut pfxs: Vec<PrefixRecord<Mui, PrefixAs>> = vec![];
         let tree_bitmap =
-            StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
+            MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
         if let Err(err) = load_prefixes(&mut pfxs) {
             println!("error running example: {}", err);

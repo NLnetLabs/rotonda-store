@@ -3,7 +3,7 @@ use ansi_term::Colour;
 use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
 use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::StarCastRib;
+use rotonda_store::rib::{Mui, MuiStarCastRib};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -25,7 +25,7 @@ fn get_first_arg() -> Result<OsString, Box<dyn Error>> {
 }
 
 fn load_prefixes(
-    pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+    pfxs: &mut Vec<PrefixRecord<Mui, PrefixAs>>,
 ) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
@@ -44,7 +44,7 @@ fn load_prefixes(
         let pfx = PrefixRecord::new(
             Prefix::new(ip, len)?,
             vec![Record::new(
-                0,
+                Mui::from(0),
                 0,
                 RouteStatus::Active,
                 PrefixAs::new_from_u32(asn),
@@ -68,9 +68,9 @@ fn load_prefixes(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut pfxs: Vec<PrefixRecord<PrefixAs>> = vec![];
+    let mut pfxs: Vec<PrefixRecord<Mui, PrefixAs>> = vec![];
     let tree_bitmap =
-        StarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
+        MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
     if let Err(err) = load_prefixes(&mut pfxs) {
         println!("error running example: {}", err);

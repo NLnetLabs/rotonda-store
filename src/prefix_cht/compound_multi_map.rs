@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::fmt::{Debug, Display};
+use std::ops::Bound;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use crossbeam_utils::Backoff;
@@ -54,14 +55,28 @@ pub trait RecordKey:
     KnownLayout,
     Hash,
 )]
-pub struct MuiPathId(U32<NativeEndian>, [u8; 4]);
+pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
 
 impl RecordKey for MuiPathId {
     fn mui(&self) -> U32<NativeEndian> {
         self.0
     }
+
     fn path_id(&self) -> Option<[u8; 4]> {
-        Some(self.1)
+        if self.2 {
+            Some(self.1)
+        } else {
+            None
+        }
+    }
+}
+
+impl MuiPathId {
+    fn mui_range(mui: MuiPathId) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
+        (
+            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
+            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4], false)),
+        )
     }
 }
 
@@ -98,6 +113,12 @@ impl RecordKey for Mui {
 impl Display for Mui {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
+    }
+}
+
+impl From<u32> for Mui {
+    fn from(value: u32) -> Self {
+        Self(value.into())
     }
 }
 
@@ -155,10 +176,7 @@ impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
     // Change the local status of the record for this mui to Withdrawn.
     fn mark_as_withdrawn_for_mui(&self, mui: Self::Key, ltime: u64) {
         let mut record_map = self.acquire_read_guard();
-        let range = (
-            std::ops::Bound::Included(MuiPathId(mui.mui(), [0_u8; 4])),
-            std::ops::Bound::Excluded(MuiPathId(mui.mui() + 1, [0_u8; 4])),
-        );
+        let range = Self::Key::mui_range(mui);
         for rec in record_map.range_mut(range) {
             rec.1.set_route_status(RouteStatus::Withdrawn);
             rec.1.set_logical_time(ltime);
@@ -168,10 +186,7 @@ impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
     // Change the local status of the record for this mui to Active.
     fn mark_as_active_for_mui(&self, mui: Self::Key, ltime: u64) {
         let mut record_map = self.acquire_read_guard();
-        let range = (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4])),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4])),
-        );
+        let range = Self::Key::mui_range(mui);
 
         for rec in record_map.range_mut(range) {
             rec.1.set_route_status(RouteStatus::Active);
@@ -255,10 +270,7 @@ impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
         let record_map = self.acquire_read_guard();
         let mut res = vec![];
 
-        let range = (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0; 4])),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0; 4])),
-        );
+        let range = Self::Key::mui_range(mui);
 
         for r in record_map.range(range) {
             if include_withdrawn || r.1.route_status() == RouteStatus::Active
@@ -278,10 +290,7 @@ impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
         let record_map = self.acquire_read_guard();
         let mut res = vec![];
 
-        let range = (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0; 4])),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0; 4])),
-        );
+        let range = Self::Key::mui_range(mui);
 
         for r in record_map.range(range) {
             if include_withdrawn || r.1.route_status() == RouteStatus::Active
@@ -294,7 +303,7 @@ impl<M: Meta> MapType<M> for AddPathMultiMap<M> {
     }
 }
 
-//------------ MultiMap ------------------------------------------------------
+//------------ AddPathMultiMap -----------------------------------------------
 //
 // This is the collection of records or a given prefix, keyed on the multi
 // unique identifier ("mui"). Note that the record contains more than just
@@ -359,7 +368,7 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
     ) -> Option<Record<MuiPathId, M>> {
         let record_map = self.acquire_read_guard();
 
-        record_map.get(&MuiPathId(mui.0, mui.1)).and_then(
+        record_map.get(&MuiPathId(mui.0, mui.1, true)).and_then(
             |r| -> Option<Record<_, _>> {
                 if include_withdrawn
                     || r.route_status() == RouteStatus::Active
@@ -380,11 +389,8 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
     ) -> Vec<Record<MuiPathId, M>> {
         let record_map = self.acquire_read_guard();
         let mut res = vec![];
-        let range = (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0; 4])),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0; 4])),
-        );
-        record_map.range(range).map(|r| {
+        let range = MuiPathId::mui_range(mui);
+        for r in record_map.range(range) {
             // We'll return a cloned record: the record in the store remains
             // untouched.
             let mut rec = r.1.clone();
@@ -392,7 +398,7 @@ impl<M: Send + Sync + Debug + Display + Meta> AddPathMultiMap<M> {
                 rec.set_route_status(rewrite_status);
             }
             res.push(Record::from((mui, &rec)));
-        });
+        }
 
         res
     }

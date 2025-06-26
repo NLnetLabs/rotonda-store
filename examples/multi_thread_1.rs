@@ -5,14 +5,14 @@ use rotonda_store::{
     epoch,
     match_options::{IncludeHistory, MatchOptions, MatchType},
     prefix_record::{Record, RouteStatus},
-    rib::{config::MemoryOnlyConfig, StarCastRib},
+    rib::{config::MemoryOnlyConfig, MuiStarCastRib},
     test_types::NoMeta,
     IntoIpAddr,
 };
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let tree_bitmap =
-        Arc::new(StarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?);
+        Arc::new(MuiStarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?);
 
     let _: Vec<_> = (0..16)
         .map(|i: i32| {
@@ -29,7 +29,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         match tree_bitmap.insert(
                             &pfx.unwrap(),
                             Record::new(
-                                0,
+                                0.into(),
                                 0,
                                 RouteStatus::Active,
                                 NoMeta::Empty,

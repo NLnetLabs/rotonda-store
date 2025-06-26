@@ -74,7 +74,7 @@ mod cht;
 mod lsm_tree;
 
 // The Chained Hash Table that stores the records for the prefixers in memory
-mod prefix_cht;
+pub mod prefix_cht;
 
 // The Treebitmap, that stores the existence of all prefixes, and that is used
 //for all strategies.

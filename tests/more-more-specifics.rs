@@ -5,7 +5,8 @@ use std::error::Error;
 use inetnum::addr::Prefix;
 use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
 use rotonda_store::prefix_record::{Record, RouteStatus};
-use rotonda_store::rib::{config::Config, StarCastRib};
+use rotonda_store::rib::config::Config;
+use rotonda_store::rib::MuiStarCastRib;
 use rotonda_store::test_types::PrefixAs;
 
 mod common {
@@ -27,7 +28,7 @@ rotonda_store::all_strategies![
 
 // #[test]
 fn test_more_specifics_without_less_specifics<C: Config>(
-    tree_bitmap: StarCastRib<PrefixAs, C>,
+    tree_bitmap: MuiStarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -53,7 +54,7 @@ fn test_more_specifics_without_less_specifics<C: Config>(
         tree_bitmap.insert(
             pfx,
             Record::new(
-                0,
+                0.into(),
                 0,
                 RouteStatus::Active,
                 PrefixAs::new_from_u32(666),
@@ -130,7 +131,7 @@ rotonda_store::all_strategies![
 ];
 
 fn test_more_specifics_with_less_specifics<C: Config>(
-    tree_bitmap: StarCastRib<PrefixAs, C>,
+    tree_bitmap: MuiStarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -158,7 +159,7 @@ fn test_more_specifics_with_less_specifics<C: Config>(
     for pfx in pfxs.iter() {
         tree_bitmap.insert(
             &pfx.unwrap(),
-            Record::new(0, ltime, status, PrefixAs::new_from_u32(666)),
+            Record::new(0.into(), ltime, status, PrefixAs::new_from_u32(666)),
             None,
         )?;
     }

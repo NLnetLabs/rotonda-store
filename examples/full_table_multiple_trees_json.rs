@@ -3,7 +3,7 @@ use rotonda_store::epoch;
 use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
 use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::StarCastRib;
+use rotonda_store::rib::{Mui, MuiStarCastRib};
 use rotonda_store::test_types::PrefixAs;
 
 use std::error::Error;
@@ -20,7 +20,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     const CSV_FILE_PATH: &str = "./data/uniq_pfx_asn_dfz_rnd.csv";
 
     fn load_prefixes(
-        pfxs: &mut Vec<PrefixRecord<PrefixAs>>,
+        pfxs: &mut Vec<PrefixRecord<Mui, PrefixAs>>,
     ) -> Result<(), Box<dyn Error>> {
         let file = File::open(CSV_FILE_PATH)?;
         let mut rdr = csv::Reader::from_reader(file);
@@ -33,10 +33,10 @@ fn main() -> Result<(), Box<dyn Error>> {
             let net = std::net::Ipv4Addr::new(ip[0], ip[1], ip[2], ip[3]);
             let len: u8 = record[1].parse().unwrap();
             let asn: u32 = record[2].parse().unwrap();
-            let pfx = PrefixRecord::<PrefixAs>::new(
+            let pfx = PrefixRecord::<Mui, PrefixAs>::new(
                 Prefix::new(net.into(), len)?,
                 vec![Record::new(
-                    0,
+                    0.into(),
                     0,
                     RouteStatus::Active,
                     PrefixAs::new(asn.into()),
@@ -53,10 +53,10 @@ fn main() -> Result<(), Box<dyn Error>> {
     for strides in strides_vec.iter().enumerate() {
         println!("[");
         for n in 1..6 {
-            let mut rec_vec: Vec<PrefixRecord<PrefixAs>> = vec![];
+            let mut rec_vec: Vec<PrefixRecord<Mui, PrefixAs>> = vec![];
             let config = MemoryOnlyConfig;
             let tree_bitmap =
-                StarCastRib::<PrefixAs, _>::new_with_config(config)?;
+                MuiStarCastRib::<PrefixAs, _>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
                 println!("error running example: {}", err);

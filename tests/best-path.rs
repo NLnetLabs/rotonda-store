@@ -9,6 +9,8 @@ use rotonda_store::prefix_record::Meta;
 use rotonda_store::prefix_record::Record;
 use rotonda_store::prefix_record::RouteStatus;
 use rotonda_store::rib::config::MemoryOnlyConfig;
+use rotonda_store::rib::Mui;
+use rotonda_store::rib::MuiStarCastRib;
 use rotonda_store::rib::StarCastRib;
 use routecore::bgp::aspath::HopPath;
 use routecore::bgp::path_attributes::BgpIdentifier;
@@ -76,7 +78,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
     crate::common::init();
 
     let tree_bitmap =
-        std::sync::Arc::new(std::sync::Arc::new(StarCastRib::<
+        std::sync::Arc::new(std::sync::Arc::new(MuiStarCastRib::<
             Ipv4Route,
             MemoryOnlyConfig,
         >::try_default()?));
@@ -166,7 +168,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
         asns_insert.push(asns.next().unwrap());
         pa_map.set::<HopPath>(HopPath::from(asns_insert.clone()));
         let rec = Record::new(
-            mui,
+            Mui::from(mui),
             0,
             RouteStatus::Active,
             Ipv4Route(mui, pa_map.clone(), tbi),
@@ -221,7 +223,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
             .unwrap()
     );
     println!("{:?}", best_path);
-    assert_eq!(best_path.unwrap().unwrap().multi_uniq_id, 1);
+    assert_eq!(best_path.unwrap().unwrap().multi_uniq_id, 1.into());
 
     Ok(())
 }

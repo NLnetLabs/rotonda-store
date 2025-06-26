@@ -15,7 +15,7 @@ macro_rules! all_strategies {
 
                 //------- Default (MemoryOnly)
                 println!("MemoryOnly strategy starting...");
-                let tree_bitmap = StarCastRib::<
+                let tree_bitmap = MuiStarCastRib::<
                         $ty, MemoryOnlyConfig>::try_default()?;
 
                 $test_name(tree_bitmap)?;
@@ -28,7 +28,7 @@ macro_rules! all_strategies {
                     "/tmp/rotonda/".into()
                 );
 
-                let tree_bitmap = StarCastRib::<
+                let tree_bitmap = MuiStarCastRib::<
                     $ty, PersistOnlyConfig
                 >::new_with_config(
                     store_config
@@ -44,7 +44,7 @@ macro_rules! all_strategies {
                     "/tmp/rotonda/".into()
                 );
 
-                let tree_bitmap = StarCastRib::<
+                let tree_bitmap = MuiStarCastRib::<
                     $ty,
                     PersistHistoryConfig
                 >::new_with_config(
@@ -62,7 +62,7 @@ macro_rules! all_strategies {
                     "/tmp/rotonda/".into()
                 );
 
-                let tree_bitmap = StarCastRib::<
+                let tree_bitmap = MuiStarCastRib::<
                     $ty,
                     WriteAheadConfig
                 >::new_with_config(

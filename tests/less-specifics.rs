@@ -3,7 +3,7 @@ use inetnum::addr::Prefix;
 use rotonda_store::{
     epoch,
     prefix_record::{Record, RouteStatus},
-    rib::{config::Config, StarCastRib},
+    rib::{config::Config, MuiStarCastRib},
     test_types::PrefixAs,
 };
 
@@ -27,7 +27,7 @@ rotonda_store::all_strategies![
 ];
 
 fn test_less_specifics<C: Config>(
-    tree_bitmap: StarCastRib<PrefixAs, C>,
+    tree_bitmap: MuiStarCastRib<PrefixAs, C>,
 ) -> Result<(), Box<dyn Error>> {
     crate::common::init();
 
@@ -40,7 +40,7 @@ fn test_less_specifics<C: Config>(
         tree_bitmap.insert(
             pfx,
             Record::new(
-                0,
+                0.into(),
                 0,
                 RouteStatus::Active,
                 PrefixAs::new_from_u32(666),
