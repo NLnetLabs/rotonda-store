@@ -7,8 +7,8 @@ use crate::{
     errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
     prefix_cht::{
-        cht::MultiMap,
-        compound_multi_map::{AddPathMultiMap, MapType},
+        map_type::MapType, mui_multi_map::MuiMultiMap,
+        path_id_multi_map::PathIdMultiMap,
     },
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
@@ -23,8 +23,8 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 pub const STRIDE_SIZE: u8 = 4;
 pub const BIT_SPAN_SIZE: u8 = 32;
 
-pub type MuiStarCastRib<M, C> = StarCastRib<M, MultiMap<M>, C>;
-pub type MuiPathIdStarCastRib<M, C> = StarCastRib<M, AddPathMultiMap<M>, C>;
+pub type MuiStarCastRib<M, C> = StarCastRib<M, MuiMultiMap<M>, C>;
+pub type MuiPathIdStarCastRib<M, C> = StarCastRib<M, PathIdMultiMap<M>, C>;
 
 /// A RIB that stores routes (and/or other data) for [`IPv4`,
 /// `IPv6`]/[`Unicast`, `Multicast`], i.e. AFI/SAFI types `{1,2}/{1,2}`.

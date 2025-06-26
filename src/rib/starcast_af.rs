@@ -4,7 +4,7 @@ use std::path::Path;
 use inetnum::addr::Prefix;
 use log::{info, trace};
 
-use crate::prefix_cht::compound_multi_map::{MapType, RecordKey};
+use crate::prefix_cht::map_type::{MapType, RecordKey};
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
 use crate::stats::{Counters, UpsertCounters, UpsertReport};
@@ -179,7 +179,7 @@ impl<
                         if let Some(persist_tree) = &self.persist_tree {
                             persist_tree.persist_record_w_long_key(
                                 prefix,
-                                &Record::from((mui, &rec)),
+                                &Record::<MT::Key, M>::from((mui, &rec)),
                             );
                         }
                     }
@@ -289,7 +289,7 @@ impl<
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
-                    stored_prefix.record_map.get_record_for_mui(mui, true)
+                    stored_prefix.record_map.get_record_for_key(mui, true)
                 {
                     let p_tree =
                         if let Some(p_tree) = self.persist_tree.as_ref() {
@@ -352,7 +352,7 @@ impl<
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
-                    stored_prefix.record_map.get_record_for_mui(mui, true)
+                    stored_prefix.record_map.get_record_for_key(mui, true)
                 {
                     let p_tree =
                         if let Some(p_tree) = self.persist_tree.as_ref() {

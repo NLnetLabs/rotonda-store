@@ -6,8 +6,9 @@ mod tests {
     use rotonda_store::{
         epoch,
         match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_cht::map_type::Mui,
         prefix_record::{Meta, PrefixRecord, Record, RouteStatus},
-        rib::{config::Config, Mui, MuiStarCastRib},
+        rib::{config::Config, MuiStarCastRib},
     };
 
     use std::error::Error;

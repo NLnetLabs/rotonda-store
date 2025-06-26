@@ -7,11 +7,11 @@ use lsm_tree::{AbstractTree, KvPair};
 use roaring::RoaringBitmap;
 use zerocopy::{
     FromBytes, Immutable, IntoBytes, KnownLayout, NativeEndian, TryFromBytes,
-    Unaligned, U32, U64,
+    Unaligned, U64,
 };
 
 use crate::errors::{FatalError, FatalResult, PrefixStoreError};
-use crate::prefix_cht::compound_multi_map::RecordKey;
+use crate::prefix_cht::map_type::RecordKey;
 use crate::prefix_record::Meta;
 use crate::stats::Counters;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -84,7 +84,7 @@ impl<AF: AddressFamily, K: RecordKey> From<(PrefixId<AF>, K)>
     fn from(value: (PrefixId<AF>, K)) -> Self {
         Self {
             prefix: value.0,
-            mui: value.1.into(),
+            mui: value.1,
         }
     }
 }
@@ -100,7 +100,7 @@ impl<AF: AddressFamily, K: RecordKey>
     fn from(value: (PrefixId<AF>, K, u64, RouteStatus)) -> Self {
         Self {
             prefix: value.0,
-            mui: value.1.into(),
+            mui: value.1,
             ltime: value.2.into(),
             status: value.3,
         }

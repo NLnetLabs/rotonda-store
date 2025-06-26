@@ -1,21 +1,15 @@
 use inetnum::addr::Prefix;
 use rotonda_store::{
     match_options::{IncludeHistory, MatchOptions, MatchType},
-    prefix_cht::cht::MultiMap,
     prefix_record::{Record, RouteStatus},
+    rib::MuiStarCastRib,
     IntoIpAddr,
 };
-use rotonda_store::{
-    rib::{config::MemoryOnlyConfig, StarCastRib},
-    test_types::NoMeta,
-};
+use rotonda_store::{rib::config::MemoryOnlyConfig, test_types::NoMeta};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let tree_bitmap = StarCastRib::<
-        NoMeta,
-        MultiMap<NoMeta>,
-        MemoryOnlyConfig,
-    >::try_default()?;
+    let tree_bitmap =
+        MuiStarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
 
     let pfxs = vec![
         Prefix::new_relaxed(

@@ -3,7 +3,7 @@ use rotonda_store::{
     epoch,
     match_options::{IncludeHistory, MatchOptions, MatchType},
     prefix_record::{Record, RouteStatus},
-    rib::{config::MemoryOnlyConfig, MuiStarCastRib, StarCastRib},
+    rib::{config::MemoryOnlyConfig, MuiStarCastRib},
     test_types::PrefixAs,
     IntoIpAddr,
 };

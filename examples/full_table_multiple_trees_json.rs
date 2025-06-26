@@ -1,9 +1,10 @@
 use inetnum::addr::Prefix;
 use rotonda_store::epoch;
 use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_cht::map_type::Mui;
 use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::{Mui, MuiStarCastRib};
+use rotonda_store::rib::MuiStarCastRib;
 use rotonda_store::test_types::PrefixAs;
 
 use std::error::Error;

@@ -6,7 +6,7 @@ use crate::{
     epoch,
     errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
-    prefix_cht::compound_multi_map::{AddPathMultiMap, MuiPathId},
+    prefix_cht::{map_type::MuiPathId, path_id_multi_map::PathIdMultiMap},
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
     types::{errors::PrefixStoreError, PrefixId},
@@ -56,8 +56,8 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 /// chosen by the user, for a `StarCastRib` determines what happens with key
 /// collisions in this multi map.
 pub struct StarCastAddPathRib<M: Meta, C: Config> {
-    v4: StarCastAfRib<IPv4, M, AddPathMultiMap<M>, 9, 33, C, 18>,
-    v6: StarCastAfRib<IPv6, M, AddPathMultiMap<M>, 33, 129, C, 30>,
+    v4: StarCastAfRib<IPv4, M, PathIdMultiMap<M>, 9, 33, C, 18>,
+    v6: StarCastAfRib<IPv6, M, PathIdMultiMap<M>, 33, 129, C, 30>,
     config: C,
 }
 

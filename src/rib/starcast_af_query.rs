@@ -5,7 +5,7 @@ use zerocopy::TryFromBytes;
 
 use crate::errors::{FatalError, FatalResult};
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
-use crate::prefix_cht::compound_multi_map::{MapType, RecordKey};
+use crate::prefix_cht::map_type::MapType;
 use crate::prefix_record::RecordSet;
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::Record;
@@ -302,7 +302,7 @@ impl<
                     |mui| {
                         p_rec
                             .record_map
-                            .get_record_for_mui(mui, false)
+                            .get_record_for_key(mui, false)
                             .ok_or(PrefixStoreError::StoreNotReadyError)
                     },
                 )

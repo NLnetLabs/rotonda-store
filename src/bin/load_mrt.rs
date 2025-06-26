@@ -11,6 +11,7 @@ use rayon::{
     iter::{ParallelBridge, ParallelIterator},
     prelude::*,
 };
+use rotonda_store::prefix_cht::map_type::Mui;
 use rotonda_store::{
     prefix_record::{Meta, Record, RouteStatus},
     rib::{
@@ -18,7 +19,7 @@ use rotonda_store::{
             Config, MemoryOnlyConfig, PersistHistoryConfig,
             PersistOnlyConfig, PersistStrategy, WriteAheadConfig,
         },
-        Mui, MuiStarCastRib,
+        MuiStarCastRib,
     },
     stats::UpsertReport,
 };

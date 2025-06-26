@@ -10,5 +10,3 @@ pub(crate) use starcast::STRIDE_SIZE;
 pub use starcast::MuiPathIdStarCastRib;
 pub use starcast::MuiStarCastRib;
 pub use starcast::StarCastRib;
-
-pub use super::prefix_cht::compound_multi_map::Mui;

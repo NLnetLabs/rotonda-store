@@ -1,9 +1,10 @@
 #![cfg(feature = "cli")]
 use ansi_term::Colour;
 use rotonda_store::match_options::{IncludeHistory, MatchOptions, MatchType};
+use rotonda_store::prefix_cht::map_type::Mui;
 use rotonda_store::prefix_record::{PrefixRecord, Record, RouteStatus};
 use rotonda_store::rib::config::MemoryOnlyConfig;
-use rotonda_store::rib::{Mui, MuiStarCastRib};
+use rotonda_store::rib::MuiStarCastRib;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 

@@ -1,5 +1,5 @@
 use crate::match_options::{MatchOptions, MatchType};
-use crate::prefix_cht::compound_multi_map::RecordKey;
+use crate::prefix_cht::map_type::RecordKey;
 use crate::types::AddressFamily;
 
 use crate::rib::starcast_af_query::TreeQueryResult;

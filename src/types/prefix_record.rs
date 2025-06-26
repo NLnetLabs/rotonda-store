@@ -3,7 +3,7 @@ use std::fmt::Debug;
 
 use crate::{
     errors::FatalError,
-    prefix_cht::{cht::MultiMapValue, compound_multi_map::RecordKey},
+    prefix_cht::{cht::MultiMapValue, map_type::RecordKey},
     types::AddressFamily,
 };
 use inetnum::addr::Prefix;

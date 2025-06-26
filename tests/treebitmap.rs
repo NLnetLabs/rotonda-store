@@ -18,8 +18,9 @@ mod tests {
     use rotonda_store::{
         epoch,
         match_options::{IncludeHistory, MatchOptions, MatchType},
+        prefix_cht::map_type::Mui,
         prefix_record::{Record, RouteStatus},
-        rib::{config::Config, Mui, MuiStarCastRib},
+        rib::{config::Config, MuiStarCastRib},
         test_types::{NoMeta, PrefixAs},
         IntoIpAddr,
     };

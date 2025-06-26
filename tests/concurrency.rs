@@ -1,13 +1,14 @@
 use std::{str::FromStr, sync::atomic::Ordering};
 
 use inetnum::{addr::Prefix, asn::Asn};
+use rotonda_store::prefix_cht::map_type::Mui;
 use rotonda_store::{
     errors::FatalResult,
     match_options::{IncludeHistory, MatchOptions, MatchType},
     prefix_record::{PrefixRecord, Record, RouteStatus},
     rib::{
         config::{Config, MemoryOnlyConfig},
-        Mui, MuiStarCastRib,
+        MuiStarCastRib,
     },
     test_types::{BeBytesAsn, NoMeta},
 };

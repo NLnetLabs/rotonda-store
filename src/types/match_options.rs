@@ -1,5 +1,5 @@
 use crate::{
-    prefix_cht::compound_multi_map::RecordKey,
+    prefix_cht::map_type::RecordKey,
     types::{prefix_record::RecordSet, Record},
 };
 use std::fmt;
