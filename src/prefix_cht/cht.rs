@@ -41,6 +41,7 @@ impl<RK: RecordKey> PathSelections<RK> {
         self.path_selection_muis.1
     }
 }
+
 // ----------- StoredPrefix -------------------------------------------------
 // This is the top-level struct that's linked from the slots in the buckets.
 // It contains a super_agg_record that is supposed to hold counters for the

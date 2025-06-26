@@ -35,60 +35,9 @@ pub trait RecordKey:
     }
 }
 
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Immutable,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    TryFromBytes,
-    IntoBytes,
-    Unaligned,
-    KnownLayout,
-    Hash,
-)]
-pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
-
-impl RecordKey for MuiPathId {
-    fn mui(&self) -> U32<NativeEndian> {
-        self.0
-    }
-
-    fn path_id(&self) -> Option<[u8; 4]> {
-        if self.2 {
-            Some(self.1)
-        } else {
-            None
-        }
-    }
-}
-
-impl MuiPathId {
-    pub(crate) fn mui_range(
-        mui: MuiPathId,
-    ) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
-        (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4], false)),
-        )
-    }
-}
-
-impl Display for MuiPathId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.0, u32::from_be_bytes(self.1))
-    }
-}
-
-impl From<(u32, [u8; 4])> for MuiPathId {
-    fn from(value: (u32, [u8; 4])) -> Self {
-        Self(U32::<NativeEndian>::from(value.0), value.1, true)
-    }
-}
+//------------ Mui -----------------------------------------------------------
+//
+// The key for the simplest MultiMap, that only uses the mui, an u32.
 
 #[repr(C)]
 #[derive(
@@ -157,4 +106,152 @@ pub trait MapType<M: Meta>: Debug {
         key: Self::Key,
         include_withdrawn: bool,
     ) -> Option<Record<Self::Key, M>>;
+}
+
+//------------ MuiPathId -----------------------------------------------------
+//
+// Used by the MuiPathIdStarCastRib to store a (mui, path_id) tuple as the key
+// for the multimap.
+
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Immutable,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    TryFromBytes,
+    IntoBytes,
+    Unaligned,
+    KnownLayout,
+    Hash,
+)]
+pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
+
+impl RecordKey for MuiPathId {
+    fn mui(&self) -> U32<NativeEndian> {
+        self.0
+    }
+
+    fn path_id(&self) -> Option<[u8; 4]> {
+        if self.2 {
+            Some(self.1)
+        } else {
+            None
+        }
+    }
+}
+
+impl MuiPathId {
+    pub(crate) fn mui_range(
+        mui: MuiPathId,
+    ) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
+        (
+            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
+            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4], false)),
+        )
+    }
+}
+
+impl Display for MuiPathId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.0, u32::from_be_bytes(self.1))
+    }
+}
+
+impl From<(u32, [u8; 4])> for MuiPathId {
+    fn from(value: (u32, [u8; 4])) -> Self {
+        Self(U32::<NativeEndian>::from(value.0), value.1, true)
+    }
+}
+
+//------------ MuiRdPathId ---------------------------------------------------
+//
+// Used by the MuiRdPathIdStarCastrib to store a (nui, rd, path_id) tuple as
+// the key.
+
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Immutable,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    TryFromBytes,
+    IntoBytes,
+    Unaligned,
+    KnownLayout,
+    Hash,
+)]
+pub struct MuiRdPathId(U32<NativeEndian>, [u8; 8], [u8; 4], bool, bool);
+
+impl RecordKey for MuiRdPathId {
+    fn mui(&self) -> U32<NativeEndian> {
+        self.0
+    }
+
+    fn path_id(&self) -> Option<[u8; 4]> {
+        if self.4 {
+            Some(self.2)
+        } else {
+            None
+        }
+    }
+
+    fn route_distuingisher(&self) -> Option<[u8; 8]> {
+        if self.3 {
+            Some(self.1)
+        } else {
+            None
+        }
+    }
+}
+
+impl MuiRdPathId {
+    pub(crate) fn mui_range(
+        mui: MuiRdPathId,
+    ) -> (Bound<MuiRdPathId>, Bound<MuiRdPathId>) {
+        (
+            std::ops::Bound::Included(MuiRdPathId(
+                mui.0, [0_u8; 8], [0_u8; 4], false, false,
+            )),
+            std::ops::Bound::Excluded(MuiRdPathId(
+                mui.0 + 1,
+                [0_u8; 8],
+                [0_u8; 4],
+                false,
+                false,
+            )),
+        )
+    }
+}
+
+impl Display for MuiRdPathId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}:{}",
+            self.0,
+            u64::from_be_bytes(self.1),
+            u32::from_be_bytes(self.2)
+        )
+    }
+}
+
+impl From<(u32, [u8; 8], [u8; 4])> for MuiRdPathId {
+    fn from(value: (u32, [u8; 8], [u8; 4])) -> Self {
+        Self(
+            U32::<NativeEndian>::from(value.0),
+            value.1,
+            value.2,
+            true,
+            true,
+        )
+    }
 }

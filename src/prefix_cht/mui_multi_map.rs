@@ -21,9 +21,7 @@ use super::cht::MultiMapValue;
 // the meta-data typed value ("M").
 
 #[derive(Debug)]
-pub struct MuiMultiMap<M: Meta>(
-    Arc<Mutex<std::collections::HashMap<Mui, MultiMapValue<M>>>>,
-);
+pub struct MuiMultiMap<M: Meta>(Arc<Mutex<HashMap<Mui, MultiMapValue<M>>>>);
 
 impl<M: Send + Sync + Debug + Display + Meta> MuiMultiMap<M> {
     #[allow(clippy::type_complexity)]
@@ -61,12 +59,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MuiMultiMap<M> {
         }
     }
 
-    pub fn _len(&self) -> usize {
-        let record_map = self.acquire_read_guard();
-        record_map.len()
-    }
-
-    pub(crate) fn get_record_for_mui_with_rewritten_status(
+    fn get_record_for_mui_with_rewritten_status(
         &self,
         mui: Mui,
         bmin: &RoaringBitmap,
@@ -84,7 +77,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MuiMultiMap<M> {
         })
     }
 
-    pub fn get_filtered_record_for_mui(
+    fn get_filtered_record_for_mui(
         &self,
         mui: Mui,
         include_withdrawn: bool,
@@ -104,7 +97,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MuiMultiMap<M> {
     // set status for the mui of the record. However, the local status for a
     // record whose mui appears in the specified bitmap index, will be
     // rewritten with the specified RouteStatus.
-    pub fn as_records_with_rewritten_status(
+    fn as_records_with_rewritten_status(
         &self,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
@@ -122,7 +115,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MuiMultiMap<M> {
             .collect::<Vec<_>>()
     }
 
-    pub fn _as_records(&self) -> Vec<Record<Mui, M>> {
+    fn _as_records(&self) -> Vec<Record<Mui, M>> {
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
@@ -133,7 +126,7 @@ impl<M: Send + Sync + Debug + Display + Meta> MuiMultiMap<M> {
     // Returns a vec of records whose keys are not in the supplied bitmap
     // index, and whose local Status is set to Active. Used to filter out
     // withdrawn routes.
-    pub fn as_active_records_not_in_bmin(
+    fn as_active_records_not_in_bmin(
         &self,
         bmin: &RoaringBitmap,
     ) -> Vec<Record<Mui, M>> {
@@ -289,17 +282,6 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
             })
     }
 }
-
-// impl<M: Meta> From<(u32, &MultiMapValue<M>)> for Record<u32, M> {
-//     fn from(value: (u32, &MultiMapValue<M>)) -> Self {
-//         Self {
-//             multi_uniq_id: value.0,
-//             meta: value.1.meta().clone(),
-//             ltime: value.1.ltime,
-//             status: value.1.route_status,
-//         }
-//     }
-// }
 
 impl<M: Meta> Clone for MuiMultiMap<M> {
     fn clone(&self) -> Self {

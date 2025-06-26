@@ -1,31 +1,37 @@
-use std::collections::BTreeMap;
-use std::fmt::{Debug, Display};
-use std::sync::{Arc, Mutex, MutexGuard};
-
-use crossbeam_utils::Backoff;
-use roaring::RoaringBitmap;
-
-use crate::errors::{FatalError, FatalResult};
-use crate::prefix_record::Meta;
-use crate::types::prefix_record::Record;
-use crate::types::RouteStatus;
-
-use super::cht::MultiMapValue;
-use super::map_type::{MapType, MuiPathId, RecordKey};
-
-//------------ PatIdhMultiMap ------------------------------------------------
+//------------ RdPatIdhMultiMap ----------------------------------------------
 //
 // This is the collection of records or a given prefix, keyed on the multi
 // unique identifier ("mui"). Note that the record contains more than just the
 // meta-data typed value ("M").
 
+use std::{
+    collections::BTreeMap,
+    fmt::Display,
+    sync::{Arc, Mutex, MutexGuard},
+};
+
+use crossbeam_utils::Backoff;
+use roaring::RoaringBitmap;
+
+use crate::{
+    errors::{FatalError, FatalResult},
+    prefix_record::Meta,
+    types::{Record, RouteStatus},
+};
+
+use super::{
+    cht::MultiMapValue,
+    map_type::{MapType, MuiRdPathId, RecordKey},
+};
+
 #[derive(Debug)]
-pub struct PathIdMultiMap<M: Meta>(
-    Arc<Mutex<BTreeMap<MuiPathId, MultiMapValue<M>>>>,
+pub struct RdPathIdMultiMap<M: Meta>(
+    Arc<Mutex<BTreeMap<MuiRdPathId, MultiMapValue<M>>>>,
 );
 
-impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
-    type Key = MuiPathId;
+impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
+    type Key = MuiRdPathId;
+
     fn new() -> Self {
         let m = BTreeMap::new();
         Self(Arc::new(Mutex::new(m)))
@@ -34,7 +40,7 @@ impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
     fn best_backup(
         &self,
         tbi: M::TBI,
-    ) -> (Option<MuiPathId>, Option<MuiPathId>) {
+    ) -> (Option<MuiRdPathId>, Option<MuiRdPathId>) {
         let record_map = self.acquire_read_guard();
         let ord_routes = record_map
             .iter()
@@ -97,7 +103,7 @@ impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
     // Withdrawn), or whose mui appears in the global withdrawn index.
     fn get_filtered_records(
         &self,
-        mui: Option<MuiPathId>,
+        mui: Option<MuiRdPathId>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Option<Vec<Record<Self::Key, M>>> {
@@ -146,7 +152,7 @@ impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
         for r in record_map.range(range) {
             if include_withdrawn || r.1.route_status() == RouteStatus::Active
             {
-                res.push(Record::<MuiPathId, M>::from((mui, r.1)))
+                res.push(Record::<MuiRdPathId, M>::from((mui, r.1)))
             }
         }
 
@@ -155,18 +161,18 @@ impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
 
     fn get_record_for_key(
         &self,
-        mui: MuiPathId,
+        mui: MuiRdPathId,
         include_withdrawn: bool,
     ) -> Option<Record<Self::Key, M>> {
         let record_map = self.acquire_read_guard();
 
         record_map
             .get(&mui)
-            .and_then(|r| -> Option<Record<MuiPathId, M>> {
+            .and_then(|r| -> Option<Record<MuiRdPathId, M>> {
                 if include_withdrawn
                     || r.route_status() == RouteStatus::Active
                 {
-                    Some(Record::<MuiPathId, M>::from((mui, r)))
+                    Some(Record::<MuiRdPathId, M>::from((mui, r)))
                 } else {
                     None
                 }
@@ -174,12 +180,14 @@ impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
     }
 }
 
-impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
+impl<M: Send + Sync + std::fmt::Debug + Display + Meta> RdPathIdMultiMap<M> {
     #[allow(clippy::type_complexity)]
     fn acquire_write_lock(
         &self,
-    ) -> FatalResult<(MutexGuard<BTreeMap<MuiPathId, MultiMapValue<M>>>, usize)>
-    {
+    ) -> FatalResult<(
+        MutexGuard<BTreeMap<MuiRdPathId, MultiMapValue<M>>>,
+        usize,
+    )> {
         let mut retry_count: usize = 0;
         let backoff = Backoff::new();
 
@@ -198,7 +206,7 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
 
     fn acquire_read_guard(
         &self,
-    ) -> MutexGuard<BTreeMap<MuiPathId, MultiMapValue<M>>> {
+    ) -> MutexGuard<BTreeMap<MuiRdPathId, MultiMapValue<M>>> {
         let backoff = Backoff::new();
 
         loop {
@@ -217,13 +225,13 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
 
     fn get_records_for_mui_with_rewritten_status(
         &self,
-        mui: MuiPathId,
+        mui: MuiRdPathId,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
-    ) -> Vec<Record<MuiPathId, M>> {
+    ) -> Vec<Record<MuiRdPathId, M>> {
         let record_map = self.acquire_read_guard();
         let mut res = vec![];
-        let range = MuiPathId::mui_range(mui);
+        let range = MuiRdPathId::mui_range(mui);
         for r in record_map.range(range) {
             // We'll return a cloned record: the record in the store remains
             // untouched.
@@ -231,7 +239,7 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
             if bmin.contains(mui.mui().into()) {
                 rec.set_route_status(rewrite_status);
             }
-            res.push(Record::<MuiPathId, M>::from((mui, &rec)));
+            res.push(Record::<MuiRdPathId, M>::from((mui, &rec)));
         }
 
         res
@@ -239,10 +247,10 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
 
     fn get_filtered_record_for_mui(
         &self,
-        mui: MuiPathId,
+        mui: MuiRdPathId,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Vec<Record<MuiPathId, M>> {
+    ) -> Vec<Record<MuiRdPathId, M>> {
         match include_withdrawn {
             false => self.get_records_for_mui(mui, include_withdrawn),
             true => self.get_records_for_mui_with_rewritten_status(
@@ -261,7 +269,7 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
         &self,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
-    ) -> Vec<Record<MuiPathId, M>> {
+    ) -> Vec<Record<MuiRdPathId, M>> {
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
@@ -270,16 +278,16 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
                 if bmin.contains(r.0.mui().into()) {
                     rec.set_route_status(rewrite_status);
                 }
-                Record::<MuiPathId, M>::from((*r.0, &rec))
+                Record::<MuiRdPathId, M>::from((*r.0, &rec))
             })
             .collect::<Vec<_>>()
     }
 
-    fn _as_records(&self) -> Vec<Record<MuiPathId, M>> {
+    fn _as_records(&self) -> Vec<Record<MuiRdPathId, M>> {
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
-            .map(|r| Record::<MuiPathId, M>::from((*r.0, r.1)))
+            .map(|r| Record::<MuiRdPathId, M>::from((*r.0, r.1)))
             .collect::<Vec<_>>()
     }
 
@@ -289,7 +297,7 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
     fn as_active_records_not_in_bmin(
         &self,
         bmin: &RoaringBitmap,
-    ) -> Vec<Record<MuiPathId, M>> {
+    ) -> Vec<Record<MuiRdPathId, M>> {
         let record_map = self.acquire_read_guard();
         record_map
             .iter()
@@ -297,17 +305,11 @@ impl<M: Send + Sync + Debug + Display + Meta> PathIdMultiMap<M> {
                 if r.1.route_status() == RouteStatus::Active
                     && !bmin.contains(r.0.mui().into())
                 {
-                    Some(Record::<MuiPathId, M>::from((*r.0, r.1)))
+                    Some(Record::<MuiRdPathId, M>::from((*r.0, r.1)))
                 } else {
                     None
                 }
             })
             .collect::<Vec<_>>()
-    }
-}
-
-impl<M: Meta> Clone for PathIdMultiMap<M> {
-    fn clone(&self) -> Self {
-        Self(Arc::clone(&self.0))
     }
 }
