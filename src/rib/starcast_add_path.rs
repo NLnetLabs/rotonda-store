@@ -25,10 +25,11 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 ///
 /// Routes can be kept in memory, persisted to disk, or both. Also, historical
 /// records can be persisted.
-////// A RIB stores "route-like" data. A `route` according to RFC4271 would be
-/// specified as an IP prefix and a set of path attributes. Our StarCastRib,
-/// on the other hand, does not really care whether it stores path attributes,
-/// or any other type of record, for a given IP prefix.
+///
+/// /// A RIB stores "route-like" data. A `route` according to RFC4271
+/// would be specified as an IP prefix and a set of path attributes. Our
+/// StarCastRib, on the other hand, does not really care whether it stores
+/// path attributes, or any other type of record, for a given IP prefix.
 ///
 /// In order to be able to store multiple records for a `(prefix, record)`
 /// pair, however, the store needs to given an extra piece of information in
@@ -55,9 +56,13 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 /// Furthermore, a [persist strategy](crate::rib::config::PersistStrategy),
 /// chosen by the user, for a `StarCastRib` determines what happens with key
 /// collisions in this multi map.
+// The size of the key in the persistence store, this varies per address
+// family. This is 22 for IPv4 (1 octet prefix length, 4 octets address
+// part prefix, 4 octets mui, 4 octets path_id, 8 octets ltime, 1 octet
+// RouteStatus). This corresponds to the `LongKey` struct. It's 34 for IPv6.
 pub struct StarCastAddPathRib<M: Meta, C: Config> {
-    v4: StarCastAfRib<IPv4, M, PathIdMultiMap<M>, 9, 33, C, 18>,
-    v6: StarCastAfRib<IPv6, M, PathIdMultiMap<M>, 33, 129, C, 30>,
+    v4: StarCastAfRib<IPv4, M, PathIdMultiMap<M>, 9, 33, C, 22>,
+    v6: StarCastAfRib<IPv6, M, PathIdMultiMap<M>, 33, 129, C, 34>,
     config: C,
 }
 

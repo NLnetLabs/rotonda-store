@@ -8,7 +8,7 @@ use crate::{
     match_options::{MatchOptions, QueryResult},
     prefix_cht::{
         map_type::MapType, mui_multi_map::MuiMultiMap,
-        path_id_multi_map::PathIdMultiMap,
+        path_id_multi_map::PathIdMultiMap, rd_multi_map::RdPathIdMultiMap,
     },
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
@@ -23,8 +23,11 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 pub const STRIDE_SIZE: u8 = 4;
 pub const BIT_SPAN_SIZE: u8 = 32;
 
-pub type MuiStarCastRib<M, C> = StarCastRib<M, MuiMultiMap<M>, C>;
-pub type MuiPathIdStarCastRib<M, C> = StarCastRib<M, PathIdMultiMap<M>, C>;
+pub type MuiStarCastRib<M, C> = StarCastRib<M, MuiMultiMap<M>, C, 18, 30>;
+pub type MuiPathIdStarCastRib<M, C> =
+    StarCastRib<M, PathIdMultiMap<M>, C, 22, 34>;
+pub type MuiRdPathIdStarCastRib<M, C> =
+    StarCastRib<M, RdPathIdMultiMap<M>, C, 30, 42>;
 
 /// A RIB that stores routes (and/or other data) for [`IPv4`,
 /// `IPv6`]/[`Unicast`, `Multicast`], i.e. AFI/SAFI types `{1,2}/{1,2}`.
@@ -62,13 +65,27 @@ pub type MuiPathIdStarCastRib<M, C> = StarCastRib<M, PathIdMultiMap<M>, C>;
 /// Furthermore, a [persist strategy](crate::rib::config::PersistStrategy),
 /// chosen by the user, for a `StarCastRib` determines what happens with key
 /// collisions in this multi map.
-pub struct StarCastRib<M: Meta, MT: MapType<M>, C: Config> {
+pub struct StarCastRib<
+    M: Meta,
+    MT: MapType<M>,
+    C: Config,
+    const KEY_SIZE_IPV4: usize,
+    const KEY_SIZE_IPV6: usize,
+> {
     v4: StarCastAfRib<IPv4, M, MT, 9, 33, C, 18>,
     v6: StarCastAfRib<IPv6, M, MT, 33, 129, C, 30>,
     config: C,
 }
 
-impl<'a, M: Meta, MT: MapType<M>, C: Config> StarCastRib<M, MT, C> {
+impl<
+        'a,
+        M: Meta,
+        MT: MapType<M>,
+        C: Config,
+        const KEY_SIZE_IPV4: usize,
+        const KEY_SIZE_IPV6: usize,
+    > StarCastRib<M, MT, C, KEY_SIZE_IPV4, KEY_SIZE_IPV6>
+{
     /// Create a new RIB with a default configuration.
     ///
     /// The default configuration uses the `MemoryOnly` persistence strategy.
