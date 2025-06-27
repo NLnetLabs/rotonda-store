@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::sync::atomic::Ordering;
+use std::sync::{Arc, Mutex, MutexGuard};
 
 use crossbeam_epoch::{Atomic, Guard, Owned};
 use crossbeam_utils::Backoff;
@@ -8,6 +9,7 @@ use log::{debug, log_enabled, trace};
 use roaring::RoaringBitmap;
 
 use crate::cht::{nodeset_size, prev_node_size};
+use crate::errors::{FatalError, FatalResult};
 use crate::prefix_record::Meta;
 use crate::stats::{Counters, UpsertReport};
 #[cfg(test)]
@@ -52,7 +54,7 @@ pub struct StoredPrefix<AF: AddressFamily, M: Meta, MT: MapType<M>> {
     // the prefix itself,
     pub prefix: PrefixId<AF>,
     // the aggregated data for this prefix
-    pub record_map: MT,
+    pub record_map: Arc<Mutex<MT>>,
     // (mui of best path entry, mui of backup path entry) from the record_map
     path_selections: Atomic<PathSelections<MT::Key>>,
     // the reference to the next set of records for this prefix, if any.
@@ -93,7 +95,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
             path_selections: Atomic::init(PathSelections {
                 path_selection_muis: (None, None),
             }),
-            record_map: MT::new(),
+            record_map: Arc::new(Mutex::new(MT::new())),
             next_bucket,
         }
     }
@@ -163,7 +165,8 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
         tbi: &M::TBI,
         guard: &'a Guard,
     ) -> Result<(Option<MT::Key>, Option<MT::Key>), PrefixStoreError> {
-        let path_selection_muis = self.record_map.best_backup(*tbi);
+        let rec = self.acquire_read_guard();
+        let path_selection_muis = rec.best_backup(*tbi);
 
         self.set_path_selections(
             PathSelections {
@@ -174,7 +177,41 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
 
         Ok(path_selection_muis)
     }
+
+    pub(crate) fn acquire_read_guard(&self) -> MutexGuard<MT> {
+        let backoff = Backoff::new();
+
+        loop {
+            if let Ok(guard) = self.record_map.try_lock() {
+                return guard;
+            }
+
+            backoff.spin();
+        }
+    }
+
+    #[allow(clippy::type_complexity)]
+    pub(crate) fn acquire_write_lock(
+        &self,
+    ) -> FatalResult<(MutexGuard<MT>, usize)> {
+        let mut retry_count: usize = 0;
+        let backoff = Backoff::new();
+
+        loop {
+            // We're using lock(), which returns an Error only if another
+            // thread has panicked while holding the lock. In that situtation
+            // we are certainly not going to write anything.
+            if let Ok(guard) = self.record_map.lock().map_err(|_| FatalError)
+            {
+                return Ok((guard, retry_count));
+            }
+
+            backoff.spin();
+            retry_count += 1;
+        }
+    }
 }
+
 //------------ PrefixSet ----------------------------------------------------
 
 // The PrefixSet is the ARRAY that holds all the child prefixes in a node.
@@ -255,7 +292,9 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                         );
                     }
 
-                    return stored_prefix.record_map.get_filtered_records(
+                    let record_map = stored_prefix.acquire_read_guard();
+
+                    return record_map.get_filtered_records(
                         mui,
                         include_withdrawn,
                         bmin,
@@ -299,8 +338,10 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                         );
                     }
 
-                    let (mui_count, retry_count) = stored_prefix
-                        .record_map
+                    let (mut record_map, _) = stored_prefix
+                        .acquire_write_lock()
+                        .map_err(|_| PrefixStoreError::FatalError)?;
+                    let (mui_count, retry_count) = record_map
                         .upsert_record(record)
                         .map_err(|_| PrefixStoreError::FatalError)?;
 
@@ -337,8 +378,10 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                     // caller's record.
                     stored_prefix.set_ps_outdated(guard)?;
 
-                    let (mui_count, retry_count) = stored_prefix
-                        .record_map
+                    let (mut record_map, _) = stored_prefix
+                        .acquire_write_lock()
+                        .map_err(|_| PrefixStoreError::FatalError)?;
+                    let (mui_count, retry_count) = record_map
                         .upsert_record(record)
                         .map_err(|_| PrefixStoreError::FatalError)?;
 

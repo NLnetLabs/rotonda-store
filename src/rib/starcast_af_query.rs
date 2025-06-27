@@ -300,8 +300,8 @@ impl<
                 p_rec.get_path_selections(guard).best().map_or_else(
                     || Err(PrefixStoreError::BestPathNotFound),
                     |mui| {
-                        p_rec
-                            .record_map
+                        let record_map = p_rec.acquire_read_guard();
+                        record_map
                             .get_record_for_key(mui, false)
                             .ok_or(PrefixStoreError::StoreNotReadyError)
                     },

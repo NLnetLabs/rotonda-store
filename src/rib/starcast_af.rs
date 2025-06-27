@@ -243,9 +243,8 @@ impl<
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
                 }
-                stored_prefix
-                    .record_map
-                    .mark_as_withdrawn_for_mui(mui, ltime);
+                let mut record_map = stored_prefix.acquire_read_guard();
+                record_map.mark_as_withdrawn_for_mui(mui.mui().into(), ltime);
             }
             PersistStrategy::PersistOnly => {
                 println!(
@@ -283,13 +282,12 @@ impl<
                 if !exists {
                     return Err(PrefixStoreError::StoreNotReadyError);
                 }
-                stored_prefix
-                    .record_map
-                    .mark_as_withdrawn_for_mui(mui, ltime);
+                let mut record_map = stored_prefix.acquire_read_guard();
+                record_map.mark_as_withdrawn_for_mui(mui.mui().into(), ltime);
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
-                    stored_prefix.record_map.get_record_for_key(mui, true)
+                    record_map.get_record_for_key(mui, true)
                 {
                     let p_tree =
                         if let Some(p_tree) = self.persist_tree.as_ref() {
@@ -322,7 +320,9 @@ impl<
                 if !exists {
                     return Err(FatalError);
                 }
-                stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
+                let mut record_map = stored_prefix.acquire_read_guard();
+                // record_map.mark_as_withdrawn_for_mui(mui, ltime);
+                record_map.mark_as_active_for_mui(mui.mui().into(), ltime);
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
@@ -348,11 +348,12 @@ impl<
                 if !exists {
                     return Err(FatalError);
                 }
-                stored_prefix.record_map.mark_as_active_for_mui(mui, ltime);
+                let mut record_map = stored_prefix.acquire_read_guard();
+                record_map.mark_as_active_for_mui(mui.mui().into(), ltime);
 
                 // Use the record from the in-memory RIB to persist.
                 if let Some(_record) =
-                    stored_prefix.record_map.get_record_for_key(mui, true)
+                    record_map.get_record_for_key(mui, true)
                 {
                     let p_tree =
                         if let Some(p_tree) = self.persist_tree.as_ref() {

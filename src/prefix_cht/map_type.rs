@@ -10,6 +10,7 @@ use zerocopy::{
 use crate::errors::FatalResult;
 use crate::prefix_record::Meta;
 use crate::types::prefix_record::Record;
+use crate::types::RouteStatus;
 
 use super::cht::MultiMapValue;
 
@@ -25,6 +26,7 @@ pub trait RecordKey:
     + std::hash::Hash
     + PartialEq
     + Eq
+    + Ord
 {
     fn mui(&self) -> U32<NativeEndian>;
     fn path_id(&self) -> Option<[u8; 4]> {
@@ -75,37 +77,211 @@ impl From<u32> for Mui {
     }
 }
 
+impl From<U32<NativeEndian>> for Mui {
+    fn from(value: U32<NativeEndian>) -> Self {
+        Self(value)
+    }
+}
+
 pub trait MapType<M: Meta>: Debug {
     type Key: RecordKey;
+    type Inner;
     fn new() -> Self;
+    fn inner(&self) -> &Self::Inner;
+    fn inner_mut(&mut self) -> &mut Self::Inner;
+    fn iter<'a>(
+        &'a self,
+    ) -> impl Iterator<Item = (&'a Self::Key, &'a MultiMapValue<M>)>
+    where
+        <Self as MapType<M>>::Key: 'a,
+        M: 'a;
     #[allow(clippy::type_complexity)]
-    fn best_backup(
-        &self,
-        tbi: M::TBI,
-    ) -> (Option<Self::Key>, Option<Self::Key>);
-    fn mark_as_withdrawn_for_mui(&self, mui: Self::Key, ltime: u64);
-    fn mark_as_active_for_mui(&self, mui: Self::Key, ltime: u64);
+    fn contains_key(&self, key: &Self::Key) -> bool;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
+    fn get(&self, key: &Self::Key) -> Option<&MultiMapValue<M>>;
+
     #[allow(clippy::type_complexity)]
-    fn upsert_record(
-        &self,
-        new_rec: Record<Self::Key, M>,
-    ) -> FatalResult<(Option<(MultiMapValue<M>, usize)>, usize)>;
+    // Helper to filter out records that are not-active (Inactive or
+    // Withdrawn), or whose mui appears in the global withdrawn index.
     fn get_filtered_records(
         &self,
         mui: Option<Self::Key>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<Self::Key, M>>>;
+    ) -> Option<Vec<Record<Self::Key, M>>> {
+        if let Some(mui) = mui {
+            Some(self.get_filtered_records_for_mui(
+                Mui(mui.mui()),
+                include_withdrawn,
+                bmin,
+            ))
+        } else {
+            match include_withdrawn {
+                false => {
+                    let recs = self.as_active_records_not_in_bmin(bmin);
+                    if recs.is_empty() {
+                        None
+                    } else {
+                        Some(recs)
+                    }
+                }
+                true => {
+                    let recs = self.as_records_with_rewritten_status(
+                        bmin,
+                        RouteStatus::Withdrawn,
+                    );
+                    if recs.is_empty() {
+                        None
+                    } else {
+                        Some(recs)
+                    }
+                }
+            }
+        }
+    }
+
     fn get_records_for_mui(
         &self,
-        mui: Self::Key,
+        mui: Mui,
         include_withdrawn: bool,
     ) -> Vec<Record<Self::Key, M>>;
+
     fn get_record_for_key(
         &self,
         key: Self::Key,
         include_withdrawn: bool,
-    ) -> Option<Record<Self::Key, M>>;
+    ) -> Option<Record<Self::Key, M>> {
+        self.get(&key)
+            .and_then(|r| -> Option<Record<Self::Key, M>> {
+                if include_withdrawn
+                    || r.route_status() == RouteStatus::Active
+                {
+                    Some(Record::<Self::Key, M>::from((key, r)))
+                } else {
+                    None
+                }
+            })
+    }
+
+    fn get_records_for_mui_with_rewritten_status(
+        &self,
+        mui: Mui,
+        bmin: &RoaringBitmap,
+        rewrite_status: RouteStatus,
+    ) -> Vec<Record<Self::Key, M>>;
+
+    fn best_backup(
+        &self,
+        tbi: M::TBI,
+    ) -> (Option<Self::Key>, Option<Self::Key>) {
+        // let record_map = self.acquire_read_guard();
+        let ord_routes =
+            self.iter().map(|r| (r.1.meta().as_orderable(tbi), *r.0));
+        let (best, bckup) =
+            routecore::bgp::path_selection::best_backup_generic(ord_routes);
+        (best.map(|b| b.1), bckup.map(|b| b.1))
+    }
+
+    // Insert or replace the PublicRecord in the HashMap for the key of
+    // record.multi_uniq_id. Returns the number of entries in the HashMap
+    // after updating it, if it's more than 1. Returns None if this is the
+    // first entry.
+    #[allow(clippy::type_complexity)]
+    fn upsert_record(
+        &mut self,
+        new_rec: Record<Self::Key, M>,
+    ) -> FatalResult<(Option<(MultiMapValue<M>, usize)>, usize)> {
+        let key = new_rec.multi_uniq_id;
+
+        match self.contains_key(&key) {
+            true => {
+                let old_rec = self
+                    .insert(key, MultiMapValue::from(new_rec))
+                    .map(|r| (r, self.len()));
+                Ok((old_rec, 0))
+            }
+            false => {
+                let new_rec = MultiMapValue::from(new_rec);
+                let old_rec = self.insert(key, new_rec);
+                assert!(old_rec.is_none());
+                Ok((None, 0))
+            }
+        }
+    }
+
+    fn insert(
+        &mut self,
+        key: Self::Key,
+        value: MultiMapValue<M>,
+    ) -> Option<MultiMapValue<M>>;
+    fn mark_as_withdrawn_for_mui(&mut self, mui: Mui, ltime: u64);
+    fn mark_as_active_for_mui(&mut self, mui: Mui, ltime: u64);
+
+    // return all records regardless of their local status, or any globally
+    // set status for the mui of the record. However, the local status for a
+    // record whose mui appears in the specified bitmap index, will be
+    // rewritten with the specified RouteStatus.
+    fn as_records_with_rewritten_status(
+        &self,
+        bmin: &RoaringBitmap,
+        rewrite_status: RouteStatus,
+    ) -> Vec<Record<Self::Key, M>> {
+        self.iter()
+            .map(move |r| {
+                let mut rec = r.1.clone();
+                if bmin.contains(r.0.mui().into()) {
+                    rec.set_route_status(rewrite_status);
+                }
+                Record::<Self::Key, M>::from((*r.0, &rec))
+            })
+            .collect::<Vec<_>>()
+    }
+
+    // fn _as_records(&self) -> Vec<Record<Mui, M>> {
+    //     // let record_map = self.acquire_read_guard();
+    //     // record_map
+    //     self.0
+    //         .iter()
+    //         .map(|r| Record::<Mui, M>::from((*r.0, r.1)))
+    //         .collect::<Vec<_>>()
+    // }
+
+    // Returns a vec of records whose keys are not in the supplied bitmap
+    // index, and whose local Status is set to Active. Used to filter out
+    // withdrawn routes.
+    fn as_active_records_not_in_bmin(
+        &self,
+        bmin: &RoaringBitmap,
+    ) -> Vec<Record<Self::Key, M>> {
+        self.iter()
+            .filter_map(|r| {
+                if r.1.route_status() == RouteStatus::Active
+                    && !bmin.contains(r.0.mui().into())
+                {
+                    Some(Record::<Self::Key, M>::from((*r.0, r.1)))
+                } else {
+                    None
+                }
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn get_filtered_records_for_mui(
+        &self,
+        mui: Mui,
+        include_withdrawn: bool,
+        bmin: &RoaringBitmap,
+    ) -> Vec<Record<Self::Key, M>> {
+        match include_withdrawn {
+            false => self.get_records_for_mui(mui, include_withdrawn),
+            true => self.get_records_for_mui_with_rewritten_status(
+                mui,
+                bmin,
+                RouteStatus::Withdrawn,
+            ),
+        }
+    }
 }
 
 //------------ MuiPathId -----------------------------------------------------
@@ -147,7 +323,7 @@ impl RecordKey for MuiPathId {
 
 impl MuiPathId {
     pub(crate) fn mui_range(
-        mui: MuiPathId,
+        mui: Mui,
     ) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
         (
             std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
@@ -215,7 +391,7 @@ impl RecordKey for MuiRdPathId {
 
 impl MuiRdPathId {
     pub(crate) fn mui_range(
-        mui: MuiRdPathId,
+        mui: Mui,
     ) -> (Bound<MuiRdPathId>, Bound<MuiRdPathId>) {
         (
             std::ops::Bound::Included(MuiRdPathId(
