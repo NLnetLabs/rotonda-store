@@ -32,6 +32,10 @@ pub(crate) trait Key<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>:
     // somehow fails, we don't know what to do anymore. Data may be corrupted,
     // so it probably should not be retried.
     fn header(bytes: &[u8]) -> Result<&LongKey<AF, K>, FatalError> {
+        trace!("key size {}", KEY_SIZE);
+        trace!("bytes len {}", bytes.len());
+        trace!("bytes {:?}", bytes);
+        trace!("key size {}", size_of::<K>());
         LongKey::try_ref_from_bytes(bytes.as_bytes()).map_err(|_| FatalError)
     }
 
@@ -43,8 +47,11 @@ pub(crate) trait Key<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>:
     ) -> Result<&mut LongKey<AF, K>, FatalError> {
         trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
-        LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
-            .map_err(|_| FatalError)
+        trace!("bytes {:?}", bytes);
+        let lk = LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
+            .map_err(|_| FatalError);
+        trace!("long key {:?}", lk);
+        lk
     }
 }
 
@@ -53,6 +60,10 @@ pub(crate) trait Key<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>:
 pub struct ShortKey<AF: AddressFamily, K: RecordKey> {
     prefix: PrefixId<AF>,
     mui: K,
+}
+
+const fn key_size<AF: AddressFamily, K: RecordKey>() -> usize {
+    size_of::<PrefixId<AF>>() + size_of::<K>() + 8 + 1
 }
 
 #[derive(
@@ -68,10 +79,10 @@ pub struct ShortKey<AF: AddressFamily, K: RecordKey> {
 #[repr(C)]
 pub struct LongKey<AF: AddressFamily, K: RecordKey> {
     prefix: PrefixId<AF>,     // 1 + (4 or 16)
-    mui: K, // 4 (mui), 4 + 4 (mui + path_id), 4 + 4 + 8 (mui + path_id + rd)
+    mui: K, // 4 (mui), 4 + 5 (mui + path_id), 4 + 5 + 8 (mui + path_id + rd)
     ltime: U64<NativeEndian>, // 8
     status: RouteStatus, // 1
-} // 18 or 30
+} // (18, or 23, or 31) for IPv4, and (30, or 35, or 43) for IPv6
 
 impl<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>
     Key<AF, K, KEY_SIZE> for ShortKey<AF, K>
@@ -114,6 +125,9 @@ impl<AF: AddressFamily, K: RecordKey>
 pub struct LsmTree<
     // The address family that this tree stores. IPv4 or IPv6.
     AF: AddressFamily,
+    // The RecordKey trait manages how much extra information goes into
+    // the key. The options are (mui), (mui, path_id), and (mui, route
+    // distuinghisher, path_id)
     RK: RecordKey,
     // The Key type for this tree. This can basically be a long key, if the
     // store needs to store historical records, or a short key, if it should
@@ -171,10 +185,10 @@ impl<
     // value concatenated in this method always has a length of greater than
     // KEYS_SIZE, a global constant for the store per AF.
     #[allow(clippy::indexing_slicing)]
-    pub fn records_for_prefix(
+    pub fn records_for_prefix<YK: RecordKey>(
         &self,
         prefix: PrefixId<AF>,
-        mui: Option<RK>,
+        mui: Option<YK>,
         include_withdrawn: bool,
         withdrawn_muis_bmin: &RoaringBitmap,
     ) -> Option<Vec<FatalResult<Vec<u8>>>> {
@@ -184,6 +198,7 @@ impl<
                 // get the records from the persist store for the (prefix,
                 // mui) tuple only.
                 let prefix_b = ShortKey::from((prefix, mui));
+                println!("search key {:?}", prefix_b);
                 self.tree
                     .prefix(prefix_b.as_bytes(), None, None)
                     .map(|kv| {
@@ -265,8 +280,7 @@ impl<
                         r.map(|kv| {
                             trace!("n f persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            if let Ok(header) =
-                                K::header_mut(&mut bytes[..KEY_SIZE])
+                            if let Ok(header) = K::header(&bytes[..KEY_SIZE])
                             {
                                 // If mui is in the global withdrawn muis
                                 // table, then skip this record
@@ -296,6 +310,7 @@ impl<
                                 );
                                 Some(Ok(bytes))
                             } else {
+                                println!("no header; size {}", bytes.len());
                                 Some(Err(FatalError))
                             }
                         })
@@ -319,7 +334,7 @@ impl<
             (Some(mui), false) => {
                 // get the records from the persist store for the (prefix,
                 // mui) tuple only.
-                let prefix_b = ShortKey::<AF, RK>::from((prefix, mui.into()));
+                let prefix_b = ShortKey::<AF, YK>::from((prefix, mui));
                 self.tree
                     .prefix(prefix_b.as_bytes(), None, None)
                     .filter_map(|kv| {

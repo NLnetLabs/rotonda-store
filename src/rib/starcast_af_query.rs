@@ -40,7 +40,10 @@ impl<
     ) -> FatalResult<Option<Vec<Record<MT::Key, M>>>> {
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
-                trace!("get value from persist_store for {:?}", prefix_id);
+                println!(
+                    "get value from persist_store for {:?} with key {:?}",
+                    prefix_id, mui
+                );
                 self.persist_tree
                     .as_ref()
                     .and_then(|tree| {

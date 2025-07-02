@@ -17,7 +17,10 @@ mod tests {
         match_options::{IncludeHistory, MatchOptions, MatchType},
         prefix_cht::map_type::{Mui, MuiPathId},
         prefix_record::{Record, RouteStatus},
-        rib::{config::MemoryOnlyConfig, MuiPathIdStarCastRib},
+        rib::{
+            config::{MemoryOnlyConfig, PersistOnlyConfig},
+            MuiPathIdStarCastRib,
+        },
         test_types::NoMeta,
     };
 
@@ -43,7 +46,7 @@ mod tests {
         )
         .unwrap();
         let rib =
-            MuiPathIdStarCastRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
+            MuiPathIdStarCastRib::<NoMeta, PersistOnlyConfig>::try_default()?;
 
         for path_id in 0_u32..255 {
             let key = MuiPathId::from((0_u32, path_id.to_be_bytes()));
