@@ -106,16 +106,23 @@ pub trait MapType<M: Meta>: Debug {
     // Withdrawn), or whose mui appears in the global withdrawn index.
     fn get_filtered_records(
         &self,
-        mui: Option<Self::Key>,
+        key: Option<Self::Key>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
     ) -> Option<Vec<Record<Self::Key, M>>> {
-        if let Some(mui) = mui {
-            Some(self.get_filtered_records_for_mui(
-                Mui(mui.mui()),
-                include_withdrawn,
-                bmin,
-            ))
+        if let Some(mui) = key {
+            Some(
+                self.get_record_for_key(mui, include_withdrawn)
+                    .and_then(|r| {
+                        if !bmin.contains(r.multi_uniq_id.mui().into()) {
+                            Some(r)
+                        } else {
+                            None
+                        }
+                    })
+                    .into_iter()
+                    .collect::<Vec<_>>(),
+            )
         } else {
             match include_withdrawn {
                 false => {
@@ -341,6 +348,12 @@ impl Display for MuiPathId {
 impl From<(u32, [u8; 4])> for MuiPathId {
     fn from(value: (u32, [u8; 4])) -> Self {
         Self(U32::<NativeEndian>::from(value.0), value.1, true)
+    }
+}
+
+impl From<Mui> for MuiPathId {
+    fn from(value: Mui) -> Self {
+        Self(value.mui(), [0; 4], false)
     }
 }
 

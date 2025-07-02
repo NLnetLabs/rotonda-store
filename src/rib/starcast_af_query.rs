@@ -5,7 +5,7 @@ use zerocopy::TryFromBytes;
 
 use crate::errors::{FatalError, FatalResult};
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
-use crate::prefix_cht::map_type::MapType;
+use crate::prefix_cht::map_type::{MapType, RecordKey};
 use crate::prefix_record::RecordSet;
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::Record;
@@ -203,10 +203,10 @@ impl<
             })
     }
 
-    pub(crate) fn match_prefix(
+    pub(crate) fn match_prefix<K: RecordKey + Into<MT::Key>>(
         &'a self,
         search_pfx: PrefixId<AF>,
-        options: &MatchOptions<MT::Key>,
+        options: &MatchOptions<K>,
         guard: &'a Guard,
     ) -> FatalResult<QueryResult<MT::Key, M>> {
         trace!("match_prefix rib {:?} {:?}", search_pfx, options);
@@ -218,7 +218,7 @@ impl<
         if let Some(Ok(Some(m))) = res.prefix.map(|p| {
             self.get_value(
                 p.into(),
-                options.mui,
+                options.mui.map(|k| k.into()),
                 options.include_withdrawn,
                 guard,
             )
@@ -240,7 +240,7 @@ impl<
                         .filter_map(|mut r| {
                             if let Ok(mm) = self.get_value(
                                 r.prefix.into(),
-                                options.mui,
+                                options.mui.map(|k| k.into()),
                                 options.include_withdrawn,
                                 guard,
                             ) {
@@ -266,7 +266,7 @@ impl<
                         .filter_map(|mut r| {
                             if let Ok(mm) = self.get_value(
                                 r.prefix.into(),
-                                options.mui,
+                                options.mui.map(|k| k.into()),
                                 options.include_withdrawn,
                                 guard,
                             ) {

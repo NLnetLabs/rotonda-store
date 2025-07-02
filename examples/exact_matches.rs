@@ -1,5 +1,6 @@
 use inetnum::addr::Prefix;
 use rotonda_store::match_options::IncludeHistory;
+use rotonda_store::prefix_cht::map_type::Mui;
 use rotonda_store::prefix_record::{Record, RouteStatus};
 use rotonda_store::rib::MuiStarCastRib;
 // use rotonda_store::prelude::multi::*;

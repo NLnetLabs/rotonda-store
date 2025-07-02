@@ -319,7 +319,7 @@ impl<
             (Some(mui), false) => {
                 // get the records from the persist store for the (prefix,
                 // mui) tuple only.
-                let prefix_b = ShortKey::<AF, RK>::from((prefix, mui));
+                let prefix_b = ShortKey::<AF, RK>::from((prefix, mui.into()));
                 self.tree
                     .prefix(prefix_b.as_bytes(), None, None)
                     .filter_map(|kv| {

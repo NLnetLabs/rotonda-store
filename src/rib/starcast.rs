@@ -7,8 +7,10 @@ use crate::{
     errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
     prefix_cht::{
-        map_type::MapType, mui_multi_map::MuiMultiMap,
-        path_id_multi_map::PathIdMultiMap, rd_multi_map::RdPathIdMultiMap,
+        map_type::{MapType, RecordKey},
+        mui_multi_map::MuiMultiMap,
+        path_id_multi_map::PathIdMultiMap,
+        rd_multi_map::RdPathIdMultiMap,
     },
     prefix_record::{Meta, PrefixRecord, Record},
     rib::config::Config,
@@ -23,9 +25,16 @@ use crate::stats::{StoreStats, UpsertCounters, UpsertReport};
 pub const STRIDE_SIZE: u8 = 4;
 pub const BIT_SPAN_SIZE: u8 = 32;
 
+/// IPv4/v6 uni/multicast RIB with values that are a map keyed on mui.
 pub type MuiStarCastRib<M, C> = StarCastRib<M, MuiMultiMap<M>, C, 18, 30>;
+
+/// IPv4/v6 uni/multicast RIB with values that are map keyed on (mui,
+/// path_id).
 pub type MuiPathIdStarCastRib<M, C> =
     StarCastRib<M, PathIdMultiMap<M>, C, 22, 34>;
+
+/// IPv4/v6 uni/multicast RIB with value that are keyed on a ap keyed on (mui,
+/// route distuingisher, path_id).
 pub type MuiRdPathIdStarCastRib<M, C> =
     StarCastRib<M, RdPathIdMultiMap<M>, C, 30, 42>;
 
@@ -72,8 +81,8 @@ pub struct StarCastRib<
     const KEY_SIZE_IPV4: usize,
     const KEY_SIZE_IPV6: usize,
 > {
-    v4: StarCastAfRib<IPv4, M, MT, 9, 33, C, 18>,
-    v6: StarCastAfRib<IPv6, M, MT, 33, 129, C, 30>,
+    v4: StarCastAfRib<IPv4, M, MT, 9, 33, C, KEY_SIZE_IPV4>,
+    v6: StarCastAfRib<IPv6, M, MT, 33, 129, C, KEY_SIZE_IPV6>,
     config: C,
 }
 
