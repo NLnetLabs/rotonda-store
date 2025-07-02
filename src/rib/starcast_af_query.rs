@@ -28,8 +28,8 @@ impl<
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
-        const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+        // const KEY_SIZE: usize,
+    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
 {
     pub(crate) fn get_value(
         &'a self,

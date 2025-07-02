@@ -25,14 +25,14 @@ use crate::types::{PrefixId, RouteStatus};
 // pairs, whereas long keys append values with existing (prefix, mui), thus
 // creating persisted historical records.
 
-pub(crate) trait Key<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>:
+pub(crate) trait Key<AF: AddressFamily, K: RecordKey>:
     TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
 {
     // Try to extract a header from the bytes for reading only. If this
     // somehow fails, we don't know what to do anymore. Data may be corrupted,
     // so it probably should not be retried.
     fn header(bytes: &[u8]) -> Result<&LongKey<AF, K>, FatalError> {
-        trace!("key size {}", KEY_SIZE);
+        // trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
         trace!("bytes {:?}", bytes);
         trace!("key size {}", size_of::<K>());
@@ -45,7 +45,7 @@ pub(crate) trait Key<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>:
     fn header_mut(
         bytes: &mut [u8],
     ) -> Result<&mut LongKey<AF, K>, FatalError> {
-        trace!("key size {}", KEY_SIZE);
+        // trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
         trace!("bytes {:?}", bytes);
         let lk = LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
@@ -84,10 +84,7 @@ pub struct LongKey<AF: AddressFamily, K: RecordKey> {
     status: RouteStatus, // 1
 } // (18, or 23, or 31) for IPv4, and (30, or 35, or 43) for IPv6
 
-impl<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>
-    Key<AF, K, KEY_SIZE> for ShortKey<AF, K>
-{
-}
+impl<AF: AddressFamily, K: RecordKey> Key<AF, K> for ShortKey<AF, K> {}
 
 impl<AF: AddressFamily, K: RecordKey> From<(PrefixId<AF>, K)>
     for ShortKey<AF, K>
@@ -100,10 +97,7 @@ impl<AF: AddressFamily, K: RecordKey> From<(PrefixId<AF>, K)>
     }
 }
 
-impl<AF: AddressFamily, K: RecordKey, const KEY_SIZE: usize>
-    Key<AF, K, KEY_SIZE> for LongKey<AF, K>
-{
-}
+impl<AF: AddressFamily, K: RecordKey> Key<AF, K> for LongKey<AF, K> {}
 
 impl<AF: AddressFamily, K: RecordKey>
     From<(PrefixId<AF>, K, u64, RouteStatus)> for LongKey<AF, K>
@@ -133,10 +127,10 @@ pub struct LsmTree<
     // store needs to store historical records, or a short key, if it should
     // overwrite records for (prefix, mui) pairs, effectively only keeping the
     // current state.
-    K: Key<AF, RK, KEY_SIZE>,
+    K: Key<AF, RK>,
     // The size in bytes of the complete key in the persisted storage, this
     // is PREFIX_SIZE bytes (4; 16) + mui size (4) + ltime (8)
-    const KEY_SIZE: usize,
+    // const KEY_SIZE: usize,
 > {
     tree: lsm_tree::Tree,
     counters: Counters,
@@ -148,15 +142,13 @@ pub struct LsmTree<
 impl<
         AF: AddressFamily,
         RK: RecordKey,
-        K: Key<AF, RK, KEY_SIZE>,
-        const KEY_SIZE: usize,
-    > LsmTree<AF, RK, K, KEY_SIZE>
+        K: Key<AF, RK>,
+        // const KEY_SIZE: usize,
+    > LsmTree<AF, RK, K>
 {
-    pub fn new(
-        persist_path: &Path,
-    ) -> FatalResult<LsmTree<AF, RK, K, KEY_SIZE>> {
+    pub fn new(persist_path: &Path) -> FatalResult<LsmTree<AF, RK, K>> {
         if let Ok(tree) = lsm_tree::Config::new(persist_path).open() {
-            Ok(LsmTree::<AF, RK, K, KEY_SIZE> {
+            Ok(LsmTree::<AF, RK, K> {
                 tree,
                 counters: Counters::default(),
                 _af: PhantomData,
@@ -205,7 +197,9 @@ impl<
                         kv.map(|kv| {
                             trace!("mui i persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            let key = K::header_mut(&mut bytes[..KEY_SIZE])?;
+                            let key = K::header_mut(
+                                &mut bytes[..const { key_size::<AF, RK>() }],
+                            )?;
                             // If mui is in the global withdrawn muis table,
                             // then rewrite the routestatus of the record
                             // to withdrawn.
@@ -245,7 +239,9 @@ impl<
                             // to withdrawn.
                             let mut bytes = [kv.0, kv.1].concat();
                             trace!("bytes {:?}", bytes);
-                            let key = K::header_mut(&mut bytes[..KEY_SIZE])?;
+                            let key = K::header_mut(
+                                &mut bytes[..const { key_size::<AF, RK>() }],
+                            )?;
                             trace!("key {:?}", key);
                             trace!("wm_bmin {:?}", withdrawn_muis_bmin);
                             if withdrawn_muis_bmin
@@ -280,8 +276,9 @@ impl<
                         r.map(|kv| {
                             trace!("n f persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            if let Ok(header) = K::header(&bytes[..KEY_SIZE])
-                            {
+                            if let Ok(header) = K::header(
+                                &bytes[..const { key_size::<AF, RK>() }],
+                            ) {
                                 // If mui is in the global withdrawn muis
                                 // table, then skip this record
                                 trace!(
@@ -341,7 +338,9 @@ impl<
                         kv.map(|kv| {
                             trace!("mui f persist kv pair found: {:?}", kv);
                             let bytes = [kv.0, kv.1].concat();
-                            if let Ok(key) = K::header(&bytes[..KEY_SIZE]) {
+                            if let Ok(key) = K::header(
+                                &bytes[..const { key_size::<AF, RK>() }],
+                            ) {
                                 // If mui is in the global withdrawn muis
                                 // table, then skip this record
                                 if key.status == RouteStatus::Withdrawn
@@ -547,7 +546,7 @@ impl<
     pub(crate) fn prefixes_iter(
         &self,
     ) -> impl Iterator<Item = Vec<FatalResult<Vec<u8>>>> + '_ {
-        PersistedPrefixIter::<AF, RK, K, KEY_SIZE> {
+        PersistedPrefixIter::<AF, RK, K> {
             tree_iter: self.tree.iter(None, None),
             cur_rec: None,
             _af: PhantomData,
@@ -560,10 +559,10 @@ impl<
 impl<
         AF: AddressFamily,
         RK: RecordKey,
-        K: Key<AF, RK, KEY_SIZE>,
+        K: Key<AF, RK>,
         // const PREFIX_SIZE: usize,
-        const KEY_SIZE: usize,
-    > std::fmt::Debug for LsmTree<AF, RK, K, KEY_SIZE>
+        // const KEY_SIZE: usize,
+    > std::fmt::Debug for LsmTree<AF, RK, K>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
@@ -576,8 +575,8 @@ impl<
 pub(crate) struct PersistedPrefixIter<
     AF: AddressFamily,
     RK: RecordKey,
-    K: Key<AF, RK, KEY_SIZE>,
-    const KEY_SIZE: usize,
+    K: Key<AF, RK>,
+    // const KEY_SIZE: usize,
 > {
     cur_rec: Option<Vec<FatalResult<Vec<u8>>>>,
     tree_iter:
@@ -590,9 +589,9 @@ pub(crate) struct PersistedPrefixIter<
 impl<
         AF: AddressFamily,
         RK: RecordKey,
-        K: Key<AF, RK, KEY_SIZE>,
-        const KEY_SIZE: usize,
-    > Iterator for PersistedPrefixIter<AF, RK, K, KEY_SIZE>
+        K: Key<AF, RK>,
+        // const KEY_SIZE: usize,
+    > Iterator for PersistedPrefixIter<AF, RK, K>
 {
     type Item = Vec<FatalResult<Vec<u8>>>;
     fn next(&mut self) -> Option<Self::Item> {

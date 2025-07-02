@@ -26,17 +26,16 @@ pub const STRIDE_SIZE: u8 = 4;
 pub const BIT_SPAN_SIZE: u8 = 32;
 
 /// IPv4/v6 uni/multicast RIB with values that are a map keyed on mui.
-pub type MuiStarCastRib<M, C> = StarCastRib<M, MuiMultiMap<M>, C, 18, 30>;
+pub type MuiStarCastRib<M, C> = StarCastRib<M, MuiMultiMap<M>, C>;
 
 /// IPv4/v6 uni/multicast RIB with values that are map keyed on (mui,
 /// path_id).
-pub type MuiPathIdStarCastRib<M, C> =
-    StarCastRib<M, PathIdMultiMap<M>, C, 23, 35>;
+pub type MuiPathIdStarCastRib<M, C> = StarCastRib<M, PathIdMultiMap<M>, C>;
 
 /// IPv4/v6 uni/multicast RIB with value that are keyed on a ap keyed on (mui,
 /// route distuingisher, path_id).
 pub type MuiRdPathIdStarCastRib<M, C> =
-    StarCastRib<M, RdPathIdMultiMap<M>, C, 31, 43>;
+    StarCastRib<M, RdPathIdMultiMap<M>, C>;
 
 /// A RIB that stores routes (and/or other data) for [`IPv4`,
 /// `IPv6`]/[`Unicast`, `Multicast`], i.e. AFI/SAFI types `{1,2}/{1,2}`.
@@ -78,11 +77,11 @@ pub struct StarCastRib<
     M: Meta,
     MT: MapType<M>,
     C: Config,
-    const KEY_SIZE_IPV4: usize,
-    const KEY_SIZE_IPV6: usize,
+    // const KEY_SIZE_IPV4: usize,
+    // const KEY_SIZE_IPV6: usize,
 > {
-    v4: StarCastAfRib<IPv4, M, MT, 9, 33, C, KEY_SIZE_IPV4>,
-    v6: StarCastAfRib<IPv6, M, MT, 33, 129, C, KEY_SIZE_IPV6>,
+    v4: StarCastAfRib<IPv4, M, MT, 9, 33, C>,
+    v6: StarCastAfRib<IPv6, M, MT, 33, 129, C>,
     config: C,
 }
 
@@ -91,9 +90,9 @@ impl<
         M: Meta,
         MT: MapType<M>,
         C: Config,
-        const KEY_SIZE_IPV4: usize,
-        const KEY_SIZE_IPV6: usize,
-    > StarCastRib<M, MT, C, KEY_SIZE_IPV4, KEY_SIZE_IPV6>
+        // const KEY_SIZE_IPV4: usize,
+        // const KEY_SIZE_IPV6: usize,
+    > StarCastRib<M, MT, C>
 {
     /// Create a new RIB with a default configuration.
     ///

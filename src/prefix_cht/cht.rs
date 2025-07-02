@@ -212,6 +212,10 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
     }
 }
 
+const fn root_size<AF: AddressFamily>() -> usize {
+    size_of::<PrefixId<AF>>()
+}
+
 //------------ PrefixSet ----------------------------------------------------
 
 // The PrefixSet is the ARRAY that holds all the child prefixes in a node.
@@ -409,7 +413,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                 mui_new: mui_is_new,
                 mui_count: count,
             },
-            mui_count.map(|m| m.0),
+            mui_count.map(|m| m.0.into()),
         ))
     }
     // This function is used by the upsert_prefix function above.
@@ -645,6 +649,12 @@ impl<K, M: Meta> From<Record<K, M>> for MultiMapValue<M> {
             route_status: value.status,
             meta: value.meta,
         }
+    }
+}
+
+impl<M: Meta> From<(Vec<u8>, MultiMapValue<M>)> for MultiMapValue<M> {
+    fn from(value: (Vec<u8>, MultiMapValue<M>)) -> Self {
+        value.1
     }
 }
 

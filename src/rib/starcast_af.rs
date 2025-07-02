@@ -24,6 +24,14 @@ use crate::AddressFamily;
 
 use super::config::Config;
 
+const fn n_root_size<AF: AddressFamily>() -> usize {
+    size_of::<PrefixId<AF>>()
+}
+
+const fn p_root_size<AF: AddressFamily>() -> usize {
+    (size_of::<PrefixId<AF>>() - 1) * 4
+}
+
 //------------ StarCastAfRib -------------------------------------------------
 
 // A Routing Information Base that consists of multiple different trees for
@@ -51,13 +59,13 @@ pub(crate) struct StarCastAfRib<
     // family. This is 18 for IPv4 (1 octet prefix length, 4 octets address
     // part prefix, 4 octets mui, 8 octets ltime, 1 octet RouteStatus). This
     // corresponds to the `LongKey` struct. It's 30 for IPv6.
-    const KEY_SIZE: usize,
+    // const KEY_SIZE: usize,
 > {
     pub config: C,
     pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
     pub(crate) prefix_cht: PrefixCht<AF, M, MT, P_ROOT_SIZE>,
     pub(crate) persist_tree:
-        Option<LsmTree<AF, MT::Key, LongKey<AF, MT::Key>, KEY_SIZE>>,
+        Option<LsmTree<AF, MT::Key, LongKey<AF, MT::Key>>>,
     pub counters: Counters,
 }
 
@@ -68,18 +76,16 @@ impl<
         const P_ROOT_SIZE: usize,
         const N_ROOT_SIZE: usize,
         C: Config,
-        const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+        // const KEY_SIZE: usize,
+    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
 {
     pub(crate) fn new(
         config: C,
     ) -> Result<
-        StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>,
+        StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>,
         Box<dyn std::error::Error>,
     > {
-        StarCastAfRib::<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>::init(
-            config,
-        )
+        StarCastAfRib::<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>::init(config)
     }
 
     fn init(config: C) -> Result<Self, Box<dyn std::error::Error>> {
@@ -556,9 +562,9 @@ impl<
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
-        const KEY_SIZE: usize,
+        // const KEY_SIZE: usize,
     > std::fmt::Display
-    for StarCastAfRib<IPv4, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    for StarCastAfRib<IPv4, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv4, {}>", std::any::type_name::<M>())
@@ -571,9 +577,9 @@ impl<
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
-        const KEY_SIZE: usize,
+        // const KEY_SIZE: usize,
     > std::fmt::Display
-    for StarCastAfRib<IPv6, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C, KEY_SIZE>
+    for StarCastAfRib<IPv6, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())
