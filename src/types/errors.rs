@@ -141,3 +141,9 @@ impl std::error::Error for FatalError {
         self.source()
     }
 }
+
+impl From<FatalError> for PrefixStoreError {
+    fn from(value: FatalError) -> Self {
+        Self::FatalError
+    }
+}

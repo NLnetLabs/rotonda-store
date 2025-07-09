@@ -4,7 +4,7 @@ use std::path::Path;
 use inetnum::addr::Prefix;
 use log::{info, trace};
 
-use crate::prefix_cht::map_type::{MapType, RecordKey};
+use crate::prefix_cht::map_type::{KeyExtensions, MapType};
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
 use crate::stats::{Counters, UpsertCounters, UpsertReport};
@@ -23,14 +23,6 @@ use crate::{IPv4, IPv6};
 use crate::AddressFamily;
 
 use super::config::Config;
-
-const fn n_root_size<AF: AddressFamily>() -> usize {
-    size_of::<PrefixId<AF>>()
-}
-
-const fn p_root_size<AF: AddressFamily>() -> usize {
-    (size_of::<PrefixId<AF>>() - 1) * 4
-}
 
 //------------ StarCastAfRib -------------------------------------------------
 
@@ -63,7 +55,7 @@ pub(crate) struct StarCastAfRib<
 > {
     pub config: C,
     pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
-    pub(crate) prefix_cht: PrefixCht<AF, M, MT, P_ROOT_SIZE>,
+    pub(crate) prefix_cht: PrefixCht<AF, M, MT, P_ROOT_SIZE, 1>,
     pub(crate) persist_tree:
         Option<LsmTree<AF, MT::Key, LongKey<AF, MT::Key>>>,
     pub counters: Counters,
@@ -114,7 +106,7 @@ impl<
             tree_bitmap: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
             persist_tree,
             counters: Counters::default(),
-            prefix_cht: PrefixCht::<AF, M, MT, P_ROOT_SIZE>::init(),
+            prefix_cht: PrefixCht::<AF, M, MT, P_ROOT_SIZE, 1>::init(),
         };
 
         Ok(store)
@@ -126,7 +118,7 @@ impl<
         record: Record<MT::Key, M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
-        trace!("try insertingf {:?}", prefix);
+        trace!("try inserting {prefix:?}");
         let guard = &epoch::pin();
         self.tree_bitmap
             .set_prefix_exists(prefix, record.multi_uniq_id.mui().into())

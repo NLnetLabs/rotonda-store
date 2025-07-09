@@ -7,7 +7,7 @@ use crate::prefix_record::Meta;
 use crate::types::prefix_record::Record;
 use crate::types::RouteStatus;
 
-use crate::prefix_cht::map_type::{MapType, Mui, RecordKey};
+use crate::prefix_cht::map_type::{KeyExtensions, MapType, Mui};
 
 use super::cht::MultiMapValue;
 
@@ -89,8 +89,15 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
         self.0.is_empty()
     }
 
-    fn get(&self, key: &Self::Key) -> Option<&MultiMapValue<M>> {
-        self.0.get(key)
+    fn get<'a, FK: KeyExtensions>(
+        &'a self,
+        key: FK,
+    ) -> Option<&'a MultiMapValue<M>>
+    where
+        Mui: From<FK>,
+    {
+        let key = key.into();
+        self.0.get(&key)
     }
 
     fn contains_key(&self, key: &Mui) -> bool {
@@ -125,13 +132,17 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
 
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    fn get_filtered_records(
+    fn get_filtered_records<FK: KeyExtensions>(
         &self,
-        mui: Option<Mui>,
+        mui: Option<FK>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<Mui, M>>> {
+    ) -> Option<Vec<Record<Mui, M>>>
+    where
+        Mui: From<FK>,
+    {
         if let Some(mui) = mui {
+            let mui = mui.into();
             self.get_filtered_record_for_mui(mui, include_withdrawn, bmin)
                 .map(|r| vec![r])
         } else {
@@ -181,7 +192,7 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
     ) -> Vec<Record<Mui, M>> {
-        self.get(&mui)
+        self.get(mui)
             .map(|r| {
                 // We'll return a cloned record: the record in the store
                 // remains untouched.

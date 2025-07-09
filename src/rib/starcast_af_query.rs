@@ -5,7 +5,7 @@ use zerocopy::TryFromBytes;
 
 use crate::errors::{FatalError, FatalResult};
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
-use crate::prefix_cht::map_type::{MapType, RecordKey};
+use crate::prefix_cht::map_type::{KeyExtensions, MapType};
 use crate::prefix_record::RecordSet;
 use crate::types::prefix_record::ZeroCopyRecord;
 use crate::types::Record;
@@ -206,7 +206,7 @@ impl<
             })
     }
 
-    pub(crate) fn match_prefix<K: RecordKey + Into<MT::Key>>(
+    pub(crate) fn match_prefix<K: KeyExtensions + Into<MT::Key>>(
         &'a self,
         search_pfx: PrefixId<AF>,
         options: &MatchOptions<K>,

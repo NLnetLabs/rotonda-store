@@ -1,6 +1,6 @@
 use zerocopy::FromBytes;
 
-use crate::AddressFamily;
+use crate::{AddressFamily, IPv4};
 
 //------------ PrefixId ------------------------------------------------------
 
@@ -68,6 +68,15 @@ impl<AF: AddressFamily> From<inetnum::addr::Prefix> for PrefixId<AF> {
                 }
             },
             len: value.len(),
+        }
+    }
+}
+
+impl From<(u32, u8)> for PrefixId<IPv4> {
+    fn from(value: (u32, u8)) -> Self {
+        Self {
+            bits: value.0.into(),
+            len: value.1,
         }
     }
 }

@@ -14,7 +14,7 @@ use crate::types::RouteStatus;
 
 use super::cht::MultiMapValue;
 
-pub trait RecordKey:
+pub trait KeyExtensions:
     Copy
     + Debug
     + TryFromBytes
@@ -28,11 +28,19 @@ pub trait RecordKey:
     + Eq
     + Ord
 {
+    const PREFIX_SIZE: usize;
+
     fn mui(&self) -> U32<NativeEndian>;
     fn path_id(&self) -> Option<[u8; 4]> {
         None
     }
     fn route_distuingisher(&self) -> Option<[u8; 8]> {
+        None
+    }
+    fn blob(&self) -> Option<&[u8]> {
+        None
+    }
+    fn mui_rd_path_id(&self) -> Option<MuiRdPathId> {
         None
     }
 }
@@ -59,7 +67,9 @@ pub trait RecordKey:
 )]
 pub struct Mui(U32<NativeEndian>);
 
-impl RecordKey for Mui {
+impl KeyExtensions for Mui {
+    const PREFIX_SIZE: usize = 4;
+
     fn mui(&self) -> U32<NativeEndian> {
         self.0
     }
@@ -84,7 +94,7 @@ impl From<U32<NativeEndian>> for Mui {
 }
 
 pub trait MapType<M: Meta>: Debug {
-    type Key: RecordKey;
+    type Key: KeyExtensions;
     type Inner;
     fn new() -> Self;
     fn inner(&self) -> &Self::Inner;
@@ -99,17 +109,24 @@ pub trait MapType<M: Meta>: Debug {
     fn contains_key(&self, key: &Self::Key) -> bool;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
-    fn get(&self, key: &Self::Key) -> Option<&MultiMapValue<M>>;
+    fn get<FK: KeyExtensions>(&self, key: FK) -> Option<&MultiMapValue<M>>
+    where
+        Self::Key: From<FK>;
 
     #[allow(clippy::type_complexity)]
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    fn get_filtered_records(
+    fn get_filtered_records<FK: KeyExtensions>(
         &self,
-        key: Option<Self::Key>,
+        key: Option<FK>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<Self::Key, M>>> {
+    ) -> Option<Vec<Record<Self::Key, M>>>
+    where
+        Self::Key: From<FK>,
+        // Record<Self::Key, M>: From<(FK, &'a MultiMapValue<M>)>,
+        // M: 'a,
+    {
         if let Some(mui) = key {
             Some(
                 self.get_record_for_key(mui, include_withdrawn)
@@ -154,21 +171,21 @@ pub trait MapType<M: Meta>: Debug {
         include_withdrawn: bool,
     ) -> Vec<Record<Self::Key, M>>;
 
-    fn get_record_for_key(
+    fn get_record_for_key<FK: KeyExtensions>(
         &self,
-        key: Self::Key,
+        key: FK,
         include_withdrawn: bool,
-    ) -> Option<Record<Self::Key, M>> {
-        self.get(&key)
-            .and_then(|r| -> Option<Record<Self::Key, M>> {
-                if include_withdrawn
-                    || r.route_status() == RouteStatus::Active
-                {
-                    Some(Record::<Self::Key, M>::from((key, r)))
-                } else {
-                    None
-                }
-            })
+    ) -> Option<Record<Self::Key, M>>
+    where
+        Self::Key: From<FK>,
+    {
+        self.get(key).and_then(|r| -> Option<Record<Self::Key, M>> {
+            if include_withdrawn || r.route_status() == RouteStatus::Active {
+                Some(Record::<Self::Key, M>::from((key.into(), r)))
+            } else {
+                None
+            }
+        })
     }
 
     fn get_records_for_mui_with_rewritten_status(
@@ -245,14 +262,11 @@ pub trait MapType<M: Meta>: Debug {
             .collect::<Vec<_>>()
     }
 
-    // fn _as_records(&self) -> Vec<Record<Mui, M>> {
-    //     // let record_map = self.acquire_read_guard();
-    //     // record_map
-    //     self.0
-    //         .iter()
-    //         .map(|r| Record::<Mui, M>::from((*r.0, r.1)))
-    //         .collect::<Vec<_>>()
-    // }
+    fn as_records(&self) -> Vec<Record<Self::Key, M>> {
+        self.iter()
+            .map(|r| Record::<Self::Key, M>::from((*r.0, r.1)))
+            .collect::<Vec<_>>()
+    }
 
     // Returns a vec of records whose keys are not in the supplied bitmap
     // index, and whose local Status is set to Active. Used to filter out
@@ -291,72 +305,6 @@ pub trait MapType<M: Meta>: Debug {
     }
 }
 
-//------------ MuiPathId -----------------------------------------------------
-//
-// Used by the MuiPathIdStarCastRib to store a (mui, path_id) tuple as the key
-// for the multimap.
-
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Immutable,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    TryFromBytes,
-    IntoBytes,
-    Unaligned,
-    KnownLayout,
-    Hash,
-)]
-pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
-
-impl RecordKey for MuiPathId {
-    fn mui(&self) -> U32<NativeEndian> {
-        self.0
-    }
-
-    fn path_id(&self) -> Option<[u8; 4]> {
-        if self.2 {
-            Some(self.1)
-        } else {
-            None
-        }
-    }
-}
-
-impl MuiPathId {
-    pub(crate) fn mui_range(
-        mui: Mui,
-    ) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
-        (
-            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
-            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4], false)),
-        )
-    }
-}
-
-impl Display for MuiPathId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.0, u32::from_be_bytes(self.1))
-    }
-}
-
-impl From<(u32, [u8; 4])> for MuiPathId {
-    fn from(value: (u32, [u8; 4])) -> Self {
-        Self(U32::<NativeEndian>::from(value.0), value.1, true)
-    }
-}
-
-impl From<Mui> for MuiPathId {
-    fn from(value: Mui) -> Self {
-        Self(value.mui(), [0; 4], false)
-    }
-}
-
 //------------ MuiRdPathId ---------------------------------------------------
 //
 // Used by the MuiRdPathIdStarCastrib to store a (nui, rd, path_id) tuple as
@@ -380,7 +328,9 @@ impl From<Mui> for MuiPathId {
 )]
 pub struct MuiRdPathId(U32<NativeEndian>, [u8; 8], [u8; 4], bool, bool);
 
-impl RecordKey for MuiRdPathId {
+impl KeyExtensions for MuiRdPathId {
+    // mui (4) + rd (8 + 1) + path_id (4 + 1)
+    const PREFIX_SIZE: usize = 18;
     fn mui(&self) -> U32<NativeEndian> {
         self.0
     }
@@ -399,6 +349,10 @@ impl RecordKey for MuiRdPathId {
         } else {
             None
         }
+    }
+
+    fn mui_rd_path_id(&self) -> Option<MuiRdPathId> {
+        Some(*self)
     }
 }
 
@@ -441,6 +395,230 @@ impl From<(u32, [u8; 8], [u8; 4])> for MuiRdPathId {
             value.2,
             true,
             true,
+        )
+    }
+}
+
+impl<const BLOB_SIZE: usize> From<&MuiRdPathIdBlob<BLOB_SIZE>>
+    for MuiRdPathId
+{
+    fn from(value: &MuiRdPathIdBlob<BLOB_SIZE>) -> Self {
+        #[allow(clippy::unwrap_used)]
+        value.mui_rd_path_id().unwrap()
+    }
+}
+
+//------------ MuiPathId -----------------------------------------------------
+//
+// Used by the MuiPathIdStarCastRib to store a (mui, path_id) tuple as the key
+// for the multimap.
+
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Immutable,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    TryFromBytes,
+    IntoBytes,
+    Unaligned,
+    KnownLayout,
+    Hash,
+)]
+pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
+
+impl KeyExtensions for MuiPathId {
+    const PREFIX_SIZE: usize = 9;
+    fn mui(&self) -> U32<NativeEndian> {
+        self.0
+    }
+
+    fn path_id(&self) -> Option<[u8; 4]> {
+        if self.2 {
+            Some(self.1)
+        } else {
+            None
+        }
+    }
+}
+
+impl MuiPathId {
+    pub(crate) fn mui_range(
+        mui: Mui,
+    ) -> (Bound<MuiPathId>, Bound<MuiPathId>) {
+        (
+            std::ops::Bound::Included(MuiPathId(mui.0, [0_u8; 4], false)),
+            std::ops::Bound::Excluded(MuiPathId(mui.0 + 1, [0_u8; 4], false)),
+        )
+    }
+}
+
+impl Display for MuiPathId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.0, u32::from_be_bytes(self.1))
+    }
+}
+
+impl From<(u32, [u8; 4])> for MuiPathId {
+    fn from(value: (u32, [u8; 4])) -> Self {
+        Self(U32::<NativeEndian>::from(value.0), value.1, true)
+    }
+}
+
+impl From<Mui> for MuiPathId {
+    fn from(value: Mui) -> Self {
+        Self(value.mui(), [0; 4], false)
+    }
+}
+
+//------------ MuiRdPathIdBlob -----------------------------------------------
+//
+// Used by the BlobRib to store a (nui, rd, path_id) tuple as
+// the key.
+
+#[repr(C)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    Immutable,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    TryFromBytes,
+    IntoBytes,
+    Unaligned,
+    KnownLayout,
+    Hash,
+)]
+pub struct MuiRdPathIdBlob<const BLOB_SIZE: usize>(
+    U32<NativeEndian>, // 0 mui (0 ..= 3)
+    [u8; 8],           // 1 rd (4 ..= 11)
+    [u8; 4],           // 2 path_id (12 ..= 15)
+    bool,              // 3 optional rd 16)
+    bool,              // 4 optional path_id (16)
+    bool,              // 5 optional blob (16)
+    [u8; BLOB_SIZE],   // 6 nlri blob (17 ..= 17 + BLOB_SIZE)
+);
+
+impl<const BLOB_SIZE: usize> KeyExtensions for MuiRdPathIdBlob<BLOB_SIZE> {
+    // mui (4) + rd (8 + 1) + path_id (4 + 1)
+    const PREFIX_SIZE: usize = 18 + BLOB_SIZE;
+    fn mui(&self) -> U32<NativeEndian> {
+        self.0
+    }
+
+    fn route_distuingisher(&self) -> Option<[u8; 8]> {
+        if self.3 {
+            Some(self.1)
+        } else {
+            None
+        }
+    }
+
+    fn path_id(&self) -> Option<[u8; 4]> {
+        if self.4 {
+            Some(self.2)
+        } else {
+            None
+        }
+    }
+
+    fn blob(&self) -> Option<&[u8]> {
+        if self.5 {
+            Some(&self.6)
+        } else {
+            None
+        }
+    }
+
+    fn mui_rd_path_id(&self) -> Option<MuiRdPathId> {
+        Some(MuiRdPathId(self.0, self.1, self.2, self.3, self.4))
+    }
+}
+
+impl<const BLOB_SIZE: usize> MuiRdPathIdBlob<BLOB_SIZE> {
+    pub(crate) fn mui_range(
+        mui: Mui,
+    ) -> (
+        Bound<MuiRdPathIdBlob<BLOB_SIZE>>,
+        Bound<MuiRdPathIdBlob<BLOB_SIZE>>,
+    ) {
+        (
+            std::ops::Bound::Included(MuiRdPathIdBlob(
+                mui.0,
+                [0_u8; 8],
+                [0_u8; 4],
+                false,
+                false,
+                false,
+                [0; BLOB_SIZE],
+            )),
+            std::ops::Bound::Excluded(MuiRdPathIdBlob(
+                mui.0 + 1,
+                [0_u8; 8],
+                [0_u8; 4],
+                false,
+                false,
+                false,
+                [0; BLOB_SIZE],
+            )),
+        )
+    }
+}
+
+impl<const BLOB_SIZE: usize> Display for MuiRdPathIdBlob<BLOB_SIZE> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}:{}",
+            self.0,
+            u64::from_be_bytes(self.1),
+            u32::from_be_bytes(self.2)
+        )
+    }
+}
+
+impl<const BLOB_SIZE: usize> From<(u32, [u8; 8], [u8; 4], [u8; BLOB_SIZE])>
+    for MuiRdPathIdBlob<BLOB_SIZE>
+{
+    fn from(value: (u32, [u8; 8], [u8; 4], [u8; BLOB_SIZE])) -> Self {
+        Self(
+            U32::<NativeEndian>::from(value.0),
+            value.1,
+            value.2,
+            true,
+            true,
+            true,
+            value.3,
+        )
+    }
+}
+
+impl<const BLOB_SIZE: usize> From<Mui> for MuiRdPathIdBlob<BLOB_SIZE> {
+    fn from(value: Mui) -> Self {
+        Self(value.0, [0; 8], [0; 4], false, false, false, [0; BLOB_SIZE])
+    }
+}
+
+impl<const BLOB_SIZE: usize, K: KeyExtensions> From<(K, &[u8])>
+    for MuiRdPathIdBlob<BLOB_SIZE>
+{
+    #[allow(clippy::unwrap_used)]
+    fn from(value: (K, &[u8])) -> Self {
+        Self(
+            value.0.mui(),
+            value.0.route_distuingisher().unwrap_or([0; 8]),
+            value.0.path_id().unwrap_or([0; 4]),
+            value.0.route_distuingisher().is_some(),
+            value.0.path_id().is_some(),
+            true,
+            *value.1.first_chunk::<BLOB_SIZE>().unwrap(),
         )
     }
 }

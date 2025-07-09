@@ -1,4 +1,4 @@
-//------------ RdPatIdhMultiMap ----------------------------------------------
+//------------ RdPatIdhBlobMap -----------------------------------------------
 //
 // This is the collection of records or a given prefix, keyed on the multi
 // unique identifier ("mui"). Note that the record contains more than just the
@@ -15,15 +15,19 @@ use crate::{
 
 use super::{
     cht::MultiMapValue,
-    map_type::{KeyExtensions, MapType, Mui, MuiRdPathId},
+    map_type::{KeyExtensions, MapType, Mui, MuiRdPathIdBlob},
 };
 
 #[derive(Debug)]
-pub struct RdPathIdMultiMap<M: Meta>(BTreeMap<MuiRdPathId, MultiMapValue<M>>);
+pub(crate) struct RdPathIdBlobMap<M: Meta, const BLOB_SIZE: usize>(
+    BTreeMap<MuiRdPathIdBlob<BLOB_SIZE>, MultiMapValue<M>>,
+);
 
-impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
-    type Key = MuiRdPathId;
-    type Inner = BTreeMap<MuiRdPathId, MultiMapValue<M>>;
+impl<M: Meta, const BLOB_SIZE: usize> MapType<M>
+    for RdPathIdBlobMap<M, BLOB_SIZE>
+{
+    type Key = MuiRdPathIdBlob<BLOB_SIZE>;
+    type Inner = BTreeMap<MuiRdPathIdBlob<BLOB_SIZE>, MultiMapValue<M>>;
 
     fn new() -> Self {
         Self(BTreeMap::new())
@@ -37,7 +41,7 @@ impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
 
     fn iter<'a>(
         &'a self,
-    ) -> impl Iterator<Item = (&'a MuiRdPathId, &'a MultiMapValue<M>)>
+    ) -> impl Iterator<Item = (&'a MuiRdPathIdBlob<BLOB_SIZE>, &'a MultiMapValue<M>)>
     where
         Self::Inner: 'a,
         M: 'a,
@@ -53,13 +57,16 @@ impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
         self.0.is_empty()
     }
 
-    fn contains_key(&self, key: &MuiRdPathId) -> bool {
+    fn contains_key(&self, key: &MuiRdPathIdBlob<BLOB_SIZE>) -> bool {
         self.0.contains_key(key)
     }
 
-    fn get<FK: KeyExtensions>(&self, key: FK) -> Option<&MultiMapValue<M>>
+    fn get<'a, FK: KeyExtensions>(
+        &'a self,
+        key: FK,
+    ) -> Option<&'a MultiMapValue<M>>
     where
-        MuiRdPathId: From<FK>,
+        MuiRdPathIdBlob<BLOB_SIZE>: From<FK>,
     {
         let key = key.into();
         self.0.get(&key)
@@ -67,7 +74,7 @@ impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
 
     fn insert(
         &mut self,
-        key: MuiRdPathId,
+        key: MuiRdPathIdBlob<BLOB_SIZE>,
         value: MultiMapValue<M>,
     ) -> Option<MultiMapValue<M>> {
         self.0.insert(key, value)
@@ -97,9 +104,9 @@ impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
         mui: Mui,
         bmin: &RoaringBitmap,
         rewrite_status: RouteStatus,
-    ) -> Vec<Record<MuiRdPathId, M>> {
+    ) -> Vec<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>> {
         let mut res = vec![];
-        let range = MuiRdPathId::mui_range(mui);
+        let range = MuiRdPathIdBlob::mui_range(mui);
         for r in self.0.range(range) {
             // We'll return a cloned record: the record in the store remains
             // untouched.
@@ -107,7 +114,9 @@ impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
             if bmin.contains(mui.mui().into()) {
                 rec.set_route_status(rewrite_status);
             }
-            res.push(Record::<MuiRdPathId, M>::from((*r.0, &rec)));
+            res.push(Record::<MuiRdPathIdBlob<BLOB_SIZE>, M>::from((
+                *r.0, &rec,
+            )));
         }
 
         res

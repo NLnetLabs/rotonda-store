@@ -25,16 +25,18 @@ use crate::{
     },
 };
 
-use crate::prefix_cht::map_type::{MapType, RecordKey};
+use crate::prefix_cht::map_type::{KeyExtensions, MapType};
+
+use super::iterators_cp::PrefixIter;
 
 // ----------- Prefix related structs ---------------------------------------
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct PathSelections<RK: RecordKey> {
+pub struct PathSelections<RK: KeyExtensions> {
     pub(crate) path_selection_muis: (Option<RK>, Option<RK>),
 }
 
-impl<RK: RecordKey> PathSelections<RK> {
+impl<RK: KeyExtensions> PathSelections<RK> {
     pub fn best(&self) -> Option<RK> {
         self.path_selection_muis.0
     }
@@ -69,7 +71,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
         // let this_level = bits_for_len(pfx_id.get_len(), level);
         let next_level = nodeset_size(pfx_id.len(), level + 1);
 
-        trace!("next level {}", next_level);
+        trace!("next level {next_level}");
         let next_bucket: PrefixSet<AF, M, MT> = if next_level > 0 {
             debug!(
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
@@ -212,10 +214,6 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
     }
 }
 
-const fn root_size<AF: AddressFamily>() -> usize {
-    size_of::<PrefixId<AF>>()
-}
-
 //------------ PrefixSet ----------------------------------------------------
 
 // The PrefixSet is the ARRAY that holds all the child prefixes in a node.
@@ -252,28 +250,71 @@ pub(crate) struct PrefixCht<
     M: Meta,
     MT: MapType<M>,
     const ROOT_SIZE: usize,
+    const STRIDES_PER_BUCKET: usize,
 > {
-    bush: Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, 1>,
+    bush: Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
     counters: Counters,
 }
 
-impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
-    PrefixCht<AF, M, MT, ROOT_SIZE>
+impl<
+        AF: AddressFamily,
+        M: Meta,
+        MT: MapType<M>,
+        const ROOT_SIZE: usize,
+        const STRIDES_PER_BUCKET: usize,
+    > PrefixCht<AF, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET>
 {
     pub(crate) fn init() -> Self {
         Self {
-            bush: <Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, 1>>::init(),
+            bush: <Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>>::init(),
             counters: Counters::default(),
         }
     }
 
-    pub(crate) fn get_records_for_prefix(
+    pub(crate) fn contains_prefix(&self, prefix: PrefixId<AF>) -> bool {
+        let mut prefix_set = self.bush.root_for_len(prefix.len());
+        let mut level: u8 = 0;
+        let backoff = Backoff::new();
+
+        loop {
+            let index = Self::hash_prefix_id(prefix, level);
+
+            if let Some(stored_prefix) = prefix_set.0.get(index) {
+                if prefix == stored_prefix.get_prefix_id() {
+                    if log_enabled!(log::Level::Trace) {
+                        trace!(
+                            "found requested prefix {} ({:?})",
+                            Prefix::from(prefix),
+                            prefix
+                        );
+                    }
+
+                    return true;
+                };
+
+                // Advance to the next level.
+                prefix_set = &stored_prefix.next_bucket;
+                level += 1;
+                backoff.spin();
+                continue;
+            }
+
+            trace!("no prefix found for {prefix:?}");
+            return false;
+        }
+    }
+
+    pub(crate) fn get_records_for_prefix<FK: KeyExtensions + Copy>(
         &self,
         prefix: PrefixId<AF>,
-        mui: Option<MT::Key>,
+        mui: Option<FK>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
-    ) -> Option<Vec<Record<MT::Key, M>>> {
+    ) -> Option<Vec<Record<MT::Key, M>>>
+    where
+        MT::Key: From<FK>,
+        // Record<MT::Key, M>: From<(FK, &MultiMapValue<M>)>,
+    {
         let mut prefix_set = self.bush.root_for_len(prefix.len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
@@ -312,7 +353,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                 continue;
             }
 
-            trace!("no prefix found for {:?}", prefix);
+            trace!("no prefix found for {prefix:?}");
             return None;
         }
     }
@@ -361,6 +402,8 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                         self.counters
                             .inc_prefixes_count(stored_prefix.prefix.len());
                     }
+
+                    debug!("created new prefix record");
                     (mui_count, retry_count)
                 }
                 // There already is a StoredPrefix with a record at this
@@ -413,7 +456,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                 mui_new: mui_is_new,
                 mui_count: count,
             },
-            mui_count.map(|m| m.0.into()),
+            mui_count.map(|m| m.0),
         ))
     }
     // This function is used by the upsert_prefix function above.
@@ -433,7 +476,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
         let mut prefix_set = self.bush.root_for_len(search_prefix_id.len());
         let mut level: u8 = 0;
 
-        trace!("root prefix_set {:?}", prefix_set);
+        trace!("root prefix_set {prefix_set:?}");
         loop {
             // HASHING FUNCTION
             let index = Self::hash_prefix_id(search_prefix_id, level);
@@ -450,12 +493,10 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                     // StoredPrefix, so the caller can attach a new one.
                     trace!(
                         "no record. returning last found record in level
-                        {}, with index {}.",
-                        level,
-                        index
+                        {level}, with index {index}."
                     );
                     let index = Self::hash_prefix_id(search_prefix_id, level);
-                    trace!("calculate next index {}", index);
+                    trace!("calculate next index {index}");
                     let var_name = (
                         prefix_set
                             .0
@@ -549,7 +590,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
                 continue;
             }
 
-            trace!("no prefix found for {:?}", id);
+            trace!("no prefix found for {id:?}");
             parents[level as usize] = Some((prefix_set, index));
             return (None, Some((id, level, prefix_set, parents, index)));
         }
@@ -561,6 +602,21 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>, const ROOT_SIZE: usize>
 
     pub(crate) fn routes_count(&self) -> usize {
         self.counters.nodes_count()
+    }
+
+    pub fn iter<'a>(
+        &'a self,
+        bmin: Option<&'a RoaringBitmap>,
+    ) -> PrefixIter<'a, AF, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET> {
+        PrefixIter {
+            prefixes: &self.bush,
+            bmin,
+            cur_len: 0,
+            cur_bucket: self.bush.root_for_len(0),
+            cur_level: 0,
+            parents: [None; 8],
+            cursor: 0,
+        }
     }
 
     fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
@@ -661,5 +717,5 @@ impl<M: Meta> From<(Vec<u8>, MultiMapValue<M>)> for MultiMapValue<M> {
 #[test]
 fn test_hashing_prefix_id_valid_range() {
     use super::mui_multi_map::MuiMultiMap;
-    PrefixCht::<IPv6, NoMeta, MuiMultiMap<NoMeta>, 129>::test_valid_range()
+    PrefixCht::<IPv6, NoMeta, MuiMultiMap<NoMeta>, 129, 1>::test_valid_range()
 }

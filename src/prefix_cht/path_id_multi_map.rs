@@ -7,7 +7,7 @@ use crate::types::prefix_record::Record;
 use crate::types::RouteStatus;
 
 use super::cht::MultiMapValue;
-use super::map_type::{MapType, Mui, MuiPathId, RecordKey};
+use super::map_type::{KeyExtensions, MapType, Mui, MuiPathId};
 
 //------------ PatIdhMultiMap ------------------------------------------------
 //
@@ -52,8 +52,12 @@ impl<M: Meta> MapType<M> for PathIdMultiMap<M> {
         self.0.is_empty()
     }
 
-    fn get(&self, key: &Self::Key) -> Option<&MultiMapValue<M>> {
-        self.0.get(key)
+    fn get<FK: KeyExtensions>(&self, key: FK) -> Option<&MultiMapValue<M>>
+    where
+        MuiPathId: From<FK>,
+    {
+        let key = key.into();
+        self.0.get(&key)
     }
 
     fn contains_key(&self, key: &MuiPathId) -> bool {

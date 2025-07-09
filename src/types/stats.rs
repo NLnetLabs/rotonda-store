@@ -139,6 +139,16 @@ impl Counters {
             .collect::<Vec<_>>()
     }
 
+    pub fn prefixes_count_for_len(&self, len: u8) -> usize {
+        *self
+            .prefixes
+            .iter()
+            .map(|pc| pc.load(Ordering::Relaxed))
+            .collect::<Vec<_>>()
+            .get(len as usize)
+            .unwrap_or(&0)
+    }
+
     pub fn inc_prefixes_count(&self, len: u8) {
         if let Some(p) = self.prefixes.get(len as usize) {
             p.fetch_add(1, Ordering::Relaxed);

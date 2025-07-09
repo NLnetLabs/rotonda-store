@@ -3,7 +3,10 @@ use std::fmt::Debug;
 
 use crate::{
     errors::FatalError,
-    prefix_cht::{cht::MultiMapValue, map_type::RecordKey},
+    prefix_cht::{
+        cht::MultiMapValue,
+        map_type::{KeyExtensions, MuiRdPathId, MuiRdPathIdBlob},
+    },
     types::AddressFamily,
 };
 use inetnum::addr::Prefix;
@@ -73,6 +76,45 @@ impl<K: Copy + Clone + Debug + Eq, M: Meta> From<(K, &MultiMapValue<M>)>
         }
     }
 }
+// impl<K: Copy + Clone + Debug + Eq, L: KeyExtensions, M: Meta>
+//     From<(K, &Record<L, M>)> for Record<K, M>
+// {
+//     fn from(value: (K, &Record<L, M>)) -> Self {
+//         Self {
+//             multi_uniq_id: value.0,
+//             ltime: value.1.ltime,
+//             status: value.1.status,
+//             meta: value.1.meta.clone(),
+//         }
+//     }
+// }
+impl<K: KeyExtensions, L: KeyExtensions, M: Meta> From<(K, &Record<L, M>)>
+    for Record<K, M>
+{
+    fn from(value: (K, &Record<L, M>)) -> Self {
+        Self {
+            multi_uniq_id: value.0,
+            ltime: value.1.ltime,
+            status: value.1.status,
+            meta: value.1.meta.clone(),
+        }
+    }
+}
+
+impl<const BLOB_SIZE: usize, M: Meta>
+    From<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>> for Record<MuiRdPathId, M>
+{
+    fn from(value: Record<MuiRdPathIdBlob<BLOB_SIZE>, M>) -> Self {
+        let multi_uniq_id = <MuiRdPathId>::from(&value.multi_uniq_id);
+
+        Self {
+            multi_uniq_id,
+            ltime: value.ltime,
+            status: value.status,
+            meta: value.meta,
+        }
+    }
+}
 
 impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
     for Record<K, M>
@@ -88,7 +130,7 @@ impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
 
 #[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
 #[repr(C, packed)]
-pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: RecordKey> {
+pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: KeyExtensions> {
     pub prefix: PrefixId<AF>,
     pub multi_uniq_id: K,
     pub ltime: u64,
@@ -96,14 +138,14 @@ pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: RecordKey> {
     pub meta: [u8],
 }
 
-impl<AF: AddressFamily, K: RecordKey> ZeroCopyRecord<AF, K> {
+impl<AF: AddressFamily, K: KeyExtensions> ZeroCopyRecord<AF, K> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
         Self::try_ref_from_bytes(b).map_err(|_| FatalError)
     }
 }
 
-impl<AF: AddressFamily + std::fmt::Display, K: RecordKey> std::fmt::Display
-    for ZeroCopyRecord<AF, K>
+impl<AF: AddressFamily + std::fmt::Display, K: KeyExtensions>
+    std::fmt::Display for ZeroCopyRecord<AF, K>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mui = self.multi_uniq_id;
