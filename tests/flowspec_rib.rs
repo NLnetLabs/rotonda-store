@@ -14,7 +14,7 @@ mod tests {
     use rotonda_store::{
         prefix_cht::map_type::{KeyExtensions, MuiRdPathId},
         prefix_record::{Record, RouteStatus},
-        rib::{config::MemoryOnlyConfig, FlowSpecRib},
+        rib::{config::MemoryOnlyConfig, flowspec::BlobRib, FlowSpecRib},
         test_types::NoMeta,
     };
 
@@ -40,12 +40,13 @@ mod tests {
         // )
         // .unwrap();
         //
-        let a_fs = [0x01; 4096];
-        let b_fs = [0x02; 4096];
-        let c_fs = [0x03; 4096];
+        //
+        let a_fs = [0x01; 7];
+        let b_fs = [0x02; 7];
+        let c_fs = [0x03; 7];
         let path_id = 0_u32;
 
-        let rib = FlowSpecRib::<NoMeta, MemoryOnlyConfig>::try_default()?;
+        let rib = BlobRib::<NoMeta, 7, MemoryOnlyConfig>::try_default()?;
 
         let a_key = MuiRdPathId::from((0_u32, [0; 8], path_id.to_be_bytes()));
 
@@ -73,14 +74,23 @@ mod tests {
         )?;
         println!("inserted c");
 
-        let res = rib.get(&a_fs, None, false)?;
-        // println!("result1: {:#?}", &res);
-        assert_eq!(res[0].multi_uniq_id.blob(), Some(a_fs.as_ref()));
-        assert_eq!(res.len(), 1);
-        assert_eq!(rib.prefixes_count_for_len(32)?.total(), 3);
+        for fs in [&a_fs, &b_fs, &c_fs] {
+            let res = rib.get(fs, None, false)?;
+            // println!("result1: {:#?}", &res);
+            assert_eq!(res[0].multi_uniq_id.blob(), Some(fs.as_ref()));
+            assert_eq!(res.len(), 1);
+        }
 
         let guard = rotonda_store::epoch::pin();
-        assert_eq!(rib.prefixes_iter(&guard).count(), 3);
+
+        let res = rib
+            .nlri_iter(&guard)
+            .filter(|r| r.1.iter().any(|r| r.multi_uniq_id.mui() == 0))
+            .collect::<Vec<_>>();
+        assert_eq!(res.len(), 2);
+
+        let all_recs = rib.records_iter(&guard).collect::<Vec<_>>();
+        assert_eq!(all_recs.len(), 3);
 
         Ok(())
     }
