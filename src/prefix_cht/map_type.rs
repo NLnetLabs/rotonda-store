@@ -28,7 +28,7 @@ pub trait KeyExtensions:
     + Eq
     + Ord
 {
-    const PREFIX_SIZE: usize;
+    // const PREFIX_SIZE: usize;
 
     fn mui(&self) -> U32<NativeEndian>;
     fn path_id(&self) -> Option<[u8; 4]> {
@@ -40,9 +40,7 @@ pub trait KeyExtensions:
     fn blob(&self) -> Option<&[u8]> {
         None
     }
-    fn mui_rd_path_id(&self) -> Option<MuiRdPathId> {
-        None
-    }
+    fn as_mui_rd_path_id(&self) -> MuiRdPathId;
 }
 
 //------------ Mui -----------------------------------------------------------
@@ -68,10 +66,14 @@ pub trait KeyExtensions:
 pub struct Mui(U32<NativeEndian>);
 
 impl KeyExtensions for Mui {
-    const PREFIX_SIZE: usize = 4;
+    // const PREFIX_SIZE: usize = 4;
 
     fn mui(&self) -> U32<NativeEndian> {
         self.0
+    }
+
+    fn as_mui_rd_path_id(&self) -> MuiRdPathId {
+        MuiRdPathId(self.0, [0; 8], [0; 4], false, false)
     }
 }
 
@@ -330,7 +332,7 @@ pub struct MuiRdPathId(U32<NativeEndian>, [u8; 8], [u8; 4], bool, bool);
 
 impl KeyExtensions for MuiRdPathId {
     // mui (4) + rd (8 + 1) + path_id (4 + 1)
-    const PREFIX_SIZE: usize = 18;
+    // const PREFIX_SIZE: usize = 18;
     fn mui(&self) -> U32<NativeEndian> {
         self.0
     }
@@ -351,8 +353,8 @@ impl KeyExtensions for MuiRdPathId {
         }
     }
 
-    fn mui_rd_path_id(&self) -> Option<MuiRdPathId> {
-        Some(*self)
+    fn as_mui_rd_path_id(&self) -> MuiRdPathId {
+        *self
     }
 }
 
@@ -404,7 +406,7 @@ impl<const BLOB_SIZE: usize> From<&MuiRdPathIdBlob<BLOB_SIZE>>
 {
     fn from(value: &MuiRdPathIdBlob<BLOB_SIZE>) -> Self {
         #[allow(clippy::unwrap_used)]
-        value.mui_rd_path_id().unwrap()
+        value.as_mui_rd_path_id()
     }
 }
 
@@ -432,7 +434,7 @@ impl<const BLOB_SIZE: usize> From<&MuiRdPathIdBlob<BLOB_SIZE>>
 pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
 
 impl KeyExtensions for MuiPathId {
-    const PREFIX_SIZE: usize = 9;
+    // const PREFIX_SIZE: usize = 9;
     fn mui(&self) -> U32<NativeEndian> {
         self.0
     }
@@ -443,6 +445,10 @@ impl KeyExtensions for MuiPathId {
         } else {
             None
         }
+    }
+
+    fn as_mui_rd_path_id(&self) -> MuiRdPathId {
+        MuiRdPathId(self.0, [0; 8], self.1, self.2, false)
     }
 }
 
@@ -508,7 +514,7 @@ pub struct MuiRdPathIdBlob<const BLOB_SIZE: usize>(
 
 impl<const BLOB_SIZE: usize> KeyExtensions for MuiRdPathIdBlob<BLOB_SIZE> {
     // mui (4) + rd (8 + 1) + path_id (4 + 1)
-    const PREFIX_SIZE: usize = 18 + BLOB_SIZE;
+    // const PREFIX_SIZE: usize = 18 + BLOB_SIZE;
     fn mui(&self) -> U32<NativeEndian> {
         self.0
     }
@@ -537,8 +543,8 @@ impl<const BLOB_SIZE: usize> KeyExtensions for MuiRdPathIdBlob<BLOB_SIZE> {
         }
     }
 
-    fn mui_rd_path_id(&self) -> Option<MuiRdPathId> {
-        Some(MuiRdPathId(self.0, self.1, self.2, self.3, self.4))
+    fn as_mui_rd_path_id(&self) -> MuiRdPathId {
+        MuiRdPathId(self.0, self.1, self.2, self.3, self.4)
     }
 }
 

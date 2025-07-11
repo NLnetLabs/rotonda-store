@@ -114,7 +114,7 @@ impl Debug for CreatedNodes {
 // This is the struct that's part of the data structure of each tree type.
 
 #[derive(Debug)]
-pub(crate) struct Counters {
+pub struct Counters {
     // number of created nodes in the TreeBitMap. Set to 0 for other trees.
     nodes: AtomicUsize,
     // number of unique prefixes in the tree

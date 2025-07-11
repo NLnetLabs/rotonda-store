@@ -23,24 +23,6 @@ mod tests {
     {
         crate::common::init();
 
-        // let guard = &epoch::pin();
-        // let a_pfx = Prefix::new_relaxed(
-        //     ("2010:dead:beef::").parse::<std::net::Ipv6Addr>()?.into(),
-        //     48,
-        // )
-        // .unwrap();
-        // let b_pfx = Prefix::new_relaxed(
-        //     ("2011:dead:beef::").parse::<std::net::Ipv6Addr>()?.into(),
-        //     48,
-        // )
-        // .unwrap();
-        // let c_pfx = Prefix::new_relaxed(
-        //     ("2009:dead:beef::").parse::<std::net::Ipv6Addr>()?.into(),
-        //     48,
-        // )
-        // .unwrap();
-        //
-        //
         let a_fs = [0x01; 7];
         let b_fs = [0x02; 7];
         let c_fs = [0x03; 7];

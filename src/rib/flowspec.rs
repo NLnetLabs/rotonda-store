@@ -1,6 +1,9 @@
 //------------ StoredBlob ----------------------------------------------------
 
-use std::{hash::Hash, io, path::Path, sync::atomic::Ordering};
+use std::{
+    array::IntoIter, hash::Hash, io, iter::Chain, path::Path, slice::Iter,
+    sync::atomic::Ordering,
+};
 
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use hash32::{FnvHasher, Hasher as _};
@@ -26,7 +29,7 @@ use crate::{
     IPv4, LsmTree,
 };
 
-type BlobCht<M, MT> = PrefixCht<IPv4, M, MT, 8, 32>;
+type BlobCht<M, MT> = PrefixCht<IPv4, M, MT, 9, 33>;
 
 type BlobLsmTree<M, const BLOB_SIZE: usize> = LsmTree<
     IPv4,
@@ -42,47 +45,26 @@ pub struct BlobRib<M: Meta, const BLOB_SIZE: usize, C: Config> {
     pub counters: Counters,
 }
 
-pub struct BlobRecord<const BLOB_SIZE: usize, M>(
-    Record<MuiRdPathIdBlob<BLOB_SIZE>, M>,
-);
-
-impl<const BLOB_SIZE: usize, M: Meta> BlobRecord<BLOB_SIZE, M> {
-    pub fn new<K: KeyExtensions>(
-        key: K,
-        blob: &[u8],
-        ltime: u64,
-        status: RouteStatus,
-        meta: M,
-    ) -> Self {
-        let key = MuiRdPathIdBlob::<BLOB_SIZE>::from((key, blob));
-        Self(Record::new(key, ltime, status, meta))
-    }
-}
-
 impl<const BLOB_SIZE: usize, M: Meta>
-    From<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>> for BlobRecord<BLOB_SIZE, M>
+    From<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>>
+    for ([u8; BLOB_SIZE], Record<MuiRdPathId, M>)
 {
     fn from(value: Record<MuiRdPathIdBlob<BLOB_SIZE>, M>) -> Self {
-        // let record = Record {
-        //     multi_uniq_id: value.multi_uniq_id,
-        //     ltime: value.ltime,
-        //     status: value.status,
-        //     meta: value.meta,
-        // };
-        BlobRecord(value)
-    }
-}
-
-impl<const BLOB_SIZE: usize, M: Meta> From<BlobRecord<BLOB_SIZE, M>>
-    for Record<MuiRdPathIdBlob<BLOB_SIZE>, M>
-{
-    fn from(value: BlobRecord<BLOB_SIZE, M>) -> Self {
-        Record {
-            multi_uniq_id: value.0.multi_uniq_id,
-            ltime: value.0.ltime,
-            status: value.0.status,
-            meta: value.0.meta,
-        }
+        (
+            #[allow(clippy::unwrap_used)]
+            *value
+                .multi_uniq_id
+                .blob()
+                .unwrap()
+                .first_chunk::<BLOB_SIZE>()
+                .unwrap(),
+            Record::new(
+                MuiRdPathId::from(&value.multi_uniq_id),
+                value.ltime,
+                value.status,
+                value.meta,
+            ),
+        )
     }
 }
 
@@ -159,13 +141,12 @@ impl<
 
     pub fn insert(
         &self,
-        // prefix: PrefixId<IPv4>,
         key: &[u8; BLOB_SIZE],
         record: Record<impl KeyExtensions, M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let prefix = prefix_hash(key);
-        trace!("try inserting {:?}", prefix);
+        trace!("try inserting {prefix:?}",);
         let retry_count = 0;
         let guard = &epoch::pin();
         self.upsert_prefix(key, record, update_path_selections, guard)
@@ -183,7 +164,6 @@ impl<
 
     fn upsert_prefix(
         &self,
-        // prefix: PrefixId<IPv4>,
         key: &[u8; BLOB_SIZE],
         record: Record<impl KeyExtensions, M>,
         update_path_selections: Option<M::TBI>,
@@ -263,12 +243,22 @@ impl<
         match self.config.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.contains_prefix(prefix)
+                    if let Some(mui) = mui {
+                        persist_tree.contains_key(prefix, mui)
+                    } else {
+                        persist_tree.contains_prefix(prefix)
+                    }
                 } else {
                     Err(PrefixStoreError::StoreNotReadyError)
                 }
             }
-            _ => Ok(self.blob_cht.contains_prefix(prefix)),
+            _ => {
+                if let Some(mui) = mui {
+                    Ok(self.blob_cht.contains_key(prefix, mui))
+                } else {
+                    Ok(self.blob_cht.contains_prefix(prefix))
+                }
+            }
         }
     }
 
@@ -372,9 +362,6 @@ impl<
                 record_map.mark_as_withdrawn_for_mui(mui.mui().into(), ltime);
             }
             PersistStrategy::PersistOnly => {
-                println!(
-                    "mark as wd in persist tree {prefix:?} for mui {mui:?}"
-                );
                 if let Some(p_tree) = self.persist_tree.as_ref() {
                     let stored_prefixes =
                         p_tree.records_with_keys_for_prefix_mui(prefix, mui);
@@ -615,20 +602,45 @@ impl<
         }
     }
 
-    pub fn prefixes_iter<'a>(
+    pub fn nlri_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<
-        Item = (Prefix, Vec<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>>),
-    > + 'a {
-        self.blob_cht.iter(Some(self.withdrawn_muis_bmin(guard)))
-        // .map(|p| {
-        //     if let Ok(r) = self.get_value(p.into(), None, true, guard) {
-        //         Ok((p, r.unwrap_or_default()))
-        //     } else {
-        //         Err(FatalError)
-        //     }
-        // })
+    ) -> impl Iterator<Item = ([u8; BLOB_SIZE], Vec<Record<MuiRdPathId, M>>)> + 'a
+    {
+        self.blob_cht
+            .iter(Some(self.withdrawn_muis_bmin(guard)), 32)
+            .map(|p| {
+                (
+                    #[allow(clippy::unwrap_used)]
+                    *p.1.first()
+                        .unwrap()
+                        .multi_uniq_id
+                        .blob()
+                        .unwrap()
+                        .first_chunk::<BLOB_SIZE>()
+                        .unwrap(),
+                    p.1.into_iter()
+                        .map(|r| {
+                            <([u8; BLOB_SIZE], Record<MuiRdPathId, M>)>::from(
+                                r,
+                            )
+                            .1
+                        })
+                        .collect::<Vec<_>>(),
+                )
+            })
+    }
+
+    pub fn records_iter<'a>(
+        &'a self,
+        guard: &'a Guard,
+    ) -> impl Iterator<Item = ([u8; BLOB_SIZE], Record<MuiRdPathId, M>)> + 'a
+    {
+        let iter = self
+            .blob_cht
+            .iter(Some(self.withdrawn_muis_bmin(guard)), 32);
+
+        iter.flat_map(|p| p.1.into_iter().map(|r| r.into()))
     }
 
     //-------- Persistence ---------------------------------------------------

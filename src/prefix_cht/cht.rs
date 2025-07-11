@@ -304,7 +304,51 @@ impl<
         }
     }
 
-    pub(crate) fn get_records_for_prefix<FK: KeyExtensions + Copy>(
+    pub(crate) fn contains_key<FK: KeyExtensions>(
+        &self,
+        prefix: PrefixId<AF>,
+        mui: FK,
+    ) -> bool
+    where
+        MT::Key: From<FK>,
+    {
+        let mut prefix_set = self.bush.root_for_len(prefix.len());
+        let mut level: u8 = 0;
+        let backoff = Backoff::new();
+
+        loop {
+            let index = Self::hash_prefix_id(prefix, level);
+
+            if let Some(stored_prefix) = prefix_set.0.get(index) {
+                if prefix == stored_prefix.get_prefix_id() {
+                    if log_enabled!(log::Level::Trace) {
+                        trace!(
+                            "found requested prefix {} ({:?})",
+                            Prefix::from(prefix),
+                            prefix
+                        );
+                    }
+
+                    let map = stored_prefix.acquire_read_guard();
+
+                    return map.contains_key(&mui.into());
+
+                    // return true;
+                };
+
+                // Advance to the next level.
+                prefix_set = &stored_prefix.next_bucket;
+                level += 1;
+                backoff.spin();
+                continue;
+            }
+
+            trace!("no prefix found for {prefix:?}");
+            return false;
+        }
+    }
+
+    pub(crate) fn get_records_for_prefix<FK: KeyExtensions>(
         &self,
         prefix: PrefixId<AF>,
         mui: Option<FK>,
@@ -607,11 +651,12 @@ impl<
     pub fn iter<'a>(
         &'a self,
         bmin: Option<&'a RoaringBitmap>,
+        start_len: u8,
     ) -> PrefixIter<'a, AF, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET> {
         PrefixIter {
             prefixes: &self.bush,
             bmin,
-            cur_len: 0,
+            cur_len: start_len,
             cur_bucket: self.bush.root_for_len(0),
             cur_level: 0,
             parents: [None; 8],

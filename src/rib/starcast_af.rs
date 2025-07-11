@@ -245,10 +245,6 @@ impl<
                 record_map.mark_as_withdrawn_for_mui(mui.mui().into(), ltime);
             }
             PersistStrategy::PersistOnly => {
-                println!(
-                    "mark as wd in persist tree {:?} for mui {:?}",
-                    prefix, mui
-                );
                 if let Some(p_tree) = self.persist_tree.as_ref() {
                     let stored_prefixes =
                         p_tree.records_with_keys_for_prefix_mui(prefix, mui);

@@ -36,14 +36,13 @@
 //     prefix_record::Meta,
 // };
 
-use crossbeam_epoch::Guard;
-use inetnum::addr::Prefix;
 use log::trace;
 use roaring::RoaringBitmap;
 
 use crate::{
     cht::{nodeset_size, Cht},
     prefix_record::Meta,
+    rib::STRIDE_SIZE,
     types::Record,
     AddressFamily,
 };
@@ -54,6 +53,7 @@ use super::{cht::PrefixSet, map_type::MapType};
 
 // Iterator over all the prefixes in the storage. This Iterator does *not* use
 // the tree, it iterates over all the length arrays in the CustomAllocStorage.
+#[derive(Debug)]
 pub(crate) struct PrefixIter<
     'a,
     AF: AddressFamily + 'a,
@@ -102,15 +102,13 @@ impl<
                 trace!("reached max length {}, returning None", self.cur_len);
                 return None;
             }
-
             if nodeset_size(self.cur_len, self.cur_level) == 0 {
                 // END OF THE LENGTH
 
                 // This length is done too, go to the next length
-                // trace!("next length {}", self.cur_len + 1);
                 self.cur_len += 1;
 
-                // a new length, a new life reset the level depth and cursor,
+                // a new length, a new life. Reset the level depth and cursor,
                 // but also empty all the parents
                 self.cur_level = 0;
                 self.cursor = 0;
@@ -120,15 +118,8 @@ impl<
                 self.cur_bucket = self.prefixes.root_for_len(self.cur_len);
                 continue;
             }
-            let bucket_size = 1_usize
-                << (if self.cur_level > 0 {
-                    nodeset_size(self.cur_len, self.cur_level)
-                        - nodeset_size(self.cur_len, self.cur_level - 1)
-                } else {
-                    nodeset_size(self.cur_len, self.cur_level)
-                });
 
-            if self.cursor >= bucket_size {
+            if self.cursor >= 2_usize.pow(STRIDE_SIZE as u32) {
                 if self.cur_level == 0 {
                     // END OF THE LENGTH
 
@@ -153,7 +144,7 @@ impl<
                 } else {
                     // END OF THIS BUCKET GO BACK UP ONE LEVEL
 
-                    // The level is done, but the length isn't Go back up one
+                    // The level is done, but the length isn't. Go back up one
                     // level and continue
                     match self.parents[self.cur_level as usize] {
                         Some(parent) => {

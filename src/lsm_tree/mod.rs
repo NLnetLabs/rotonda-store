@@ -26,7 +26,7 @@ use crate::types::{PrefixId, RouteStatus};
 // creating persisted historical records.
 
 pub(crate) trait Key<AF: AddressFamily, K: KeyExtensions>:
-    TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
+    Copy + TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
 {
     // Try to extract a header from the bytes for reading only. If this
     // somehow fails, we don't know what to do anymore. Data may be corrupted,
@@ -55,7 +55,17 @@ pub(crate) trait Key<AF: AddressFamily, K: KeyExtensions>:
     }
 }
 
-#[derive(Debug, KnownLayout, Immutable, FromBytes, Unaligned, IntoBytes)]
+#[derive(
+    Copy,
+    Clone,
+    Debug,
+    KnownLayout,
+    Immutable,
+    FromBytes,
+    Unaligned,
+    IntoBytes,
+    Hash,
+)]
 #[repr(C)]
 pub struct ShortKey<AF: AddressFamily, K: KeyExtensions> {
     prefix: PrefixId<AF>,
@@ -199,7 +209,7 @@ impl<
             }
         }
 
-        Ok(true)
+        Ok(false)
     }
 
     // Based on the properties of the lsm_tree we can assume that the key and

@@ -21,6 +21,8 @@ use crate::{AddressFamily, IPv4};
     zerocopy::KnownLayout,
     zerocopy::Immutable,
     zerocopy::Unaligned,
+    Ord,
+    PartialOrd,
 )]
 #[repr(C)]
 pub struct PrefixId<AF: AddressFamily> {
