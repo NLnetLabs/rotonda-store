@@ -61,10 +61,7 @@ impl<M: Meta, const BLOB_SIZE: usize> MapType<M>
         self.0.contains_key(key)
     }
 
-    fn get<'a, FK: KeyExtensions>(
-        &'a self,
-        key: FK,
-    ) -> Option<&'a MultiMapValue<M>>
+    fn get<FK: KeyExtensions>(&self, key: FK) -> Option<&MultiMapValue<M>>
     where
         MuiRdPathIdBlob<BLOB_SIZE>: From<FK>,
     {

@@ -31,16 +31,16 @@ use crate::{
 
 type BlobCht<M, MT> = PrefixCht<IPv4, M, MT, 9, 33>;
 
-type BlobLsmTree<M, const BLOB_SIZE: usize> = LsmTree<
+type BlobLsmTree<const BLOB_SIZE: usize> = LsmTree<
     IPv4,
-    <RdPathIdBlobMap<M, BLOB_SIZE> as MapType<M>>::Key,
-    LongKey<IPv4, <RdPathIdBlobMap<M, BLOB_SIZE> as MapType<M>>::Key>,
+    MuiRdPathIdBlob<BLOB_SIZE>,
+    LongKey<IPv4, MuiRdPathIdBlob<BLOB_SIZE>>,
 >;
 
 pub struct BlobRib<M: Meta, const BLOB_SIZE: usize, C: Config> {
     pub config: C,
     pub(crate) blob_cht: BlobCht<M, RdPathIdBlobMap<M, BLOB_SIZE>>,
-    pub(crate) persist_tree: Option<BlobLsmTree<M, BLOB_SIZE>>,
+    pub(crate) persist_tree: Option<BlobLsmTree<BLOB_SIZE>>,
     withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
 }
