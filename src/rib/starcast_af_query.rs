@@ -4,6 +4,7 @@ use log::trace;
 use zerocopy::TryFromBytes;
 
 use crate::errors::{FatalError, FatalResult};
+use crate::lsm_tree::PrimKey;
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
 use crate::prefix_cht::map_type::{KeyExtensions, MapType};
 use crate::prefix_record::RecordSet;
@@ -23,13 +24,16 @@ use super::config::{Config, PersistStrategy};
 impl<
         'a,
         AF: AddressFamily,
+        PK: PrimKey + From<PrefixId<AF>>,
         M: Meta,
         MT: MapType<M>,
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
         // const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+    > StarCastAfRib<AF, PK, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+where
+    PrefixId<AF>: PrimKey,
 {
     pub(crate) fn get_value(
         &'a self,
@@ -48,7 +52,7 @@ impl<
                     .as_ref()
                     .and_then(|tree| {
                         tree.records_for_prefix(
-                            prefix_id,
+                            prefix_id.into(),
                             mui,
                             include_withdrawn,
                             self.tree_bitmap.withdrawn_muis_bmin(guard),
@@ -57,7 +61,7 @@ impl<
                             v.iter()
                                 .map(|bytes| {
                                     if let Ok(b) = bytes.as_ref() {
-                                        let record: &ZeroCopyRecord<AF, MT::Key> =
+                                        let record: &ZeroCopyRecord<PK, MT::Key> =
                                         ZeroCopyRecord::try_ref_from_bytes(b)
                                             .map_err(|_| FatalError)?;
                                         Ok(Record::<MT::Key, M> {
@@ -80,7 +84,7 @@ impl<
                     .transpose()
             }
             _ => Ok(self.prefix_cht.get_records_for_prefix(
-                prefix_id,
+                prefix_id.into(),
                 mui,
                 include_withdrawn,
                 self.tree_bitmap.withdrawn_muis_bmin(guard),
@@ -297,7 +301,7 @@ impl<
         guard: &Guard,
     ) -> Option<Result<Record<MT::Key, M>, PrefixStoreError>> {
         self.prefix_cht
-            .non_recursive_retrieve_prefix(search_pfx)
+            .non_recursive_retrieve_prefix(search_pfx.into())
             .0
             .map(|p_rec| {
                 p_rec.get_path_selections(guard).best().map_or_else(
@@ -319,7 +323,7 @@ impl<
         guard: &Guard,
     ) -> Result<(Option<MT::Key>, Option<MT::Key>), PrefixStoreError> {
         self.prefix_cht
-            .non_recursive_retrieve_prefix(search_pfx)
+            .non_recursive_retrieve_prefix(search_pfx.into())
             .0
             .map_or(Err(PrefixStoreError::StoreNotReadyError), |p_rec| {
                 p_rec.calculate_and_store_best_backup(tbi, guard)
@@ -332,7 +336,7 @@ impl<
         guard: &Guard,
     ) -> Result<bool, PrefixStoreError> {
         self.prefix_cht
-            .non_recursive_retrieve_prefix(search_pfx)
+            .non_recursive_retrieve_prefix(search_pfx.into())
             .0
             .map_or(Err(PrefixStoreError::StoreNotReadyError), |p| {
                 Ok(p.is_ps_outdated(guard))

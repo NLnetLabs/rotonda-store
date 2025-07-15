@@ -10,6 +10,7 @@ use roaring::RoaringBitmap;
 
 use crate::cht::{nodeset_size, prev_node_size};
 use crate::errors::{FatalError, FatalResult};
+use crate::lsm_tree::PrimKey;
 use crate::prefix_record::Meta;
 use crate::stats::{Counters, UpsertReport};
 #[cfg(test)]
@@ -52,19 +53,19 @@ impl<RK: KeyExtensions> PathSelections<RK> {
 // records that are stored inside it, so that iterators over its linked lists
 // don't have to go into them if there's nothing there and could stop early.
 #[derive(Debug)]
-pub struct StoredPrefix<AF: AddressFamily, M: Meta, MT: MapType<M>> {
+pub struct StoredPrefix<PK: PrimKey, M: Meta, MT: MapType<M>> {
     // the prefix itself,
-    pub prefix: PrefixId<AF>,
+    pub prefix: PK,
     // the aggregated data for this prefix
     pub record_map: Arc<Mutex<MT>>,
     // (mui of best path entry, mui of backup path entry) from the record_map
     path_selections: Atomic<PathSelections<MT::Key>>,
     // the reference to the next set of records for this prefix, if any.
-    pub next_bucket: PrefixSet<AF, M, MT>,
+    pub next_bucket: PrefixSet<PK, M, MT>,
 }
 
-impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
-    pub(crate) fn new(pfx_id: PrefixId<AF>, level: u8) -> Self {
+impl<PK: PrimKey, M: Meta, MT: MapType<M>> StoredPrefix<PK, M, MT> {
+    pub(crate) fn new(pfx_id: PK, level: u8) -> Self {
         // start calculation size of next set, it's dependent on the level
         // we're in.
         // let pfx_id = PrefixId::new(record.net, record.len);
@@ -72,7 +73,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
         let next_level = nodeset_size(pfx_id.len(), level + 1);
 
         trace!("next level {next_level}");
-        let next_bucket: PrefixSet<AF, M, MT> = if next_level > 0 {
+        let next_bucket: PrefixSet<PK, M, MT> = if next_level > 0 {
             debug!(
                 "{} store: INSERT with new bucket of size {} at prefix len {}",
                 std::thread::current().name().unwrap_or("unnamed-thread"),
@@ -102,7 +103,7 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
         }
     }
 
-    pub(crate) fn get_prefix_id(&self) -> PrefixId<AF> {
+    pub(crate) fn get_prefix_id(&self) -> PK {
         self.prefix
     }
 
@@ -226,13 +227,11 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> StoredPrefix<AF, M, MT> {
 
 #[derive(Debug)]
 #[repr(align(8))]
-pub struct PrefixSet<AF: AddressFamily, M: Meta, MT: MapType<M>>(
-    pub(crate) OnceBoxSlice<StoredPrefix<AF, M, MT>>,
+pub struct PrefixSet<PK: PrimKey, M: Meta, MT: MapType<M>>(
+    pub(crate) OnceBoxSlice<StoredPrefix<PK, M, MT>>,
 );
 
-impl<AF: AddressFamily, M: Meta, MT: MapType<M>> Value
-    for PrefixSet<AF, M, MT>
-{
+impl<PK: PrimKey, M: Meta, MT: MapType<M>> Value for PrefixSet<PK, M, MT> {
     fn init_with_p2_children(p2_size: usize) -> Self {
         let size = if p2_size == 0 { 0 } else { 1 << p2_size };
         PrefixSet(OnceBoxSlice::new(size))
@@ -246,45 +245,45 @@ impl<AF: AddressFamily, M: Meta, MT: MapType<M>> Value
 
 #[derive(Debug)]
 pub(crate) struct PrefixCht<
-    AF: AddressFamily,
+    PK: PrimKey,
     M: Meta,
     MT: MapType<M>,
     const ROOT_SIZE: usize,
     const STRIDES_PER_BUCKET: usize,
 > {
-    bush: Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
+    bush: Cht<PrefixSet<PK, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
     counters: Counters,
 }
 
 impl<
-        AF: AddressFamily,
+        PK: PrimKey,
         M: Meta,
         MT: MapType<M>,
         const ROOT_SIZE: usize,
         const STRIDES_PER_BUCKET: usize,
-    > PrefixCht<AF, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET>
+    > PrefixCht<PK, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET>
 {
     pub(crate) fn init() -> Self {
         Self {
-            bush: <Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>>::init(),
+            bush: <Cht<PrefixSet<PK, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>>::init(),
             counters: Counters::default(),
         }
     }
 
-    pub(crate) fn contains_prefix(&self, prefix: PrefixId<AF>) -> bool {
+    pub(crate) fn contains_prefix(&self, prefix: PK) -> bool {
         let mut prefix_set = self.bush.root_for_len(prefix.len());
         let mut level: u8 = 0;
         let backoff = Backoff::new();
 
         loop {
-            let index = Self::hash_prefix_id(prefix, level);
+            let index = prefix.hash_key_segment(level);
 
-            if let Some(stored_prefix) = prefix_set.0.get(index) {
+            if let Some(stored_prefix) = prefix_set.0.get(index as usize) {
                 if prefix == stored_prefix.get_prefix_id() {
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "found requested prefix {} ({:?})",
-                            Prefix::from(prefix),
+                            "found requested prefix {:?}",
+                            // Prefix::from(prefix),
                             prefix
                         );
                     }
@@ -306,7 +305,7 @@ impl<
 
     pub(crate) fn contains_key<FK: KeyExtensions>(
         &self,
-        prefix: PrefixId<AF>,
+        prefix: PK,
         mui: FK,
     ) -> bool
     where
@@ -317,14 +316,14 @@ impl<
         let backoff = Backoff::new();
 
         loop {
-            let index = Self::hash_prefix_id(prefix, level);
+            let index = prefix.hash_key_segment(level);
 
-            if let Some(stored_prefix) = prefix_set.0.get(index) {
+            if let Some(stored_prefix) = prefix_set.0.get(index as usize) {
                 if prefix == stored_prefix.get_prefix_id() {
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "found requested prefix {} ({:?})",
-                            Prefix::from(prefix),
+                            "found requested prefix {:?}",
+                            // Prefix::from(prefix),
                             prefix
                         );
                     }
@@ -350,7 +349,7 @@ impl<
 
     pub(crate) fn get_records_for_prefix<FK: KeyExtensions>(
         &self,
-        prefix: PrefixId<AF>,
+        prefix: PK,
         mui: Option<FK>,
         include_withdrawn: bool,
         bmin: &RoaringBitmap,
@@ -369,14 +368,14 @@ impl<
             // over the prefix.
 
             // HASHING FUNCTION
-            let index = Self::hash_prefix_id(prefix, level);
+            let index = prefix.hash_key_segment(level);
 
-            if let Some(stored_prefix) = prefix_set.0.get(index) {
+            if let Some(stored_prefix) = prefix_set.0.get(index as usize) {
                 if prefix == stored_prefix.get_prefix_id() {
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "found requested prefix {} ({:?})",
-                            Prefix::from(prefix),
+                            "found requested prefix {:?}",
+                            // Prefix::from(prefix),
                             prefix
                         );
                     }
@@ -404,7 +403,7 @@ impl<
 
     pub(crate) fn upsert_prefix(
         &self,
-        prefix: PrefixId<AF>,
+        prefix: PK,
         record: Record<MT::Key, M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
@@ -455,13 +454,13 @@ impl<
                 (stored_prefix, true) => {
                     if log_enabled!(log::Level::Debug) {
                         debug!(
-                        "{} store: Found existing prefix record for {}/{}",
-                        std::thread::current()
-                            .name()
-                            .unwrap_or("unnamed-thread"),
-                        prefix.bits(),
-                        prefix.len()
-                    );
+                            "{} store: Found existing prefix record for {:?}",
+                            std::thread::current()
+                                .name()
+                                .unwrap_or("unnamed-thread"),
+                            // prefix.bits(),
+                            prefix
+                        );
                     }
                     prefix_is_new = false;
 
@@ -514,8 +513,8 @@ impl<
     // means the root node for that particular prefix length doesn't exist.
     pub(crate) fn non_recursive_retrieve_prefix_mut(
         &self,
-        search_prefix_id: PrefixId<AF>,
-    ) -> (&StoredPrefix<AF, M, MT>, bool) {
+        search_prefix_id: PK,
+    ) -> (&StoredPrefix<PK, M, MT>, bool) {
         trace!("non_recursive_retrieve_prefix_mut_with_guard");
         let mut prefix_set = self.bush.root_for_len(search_prefix_id.len());
         let mut level: u8 = 0;
@@ -523,10 +522,10 @@ impl<
         trace!("root prefix_set {prefix_set:?}");
         loop {
             // HASHING FUNCTION
-            let index = Self::hash_prefix_id(search_prefix_id, level);
+            let index = search_prefix_id.hash_key_segment(level);
 
             // probe the slot with the index that's the result of the hashing.
-            let stored_prefix = match prefix_set.0.get(index) {
+            let stored_prefix = match prefix_set.0.get(index as usize) {
                 Some(p) => {
                     trace!("prefix set found.");
                     (p, true)
@@ -539,17 +538,19 @@ impl<
                         "no record. returning last found record in level
                         {level}, with index {index}."
                     );
-                    let index = Self::hash_prefix_id(search_prefix_id, level);
+                    let index =
+                        search_prefix_id.hash_key_segment(level) as usize;
                     trace!("calculate next index {index}");
                     let var_name = (
                         prefix_set
                             .0
                             .get_or_init(index, || {
                                 StoredPrefix::new(
-                                    PrefixId::new(
-                                        search_prefix_id.bits(),
-                                        search_prefix_id.len(),
-                                    ),
+                                    search_prefix_id,
+                                    // PrefixId::new(
+                                    //     search_prefix_id.bits(),
+                                    //     search_prefix_id.len(),
+                                    // ),
                                     level,
                                 )
                             })
@@ -566,8 +567,8 @@ impl<
                 // it, so its PrefixRecord can be updated by the caller.
                 if log_enabled!(log::Level::Trace) {
                     trace!(
-                        "found requested prefix {} ({:?})",
-                        Prefix::from(search_prefix_id),
+                        "found requested prefix {:?}",
+                        // Prefix::from(search_prefix_id),
                         search_prefix_id
                     );
                 }
@@ -589,14 +590,14 @@ impl<
     #[allow(clippy::indexing_slicing)]
     pub(crate) fn non_recursive_retrieve_prefix(
         &self,
-        id: PrefixId<AF>,
+        id: PK,
     ) -> (
-        Option<&StoredPrefix<AF, M, MT>>,
+        Option<&StoredPrefix<PK, M, MT>>,
         Option<(
-            PrefixId<AF>,
+            PK,
             u8,
-            &PrefixSet<AF, M, MT>,
-            [Option<(&PrefixSet<AF, M, MT>, usize)>; 32],
+            &PrefixSet<PK, M, MT>,
+            [Option<(&PrefixSet<PK, M, MT>, usize)>; 32],
             usize,
         )>,
     ) {
@@ -609,14 +610,14 @@ impl<
             // The index of the prefix in this array (at this len and
             // level) is calculated by performing the hash function
             // over the prefix.
-            let index = Self::hash_prefix_id(id, level);
+            let index = id.hash_key_segment(level) as usize;
 
             if let Some(stored_prefix) = prefix_set.0.get(index) {
                 if id == stored_prefix.get_prefix_id() {
                     if log_enabled!(log::Level::Trace) {
                         trace!(
-                            "found requested prefix {} ({:?})",
-                            Prefix::from(id),
+                            "found requested prefix {:?}",
+                            // Prefix::from(id),
                             id
                         );
                     }
@@ -652,39 +653,39 @@ impl<
         &'a self,
         bmin: Option<&'a RoaringBitmap>,
         start_len: u8,
-    ) -> PrefixIter<'a, AF, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET> {
+    ) -> PrefixIter<'a, PK, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET> {
         PrefixIter {
             prefixes: &self.bush,
             bmin,
             cur_len: start_len,
-            cur_bucket: self.bush.root_for_len(0),
+            cur_bucket: self.bush.root_for_len(32),
             cur_level: 0,
             parents: [None; 8],
             cursor: 0,
         }
     }
 
-    fn hash_prefix_id(id: PrefixId<AF>, level: u8) -> usize {
-        let last_level = prev_node_size(id.len(), level);
+    // fn hash_prefix_id(id: PK, level: u8) -> usize {
+    //     let last_level = prev_node_size(id.len(), level);
 
-        // HASHING FUNCTION
-        let size = nodeset_size(id.len(), level);
+    //     // HASHING FUNCTION
+    //     let size = nodeset_size(id.len(), level);
 
-        // shifting left and right here should never overflow for inputs
-        // (NodeId, level) that are valid for IPv4 and IPv6. In release
-        // compiles this may NOT be noticable, because the undefined behaviour
-        // is most probably the desired behaviour (saturating). But it's UB
-        // for a reason, so we should not rely on it, and verify that we are
-        // not hitting that behaviour.
-        debug_assert!(id.bits().checked_shl(last_level as u32).is_some());
-        debug_assert!((id.bits() << AF::from_u32(last_level as u32))
-            .checked_shr(u32::from((<AF>::BITS - size) % <AF>::BITS))
-            .is_some());
+    //     // shifting left and right here should never overflow for inputs
+    //     // (NodeId, level) that are valid for IPv4 and IPv6. In release
+    //     // compiles this may NOT be noticable, because the undefined behaviour
+    //     // is most probably the desired behaviour (saturating). But it's UB
+    //     // for a reason, so we should not rely on it, and verify that we are
+    //     // not hitting that behaviour.
+    //     debug_assert!(id.bits().checked_shl(last_level as u32).is_some());
+    //     debug_assert!((id.bits() << PK::from_u32(last_level as u32))
+    //         .checked_shr(u32::from((<PK>::BITS - size) % <PK>::BITS))
+    //         .is_some());
 
-        ((id.bits() << AF::from_u32(last_level as u32))
-            >> AF::from_u8((<AF>::BITS - size) % <AF>::BITS))
-        .dangerously_truncate_to_u32() as usize
-    }
+    //     ((id.bits() << PK::from_u32(last_level as u32))
+    //         >> PK::from_u8((<PK>::BITS - size) % <PK>::BITS))
+    //     .dangerously_truncate_to_u32() as usize
+    // }
 
     #[allow(clippy::unwrap_used)]
     #[cfg(test)]
@@ -694,9 +695,8 @@ impl<
         );
         for len in 0..128 {
             for lvl in 0..(len / 4) {
-                let p_id =
-                    PrefixId::<AF>::from(Prefix::new(ip_addr, len).unwrap());
-                Self::hash_prefix_id(p_id, lvl);
+                let p_id = PrefixId::<IPv6>::new(0.into(), len);
+                p_id.hash_key_segment(lvl);
             }
         }
     }
@@ -762,5 +762,5 @@ impl<M: Meta> From<(Vec<u8>, MultiMapValue<M>)> for MultiMapValue<M> {
 #[test]
 fn test_hashing_prefix_id_valid_range() {
     use super::mui_multi_map::MuiMultiMap;
-    PrefixCht::<IPv6, NoMeta, MuiMultiMap<NoMeta>, 129, 1>::test_valid_range()
+    PrefixCht::<PrefixId<IPv6>, NoMeta, MuiMultiMap<NoMeta>, 129, 1>::test_valid_range()
 }

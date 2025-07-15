@@ -80,8 +80,8 @@ pub struct StarCastRib<
     // const KEY_SIZE_IPV4: usize,
     // const KEY_SIZE_IPV6: usize,
 > {
-    v4: StarCastAfRib<IPv4, M, MT, 9, 33, C>,
-    v6: StarCastAfRib<IPv6, M, MT, 33, 129, C>,
+    v4: StarCastAfRib<IPv4, PrefixId<IPv4>, M, MT, 9, 33, C>,
+    v6: StarCastAfRib<IPv6, PrefixId<IPv6>, M, MT, 33, 129, C>,
     config: C,
 }
 

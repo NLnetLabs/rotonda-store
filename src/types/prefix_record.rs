@@ -3,6 +3,7 @@ use std::fmt::Debug;
 
 use crate::{
     errors::FatalError,
+    lsm_tree::PrimKey,
     prefix_cht::{
         cht::MultiMapValue,
         map_type::{KeyExtensions, MuiRdPathId, MuiRdPathIdBlob},
@@ -130,22 +131,22 @@ impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
 
 #[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
 #[repr(C, packed)]
-pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: KeyExtensions> {
-    pub prefix: PrefixId<AF>,
+pub(crate) struct ZeroCopyRecord<PK: PrimKey, K: KeyExtensions> {
+    pub prefix: PK,
     pub multi_uniq_id: K,
     pub ltime: u64,
     pub status: RouteStatus,
     pub meta: [u8],
 }
 
-impl<AF: AddressFamily, K: KeyExtensions> ZeroCopyRecord<AF, K> {
+impl<PK: PrimKey, K: KeyExtensions> ZeroCopyRecord<PK, K> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
         Self::try_ref_from_bytes(b).map_err(|_| FatalError)
     }
 }
 
-impl<AF: AddressFamily + std::fmt::Display, K: KeyExtensions>
-    std::fmt::Display for ZeroCopyRecord<AF, K>
+impl<PK: PrimKey + std::fmt::Display, K: KeyExtensions> std::fmt::Display
+    for ZeroCopyRecord<PK, K>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mui = self.multi_uniq_id;

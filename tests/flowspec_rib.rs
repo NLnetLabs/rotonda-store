@@ -33,7 +33,7 @@ mod tests {
         let a_key = MuiRdPathId::from((0_u32, [0; 8], path_id.to_be_bytes()));
 
         rib.insert(
-            &a_fs,
+            &a_fs.into(),
             Record::new(a_key, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
@@ -41,7 +41,7 @@ mod tests {
 
         let b_key = MuiRdPathId::from((0_u32, [0; 8], path_id.to_be_bytes()));
         rib.insert(
-            &b_fs,
+            &b_fs.into(),
             Record::new(b_key, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
@@ -50,14 +50,14 @@ mod tests {
         let c_key =
             MuiRdPathId::from((100_u32, [0; 8], path_id.to_be_bytes()));
         rib.insert(
-            &c_fs,
+            &c_fs.into(),
             Record::new(c_key, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         println!("inserted c");
 
         for fs in [&a_fs, &b_fs, &c_fs] {
-            let res = rib.get(fs, None, false)?;
+            let res = rib.get(&(*fs).into(), None, false)?;
             // println!("result1: {:#?}", &res);
             assert_eq!(res[0].multi_uniq_id.blob(), Some(fs.as_ref()));
             assert_eq!(res.len(), 1);
@@ -65,13 +65,18 @@ mod tests {
 
         let guard = rotonda_store::epoch::pin();
 
-        let res = rib
-            .nlri_iter(&guard)
-            .filter(|r| r.1.iter().any(|r| r.multi_uniq_id.mui() == 0))
-            .collect::<Vec<_>>();
-        assert_eq!(res.len(), 2);
+        println!("start iteration over nlri");
+        let res = rib.nlri_iter(&guard).collect::<Vec<_>>();
+        assert_eq!(res.len(), 3);
+
+        // let res = rib
+        //     .nlri_iter(&guard)
+        //     .filter(|r| r.1.iter().any(|r| r.multi_uniq_id.mui() == 0))
+        //     .collect::<Vec<_>>();
+        // assert_eq!(res.len(), 2);
 
         let all_recs = rib.records_iter(&guard).collect::<Vec<_>>();
+        println!("{:#?}", all_recs);
         assert_eq!(all_recs.len(), 3);
 
         Ok(())

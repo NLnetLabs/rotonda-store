@@ -14,7 +14,7 @@ use roaring::RoaringBitmap;
 use crate::{
     epoch,
     errors::{FatalError, FatalResult, PrefixStoreError},
-    lsm_tree::LongKey,
+    lsm_tree::{BlobKey, LongKey, PrimKey},
     prefix_cht::{
         blob_map::RdPathIdBlobMap,
         cht::PrefixCht,
@@ -29,17 +29,18 @@ use crate::{
     IPv4, LsmTree,
 };
 
-type BlobCht<M, MT> = PrefixCht<IPv4, M, MT, 9, 33>;
+type BlobCht<M, MT, const BLOB_SIZE: usize> =
+    PrefixCht<BlobKey<BLOB_SIZE>, M, MT, 9, 33>;
 
 type BlobLsmTree<const BLOB_SIZE: usize> = LsmTree<
-    IPv4,
+    BlobKey<BLOB_SIZE>,
     MuiRdPathIdBlob<BLOB_SIZE>,
-    LongKey<IPv4, MuiRdPathIdBlob<BLOB_SIZE>>,
+    LongKey<BlobKey<BLOB_SIZE>, MuiRdPathIdBlob<BLOB_SIZE>>,
 >;
 
 pub struct BlobRib<M: Meta, const BLOB_SIZE: usize, C: Config> {
     pub config: C,
-    pub(crate) blob_cht: BlobCht<M, RdPathIdBlobMap<M, BLOB_SIZE>>,
+    pub(crate) blob_cht: BlobCht<M, RdPathIdBlobMap<M, BLOB_SIZE>, BLOB_SIZE>,
     pub(crate) persist_tree: Option<BlobLsmTree<BLOB_SIZE>>,
     withdrawn_muis_bmin: Atomic<RoaringBitmap>,
     pub counters: Counters,
@@ -68,12 +69,12 @@ impl<const BLOB_SIZE: usize, M: Meta>
     }
 }
 
-pub fn prefix_hash(blob: &[u8]) -> PrefixId<IPv4> {
-    let mut prefix_hash: FnvHasher = Default::default();
-    blob.hash(&mut prefix_hash);
-    let bits: u32 = prefix_hash.finish32();
-    PrefixId::<IPv4>::from((bits, 32))
-}
+// pub fn prefix_hash(blob: &[u8]) -> PrefixId<IPv4> {
+//     let mut prefix_hash: FnvHasher = Default::default();
+//     blob.hash(&mut prefix_hash);
+//     let bits: u32 = prefix_hash.finish32();
+//     PrefixId::<IPv4>::from((bits, 32))
+// }
 
 impl<
         M: Meta,
@@ -132,7 +133,8 @@ impl<
             config,
             persist_tree,
             counters: Counters::default(),
-            blob_cht: BlobCht::<M, RdPathIdBlobMap<M, BLOB_SIZE>>::init(),
+            blob_cht:
+                BlobCht::<M, RdPathIdBlobMap<M, BLOB_SIZE>, BLOB_SIZE>::init(),
             withdrawn_muis_bmin: Atomic::new(RoaringBitmap::new()),
         };
 
@@ -141,11 +143,11 @@ impl<
 
     pub fn insert(
         &self,
-        key: &[u8; BLOB_SIZE],
+        key: &BlobKey<BLOB_SIZE>,
         record: Record<impl KeyExtensions, M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
-        let prefix = prefix_hash(key);
+        let prefix = key.hash_key();
         trace!("try inserting {prefix:?}",);
         let retry_count = 0;
         let guard = &epoch::pin();
@@ -156,7 +158,7 @@ impl<
                 }
                 report.cas_count += retry_count as usize;
                 if report.prefix_new {
-                    self.counters.inc_prefixes_count(prefix.len());
+                    self.counters.inc_prefixes_count(32);
                 }
                 report
             })
@@ -164,12 +166,12 @@ impl<
 
     fn upsert_prefix(
         &self,
-        key: &[u8; BLOB_SIZE],
+        key: &BlobKey<BLOB_SIZE>,
         record: Record<impl KeyExtensions, M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {
-        let prefix = prefix_hash(key);
+        let prefix = key.hash_key();
         let mui_rd_path_id =
             MuiRdPathIdBlob::from((record.multi_uniq_id, key.as_ref()));
         let rec = Record::<MuiRdPathIdBlob<BLOB_SIZE>, M>::from((
@@ -179,11 +181,11 @@ impl<
         match self.config.persist_strategy() {
             PersistStrategy::WriteAhead => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.persist_record_w_long_key(prefix, &rec);
+                    persist_tree.persist_record_w_long_key(*key, &rec);
 
                     self.blob_cht
                         .upsert_prefix(
-                            prefix,
+                            *key,
                             rec,
                             update_path_selections,
                             guard,
@@ -195,12 +197,12 @@ impl<
             }
             PersistStrategy::PersistHistory => self
                 .blob_cht
-                .upsert_prefix(prefix, rec, update_path_selections, guard)
+                .upsert_prefix(*key, rec, update_path_selections, guard)
                 .map(|(report, old_rec)| {
                     if let Some(rec) = old_rec {
                         if let Some(persist_tree) = &self.persist_tree {
                             persist_tree.persist_record_w_long_key(
-                                prefix,
+                                *key,
                                 &Record::from((mui_rd_path_id, &rec)),
                             );
                         }
@@ -209,7 +211,7 @@ impl<
                 }),
             PersistStrategy::MemoryOnly => self
                 .blob_cht
-                .upsert_prefix(prefix, rec, update_path_selections, guard)
+                .upsert_prefix(*key, rec, update_path_selections, guard)
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
@@ -220,8 +222,8 @@ impl<
                     //     )?;
                     // let prefix =
                     //     prefix_hash(record.multi_uniq_id.blob().unwrap());
-                    let exists = persist_tree.contains_prefix(prefix)?;
-                    persist_tree.persist_record_w_short_key(prefix, &rec);
+                    let exists = persist_tree.contains_prefix(*key)?;
+                    persist_tree.persist_record_w_short_key(*key, &rec);
                     Ok(UpsertReport {
                         cas_count: 0,
                         prefix_new: exists,
@@ -237,16 +239,16 @@ impl<
 
     pub fn contains(
         &self,
-        prefix: PrefixId<IPv4>,
+        key: &BlobKey<BLOB_SIZE>,
         mui: Option<MuiRdPathIdBlob<BLOB_SIZE>>,
     ) -> Result<bool, PrefixStoreError> {
         match self.config.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
                     if let Some(mui) = mui {
-                        persist_tree.contains_key(prefix, mui)
+                        persist_tree.contains_key(*key, mui)
                     } else {
-                        persist_tree.contains_prefix(prefix)
+                        persist_tree.contains_prefix(*key)
                     }
                 } else {
                     Err(PrefixStoreError::StoreNotReadyError)
@@ -254,9 +256,9 @@ impl<
             }
             _ => {
                 if let Some(mui) = mui {
-                    Ok(self.blob_cht.contains_key(prefix, mui))
+                    Ok(self.blob_cht.contains_key(*key, mui))
                 } else {
-                    Ok(self.blob_cht.contains_prefix(prefix))
+                    Ok(self.blob_cht.contains_prefix(*key))
                 }
             }
         }
@@ -264,19 +266,19 @@ impl<
 
     pub fn get(
         &self,
-        key: &[u8; BLOB_SIZE],
+        key: &BlobKey<BLOB_SIZE>,
         mui: Option<MuiRdPathId>,
         include_withdrawn: bool,
     ) -> Result<Vec<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>>, PrefixStoreError>
     {
         let guard = &epoch::pin();
         let mut recs_vec = vec![];
-        let prefix = prefix_hash(key);
+        // let prefix = prefix_hash(key);
         match self.config.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
                     if let Some(recs) = persist_tree.records_for_prefix(
-                        prefix,
+                        *key,
                         mui,
                         include_withdrawn,
                         self.withdrawn_muis_bmin(guard),
@@ -286,7 +288,7 @@ impl<
                                 return Err(PrefixStoreError::FatalError);
                             };
                             if let Ok(rec) = ZeroCopyRecord::<
-                                IPv4,
+                                PrefixId<IPv4>,
                                 MuiRdPathIdBlob<BLOB_SIZE>,
                             >::from_bytes(
                                 &r
@@ -314,7 +316,7 @@ impl<
                 Ok(
                     self.blob_cht
                         .get_records_for_prefix(
-                            prefix,
+                            *key,
                             mui,
                             include_withdrawn,
                             self.withdrawn_muis_bmin(guard),
@@ -346,14 +348,15 @@ impl<
     // combination  to Withdrawn.
     pub fn mark_mui_as_withdrawn_for_prefix(
         &self,
-        prefix: PrefixId<IPv4>,
+        key: BlobKey<BLOB_SIZE>,
         mui: Mui,
         ltime: u64,
     ) -> Result<(), PrefixStoreError> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
-                let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) = self
+                    .blob_cht
+                    .non_recursive_retrieve_prefix_mut(key.into());
 
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
@@ -363,8 +366,8 @@ impl<
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
-                    let stored_prefixes =
-                        p_tree.records_with_keys_for_prefix_mui(prefix, mui);
+                    let stored_prefixes = p_tree
+                        .records_with_keys_for_prefix_mui(key.into(), mui);
 
                     for rkv in stored_prefixes {
                         if let Ok(r) = rkv {
@@ -387,8 +390,9 @@ impl<
             }
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
-                let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) = self
+                    .blob_cht
+                    .non_recursive_retrieve_prefix_mut(key.into());
 
                 if !exists {
                     return Err(PrefixStoreError::StoreNotReadyError);
@@ -407,7 +411,7 @@ impl<
                             return Err(PrefixStoreError::StoreNotReadyError);
                         };
 
-                    p_tree.insert_empty_record(prefix, mui, ltime);
+                    p_tree.insert_empty_record(key.into(), mui, ltime);
                 }
             }
         }
@@ -419,14 +423,14 @@ impl<
     // combination  to Active.
     pub fn mark_mui_as_active_for_prefix(
         &self,
-        prefix: PrefixId<IPv4>,
+        key: &BlobKey<BLOB_SIZE>,
         mui: Mui,
         ltime: u64,
     ) -> FatalResult<()> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
                 let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                    self.blob_cht.non_recursive_retrieve_prefix_mut(*key);
 
                 if !exists {
                     return Err(FatalError);
@@ -438,7 +442,7 @@ impl<
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
                     if let Ok(Some(record_b)) =
-                        p_tree.most_recent_record_for_prefix_mui(prefix, mui)
+                        p_tree.most_recent_record_for_prefix_mui(*key, mui)
                     {
                         let header = ValueHeader {
                             ltime,
@@ -454,7 +458,7 @@ impl<
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
                 let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                    self.blob_cht.non_recursive_retrieve_prefix_mut(*key);
 
                 if !exists {
                     return Err(FatalError);
@@ -477,7 +481,7 @@ impl<
                     // old (prefix, mui) records.
                     // We are inserting an empty record, since this is a
                     // withdrawal.
-                    p_tree.insert_empty_record(prefix, mui, ltime);
+                    p_tree.insert_empty_record(*key, mui, ltime);
                 }
             }
         }
@@ -663,7 +667,7 @@ impl<
                 tree.prefixes_iter().map(|recs| {
                     if let Some(Ok(first_rec)) = recs.first() {
                         if let Ok(pfx) = ZeroCopyRecord::<
-                            IPv4,
+                            PrefixId<IPv4>,
                             MuiRdPathIdBlob<BLOB_SIZE>,
                         >::from_bytes(
                             first_rec
@@ -674,7 +678,7 @@ impl<
                             for res_rec in recs.iter() {
                                 if let Ok(rec) = res_rec {
                                     if let Ok(rec) = ZeroCopyRecord::<
-                                        IPv4,
+                                        PrefixId<IPv4>,
                                         MuiRdPathIdBlob<BLOB_SIZE>,
                                     >::from_bytes(
                                         rec
