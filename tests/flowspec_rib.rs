@@ -12,7 +12,7 @@ mod common {
 #[cfg(test)]
 mod tests {
     use rotonda_store::{
-        prefix_cht::map_type::{KeyExtensions, MuiRdPathId},
+        prefix_cht::map_type::{MuiRdPathId, SecKey},
         prefix_record::{Record, RouteStatus},
         rib::{config::MemoryOnlyConfig, flowspec::BlobRib, FlowSpecRib},
         test_types::NoMeta,

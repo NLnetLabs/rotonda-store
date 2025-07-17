@@ -1,5 +1,5 @@
 use crate::{
-    prefix_cht::map_type::KeyExtensions,
+    prefix_cht::map_type::SecKey,
     types::{prefix_record::RecordSet, Record},
 };
 use std::fmt;
@@ -20,7 +20,7 @@ use super::prefix_record::Meta;
 ///
 /// See [crate::rib::StarCastRib::match_prefix] for more details.
 #[derive(Debug, Clone)]
-pub struct MatchOptions<K: KeyExtensions> {
+pub struct MatchOptions<K: SecKey> {
     /// The requested [MatchType]
     pub match_type: MatchType,
     /// Unused

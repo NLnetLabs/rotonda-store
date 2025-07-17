@@ -18,9 +18,7 @@ use crate::{
     prefix_cht::{
         blob_map::RdPathIdBlobMap,
         cht::PrefixCht,
-        map_type::{
-            KeyExtensions, MapType, Mui, MuiRdPathId, MuiRdPathIdBlob,
-        },
+        map_type::{MapType, Mui, MuiRdPathId, MuiRdPathIdBlob, SecKey},
     },
     prefix_record::{Meta, ValueHeader, ZeroCopyRecord},
     rib::config::{Config, PersistStrategy},
@@ -35,7 +33,7 @@ type BlobCht<M, MT, const BLOB_SIZE: usize> =
 type BlobLsmTree<const BLOB_SIZE: usize> = LsmTree<
     BlobKey<BLOB_SIZE>,
     MuiRdPathIdBlob<BLOB_SIZE>,
-    LongKey<BlobKey<BLOB_SIZE>, MuiRdPathIdBlob<BLOB_SIZE>>,
+    // LongKey<BlobKey<BLOB_SIZE>, MuiRdPathIdBlob<BLOB_SIZE>>,
 >;
 
 pub struct BlobRib<M: Meta, const BLOB_SIZE: usize, C: Config> {
@@ -144,7 +142,7 @@ impl<
     pub fn insert(
         &self,
         key: &BlobKey<BLOB_SIZE>,
-        record: Record<impl KeyExtensions, M>,
+        record: Record<impl SecKey, M>,
         update_path_selections: Option<M::TBI>,
     ) -> Result<UpsertReport, PrefixStoreError> {
         let prefix = key.hash_key();
@@ -167,7 +165,7 @@ impl<
     fn upsert_prefix(
         &self,
         key: &BlobKey<BLOB_SIZE>,
-        record: Record<impl KeyExtensions, M>,
+        record: Record<impl SecKey, M>,
         update_path_selections: Option<M::TBI>,
         guard: &Guard,
     ) -> Result<UpsertReport, PrefixStoreError> {

@@ -7,7 +7,7 @@ use crate::{
     errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
     prefix_cht::{
-        map_type::{KeyExtensions, MapType},
+        map_type::{MapType, SecKey},
         mui_multi_map::MuiMultiMap,
         path_id_multi_map::PathIdMultiMap,
         rd_multi_map::RdPathIdMultiMap,

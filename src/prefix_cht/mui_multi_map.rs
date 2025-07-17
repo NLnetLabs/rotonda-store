@@ -7,7 +7,7 @@ use crate::prefix_record::Meta;
 use crate::types::prefix_record::Record;
 use crate::types::RouteStatus;
 
-use crate::prefix_cht::map_type::{KeyExtensions, MapType, Mui};
+use crate::prefix_cht::map_type::{MapType, Mui, SecKey};
 
 use super::cht::MultiMapValue;
 
@@ -89,10 +89,7 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
         self.0.is_empty()
     }
 
-    fn get<'a, FK: KeyExtensions>(
-        &'a self,
-        key: FK,
-    ) -> Option<&'a MultiMapValue<M>>
+    fn get<'a, FK: SecKey>(&'a self, key: FK) -> Option<&'a MultiMapValue<M>>
     where
         Mui: From<FK>,
     {
@@ -132,7 +129,7 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
 
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    fn get_filtered_records<FK: KeyExtensions>(
+    fn get_filtered_records<FK: SecKey>(
         &self,
         mui: Option<FK>,
         include_withdrawn: bool,

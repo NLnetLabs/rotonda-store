@@ -5,7 +5,7 @@ use inetnum::addr::Prefix;
 use log::{info, trace};
 
 use crate::lsm_tree::PrimKey;
-use crate::prefix_cht::map_type::{KeyExtensions, MapType};
+use crate::prefix_cht::map_type::{MapType, SecKey};
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
 use crate::stats::{Counters, UpsertCounters, UpsertReport};
@@ -61,8 +61,7 @@ pub(crate) struct StarCastAfRib<
     pub config: C,
     pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
     pub(crate) prefix_cht: PrefixCht<PK, M, MT, P_ROOT_SIZE, 1>,
-    pub(crate) persist_tree:
-        Option<LsmTree<PK, MT::Key, LongKey<PK, MT::Key>>>,
+    pub(crate) persist_tree: Option<LsmTree<PK, MT::Key>>,
     pub counters: Counters,
 }
 

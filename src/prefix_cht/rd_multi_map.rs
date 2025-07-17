@@ -15,7 +15,7 @@ use crate::{
 
 use super::{
     cht::MultiMapValue,
-    map_type::{KeyExtensions, MapType, Mui, MuiRdPathId},
+    map_type::{MapType, Mui, MuiRdPathId, SecKey},
 };
 
 #[derive(Debug)]
@@ -57,7 +57,7 @@ impl<M: Meta> MapType<M> for RdPathIdMultiMap<M> {
         self.0.contains_key(key)
     }
 
-    fn get<FK: KeyExtensions>(&self, key: FK) -> Option<&MultiMapValue<M>>
+    fn get<FK: SecKey>(&self, key: FK) -> Option<&MultiMapValue<M>>
     where
         MuiRdPathId: From<FK>,
     {

@@ -14,7 +14,7 @@ use crate::types::RouteStatus;
 
 use super::cht::MultiMapValue;
 
-pub trait KeyExtensions:
+pub trait SecKey:
     Copy
     + Debug
     + TryFromBytes
@@ -65,7 +65,7 @@ pub trait KeyExtensions:
 )]
 pub struct Mui(U32<NativeEndian>);
 
-impl KeyExtensions for Mui {
+impl SecKey for Mui {
     // const PREFIX_SIZE: usize = 4;
 
     fn mui(&self) -> U32<NativeEndian> {
@@ -96,7 +96,7 @@ impl From<U32<NativeEndian>> for Mui {
 }
 
 pub trait MapType<M: Meta>: Debug {
-    type Key: KeyExtensions;
+    type Key: SecKey;
     type Inner;
     fn new() -> Self;
     fn inner(&self) -> &Self::Inner;
@@ -111,14 +111,14 @@ pub trait MapType<M: Meta>: Debug {
     fn contains_key(&self, key: &Self::Key) -> bool;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool;
-    fn get<FK: KeyExtensions>(&self, key: FK) -> Option<&MultiMapValue<M>>
+    fn get<SK: SecKey>(&self, key: SK) -> Option<&MultiMapValue<M>>
     where
-        Self::Key: From<FK>;
+        Self::Key: From<SK>;
 
     #[allow(clippy::type_complexity)]
     // Helper to filter out records that are not-active (Inactive or
     // Withdrawn), or whose mui appears in the global withdrawn index.
-    fn get_filtered_records<FK: KeyExtensions>(
+    fn get_filtered_records<FK: SecKey>(
         &self,
         key: Option<FK>,
         include_withdrawn: bool,
@@ -173,7 +173,7 @@ pub trait MapType<M: Meta>: Debug {
         include_withdrawn: bool,
     ) -> Vec<Record<Self::Key, M>>;
 
-    fn get_record_for_key<FK: KeyExtensions>(
+    fn get_record_for_key<FK: SecKey>(
         &self,
         key: FK,
         include_withdrawn: bool,
@@ -330,7 +330,7 @@ pub trait MapType<M: Meta>: Debug {
 )]
 pub struct MuiRdPathId(U32<NativeEndian>, [u8; 8], [u8; 4], bool, bool);
 
-impl KeyExtensions for MuiRdPathId {
+impl SecKey for MuiRdPathId {
     // mui (4) + rd (8 + 1) + path_id (4 + 1)
     // const PREFIX_SIZE: usize = 18;
     fn mui(&self) -> U32<NativeEndian> {
@@ -433,7 +433,7 @@ impl<const BLOB_SIZE: usize> From<&MuiRdPathIdBlob<BLOB_SIZE>>
 )]
 pub struct MuiPathId(U32<NativeEndian>, [u8; 4], bool);
 
-impl KeyExtensions for MuiPathId {
+impl SecKey for MuiPathId {
     // const PREFIX_SIZE: usize = 9;
     fn mui(&self) -> U32<NativeEndian> {
         self.0
@@ -512,7 +512,7 @@ pub struct MuiRdPathIdBlob<const BLOB_SIZE: usize>(
     [u8; BLOB_SIZE],   // 6 nlri blob (17 ..= 17 + BLOB_SIZE)
 );
 
-impl<const BLOB_SIZE: usize> KeyExtensions for MuiRdPathIdBlob<BLOB_SIZE> {
+impl<const BLOB_SIZE: usize> SecKey for MuiRdPathIdBlob<BLOB_SIZE> {
     // mui (4) + rd (8 + 1) + path_id (4 + 1)
     // const PREFIX_SIZE: usize = 18 + BLOB_SIZE;
     fn mui(&self) -> U32<NativeEndian> {
@@ -612,7 +612,7 @@ impl<const BLOB_SIZE: usize> From<Mui> for MuiRdPathIdBlob<BLOB_SIZE> {
     }
 }
 
-impl<const BLOB_SIZE: usize, K: KeyExtensions> From<(K, &[u8])>
+impl<const BLOB_SIZE: usize, K: SecKey> From<(K, &[u8])>
     for MuiRdPathIdBlob<BLOB_SIZE>
 {
     #[allow(clippy::unwrap_used)]

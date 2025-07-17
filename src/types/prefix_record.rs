@@ -6,7 +6,7 @@ use crate::{
     lsm_tree::PrimKey,
     prefix_cht::{
         cht::MultiMapValue,
-        map_type::{KeyExtensions, MuiRdPathId, MuiRdPathIdBlob},
+        map_type::{MuiRdPathId, MuiRdPathIdBlob, SecKey},
     },
     types::AddressFamily,
 };
@@ -89,7 +89,7 @@ impl<K: Copy + Clone + Debug + Eq, M: Meta> From<(K, &MultiMapValue<M>)>
 //         }
 //     }
 // }
-impl<K: KeyExtensions, L: KeyExtensions, M: Meta> From<(K, &Record<L, M>)>
+impl<K: SecKey, L: SecKey, M: Meta> From<(K, &Record<L, M>)>
     for Record<K, M>
 {
     fn from(value: (K, &Record<L, M>)) -> Self {
@@ -131,7 +131,7 @@ impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
 
 #[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
 #[repr(C, packed)]
-pub(crate) struct ZeroCopyRecord<PK: PrimKey, K: KeyExtensions> {
+pub(crate) struct ZeroCopyRecord<PK: PrimKey, K: SecKey> {
     pub prefix: PK,
     pub multi_uniq_id: K,
     pub ltime: u64,
@@ -139,13 +139,13 @@ pub(crate) struct ZeroCopyRecord<PK: PrimKey, K: KeyExtensions> {
     pub meta: [u8],
 }
 
-impl<PK: PrimKey, K: KeyExtensions> ZeroCopyRecord<PK, K> {
+impl<PK: PrimKey, K: SecKey> ZeroCopyRecord<PK, K> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
         Self::try_ref_from_bytes(b).map_err(|_| FatalError)
     }
 }
 
-impl<PK: PrimKey + std::fmt::Display, K: KeyExtensions> std::fmt::Display
+impl<PK: PrimKey + std::fmt::Display, K: SecKey> std::fmt::Display
     for ZeroCopyRecord<PK, K>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

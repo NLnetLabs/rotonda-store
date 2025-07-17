@@ -26,18 +26,18 @@ use crate::{
     },
 };
 
-use crate::prefix_cht::map_type::{KeyExtensions, MapType};
+use crate::prefix_cht::map_type::{MapType, SecKey};
 
 use super::iterators_cp::PrefixIter;
 
 // ----------- Prefix related structs ---------------------------------------
 
 #[derive(Copy, Clone, Debug, PartialEq)]
-pub struct PathSelections<RK: KeyExtensions> {
+pub struct PathSelections<RK: SecKey> {
     pub(crate) path_selection_muis: (Option<RK>, Option<RK>),
 }
 
-impl<RK: KeyExtensions> PathSelections<RK> {
+impl<RK: SecKey> PathSelections<RK> {
     pub fn best(&self) -> Option<RK> {
         self.path_selection_muis.0
     }
@@ -303,11 +303,7 @@ impl<
         }
     }
 
-    pub(crate) fn contains_key<FK: KeyExtensions>(
-        &self,
-        prefix: PK,
-        mui: FK,
-    ) -> bool
+    pub(crate) fn contains_key<FK: SecKey>(&self, prefix: PK, mui: FK) -> bool
     where
         MT::Key: From<FK>,
     {
@@ -347,7 +343,7 @@ impl<
         }
     }
 
-    pub(crate) fn get_records_for_prefix<FK: KeyExtensions>(
+    pub(crate) fn get_records_for_prefix<FK: SecKey>(
         &self,
         prefix: PK,
         mui: Option<FK>,
