@@ -1,14 +1,11 @@
 //------------ StoredBlob ----------------------------------------------------
 
-use std::{
-    array::IntoIter, hash::Hash, io, iter::Chain, path::Path, slice::Iter,
-    sync::atomic::Ordering,
-};
+use std::{fmt::Debug, hash::Hash, io, path::Path, sync::atomic::Ordering};
 
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use hash32::{FnvHasher, Hasher as _};
-use inetnum::addr::{Prefix, PrefixError};
-use log::{info, trace};
+use inetnum::addr::Prefix;
+use log::{debug, info, trace};
 use roaring::RoaringBitmap;
 
 use crate::{
@@ -23,11 +20,13 @@ use crate::{
         },
     },
     prefix_record::{Meta, ValueHeader, ZeroCopyRecord},
-    rib::config::{Config, PersistStrategy},
+    rib::config::{Config, PersistOnlyConfig, PersistStrategy},
     stats::{Counters, UpsertCounters, UpsertReport},
     types::{PrefixId, Record, RouteStatus},
     IPv4, LsmTree,
 };
+
+use super::config::MemoryOnlyConfig;
 
 type BlobCht<M, MT> = PrefixCht<IPv4, M, MT, 9, 33>;
 
@@ -221,7 +220,7 @@ impl<
                     // let prefix =
                     //     prefix_hash(record.multi_uniq_id.blob().unwrap());
                     let exists = persist_tree.contains_prefix(prefix)?;
-                    persist_tree.persist_record_w_short_key(prefix, &rec);
+                    persist_tree.persist_record_w_long_key(prefix, &rec);
                     Ok(UpsertReport {
                         cas_count: 0,
                         prefix_new: exists,
@@ -605,42 +604,105 @@ impl<
     pub fn nlri_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = ([u8; BLOB_SIZE], Vec<Record<MuiRdPathId, M>>)> + 'a
-    {
-        self.blob_cht
-            .iter(Some(self.withdrawn_muis_bmin(guard)), 32)
-            .map(|p| {
-                (
+    ) -> Box<
+        dyn Iterator<
+                Item = FatalResult<(
+                    [u8; BLOB_SIZE],
+                    Vec<Record<MuiRdPathId, M>>,
+                )>,
+            > + 'a,
+    > {
+        match self.config.persist_strategy() {
+            PersistStrategy::MemoryOnly
+            | PersistStrategy::PersistHistory
+            | PersistStrategy::WriteAhead => Box::new(
+                self.blob_cht
+                    .iter(Some(self.withdrawn_muis_bmin(guard)), 32)
+                    .map(|p| {
+                        #[allow(clippy::unwrap_used)]
+                        let b =
+                            *p.1.first()
+                                .unwrap()
+                                .multi_uniq_id
+                                .blob()
+                                .unwrap()
+                                .first_chunk::<BLOB_SIZE>()
+                                .unwrap();
+                        Ok((
+                            #[allow(clippy::unwrap_used)]
+                            b,
+                            p.1.into_iter()
+                                .map(|r| {
+                                    <(
+                                        [u8; BLOB_SIZE],
+                                        Record<MuiRdPathId, M>,
+                                    )>::from(
+                                        r
+                                    )
+                                    .1
+                                })
+                                .collect::<Vec<_>>(),
+                        ))
+                    }),
+            ),
+            PersistStrategy::PersistOnly => {
+                Box::new(self.persist_prefixes_iter().map(|r| {
                     #[allow(clippy::unwrap_used)]
-                    *p.1.first()
-                        .unwrap()
-                        .multi_uniq_id
-                        .blob()
-                        .unwrap()
-                        .first_chunk::<BLOB_SIZE>()
-                        .unwrap(),
-                    p.1.into_iter()
-                        .map(|r| {
-                            <([u8; BLOB_SIZE], Record<MuiRdPathId, M>)>::from(
-                                r,
-                            )
-                            .1
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
+                    let p = r.unwrap();
+                    #[allow(clippy::unwrap_used)]
+                    let b =
+                        *p.1.first()
+                            .unwrap()
+                            .multi_uniq_id
+                            .blob()
+                            .unwrap()
+                            .first_chunk::<BLOB_SIZE>()
+                            .unwrap();
+                    Ok((
+                        #[allow(clippy::unwrap_used)]
+                        b,
+                        p.1.into_iter()
+                            .map(|r| {
+                                <(
+                                        [u8; BLOB_SIZE],
+                                        Record<MuiRdPathId, M>,
+                                    )>::from(
+                                        r
+                                    )
+                                    .1
+                            })
+                            .collect::<Vec<_>>(),
+                    ))
+                }))
+            }
+        }
     }
 
     pub fn records_iter<'a>(
         &'a self,
         guard: &'a Guard,
-    ) -> impl Iterator<Item = ([u8; BLOB_SIZE], Record<MuiRdPathId, M>)> + 'a
-    {
-        let iter = self
-            .blob_cht
-            .iter(Some(self.withdrawn_muis_bmin(guard)), 32);
+    ) -> Box<
+        dyn Iterator<Item = ([u8; BLOB_SIZE], Record<MuiRdPathId, M>)> + 'a,
+    > {
+        match self.persist_strategy() {
+            PersistStrategy::WriteAhead
+            | PersistStrategy::MemoryOnly
+            | PersistStrategy::PersistHistory => {
+                let iter = self
+                    .blob_cht
+                    .iter(Some(self.withdrawn_muis_bmin(guard)), 32);
 
-        iter.flat_map(|p| p.1.into_iter().map(|r| r.into()))
+                Box::new(iter.flat_map(|p| p.1.into_iter().map(|r| r.into())))
+            }
+            PersistStrategy::PersistOnly => {
+                let iter = self.persist_prefixes_iter();
+
+                Box::new(iter.flat_map(|p| {
+                    #[allow(clippy::unwrap_used)]
+                    p.unwrap().1.into_iter().map(|r| r.into())
+                }))
+            }
+        }
     }
 
     //-------- Persistence ---------------------------------------------------
@@ -649,52 +711,79 @@ impl<
         self.config.persist_strategy()
     }
 
-    pub(crate) fn persist_prefixes_iter(
-        &self,
+    pub(crate) fn persist_prefixes_iter<'a>(
+        &'a self,
     ) -> impl Iterator<
         Item = FatalResult<(
-            Prefix,
+            [u8; BLOB_SIZE],
             Vec<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>>,
         )>,
-    > + '_ {
+    > + 'a {
         self.persist_tree
             .as_ref()
             .map(|tree| {
                 tree.prefixes_iter().map(|recs| {
+                    debug!("tree");
                     if let Some(Ok(first_rec)) = recs.first() {
+                        debug!("first_rec {first_rec:?}");
                         if let Ok(pfx) = ZeroCopyRecord::<
                             IPv4,
                             MuiRdPathIdBlob<BLOB_SIZE>,
                         >::from_bytes(
                             first_rec
                         ) {
+                            #[allow(clippy::unwrap_used)]
+                            let blob = pfx.multi_uniq_id;
+
                             let mut rec_vec: Vec<
                                 Record<MuiRdPathIdBlob<BLOB_SIZE>, M>,
                             > = vec![];
                             for res_rec in recs.iter() {
-                                if let Ok(rec) = res_rec {
-                                    if let Ok(rec) = ZeroCopyRecord::<
-                                        IPv4,
-                                        MuiRdPathIdBlob<BLOB_SIZE>,
-                                    >::from_bytes(
-                                        rec
-                                    ) {
-                                        rec_vec.push(Record {
-                                            multi_uniq_id: rec.multi_uniq_id,
-                                            ltime: rec.ltime,
-                                            status: rec.status,
-                                            meta: rec.meta.to_vec().into(),
-                                        });
+                                match res_rec {
+                                    Ok(rec) => {
+                                        debug!("rec {rec:?}");
+                                        if let Ok(rec) = ZeroCopyRecord::<
+                                            IPv4,
+                                            MuiRdPathIdBlob<BLOB_SIZE>,
+                                        >::from_bytes(
+                                            rec
+                                        ) {
+                                            debug!("recrec {rec}");
+                                            rec_vec.push(Record {
+                                                multi_uniq_id: rec
+                                                    .multi_uniq_id,
+                                                ltime: rec.ltime,
+                                                status: rec.status,
+                                                meta: rec
+                                                    .meta
+                                                    .to_vec()
+                                                    .into(),
+                                            });
+                                        }
                                     }
-                                } else {
-                                    return Err(FatalError);
+                                    Err(e) => {
+                                        debug!("recrec_vec {rec_vec:?}");
+                                        debug!("A. {e:?}");
+                                        // return Err(FatalError);
+                                    }
                                 }
                             }
-                            Ok((Prefix::from(pfx.prefix), rec_vec))
+                            debug!("done");
+                            Ok((
+                                #[allow(clippy::unwrap_used)]
+                                *blob
+                                    .blob()
+                                    .unwrap()
+                                    .first_chunk::<BLOB_SIZE>()
+                                    .unwrap(),
+                                rec_vec,
+                            ))
                         } else {
+                            debug!("B.");
                             Err(FatalError)
                         }
                     } else {
+                        debug!("C.");
                         Err(FatalError)
                     }
                 })

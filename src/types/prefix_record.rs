@@ -10,6 +10,7 @@ use crate::{
     types::AddressFamily,
 };
 use inetnum::addr::Prefix;
+use log::debug;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 
 use super::PrefixId;
@@ -140,7 +141,11 @@ pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: KeyExtensions> {
 
 impl<AF: AddressFamily, K: KeyExtensions> ZeroCopyRecord<AF, K> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
-        Self::try_ref_from_bytes(b).map_err(|_| FatalError)
+        debug!("bytes:: {b:?}");
+        Self::try_ref_from_bytes(b).map_err(|e| {
+            debug!("error {e}");
+            FatalError
+        })
     }
 }
 

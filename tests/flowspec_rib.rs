@@ -11,10 +11,15 @@ mod common {
 
 #[cfg(test)]
 mod tests {
+    use log::debug;
     use rotonda_store::{
         prefix_cht::map_type::{KeyExtensions, MuiRdPathId},
         prefix_record::{Record, RouteStatus},
-        rib::{config::MemoryOnlyConfig, flowspec::BlobRib, FlowSpecRib},
+        rib::{
+            config::{MemoryOnlyConfig, PersistOnlyConfig},
+            flowspec::BlobRib,
+            FlowSpecRib,
+        },
         test_types::NoMeta,
     };
 
@@ -26,11 +31,12 @@ mod tests {
         let a_fs = [0x01; 7];
         let b_fs = [0x02; 7];
         let c_fs = [0x03; 7];
-        let path_id = 0_u32;
+        let mui = <u32>::from_le_bytes([3_u8; 4]);
+        let path_id = <u32>::from_le_bytes([255, 0, 0, 255]);
 
-        let rib = BlobRib::<NoMeta, 7, MemoryOnlyConfig>::try_default()?;
+        let rib = BlobRib::<NoMeta, 7, PersistOnlyConfig>::try_default()?;
 
-        let a_key = MuiRdPathId::from((0_u32, [0; 8], path_id.to_be_bytes()));
+        let a_key = MuiRdPathId::from((mui, [99; 8], path_id.to_be_bytes()));
 
         rib.insert(
             &a_fs,
@@ -39,7 +45,7 @@ mod tests {
         )?;
         println!("inserted a");
 
-        let b_key = MuiRdPathId::from((0_u32, [0; 8], path_id.to_be_bytes()));
+        let b_key = MuiRdPathId::from((mui, [99; 8], path_id.to_be_bytes()));
         rib.insert(
             &b_fs,
             Record::new(b_key, 0, RouteStatus::Active, NoMeta::Empty),
@@ -48,7 +54,7 @@ mod tests {
         println!("inserted b");
 
         let c_key =
-            MuiRdPathId::from((100_u32, [0; 8], path_id.to_be_bytes()));
+            MuiRdPathId::from((100_u32, [99; 8], path_id.to_be_bytes()));
         rib.insert(
             &c_fs,
             Record::new(c_key, 0, RouteStatus::Active, NoMeta::Empty),
@@ -65,9 +71,16 @@ mod tests {
 
         let guard = rotonda_store::epoch::pin();
 
+        println!("start counting...");
         let res = rib
             .nlri_iter(&guard)
-            .filter(|r| r.1.iter().any(|r| r.multi_uniq_id.mui() == 0))
+            .filter(|r| {
+                if let Ok(rr) = r {
+                    rr.1.iter().any(|r| r.multi_uniq_id.mui() == mui)
+                } else {
+                    false
+                }
+            })
             .collect::<Vec<_>>();
         assert_eq!(res.len(), 2);
 

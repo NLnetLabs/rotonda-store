@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 use std::path::Path;
 
 use inetnum::addr::{Prefix, PrefixError};
-use log::trace;
+use log::{debug, trace};
 use lsm_tree::{AbstractTree, KvPair};
 use roaring::RoaringBitmap;
 use zerocopy::{
@@ -31,12 +31,15 @@ pub(crate) trait Key<AF: AddressFamily, K: KeyExtensions>:
     // Try to extract a header from the bytes for reading only. If this
     // somehow fails, we don't know what to do anymore. Data may be corrupted,
     // so it probably should not be retried.
-    fn header(bytes: &[u8]) -> Result<&LongKey<AF, K>, FatalError> {
+    fn long_header(bytes: &[u8]) -> Result<&LongKey<AF, K>, FatalError> {
         // trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
-        trace!("bytes {:?}", bytes);
+        trace!("bytes {bytes:?}");
         trace!("key size {}", size_of::<K>());
-        LongKey::try_ref_from_bytes(bytes.as_bytes()).map_err(|_| FatalError)
+        LongKey::try_ref_from_bytes(bytes).map_err(|e| {
+            debug!("header error {e}");
+            FatalError
+        })
     }
 
     // Try to extract a header for writing. If this somehow fails, we most
@@ -47,10 +50,10 @@ pub(crate) trait Key<AF: AddressFamily, K: KeyExtensions>:
     ) -> Result<&mut LongKey<AF, K>, FatalError> {
         // trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
-        trace!("bytes {:?}", bytes);
+        trace!("bytes {bytes:?}");
         let lk = LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
             .map_err(|_| FatalError);
-        trace!("long key {:?}", lk);
+        trace!("long key {lk:?}");
         lk
     }
 }
@@ -315,7 +318,7 @@ impl<
                         r.map(|kv| {
                             trace!("n f persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            if let Ok(header) = K::header(
+                            if let Ok(header) = K::long_header(
                                 &bytes[..const { key_size::<AF, RK>() }],
                             ) {
                                 // If mui is in the global withdrawn muis
@@ -377,7 +380,7 @@ impl<
                         kv.map(|kv| {
                             trace!("mui f persist kv pair found: {:?}", kv);
                             let bytes = [kv.0, kv.1].concat();
-                            if let Ok(key) = K::header(
+                            if let Ok(key) = K::long_header(
                                 &bytes[..const { key_size::<AF, RK>() }],
                             ) {
                                 // If mui is in the global withdrawn muis
@@ -424,9 +427,9 @@ impl<
         for rkv in self.tree.prefix(key_b.as_bytes(), None, None) {
             if let Ok(kvs) = rkv {
                 let kv = [kvs.0, kvs.1].concat();
-                if let Ok(h) = K::header(&kv) {
+                if let Ok(h) = K::long_header(&kv) {
                     if let Ok(r) = &res {
-                        if let Ok(h_res) = K::header(r) {
+                        if let Ok(h_res) = K::long_header(r) {
                             if h_res.ltime < h.ltime {
                                 res = Ok(kv);
                             }
@@ -609,7 +612,7 @@ impl<
 }
 
 // Iterator for all items in a lsm tree partition. The iterator used for
-// this will scann through the entire tree, and there's no way to start at a
+// this will scan through the entire tree, and there's no way to start at a
 // specified offset.
 pub(crate) struct PersistedPrefixIter<
     AF: AddressFamily,
@@ -663,7 +666,7 @@ impl<
 
         if let Some(mut r_rec) = rec {
             let outer_pfx = if let Some(Ok(Ok(rr))) =
-                r_rec.first().map(|v| v.as_ref().map(|h| K::header(h)))
+                r_rec.first().map(|v| v.as_ref().map(|h| K::long_header(h)))
             {
                 rr.prefix
             } else {
@@ -671,7 +674,8 @@ impl<
             };
 
             for (k, v) in self.tree_iter.by_ref().flatten() {
-                let header = K::header(&k);
+                let header = K::long_header(&k);
+                debug!("header {:?}", header);
 
                 if let Ok(h) = header {
                     if h.prefix == outer_pfx {
@@ -681,6 +685,7 @@ impl<
                         break;
                     }
                 } else {
+                    debug!("boem error pushed");
                     r_rec.push(Err(FatalError));
                 }
             }
