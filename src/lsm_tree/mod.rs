@@ -11,7 +11,7 @@ use zerocopy::{
 };
 
 use crate::errors::{FatalError, FatalResult, PrefixStoreError};
-use crate::prefix_cht::map_type::KeyExtensions;
+use crate::prefix_cht::map_type::{KeyExtensions, Mui};
 use crate::prefix_record::Meta;
 use crate::stats::Counters;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
@@ -25,18 +25,24 @@ use crate::types::{PrefixId, RouteStatus};
 // pairs, whereas long keys append values with existing (prefix, mui), thus
 // creating persisted historical records.
 
-pub(crate) trait Key<AF: AddressFamily, K: KeyExtensions>:
-    Copy + TryFromBytes + KnownLayout + IntoBytes + Unaligned + Immutable
+pub trait Key<AF: AddressFamily, K: KeyExtensions>:
+    Copy
+    + std::fmt::Debug
+    + TryFromBytes
+    + KnownLayout
+    + IntoBytes
+    + Unaligned
+    + Immutable
 {
     // Try to extract a header from the bytes for reading only. If this
     // somehow fails, we don't know what to do anymore. Data may be corrupted,
     // so it probably should not be retried.
-    fn long_header(bytes: &[u8]) -> Result<&LongKey<AF, K>, FatalError> {
+    fn from_header(bytes: &[u8]) -> Result<&Self, FatalError> {
         // trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
         trace!("bytes {bytes:?}");
         trace!("key size {}", size_of::<K>());
-        LongKey::try_ref_from_bytes(bytes).map_err(|e| {
+        Self::try_ref_from_bytes(bytes).map_err(|e| {
             debug!("header error {e}");
             FatalError
         })
@@ -45,17 +51,41 @@ pub(crate) trait Key<AF: AddressFamily, K: KeyExtensions>:
     // Try to extract a header for writing. If this somehow fails, we most
     // probably cannot write to it anymore. This is fatal. The application
     // should exit, data integrity (on disk) should be verified.
-    fn header_mut(
-        bytes: &mut [u8],
-    ) -> Result<&mut LongKey<AF, K>, FatalError> {
+    fn from_header_mut(bytes: &mut [u8]) -> Result<&mut Self, FatalError> {
         // trace!("key size {}", KEY_SIZE);
         trace!("bytes len {}", bytes.len());
         trace!("bytes {bytes:?}");
-        let lk = LongKey::try_mut_from_bytes(bytes.as_mut_bytes())
+        let lk = Self::try_mut_from_bytes(bytes.as_mut_bytes())
             .map_err(|_| FatalError);
-        trace!("long key {lk:?}");
+        // trace!("long key {lk:?}");
         lk
     }
+
+    fn long_key_from_header(
+        bytes: &[u8],
+    ) -> Result<&LongKey<AF, K>, FatalError> {
+        trace!("bytes len {}", bytes.len());
+        trace!("bytes {bytes:?}");
+        let lk = LongKey::<AF, K>::try_ref_from_bytes(bytes)
+            .map_err(|_| FatalError);
+        // trace!("long key {lk:?}");
+        lk
+    }
+
+    fn long_key_from_header_mut(
+        bytes: &mut [u8],
+    ) -> Result<&mut LongKey<AF, K>, FatalError> {
+        trace!("bytes len {}", bytes.len());
+        trace!("bytes {bytes:?}");
+        let lk = LongKey::<AF, K>::try_mut_from_bytes(bytes.as_mut_bytes())
+            .map_err(|_| FatalError);
+        // trace!("long key {lk:?}");
+        lk
+    }
+
+    fn prefix(&self) -> PrefixId<AF>;
+
+    fn mui(&self) -> K;
 }
 
 #[derive(
@@ -97,7 +127,14 @@ pub struct LongKey<AF: AddressFamily, K: KeyExtensions> {
     status: RouteStatus, // 1
 } // (18, or 23, or 31) for IPv4, and (30, or 35, or 43) for IPv6
 
-impl<AF: AddressFamily, K: KeyExtensions> Key<AF, K> for ShortKey<AF, K> {}
+impl<AF: AddressFamily, K: KeyExtensions> Key<AF, K> for ShortKey<AF, K> {
+    fn prefix(&self) -> PrefixId<AF> {
+        self.prefix
+    }
+    fn mui(&self) -> K {
+        self.mui
+    }
+}
 
 impl<AF: AddressFamily, K: KeyExtensions> From<(PrefixId<AF>, K)>
     for ShortKey<AF, K>
@@ -110,7 +147,15 @@ impl<AF: AddressFamily, K: KeyExtensions> From<(PrefixId<AF>, K)>
     }
 }
 
-impl<AF: AddressFamily, K: KeyExtensions> Key<AF, K> for LongKey<AF, K> {}
+impl<AF: AddressFamily, K: KeyExtensions> Key<AF, K> for LongKey<AF, K> {
+    fn prefix(&self) -> PrefixId<AF> {
+        self.prefix
+    }
+
+    fn mui(&self) -> K {
+        self.mui
+    }
+}
 
 impl<AF: AddressFamily, K: KeyExtensions>
     From<(PrefixId<AF>, K, u64, RouteStatus)> for LongKey<AF, K>
@@ -199,16 +244,14 @@ impl<
         prefix: PrefixId<AF>,
         key: RK,
     ) -> Result<bool, PrefixStoreError> {
-        for kv in self.tree.prefix(prefix.as_bytes(), None, None) {
-            if let Ok(kv) = kv {
-                let mut bytes = [kv.0, kv.1].concat();
-                let b = &mut bytes
-                    .get_mut(..const { key_size::<AF, RK>() })
-                    .ok_or(PrefixStoreError::FatalError)?;
-                let k = K::header_mut(b)?;
-                if k.mui == key {
-                    return Ok(true);
-                }
+        for kv in self.tree.prefix(prefix.as_bytes(), None, None).flatten() {
+            let mut bytes = [kv.0, kv.1].concat();
+            let b = &mut bytes
+                .get_mut(..const { key_size::<AF, RK>() })
+                .ok_or(PrefixStoreError::FatalError)?;
+            let k = K::from_header_mut(b)?;
+            if k.mui() == key {
+                return Ok(true);
             }
         }
 
@@ -239,14 +282,14 @@ impl<
                         kv.map(|kv| {
                             trace!("mui i persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            let key = K::header_mut(
+                            let key = K::long_key_from_header_mut(
                                 &mut bytes[..const { key_size::<AF, RK>() }],
                             )?;
                             // If mui is in the global withdrawn muis table,
                             // then rewrite the routestatus of the record
                             // to withdrawn.
                             if withdrawn_muis_bmin
-                                .contains(key.mui.mui().into())
+                                .contains(key.mui().mui().into())
                             {
                                 key.status = RouteStatus::Withdrawn;
                             }
@@ -281,13 +324,13 @@ impl<
                             // to withdrawn.
                             let mut bytes = [kv.0, kv.1].concat();
                             trace!("bytes {:?}", bytes);
-                            let key = K::header_mut(
+                            let key = K::long_key_from_header_mut(
                                 &mut bytes[..const { key_size::<AF, RK>() }],
                             )?;
                             trace!("key {:?}", key);
                             trace!("wm_bmin {:?}", withdrawn_muis_bmin);
                             if withdrawn_muis_bmin
-                                .contains(key.mui.mui().into())
+                                .contains(key.mui().mui().into())
                             {
                                 trace!("rewrite status");
                                 key.status = RouteStatus::Withdrawn;
@@ -318,14 +361,14 @@ impl<
                         r.map(|kv| {
                             trace!("n f persist kv pair found: {:?}", kv);
                             let mut bytes = [kv.0, kv.1].concat();
-                            if let Ok(header) = K::long_header(
+                            if let Ok(header) = K::long_key_from_header(
                                 &bytes[..const { key_size::<AF, RK>() }],
                             ) {
                                 // If mui is in the global withdrawn muis
                                 // table, then skip this record
                                 trace!(
                                     "header {}",
-                                    Prefix::from(header.prefix)
+                                    Prefix::from(header.prefix())
                                 );
                                 trace!(
                                     "status {}",
@@ -333,19 +376,19 @@ impl<
                                 );
                                 if header.status == RouteStatus::Withdrawn
                                     || withdrawn_muis_bmin
-                                        .contains(header.mui.mui().into())
+                                        .contains(header.mui().mui().into())
                                 {
                                     trace!(
                                         "NOT returning {} {}",
-                                        Prefix::from(header.prefix),
-                                        header.mui
+                                        Prefix::from(header.prefix()),
+                                        header.mui()
                                     );
                                     return None;
                                 }
                                 trace!(
                                     "RETURNING {} {}",
-                                    Prefix::from(header.prefix),
-                                    header.mui
+                                    Prefix::from(header.prefix()),
+                                    header.mui()
                                 );
                                 Some(Ok(bytes))
                             } else {
@@ -380,14 +423,14 @@ impl<
                         kv.map(|kv| {
                             trace!("mui f persist kv pair found: {:?}", kv);
                             let bytes = [kv.0, kv.1].concat();
-                            if let Ok(key) = K::long_header(
+                            if let Ok(key) = K::long_key_from_header(
                                 &bytes[..const { key_size::<AF, RK>() }],
                             ) {
                                 // If mui is in the global withdrawn muis
                                 // table, then skip this record
                                 if key.status == RouteStatus::Withdrawn
                                     || withdrawn_muis_bmin
-                                        .contains(key.mui.mui().into())
+                                        .contains(key.mui().mui().into())
                                 {
                                     return None;
                                 }
@@ -427,9 +470,9 @@ impl<
         for rkv in self.tree.prefix(key_b.as_bytes(), None, None) {
             if let Ok(kvs) = rkv {
                 let kv = [kvs.0, kvs.1].concat();
-                if let Ok(h) = K::long_header(&kv) {
+                if let Ok(h) = K::long_key_from_header(&kv) {
                     if let Ok(r) = &res {
-                        if let Ok(h_res) = K::long_header(r) {
+                        if let Ok(h_res) = K::long_key_from_header(r) {
                             if h_res.ltime < h.ltime {
                                 res = Ok(kv);
                             }
@@ -598,13 +641,8 @@ impl<
     }
 }
 
-impl<
-        AF: AddressFamily,
-        RK: KeyExtensions,
-        K: Key<AF, RK>,
-        // const PREFIX_SIZE: usize,
-        // const KEY_SIZE: usize,
-    > std::fmt::Debug for LsmTree<AF, RK, K>
+impl<AF: AddressFamily, RK: KeyExtensions, K: Key<AF, RK>> std::fmt::Debug
+    for LsmTree<AF, RK, K>
 {
     fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         todo!()
@@ -618,7 +656,6 @@ pub(crate) struct PersistedPrefixIter<
     AF: AddressFamily,
     RK: KeyExtensions,
     K: Key<AF, RK>,
-    // const KEY_SIZE: usize,
 > {
     cur_rec: Option<Vec<FatalResult<Vec<u8>>>>,
     tree_iter:
@@ -666,22 +703,23 @@ impl<
 
         if let Some(mut r_rec) = rec {
             let outer_pfx = if let Some(Ok(Ok(rr))) =
-                r_rec.first().map(|v| v.as_ref().map(|h| K::long_header(h)))
+                r_rec.first().map(|v| v.as_ref().map(|h| K::from_header(h)))
             {
-                rr.prefix
+                rr.prefix()
             } else {
                 return Some(vec![Err(FatalError)]);
             };
 
             for (k, v) in self.tree_iter.by_ref().flatten() {
-                let header = K::long_header(&k);
-                debug!("header {:?}", header);
+                let kv = [k, v].concat();
+                let key = K::long_key_from_header(&kv);
+                debug!("header {:?}", key);
 
-                if let Ok(h) = header {
-                    if h.prefix == outer_pfx {
-                        r_rec.push(Ok([k, v].concat()));
+                if let Ok(h) = key {
+                    if h.prefix() == outer_pfx {
+                        r_rec.push(Ok(kv));
                     } else {
-                        self.cur_rec = Some(vec![Ok([k, v].concat())]);
+                        self.cur_rec = Some(vec![Ok(kv)]);
                         break;
                     }
                 } else {

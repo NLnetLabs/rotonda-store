@@ -26,8 +26,6 @@ use crate::{
     IPv4, LsmTree,
 };
 
-use super::config::MemoryOnlyConfig;
-
 type BlobCht<M, MT> = PrefixCht<IPv4, M, MT, 9, 33>;
 
 type BlobLsmTree<const BLOB_SIZE: usize> = LsmTree<
@@ -74,14 +72,7 @@ pub fn prefix_hash(blob: &[u8]) -> PrefixId<IPv4> {
     PrefixId::<IPv4>::from((bits, 32))
 }
 
-impl<
-        M: Meta,
-        const BLOB_SIZE: usize,
-        // const N_ROOT_SIZE: usize,
-        C: Config,
-        // const KEY_SIZE: usize,
-    > BlobRib<M, BLOB_SIZE, C>
-{
+impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
     /// Create a new RIB with a default configuration.
     ///
     /// The default configuration uses the `MemoryOnly` persistence strategy.
@@ -212,15 +203,8 @@ impl<
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    // let (retry_count, exists) =
-                    //     self.tree_bitmap.set_prefix_exists(
-                    //         prefix,
-                    //         record.multi_uniq_id.mui().into(),
-                    //     )?;
-                    // let prefix =
-                    //     prefix_hash(record.multi_uniq_id.blob().unwrap());
                     let exists = persist_tree.contains_prefix(prefix)?;
-                    persist_tree.persist_record_w_long_key(prefix, &rec);
+                    persist_tree.persist_record_w_short_key(prefix, &rec);
                     Ok(UpsertReport {
                         cas_count: 0,
                         prefix_new: exists,
@@ -310,18 +294,15 @@ impl<
             _ => {
                 let mui =
                     mui.map(|mui| MuiRdPathIdBlob::from((mui, key.as_ref())));
-                Ok(
-                    self.blob_cht
-                        .get_records_for_prefix(
-                            prefix,
-                            mui,
-                            include_withdrawn,
-                            self.withdrawn_muis_bmin(guard),
-                        )
-                        .unwrap_or_default(), // .into_iter()
-                                              // .map(Record::<MuiRdPathId, M>::from)
-                                              // .collect::<Vec<_>>())
-                )
+                Ok(self
+                    .blob_cht
+                    .get_records_for_prefix(
+                        prefix,
+                        mui,
+                        include_withdrawn,
+                        self.withdrawn_muis_bmin(guard),
+                    )
+                    .unwrap_or_default())
             }
         }
     }
