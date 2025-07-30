@@ -9,6 +9,7 @@ pub(crate) mod route_status;
 
 pub(crate) use af::AddressFamily;
 pub(crate) use bit_span::BitSpan;
+pub(crate) use prefix_id::Nlri;
 pub(crate) use prefix_id::PrefixId;
 pub(crate) use prefix_record::Record;
 pub(crate) use route_status::RouteStatus;

@@ -69,7 +69,7 @@ impl<'a, AF: AddressFamily + 'a, const ROOT_SIZE: usize> Iterator
 
             if let Some(next_ptr) = next_ptr {
                 let node = if self.mui.is_none() {
-                    trace!("let's retriev node {}", next_ptr);
+                    trace!("let's retriev node {next_ptr}");
                     self.store.retrieve_node(next_ptr)
                 } else {
                     self.store

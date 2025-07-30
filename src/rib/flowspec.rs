@@ -1,12 +1,12 @@
 //------------ StoredBlob ----------------------------------------------------
 
-use std::{fmt::Debug, hash::Hash, io, path::Path, sync::atomic::Ordering};
+use std::{hash::Hash, io, path::Path, sync::atomic::Ordering};
 
 use crossbeam_epoch::{Atomic, Guard, Owned, Shared};
 use hash32::{FnvHasher, Hasher as _};
-use inetnum::addr::Prefix;
 use log::{debug, info, trace};
 use roaring::RoaringBitmap;
+use zerocopy::{NetworkEndian, U32};
 
 use crate::{
     epoch,
@@ -65,11 +65,12 @@ impl<const BLOB_SIZE: usize, M: Meta>
     }
 }
 
-pub fn prefix_hash(blob: &[u8]) -> PrefixId<IPv4> {
+pub fn prefix_hash(blob: &[u8]) -> U32<NetworkEndian> {
     let mut prefix_hash: FnvHasher = Default::default();
     blob.hash(&mut prefix_hash);
     let bits: u32 = prefix_hash.finish32();
-    PrefixId::<IPv4>::from((bits, 32))
+    bits.into()
+    // PrefixId::<IPv4>::from((bits, 32))
 }
 
 impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
@@ -146,7 +147,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
                 }
                 report.cas_count += retry_count as usize;
                 if report.prefix_new {
-                    self.counters.inc_prefixes_count(prefix.len());
+                    self.counters.inc_prefixes_count(32);
                 }
                 report
             })
@@ -169,11 +170,12 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
         match self.config.persist_strategy() {
             PersistStrategy::WriteAhead => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.persist_record_w_long_key(prefix, &rec);
+                    persist_tree
+                        .persist_record_w_long_key(prefix.into(), &rec);
 
                     self.blob_cht
                         .upsert_prefix(
-                            prefix,
+                            PrefixId::new(prefix, 32),
                             rec,
                             update_path_selections,
                             guard,
@@ -185,7 +187,12 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
             }
             PersistStrategy::PersistHistory => self
                 .blob_cht
-                .upsert_prefix(prefix, rec, update_path_selections, guard)
+                .upsert_prefix(
+                    PrefixId::new(prefix, 32),
+                    rec,
+                    update_path_selections,
+                    guard,
+                )
                 .map(|(report, old_rec)| {
                     if let Some(rec) = old_rec {
                         if let Some(persist_tree) = &self.persist_tree {
@@ -199,7 +206,12 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
                 }),
             PersistStrategy::MemoryOnly => self
                 .blob_cht
-                .upsert_prefix(prefix, rec, update_path_selections, guard)
+                .upsert_prefix(
+                    PrefixId::new(prefix, 32),
+                    rec,
+                    update_path_selections,
+                    guard,
+                )
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
@@ -220,7 +232,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
 
     pub fn contains(
         &self,
-        prefix: PrefixId<IPv4>,
+        prefix: U32<NetworkEndian>,
         mui: Option<MuiRdPathIdBlob<BLOB_SIZE>>,
     ) -> Result<bool, PrefixStoreError> {
         match self.config.persist_strategy() {
@@ -237,9 +249,13 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
             }
             _ => {
                 if let Some(mui) = mui {
-                    Ok(self.blob_cht.contains_key(prefix, mui))
+                    Ok(self
+                        .blob_cht
+                        .contains_key(PrefixId::new(prefix, 32), mui))
                 } else {
-                    Ok(self.blob_cht.contains_prefix(prefix))
+                    Ok(self
+                        .blob_cht
+                        .contains_prefix(PrefixId::new(prefix, 32)))
                 }
             }
         }
@@ -274,7 +290,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
                             >::from_bytes(
                                 &r
                             ) {
-                                let mui = rec.multi_uniq_id;
+                                let mui = rec.ext_key;
                                 recs_vec.push(Record::new(
                                     mui,
                                     rec.ltime,
@@ -297,7 +313,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
                 Ok(self
                     .blob_cht
                     .get_records_for_prefix(
-                        prefix,
+                        PrefixId::new(prefix, 32),
                         mui,
                         include_withdrawn,
                         self.withdrawn_muis_bmin(guard),
@@ -326,14 +342,16 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
     // combination  to Withdrawn.
     pub fn mark_mui_as_withdrawn_for_prefix(
         &self,
-        prefix: PrefixId<IPv4>,
+        prefix: U32<NetworkEndian>,
         mui: Mui,
         ltime: u64,
     ) -> Result<(), PrefixStoreError> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
                 let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                    self.blob_cht.non_recursive_retrieve_prefix_mut(
+                        PrefixId::new(prefix, 43),
+                    );
 
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
@@ -368,7 +386,9 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
                 let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                    self.blob_cht.non_recursive_retrieve_prefix_mut(
+                        PrefixId::new(prefix, 32),
+                    );
 
                 if !exists {
                     return Err(PrefixStoreError::StoreNotReadyError);
@@ -399,14 +419,16 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
     // combination  to Active.
     pub fn mark_mui_as_active_for_prefix(
         &self,
-        prefix: PrefixId<IPv4>,
+        prefix: U32<NetworkEndian>,
         mui: Mui,
         ltime: u64,
     ) -> FatalResult<()> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
                 let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                    self.blob_cht.non_recursive_retrieve_prefix_mut(
+                        PrefixId::new(prefix, 32),
+                    );
 
                 if !exists {
                     return Err(FatalError);
@@ -434,7 +456,9 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
                 let (stored_prefix, exists) =
-                    self.blob_cht.non_recursive_retrieve_prefix_mut(prefix);
+                    self.blob_cht.non_recursive_retrieve_prefix_mut(
+                        PrefixId::new(prefix, 32),
+                    );
 
                 if !exists {
                     return Err(FatalError);
@@ -714,7 +738,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
                             first_rec
                         ) {
                             #[allow(clippy::unwrap_used)]
-                            let blob = pfx.multi_uniq_id;
+                            let blob = pfx.ext_key;
 
                             let mut rec_vec: Vec<
                                 Record<MuiRdPathIdBlob<BLOB_SIZE>, M>,
@@ -731,8 +755,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
                                         ) {
                                             debug!("recrec {rec}");
                                             rec_vec.push(Record {
-                                                multi_uniq_id: rec
-                                                    .multi_uniq_id,
+                                                multi_uniq_id: rec.ext_key,
                                                 ltime: rec.ltime,
                                                 status: rec.status,
                                                 meta: rec

@@ -8,7 +8,7 @@ use crate::match_options::{MatchOptions, MatchType, QueryResult};
 use crate::prefix_cht::map_type::{KeyExtensions, MapType};
 use crate::prefix_record::RecordSet;
 use crate::types::prefix_record::ZeroCopyRecord;
-use crate::types::Record;
+use crate::types::{Nlri, Record};
 use crate::AddressFamily;
 use crate::{prefix_record::Meta, rib::starcast_af::StarCastAfRib};
 use inetnum::addr::Prefix;
@@ -23,13 +23,15 @@ use super::config::{Config, PersistStrategy};
 impl<
         'a,
         AF: AddressFamily,
+        N: Nlri + From<PrefixId<AF>>,
         M: Meta,
         MT: MapType<M>,
         const N_ROOT_SIZE: usize,
         const P_ROOT_SIZE: usize,
         C: Config,
-        // const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+    > StarCastAfRib<AF, N, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+where
+    PrefixId<AF>: Nlri + From<N>,
 {
     pub(crate) fn get_value(
         &'a self,
@@ -48,7 +50,7 @@ impl<
                     .as_ref()
                     .and_then(|tree| {
                         tree.records_for_prefix(
-                            prefix_id,
+                            prefix_id.into(),
                             mui,
                             include_withdrawn,
                             self.tree_bitmap.withdrawn_muis_bmin(guard),
@@ -57,12 +59,12 @@ impl<
                             v.iter()
                                 .map(|bytes| {
                                     if let Ok(b) = bytes.as_ref() {
-                                        let record: &ZeroCopyRecord<AF, MT::Key> =
+                                        let record: &ZeroCopyRecord<N, MT::Key> =
                                         ZeroCopyRecord::try_ref_from_bytes(b)
                                             .map_err(|_| FatalError)?;
                                         Ok(Record::<MT::Key, M> {
                                             multi_uniq_id: record
-                                                .multi_uniq_id,
+                                                .ext_key,
                                             ltime: record.ltime,
                                             status: record.status,
                                             meta: <Vec<u8>>::from(

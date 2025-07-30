@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 MuiStarCastRib::<PrefixAs, _>::new_with_config(config)?;
 
             if let Err(err) = load_prefixes(&mut rec_vec) {
-                println!("error running example: {}", err);
+                println!("error running example: {err}");
                 process::exit(1);
             }
             // println!("finished loading {} prefixes...", pfxs.len());
@@ -131,9 +131,9 @@ fn main() -> Result<(), Box<dyn Error>> {
             //         .map_while(|s| if s > &0 { Some(*s) } else { None })
             //         .collect::<Vec<_>>()
             // );
-            println!("\"run_no\": {},", n);
-            println!("\"inserts_num\": {},", inserts_num);
-            println!("\"insert_duration_nanos\": {},", dur_insert_nanos);
+            println!("\"run_no\": {n},");
+            println!("\"inserts_num\": {inserts_num},");
+            println!("\"insert_duration_nanos\": {dur_insert_nanos},");
             println!(
                 "\"global_prefix_vec_size\": {:?},",
                 tree_bitmap.prefixes_count()
@@ -146,8 +146,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "\"insert_time_nanos\": {},",
                 dur_insert_nanos as f32 / inserts_num as f32
             );
-            println!("\"searches_num\": {},", searches_num);
-            println!("\"search_duration_nanos\": {},", dur_search_nanos);
+            println!("\"searches_num\": {searches_num},");
+            println!("\"search_duration_nanos\": {dur_search_nanos},");
             println!(
                 "\"search_time_nanos\": {}",
                 dur_search_nanos as f32 / searches_num as f32

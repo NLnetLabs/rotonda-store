@@ -1,6 +1,5 @@
 use inetnum::addr::Prefix;
 use rotonda_store::match_options::IncludeHistory;
-use rotonda_store::prefix_cht::map_type::Mui;
 use rotonda_store::prefix_record::{Record, RouteStatus};
 use rotonda_store::rib::MuiStarCastRib;
 // use rotonda_store::prelude::multi::*;
@@ -348,7 +347,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new_relaxed(std::net::Ipv4Addr::new(1, 0, 0, 0).into(), 24),
         // Prefix::new_relaxed(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
-        println!("search for: {:?}", spfx);
+        println!("search for: {spfx:?}");
         // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
         let s_spfx = tree_bitmap.match_prefix(
             // (&locks.0, &locks.1),
@@ -363,7 +362,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             guard,
         );
-        println!("exact match: {:?}", s_spfx);
+        println!("exact match: {s_spfx:?}");
         println!("-----------");
     }
     Ok(())

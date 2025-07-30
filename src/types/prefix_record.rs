@@ -13,7 +13,7 @@ use inetnum::addr::Prefix;
 use log::debug;
 use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes, Unaligned};
 
-use super::PrefixId;
+use super::{Nlri, PrefixId};
 
 pub use super::route_status::RouteStatus;
 
@@ -131,15 +131,15 @@ impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
 
 #[derive(KnownLayout, Immutable, Unaligned, IntoBytes, TryFromBytes)]
 #[repr(C, packed)]
-pub(crate) struct ZeroCopyRecord<AF: AddressFamily, K: KeyExtensions> {
-    pub prefix: PrefixId<AF>,
-    pub multi_uniq_id: K,
+pub(crate) struct ZeroCopyRecord<N: Nlri, K: KeyExtensions> {
+    pub nlri: N,
+    pub ext_key: K,
     pub ltime: u64,
     pub status: RouteStatus,
     pub meta: [u8],
 }
 
-impl<AF: AddressFamily, K: KeyExtensions> ZeroCopyRecord<AF, K> {
+impl<N: Nlri, K: KeyExtensions> ZeroCopyRecord<N, K> {
     pub(crate) fn from_bytes(b: &[u8]) -> Result<&Self, FatalError> {
         debug!("bytes:: {b:?}");
         Self::try_ref_from_bytes(b).map_err(|e| {
@@ -149,15 +149,15 @@ impl<AF: AddressFamily, K: KeyExtensions> ZeroCopyRecord<AF, K> {
     }
 }
 
-impl<AF: AddressFamily + std::fmt::Display, K: KeyExtensions>
-    std::fmt::Display for ZeroCopyRecord<AF, K>
+impl<N: Nlri + std::fmt::Display, K: KeyExtensions> std::fmt::Display
+    for ZeroCopyRecord<N, K>
 {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mui = self.multi_uniq_id;
+        let mui = self.ext_key;
         let ltime = self.ltime;
         write!(
             f,
-            "{{ mui: {}, ltime: {}, status: {}, meta: {:?} }}",
+            "{{ ext_key: {}, ltime: {}, status: {}, meta: {:?} }}",
             mui, ltime, self.status, &self.meta
         )
     }

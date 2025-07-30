@@ -1,6 +1,53 @@
-use zerocopy::FromBytes;
+use zerocopy::{
+    FromBytes, Immutable, IntoBytes, KnownLayout, NetworkEndian, Unaligned,
+    U32,
+};
 
-use crate::{AddressFamily, IPv4};
+use crate::{prefix_cht::map_type::KeyExtensions, AddressFamily, IPv4};
+
+pub trait Nlri:
+    Copy
+    + Clone
+    + std::fmt::Debug
+    + Eq
+    + std::hash::Hash
+    + FromBytes
+    + IntoBytes
+    + KnownLayout
+    + Immutable
+    + Unaligned
+    + Ord
+    + PartialOrd
+{
+    const BITS: u8;
+
+    // fn nlri(&self) -> impl AddressFamily;
+    // fn len(&self) -> u8;
+}
+
+impl Nlri for U32<NetworkEndian> {
+    const BITS: u8 = 32;
+
+    // fn nlri(&self) -> impl AddressFamily {
+    //     *self
+    // }
+
+    // fn len(&self) -> u8 {
+    //     32
+    // }
+}
+
+impl<AF: AddressFamily> Nlri for PrefixId<AF> {
+    const BITS: u8 = 32;
+
+    // fn nlri(&self) -> impl AddressFamily {
+    //     self.bits
+    // }
+
+    // fn len(&self) -> u8 {
+    //     self.len()
+    // }
+}
 
 //------------ PrefixId ------------------------------------------------------
 

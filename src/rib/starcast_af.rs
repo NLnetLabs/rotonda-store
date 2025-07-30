@@ -13,7 +13,7 @@ use crate::{epoch, Guard};
 use crate::errors::{FatalError, FatalResult};
 use crate::prefix_cht::cht::PrefixCht;
 use crate::types::prefix_record::{ValueHeader, ZeroCopyRecord};
-use crate::types::{PrefixId, RouteStatus};
+use crate::types::{Nlri, PrefixId, RouteStatus};
 use crate::TreeBitMap;
 use crate::{lsm_tree::LongKey, LsmTree};
 use crate::{types::errors::PrefixStoreError, types::prefix_record::Record};
@@ -34,6 +34,7 @@ use super::config::Config;
 #[derive(Debug)]
 pub(crate) struct StarCastAfRib<
     AF: AddressFamily,
+    N: Nlri + From<PrefixId<AF>>,
     // The type that stores the route-like data
     M: Meta,
     // The Map type that store multiple routes for one prefix, e.g. a HashMap
@@ -56,28 +57,31 @@ pub(crate) struct StarCastAfRib<
     pub config: C,
     pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
     pub(crate) prefix_cht: PrefixCht<AF, M, MT, P_ROOT_SIZE, 1>,
-    pub(crate) persist_tree:
-        Option<LsmTree<AF, MT::Key, LongKey<AF, MT::Key>>>,
+    pub(crate) persist_tree: Option<LsmTree<N, MT::Key, LongKey<N, MT::Key>>>,
     pub counters: Counters,
 }
 
 impl<
         AF: AddressFamily,
+        N: Nlri + From<PrefixId<AF>>,
         M: Meta,
         MT: MapType<M>,
         const P_ROOT_SIZE: usize,
         const N_ROOT_SIZE: usize,
         C: Config,
-        // const KEY_SIZE: usize,
-    > StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+    > StarCastAfRib<AF, N, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+where
+    PrefixId<AF>: Nlri + From<N>,
 {
     pub(crate) fn new(
         config: C,
     ) -> Result<
-        StarCastAfRib<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>,
+        StarCastAfRib<AF, N, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>,
         Box<dyn std::error::Error>,
     > {
-        StarCastAfRib::<AF, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>::init(config)
+        StarCastAfRib::<AF, N, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>::init(
+            config,
+        )
     }
 
     fn init(config: C) -> Result<Self, Box<dyn std::error::Error>> {
@@ -117,7 +121,10 @@ impl<
         prefix: PrefixId<AF>,
         record: Record<MT::Key, M>,
         update_path_selections: Option<M::TBI>,
-    ) -> Result<UpsertReport, PrefixStoreError> {
+    ) -> Result<UpsertReport, PrefixStoreError>
+    where
+        PrefixId<AF>: Nlri,
+    {
         trace!("try inserting {prefix:?}");
         let guard = &epoch::pin();
         self.tree_bitmap
@@ -125,7 +132,7 @@ impl<
             .and_then(|(retry_count, exists)| {
                 trace!("exists, upsert it");
                 self.upsert_prefix(
-                    prefix,
+                    prefix.into(),
                     record,
                     update_path_selections,
                     guard,
@@ -155,7 +162,8 @@ impl<
         match self.config.persist_strategy() {
             PersistStrategy::WriteAhead => {
                 if let Some(persist_tree) = &self.persist_tree {
-                    persist_tree.persist_record_w_long_key(prefix, &record);
+                    persist_tree
+                        .persist_record_w_long_key(prefix.into(), &record);
 
                     self.prefix_cht
                         .upsert_prefix(
@@ -176,7 +184,7 @@ impl<
                     if let Some(rec) = old_rec {
                         if let Some(persist_tree) = &self.persist_tree {
                             persist_tree.persist_record_w_long_key(
-                                prefix,
+                                prefix.into(),
                                 &Record::<MT::Key, M>::from((mui, &rec)),
                             );
                         }
@@ -194,7 +202,8 @@ impl<
                             prefix,
                             record.multi_uniq_id.mui().into(),
                         )?;
-                    persist_tree.persist_record_w_short_key(prefix, &record);
+                    persist_tree
+                        .persist_record_w_short_key(prefix.into(), &record);
                     Ok(UpsertReport {
                         cas_count: retry_count as usize,
                         prefix_new: exists,
@@ -246,8 +255,8 @@ impl<
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
-                    let stored_prefixes =
-                        p_tree.records_with_keys_for_prefix_mui(prefix, mui);
+                    let stored_prefixes = p_tree
+                        .records_with_keys_for_prefix_mui(prefix.into(), mui);
 
                     for rkv in stored_prefixes {
                         if let Ok(r) = rkv {
@@ -290,7 +299,7 @@ impl<
                             return Err(PrefixStoreError::StoreNotReadyError);
                         };
 
-                    p_tree.insert_empty_record(prefix, mui, ltime);
+                    p_tree.insert_empty_record(prefix.into(), mui, ltime);
                 }
             }
         }
@@ -320,8 +329,8 @@ impl<
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
-                    if let Ok(Some(record_b)) =
-                        p_tree.most_recent_record_for_prefix_mui(prefix, mui)
+                    if let Ok(Some(record_b)) = p_tree
+                        .most_recent_record_for_prefix_mui(prefix.into(), mui)
                     {
                         let header = ValueHeader {
                             ltime,
@@ -360,7 +369,7 @@ impl<
                     // old (prefix, mui) records.
                     // We are inserting an empty record, since this is a
                     // withdrawal.
-                    p_tree.insert_empty_record(prefix, mui, ltime);
+                    p_tree.insert_empty_record(prefix.into(), mui, ltime);
                 }
             }
         }
@@ -481,7 +490,7 @@ impl<
                 tree.prefixes_iter().map(|recs| {
                     if let Some(Ok(first_rec)) = recs.first() {
                         if let Ok(pfx) =
-                            ZeroCopyRecord::<AF, MT::Key>::from_bytes(
+                            ZeroCopyRecord::<N, MT::Key>::from_bytes(
                                 first_rec,
                             )
                         {
@@ -489,13 +498,13 @@ impl<
                             for res_rec in recs.iter() {
                                 if let Ok(rec) = res_rec {
                                     if let Ok(rec) = ZeroCopyRecord::<
-                                        AF,
+                                        N,
                                         MT::Key,
                                     >::from_bytes(
                                         rec
                                     ) {
                                         rec_vec.push(Record {
-                                            multi_uniq_id: rec.multi_uniq_id,
+                                            multi_uniq_id: rec.ext_key,
                                             ltime: rec.ltime,
                                             status: rec.status,
                                             meta: rec.meta.to_vec().into(),
@@ -505,7 +514,10 @@ impl<
                                     return Err(FatalError);
                                 }
                             }
-                            Ok((Prefix::from(pfx.prefix), rec_vec))
+                            Ok((
+                                Prefix::from(PrefixId::<AF>::from(pfx.nlri)),
+                                rec_vec,
+                            ))
                         } else {
                             Err(FatalError)
                         }
@@ -552,7 +564,15 @@ impl<
         C: Config,
         // const KEY_SIZE: usize,
     > std::fmt::Display
-    for StarCastAfRib<IPv4, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+    for StarCastAfRib<
+        IPv4,
+        PrefixId<IPv4>,
+        M,
+        MT,
+        N_ROOT_SIZE,
+        P_ROOT_SIZE,
+        C,
+    >
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv4, {}>", std::any::type_name::<M>())
@@ -567,7 +587,15 @@ impl<
         C: Config,
         // const KEY_SIZE: usize,
     > std::fmt::Display
-    for StarCastAfRib<IPv6, M, MT, N_ROOT_SIZE, P_ROOT_SIZE, C>
+    for StarCastAfRib<
+        IPv6,
+        PrefixId<IPv6>,
+        M,
+        MT,
+        N_ROOT_SIZE,
+        P_ROOT_SIZE,
+        C,
+    >
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "Rib<IPv6, {}>", std::any::type_name::<M>())
