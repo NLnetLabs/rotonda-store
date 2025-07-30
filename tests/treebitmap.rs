@@ -375,8 +375,8 @@ mod tests {
                 },
                 guard,
             )?;
-            println!("PFX {}", pfx);
-            println!("RES {}", res);
+            println!("PFX {pfx}");
+            println!("RES {res}");
             assert_eq!(res.prefix.unwrap(), pfx);
         }
 
@@ -489,7 +489,7 @@ mod tests {
                         },
                         guard,
                     )?;
-                    println!("{:?}", pfx);
+                    println!("{pfx:?}");
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);
                 }
@@ -583,7 +583,7 @@ mod tests {
             .collect::<Vec<_>>()
         {
             let rec = rec.unwrap();
-            println!("{}", rec);
+            println!("{rec}");
 
             assert_eq!(rec.meta.len(), 1);
             assert_eq!(rec.meta[0].multi_uniq_id, 5.into());
@@ -616,7 +616,7 @@ mod tests {
             },
             guard,
         )?;
-        print!(".pfx {:#?}.", all_recs_for_pfx);
+        print!(".pfx {all_recs_for_pfx:#?}.");
         assert_eq!(all_recs_for_pfx.records.len(), 5);
         let wd_rec = all_recs_for_pfx
             .records
@@ -653,7 +653,7 @@ mod tests {
 
         for rec in tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>() {
             let rec = rec.unwrap();
-            println!("{}", rec);
+            println!("{rec}");
         }
 
         let mui_2_recs = all_recs.filter_map(|r| {
@@ -734,12 +734,12 @@ mod tests {
             guard,
         )?;
 
-        println!("more_specifics match {} w/ withdrawn", more_specifics);
+        println!("more_specifics match {more_specifics} w/ withdrawn");
 
         let guard = &rotonda_store::epoch::pin();
         for p in tree_bitmap.prefixes_iter_v4(guard) {
             let p = p.unwrap();
-            println!("{}", p);
+            println!("{p}");
         }
 
         let more_specifics = more_specifics.more_specifics.unwrap();
@@ -781,7 +781,7 @@ mod tests {
             guard,
         )?;
 
-        println!("more_specifics match {} w/o withdrawn", more_specifics);
+        println!("more_specifics match {more_specifics} w/o withdrawn");
         let more_specifics = more_specifics.more_specifics.unwrap();
         let ms_v4 = more_specifics
             .v4
@@ -831,7 +831,7 @@ mod tests {
             guard,
         )?;
 
-        println!("more_specifics match w/o withdrawn #2 {}", more_specifics);
+        println!("more_specifics match w/o withdrawn #2 {more_specifics}");
         // We withdrew mui 1 for the requested prefix itself, since mui 2 was
         // already withdrawn above, we're left with 3 records
         println!("PREFIX META: {:#?}", more_specifics.records);
@@ -904,7 +904,7 @@ mod tests {
             },
             guard,
         )?;
-        println!("more_specifics match w/o withdrawn #3 {}", more_specifics);
+        println!("more_specifics match w/o withdrawn #3 {more_specifics}");
 
         // This prefix should not be found, since we withdrew all records
         // for it.
@@ -962,7 +962,7 @@ mod tests {
             guard,
         )?;
 
-        trace!("{:#?}", query);
+        trace!("{query:#?}");
 
         assert_eq!(query.records.len(), 5);
 
@@ -976,7 +976,7 @@ mod tests {
 
         println!("less_specifics match w/o withdrawn #5");
 
-        trace!("mark {} as active", wd_pfx);
+        trace!("mark {wd_pfx} as active");
         tree_bitmap
             .mark_mui_as_active_for_prefix(&wd_pfx, 5.into(), 1)
             .unwrap();
@@ -994,7 +994,7 @@ mod tests {
             guard,
         )?;
         let less_specifics = less_specifics.less_specifics.unwrap();
-        println!("{:#?}", less_specifics);
+        println!("{less_specifics:#?}");
 
         assert_eq!(less_specifics.v4.len(), 1);
         let less_specifics = &less_specifics.v4[0];

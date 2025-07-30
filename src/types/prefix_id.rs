@@ -3,7 +3,7 @@ use zerocopy::{
     U32,
 };
 
-use crate::{prefix_cht::map_type::KeyExtensions, AddressFamily, IPv4};
+use crate::{AddressFamily, IPv4};
 
 pub trait Nlri:
     Copy

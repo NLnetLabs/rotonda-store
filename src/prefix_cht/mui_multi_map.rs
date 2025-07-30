@@ -89,10 +89,10 @@ impl<M: Meta> MapType<M> for MuiMultiMap<M> {
         self.0.is_empty()
     }
 
-    fn get<'a, FK: KeyExtensions>(
-        &'a self,
+    fn get<FK: KeyExtensions>(
+        &self,
         key: FK,
-    ) -> Option<&'a MultiMapValue<M>>
+    ) -> Option<&MultiMapValue<M>>
     where
         Mui: From<FK>,
     {

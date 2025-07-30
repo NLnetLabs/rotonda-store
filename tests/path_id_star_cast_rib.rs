@@ -18,7 +18,7 @@ mod tests {
         prefix_cht::map_type::{Mui, MuiPathId},
         prefix_record::{Record, RouteStatus},
         rib::{
-            config::{MemoryOnlyConfig, PersistOnlyConfig},
+            config::PersistOnlyConfig,
             MuiPathIdStarCastRib,
         },
         test_types::NoMeta,

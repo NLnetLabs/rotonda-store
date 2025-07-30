@@ -84,7 +84,7 @@ fn test_more_specifics_without_less_specifics<C: Config>(
             ),
         ),
     ] {
-        println!("start round {}", r);
+        println!("start round {r}");
         println!("search for: {}", spfx.0.unwrap());
         let found_result = tree_bitmap.match_prefix(
             &spfx.0.unwrap(),
@@ -98,7 +98,7 @@ fn test_more_specifics_without_less_specifics<C: Config>(
             },
             guard,
         )?;
-        println!("em/m-s: {:#?}", found_result);
+        println!("em/m-s: {found_result:#?}");
 
         let more_specifics = found_result
             .more_specifics
@@ -112,13 +112,13 @@ fn test_more_specifics_without_less_specifics<C: Config>(
         assert_eq!(&more_specifics.len(), &spfx.2.len());
 
         for i in spfx.2.iter() {
-            print!("{} ", i);
+            print!("{i} ");
 
             let result_pfx =
                 more_specifics.iter().find(|pfx| pfx.prefix == pfxs[*i]);
             assert!(result_pfx.is_some());
         }
-        println!("end round {}", r);
+        println!("end round {r}");
         println!("-----------");
     }
     Ok(())
@@ -197,7 +197,7 @@ fn test_more_specifics_with_less_specifics<C: Config>(
             },
             guard,
         )?;
-        println!("em/m-s: {}", found_result);
+        println!("em/m-s: {found_result}");
 
         let more_specifics = found_result
             .more_specifics
@@ -210,7 +210,7 @@ fn test_more_specifics_with_less_specifics<C: Config>(
         assert_eq!(&more_specifics.len(), &spfx.2.len());
 
         for i in spfx.2.iter() {
-            print!("{} ", i);
+            print!("{i} ");
 
             let result_pfx = more_specifics
                 .iter()

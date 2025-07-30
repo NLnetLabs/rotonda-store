@@ -63,10 +63,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .name(i.to_string())
             .spawn(
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
-                    println!("park thread {}", i);
+                    println!("park thread {i}");
                     thread::park();
 
-                    print!("\nstart {} ---", i);
+                    print!("\nstart {i} ---");
                     let mut x: u32 = 0;
                     loop {
                         x += 1;
@@ -98,7 +98,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                             Err(e) => {
-                                println!("{}", e);
+                                println!("{e}");
                             }
                         };
 
@@ -142,7 +142,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         guard,
     )?;
     println!("query result");
-    println!("{}", s_spfx);
+    println!("{s_spfx}");
     println!("{}", s_spfx.more_specifics.unwrap());
 
     println!("-----------");

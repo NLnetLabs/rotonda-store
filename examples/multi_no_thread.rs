@@ -40,11 +40,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         ) {
             Ok(_) => {}
             Err(e) => {
-                println!("{}", e);
+                println!("{e}");
             }
         };
         if (x % 1_000_000) == 0 {
-            println!("inserts: {}", x);
+            println!("inserts: {x}");
         }
         if x == 100_000_000 {
             break;
@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         guard,
     )?;
     println!("query result");
-    println!("{}", s_spfx);
+    println!("{s_spfx}");
     println!("{}", s_spfx.more_specifics.unwrap());
 
     println!("-----------");

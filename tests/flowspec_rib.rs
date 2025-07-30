@@ -11,14 +11,13 @@ mod common {
 
 #[cfg(test)]
 mod tests {
-    use log::debug;
+    
     use rotonda_store::{
         prefix_cht::map_type::{KeyExtensions, MuiRdPathId},
         prefix_record::{Record, RouteStatus},
         rib::{
-            config::{MemoryOnlyConfig, PersistOnlyConfig},
+            config::PersistOnlyConfig,
             flowspec::BlobRib,
-            FlowSpecRib,
         },
         test_types::NoMeta,
     };

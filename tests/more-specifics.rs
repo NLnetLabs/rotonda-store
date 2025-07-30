@@ -176,7 +176,7 @@ fn test_more_specifics<C: Config>(
             ),
         ),
     ] {
-        println!("round {}", i);
+        println!("round {i}");
         println!("search for: {}", (*spfx.0)?);
         let found_result = tree_bitmap.match_prefix(
             &spfx.0.unwrap(),
@@ -194,7 +194,7 @@ fn test_more_specifics<C: Config>(
         //
         println!("search prefix: {}", spfx.0.unwrap());
         if let Some(pfx) = found_result.clone().prefix {
-            println!("found prefix: {}", pfx);
+            println!("found prefix: {pfx}");
         } else {
             println!("no found prefix");
         }
@@ -208,7 +208,7 @@ fn test_more_specifics<C: Config>(
             .enumerate()
             .map(|(i, p)| (i, p.prefix))
         {
-            println!("ms {}: {}", i, p);
+            println!("ms {i}: {p}");
         }
 
         println!("--");
@@ -219,7 +219,7 @@ fn test_more_specifics<C: Config>(
             .enumerate()
             .map(|(i, p)| (i, p.as_ref().unwrap().prefix))
         {
-            println!("ms {}: {}", i, p);
+            println!("ms {i}: {p}");
         }
 
         println!("25 {}", pfxs[25].unwrap());
@@ -246,12 +246,12 @@ fn test_more_specifics<C: Config>(
         );
         assert_eq!(found_result.prefix, spfx.1);
 
-        println!("round {}", i);
+        println!("round {i}");
         println!("{:?}", tree_bitmap.persist_strategy());
         assert_eq!(&more_specifics.len(), &spfx.2.len());
 
         for i in spfx.2.iter() {
-            print!("{} ", i);
+            print!("{i} ");
 
             let result_pfx = more_specifics
                 .iter()

@@ -160,7 +160,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
                         ) {
                             Ok(_) => {}
                             Err(e) => {
-                                println!("{}", e);
+                                println!("{e}");
                             }
                         };
                     }
@@ -175,7 +175,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
     println!("COUNT {:?}", tree_bitmap.prefixes_count());
 
     let all_pfxs_iter = tree_bitmap.prefixes_iter(guard).collect::<Vec<_>>();
-    println!("all_pfxs_iter {:#?}", all_pfxs_iter);
+    println!("all_pfxs_iter {all_pfxs_iter:#?}");
 
     let pfx = Prefix::from_str("185.34.0.0/16").unwrap();
 
@@ -316,7 +316,7 @@ fn test_concurrent_updates_1<C: Config + Sync + Send + 'static>(
         let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard)?;
         assert_eq!(res.prefix, Some(pfx));
         println!("strategy {:?}", tree_bitmap.persist_strategy());
-        println!("PFX {}", res);
+        println!("PFX {res}");
         assert_eq!(
             res.records
                 .iter()
@@ -382,7 +382,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
                 std::thread::Builder::new()
                     .name(n.to_string())
                     .spawn(move || {
-                        print!("\nstart prefix batch {} ---", n);
+                        print!("\nstart prefix batch {n} ---");
                         for (i, pfx) in pfxs.iter().enumerate() {
                             let _ = cur_ltime.fetch_add(1, Ordering::Release);
 
@@ -398,12 +398,12 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
                             ) {
                                 Ok(_) => {}
                                 Err(e) => {
-                                    println!("Err: {}", e);
+                                    println!("Err: {e}");
                                 }
                             };
                         }
 
-                        println!("--thread prefix batch {} done.", n);
+                        println!("--thread prefix batch {n} done.");
                     })
                     .unwrap()
             })
@@ -508,7 +508,7 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         let guard = rotonda_store::epoch::pin();
         let res = tree_bitmap.match_prefix(&pfx, &match_options, &guard);
         assert_eq!(res.as_ref().unwrap().prefix, Some(pfx));
-        println!("RES {:#?}", res);
+        println!("RES {res:#?}");
         assert_eq!(
             res.unwrap()
                 .records
@@ -568,11 +568,11 @@ fn test_concurrent_updates_2(// tree_bitmap: Arc<MultiThreadedStore<BeBytesAsn>>
         .unwrap()
         .more_specifics
         .unwrap();
-    println!("0/2 {}", mp02);
+    println!("0/2 {mp02}");
     assert_eq!(mp02.len(), 1);
 
     let res128 = tree_bitmap.match_prefix(&pfx128, &match_options, &guard);
-    println!("128 {:#?}", res128);
+    println!("128 {res128:#?}");
     // let guard = rotonda_store::epoch::pin();
     // println!(
     //     "more_specifics_iter_from {:#?}",

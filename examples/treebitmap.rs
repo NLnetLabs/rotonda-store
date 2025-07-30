@@ -295,7 +295,7 @@ fn main() -> Type {
         Prefix::new(std::net::Ipv4Addr::new(1, 0, 0, 0).into(), 24),
         Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
-        println!("search for: {:?}", spfx);
+        println!("search for: {spfx:?}");
         // let locks = tree_bitmap.acquire_prefixes_rwlock_read();
         let guard = &rotonda_store::epoch::pin();
         let s_spfx = tree_bitmap.match_prefix(
@@ -310,7 +310,7 @@ fn main() -> Type {
             },
             guard,
         );
-        println!("lmp: {:?}", s_spfx);
+        println!("lmp: {s_spfx:?}");
         println!("-----------");
     }
     Ok(())

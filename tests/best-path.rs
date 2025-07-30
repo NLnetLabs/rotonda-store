@@ -173,7 +173,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
             Ipv4Route(mui, pa_map.clone(), tbi),
         );
         tree_bitmap.insert(&pfx, rec, None)?;
-        trace!("inserted {}", pfx);
+        trace!("inserted {pfx}");
     }
 
     trace!("done inserting prefixes...");
@@ -199,7 +199,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
             .is_ps_outdated(&pfx, &rotonda_store::epoch::pin())
             .unwrap()
     );
-    println!("{:?}", best_path);
+    println!("{best_path:?}");
 
     // We didn't calculate the best path yet, but the prefix (and its entries)
     // exists, so this should be `Some(Err(BestPathNotFound))` at this point.
@@ -221,7 +221,7 @@ fn test_best_path_1(// tree_bitmap: MultiThreadedStore<Ipv4Route>,
             .is_ps_outdated(&pfx, &rotonda_store::epoch::pin())
             .unwrap()
     );
-    println!("{:?}", best_path);
+    println!("{best_path:?}");
     assert_eq!(best_path.unwrap().unwrap().multi_uniq_id, 1.into());
 
     Ok(())

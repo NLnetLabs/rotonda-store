@@ -20,7 +20,7 @@ use crate::{
         },
     },
     prefix_record::{Meta, ValueHeader, ZeroCopyRecord},
-    rib::config::{Config, PersistOnlyConfig, PersistStrategy},
+    rib::config::{Config, PersistStrategy},
     stats::{Counters, UpsertCounters, UpsertReport},
     types::{PrefixId, Record, RouteStatus},
     IPv4, LsmTree,
@@ -171,7 +171,7 @@ impl<M: Meta, const BLOB_SIZE: usize, C: Config> BlobRib<M, BLOB_SIZE, C> {
             PersistStrategy::WriteAhead => {
                 if let Some(persist_tree) = &self.persist_tree {
                     persist_tree
-                        .persist_record_w_long_key(prefix.into(), &rec);
+                        .persist_record_w_long_key(prefix, &rec);
 
                     self.blob_cht
                         .upsert_prefix(

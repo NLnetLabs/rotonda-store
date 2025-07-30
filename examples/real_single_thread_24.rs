@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 pfx_int += 1;
                 let pfx = Prefix::new_relaxed(pfx_int.into_ipaddr(), 32);
 
-                print!("{}-", pfx_int);
+                print!("{pfx_int}-");
                 let asn: u32 = rng.random();
                 match tree_bitmap.insert(
                     &pfx.unwrap(),
@@ -49,7 +49,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     Ok(_) => {}
                     Err(e) => {
-                        println!("{}", e);
+                        println!("{e}");
                     }
                 };
             }

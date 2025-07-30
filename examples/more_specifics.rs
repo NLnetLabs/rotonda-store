@@ -284,7 +284,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 0, 0).into(), 24),
         // Prefix::new(std::net::Ipv4Addr::new(1, 0, 128, 0).into(), 24),
     ] {
-        println!("search for: {:?}", spfx);
+        println!("search for: {spfx:?}");
         let guard = &epoch::pin();
         let s_spfx =
             MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?
@@ -300,7 +300,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     guard,
                 );
-        println!("em/m-s: {:#?}", s_spfx);
+        println!("em/m-s: {s_spfx:#?}");
         println!("-----------");
     }
     Ok(())

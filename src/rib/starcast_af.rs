@@ -132,7 +132,7 @@ where
             .and_then(|(retry_count, exists)| {
                 trace!("exists, upsert it");
                 self.upsert_prefix(
-                    prefix.into(),
+                    prefix,
                     record,
                     update_path_selections,
                     guard,

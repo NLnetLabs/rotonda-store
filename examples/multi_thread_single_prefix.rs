@@ -36,10 +36,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
                     let mut rng = rand::rng();
 
-                    println!("park thread {}", i);
+                    println!("park thread {i}");
                     thread::park();
 
-                    print!("\nstart {} ---", i);
+                    print!("\nstart {i} ---");
 
                     let mut x = 0;
                     loop {
@@ -65,7 +65,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }
                                 }
                                 Err(e) => {
-                                    println!("{}", e);
+                                    println!("{e}");
                                 }
                             };
                             let _s_spfx = tree_bitmap
@@ -86,11 +86,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             x += 1;
                         }
 
-                        println!("thread to sleep  {}", i);
+                        println!("thread to sleep  {i}");
 
                         guard.flush();
                         thread::sleep(Duration::from_secs(3));
-                        println!("wake thread {}", i);
+                        println!("wake thread {i}");
                         println!(
                             "prefix count {:?}",
                             tree_bitmap.prefixes_count()

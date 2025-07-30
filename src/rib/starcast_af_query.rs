@@ -43,8 +43,7 @@ where
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 println!(
-                    "get value from persist_store for {:?} with key {:?}",
-                    prefix_id, mui
+                    "get value from persist_store for {prefix_id:?} with key {mui:?}"
                 );
                 self.persist_tree
                     .as_ref()
@@ -214,10 +213,10 @@ where
         options: &MatchOptions<K>,
         guard: &'a Guard,
     ) -> FatalResult<QueryResult<MT::Key, M>> {
-        trace!("match_prefix rib {:?} {:?}", search_pfx, options);
+        trace!("match_prefix rib {search_pfx:?} {options:?}");
         let res = self.tree_bitmap.match_prefix(search_pfx, options);
 
-        trace!("res {:?}", res);
+        trace!("res {res:?}");
         let mut res = QueryResult::from(res);
 
         if let Some(Ok(Some(m))) = res.prefix.map(|p| {

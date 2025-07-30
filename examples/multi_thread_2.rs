@@ -32,7 +32,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .name(i.to_string())
             .spawn(move || {
                 while !start_flag.load(std::sync::atomic::Ordering::SeqCst) {
-                    trace!("park thread {}", i);
+                    trace!("park thread {i}");
                     thread::park();
                 }
 
@@ -48,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     Ok(_) => {}
                     Err(e) => {
-                        println!("{}", e);
+                        println!("{e}");
                     }
                 };
             })
@@ -79,7 +79,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         guard,
     )?;
     println!("query result");
-    println!("{}", s_spfx);
+    println!("{s_spfx}");
     println!("{}", s_spfx.more_specifics.unwrap());
     println!("-----------");
 

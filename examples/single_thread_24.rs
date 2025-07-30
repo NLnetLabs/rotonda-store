@@ -58,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 ) {
                     Ok(_) => {}
                     Err(e) => {
-                        println!("{}", e);
+                        println!("{e}");
                     }
                 };
             }

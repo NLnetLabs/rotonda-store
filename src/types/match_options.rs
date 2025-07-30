@@ -127,7 +127,7 @@ impl<K, M: Meta> QueryResult<K, M> {
 impl<K: Copy + fmt::Display, M: Meta> fmt::Display for QueryResult<K, M> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let pfx_str = match self.prefix {
-            Some(pfx) => format!("{}", pfx),
+            Some(pfx) => format!("{pfx}"),
             None => "".to_string(),
         };
         // let pfx_meta_str = match &self.prefix_meta {
@@ -135,17 +135,17 @@ impl<K: Copy + fmt::Display, M: Meta> fmt::Display for QueryResult<K, M> {
         //     None => "".to_string(),
         // };
         writeln!(f, "match_type: {}", self.match_type)?;
-        writeln!(f, "prefix: {}", pfx_str)?;
+        writeln!(f, "prefix: {pfx_str}")?;
         write!(f, "meta: [ ")?;
         for rec in &self.records {
-            write!(f, "{},", rec)?;
+            write!(f, "{rec},")?;
         }
         writeln!(f, " ]")?;
         writeln!(
             f,
             "less_specifics: {{ {} }}",
             if let Some(ls) = self.less_specifics.as_ref() {
-                format!("{}", ls)
+                format!("{ls}")
             } else {
                 "".to_string()
             }
@@ -154,7 +154,7 @@ impl<K: Copy + fmt::Display, M: Meta> fmt::Display for QueryResult<K, M> {
             f,
             "more_specifics: {{ {} }}",
             if let Some(ms) = self.more_specifics.as_ref() {
-                format!("{}", ms)
+                format!("{ms}")
             } else {
                 "".to_string()
             }

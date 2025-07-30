@@ -444,7 +444,7 @@ Giving up this node. This shouldn't happen!",
     }
 
     pub fn prefix_exists(&self, prefix_id: PrefixId<AF>) -> bool {
-        trace!("pe exists {:?}?", prefix_id);
+        trace!("pe exists {prefix_id:?}?");
         let (node_id, bs) = self.node_id_for_prefix(&prefix_id);
 
         match self.retrieve_node(node_id) {
@@ -461,7 +461,7 @@ Giving up this node. This shouldn't happen!",
         prefix_id: PrefixId<AF>,
         mui: u32,
     ) -> bool {
-        trace!("pe exists {:?}?", prefix_id);
+        trace!("pe exists {prefix_id:?}?");
         let (node_id, bs) = self.node_id_for_prefix(&prefix_id);
 
         match self.retrieve_node_for_mui(node_id, mui) {
@@ -605,8 +605,8 @@ Giving up this node. This shouldn't happen!",
             // let this_level = bits_for_len(id.len(), level);
 
             trace!("{:032b}", id.len());
-            trace!("id {:?}", id);
-            trace!("multi_uniq_id {}", multi_uniq_id);
+            trace!("id {id:?}");
+            trace!("multi_uniq_id {multi_uniq_id}");
 
             // HASHING FUNCTION
             let index = Self::hash_node_id(id, level);
@@ -623,12 +623,12 @@ Giving up this node. This shouldn't happen!",
                             id.len(),
                             level + 1
                         );
-                        trace!("Next level {}", next_level);
-                        trace!("Creating space for {} nodes", next_level);
+                        trace!("Next level {next_level}");
+                        trace!("Creating space for {next_level} nodes");
                     }
 
-                    trace!("multi uniq id {}", multi_uniq_id);
-                    trace!("next level {}", next_level);
+                    trace!("multi uniq id {multi_uniq_id}");
+                    trace!("next level {next_level}");
 
                     // A weird trick to create either a NodeSet with 16 nodes,
                     // or one without any (for the last stride)
@@ -680,7 +680,7 @@ Giving up this node. This shouldn't happen!",
                         );
                         trace!("node_id {:?}", stored_node.node_id);
                         trace!("node_id {:032b}", stored_node.node_id.bits());
-                        trace!("id {}", id);
+                        trace!("id {id}");
                         trace!("     id {:032b}", id.bits());
                     }
 
@@ -799,7 +799,7 @@ Giving up this node. This shouldn't happen!",
                         let retry_count =
                             this_node.node_set.update_rbm_index(mui).ok();
 
-                        trace!("Retry_count rbm index {:?}", retry_count);
+                        trace!("Retry_count rbm index {retry_count:?}");
                         trace!(
                         "add multi uniq id to bitmap index {} for node {}",
                         mui,

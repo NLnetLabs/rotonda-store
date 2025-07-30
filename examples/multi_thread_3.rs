@@ -34,11 +34,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .spawn(
                 move || -> Result<(), Box<dyn std::error::Error + Send>> {
                     // while !start_flag.load(std::sync::atomic::Ordering::Acquire) {
-                    println!("park thread {}", i);
+                    println!("park thread {i}");
                     thread::park();
                     // }
 
-                    print!("\nstart {} ---", i);
+                    print!("\nstart {i} ---");
                     let mut x = 0;
                     loop {
                         x += 1;
@@ -67,11 +67,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             }
                             Err(e) => {
-                                println!("{}", e);
+                                println!("{e}");
                             }
                         };
                         if x % 1_000_000 == 0 {
-                            println!("{}", x);
+                            println!("{x}");
                         }
                     }
                     // println!("--thread {} done.", i);
@@ -106,7 +106,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         guard,
     )?;
     println!("query result");
-    println!("{}", s_spfx);
+    println!("{s_spfx}");
     println!("{}", s_spfx.more_specifics.unwrap());
 
     println!("-----------");

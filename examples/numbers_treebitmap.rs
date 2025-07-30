@@ -69,7 +69,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
         if let Err(err) = load_prefixes(&mut pfxs) {
-            println!("error running example: {}", err);
+            println!("error running example: {err}");
             process::exit(1);
         }
 

@@ -258,7 +258,7 @@ impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
         &'a self,
         start_prefix_id: PrefixId<AF>,
     ) -> impl Iterator<Item = PrefixId<AF>> + 'a {
-        trace!("more specifics for {:?}", start_prefix_id);
+        trace!("more specifics for {start_prefix_id:?}");
 
         // A v4 /32 or a v6 /128 doesn't have more specific prefixes 🤓.
         if start_prefix_id.len() >= AF::BITS {
@@ -267,7 +267,7 @@ impl<'a, AF: AddressFamily, const ROOT_SIZE: usize>
             // calculate the node start_prefix_id lives in.
             let (start_node_id, start_bs) =
                 self.node_id_for_prefix(&start_prefix_id);
-            trace!("start node {}", start_node_id);
+            trace!("start node {start_node_id}");
             trace!(
                 "start prefix id {:032b} (len {})",
                 start_prefix_id.bits(),

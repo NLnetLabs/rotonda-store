@@ -343,7 +343,7 @@ mod tests {
                 },
                 guard,
             )?;
-            println!("{}", pfx);
+            println!("{pfx}");
             assert_eq!(res.prefix.unwrap(), pfx);
         }
 
@@ -624,7 +624,7 @@ mod tests {
                 },
                 guard,
             )?;
-            println!("{}", pfx);
+            println!("{pfx}");
             assert_eq!(res.prefix.unwrap(), pfx);
         }
 
@@ -737,7 +737,7 @@ mod tests {
                         },
                         guard,
                     )?;
-                    println!("{:?}", pfx);
+                    println!("{pfx:?}");
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);
                 }
@@ -804,7 +804,7 @@ mod tests {
                         },
                         guard,
                     )?;
-                    println!("{:?}", pfx);
+                    println!("{pfx:?}");
 
                     assert_eq!(res.prefix.unwrap(), res_pfx?);
                 }

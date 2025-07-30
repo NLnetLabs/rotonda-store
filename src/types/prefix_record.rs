@@ -214,7 +214,7 @@ impl<K: Copy + fmt::Display, M: Meta + std::fmt::Display> fmt::Display
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}: [", self.prefix)?;
         for rec in &self.meta {
-            write!(f, "{},", rec)?;
+            write!(f, "{rec},")?;
         }
         write!(f, "]")
     }
@@ -294,7 +294,7 @@ impl<K: Copy + fmt::Display, M: Meta> fmt::Display for RecordSet<K, M> {
                 format!("{} {}", pfx_arr, *pfx)
             });
 
-        write!(f, "V4: [{}], V6: [{}]", arr_str_v4, arr_str_v6)
+        write!(f, "V4: [{arr_str_v4}], V6: [{arr_str_v6}]")
     }
 }
 

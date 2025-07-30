@@ -99,7 +99,7 @@ fn test_less_specifics<C: Config>(
             ),
         ),
     ] {
-        println!("round {}", i);
+        println!("round {i}");
         println!("search for: {}", (*spfx.0)?);
         println!("search prefix: {}", spfx.0.unwrap());
 
@@ -112,7 +112,7 @@ fn test_less_specifics<C: Config>(
 
         for (i, p) in less_iter.enumerate() {
             let p = p.unwrap();
-            println!("less_iter {} i {}", p, i);
+            println!("less_iter {p} i {i}");
             assert_eq!(p.prefix, pfxs[spfx.2[i]])
         }
 
@@ -124,7 +124,7 @@ fn test_less_specifics<C: Config>(
             .enumerate()
             .map(|(i, p)| (i, p.as_ref().unwrap().prefix))
         {
-            println!("ls {}: {}", i, p);
+            println!("ls {i}: {p}");
         }
 
         println!("-----------");

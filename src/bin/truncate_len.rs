@@ -9,7 +9,7 @@ fn truncate_to_len(bits: U32<NetworkEndian>, len: u8) -> U32<NetworkEndian> {
             (bits >> U32::from(32 - len as u32)) << U32::from(32 - len as u32)
         }
         32 => bits,
-        len => panic!("Can't truncate to more than 128 bits: {}", len),
+        len => panic!("Can't truncate to more than 128 bits: {len}"),
     }
 }
 

@@ -38,7 +38,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         ) {
                             Ok(_) => {}
                             Err(e) => {
-                                println!("{}", e);
+                                println!("{e}");
                             }
                         };
                     }
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             guard,
         )?;
         println!("query result");
-        println!("{}", s_spfx);
+        println!("{s_spfx}");
         println!("{}", s_spfx.more_specifics.unwrap());
         println!("-----------");
     }

@@ -7,7 +7,7 @@ use crate::{
     errors::{FatalError, FatalResult},
     match_options::{MatchOptions, QueryResult},
     prefix_cht::{
-        map_type::{KeyExtensions, MapType},
+        map_type::MapType,
         mui_multi_map::MuiMultiMap,
         path_id_multi_map::PathIdMultiMap,
         rd_multi_map::RdPathIdMultiMap,
@@ -125,12 +125,12 @@ impl<
         let mut config_v6 = config.clone();
 
         if let Some(path) = config_v4.persist_path() {
-            let pp = format!("{}/{}/ipv4/", path, uuid);
+            let pp = format!("{path}/{uuid}/ipv4/");
             config_v4.set_persist_path(pp);
         };
 
         if let Some(path) = config_v6.persist_path() {
-            config_v6.set_persist_path(format!("{}/{}/ipv6/", path, uuid));
+            config_v6.set_persist_path(format!("{path}/{uuid}/ipv6/"));
         }
 
         Ok(Self {
