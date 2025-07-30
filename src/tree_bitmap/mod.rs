@@ -1134,7 +1134,7 @@ impl<AF: AddressFamily, const ROOT_SIZE: usize> std::fmt::Display
             let max_pfx = u128::overflowing_pow(2, len as u32);
             let n = (prefix_count as u32 / SCALE) as usize;
 
-            write!(_f, "/{}\t", len)?;
+            write!(_f, "/{len}\t")?;
 
             for _ in 0..n {
                 write!(_f, "{}", Colour::Green.paint("█"))?;

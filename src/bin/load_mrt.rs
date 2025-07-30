@@ -364,7 +364,7 @@ fn st_parse_and_insert_table<C: Config>(
         cnt,
         t0.elapsed().as_millis()
     );
-    println!("{}", counters);
+    println!("{counters}");
 
     counters
 }
@@ -449,8 +449,7 @@ fn create_stores<'a, C: Config + Sync>(
                 .unwrap(),
             );
             println!(
-                "created a single-store with strategy: {:?}\n",
-                store_config
+                "created a single-store with strategy: {store_config:?}\n"
             );
 
             exec_for_store(Some(&stores[0]), stores, args);
@@ -467,7 +466,7 @@ fn create_stores<'a, C: Config + Sync>(
                 );
             }
             println!("Number of created stores: {}", stores.len());
-            println!("store config: {:?}", store_config);
+            println!("store config: {store_config:?}");
             exec_for_store(Some(&stores[0]), stores, args);
             Some(&stores[0])
         }
@@ -486,7 +485,7 @@ fn exec_for_store<'a, C: Config + Sync>(
 
     // Loop over all the mrt-files specified as arguments
     for (f_index, mrtfile) in args.mrt_files.iter().enumerate() {
-        print!("file #{} ", f_index);
+        print!("file #{f_index} ");
 
         let file = File::open(mrtfile).unwrap();
         let mmap = unsafe { Mmap::map(&file).unwrap() };
@@ -496,7 +495,7 @@ fn exec_for_store<'a, C: Config + Sync>(
         let mrt_file = MrtFile::new(&mmap[..]);
 
         if !args.single_store && !args.parse_only {
-            println!("use store #{}", f_index);
+            println!("use store #{f_index}");
             store = Some(&inner_stores[f_index]);
         }
         // Load the mrt file, maybe shuffle, and maybe prime the store
@@ -541,7 +540,7 @@ fn exec_for_store<'a, C: Config + Sync>(
     if let Some(store) = store {
         let res = store.flush_to_disk();
         if res.is_err() {
-            eprintln!("Persistence Error: {:?}", res);
+            eprintln!("Persistence Error: {res:?}");
         }
     }
 
@@ -554,7 +553,7 @@ fn exec_for_store<'a, C: Config + Sync>(
 
     println!("upsert counters");
     println!("---------------");
-    println!("{}", global_counters);
+    println!("{global_counters}");
 
     if let Some(store) = store {
         println!("store in-memory counters");
@@ -599,7 +598,7 @@ fn exec_for_store<'a, C: Config + Sync>(
                 .unwrap();
             if values.is_empty() {
                 eprintln!("Found empty prefix on disk");
-                eprintln!("prefix: {}", pfx);
+                eprintln!("prefix: {pfx}");
                 return;
             }
             if values.len() > max_len {
@@ -609,7 +608,7 @@ fn exec_for_store<'a, C: Config + Sync>(
                     .get_records_for_prefix(&pfx, None, false)
                     .unwrap()
                     .unwrap();
-                println!("LEN {} prefix: {}", max_len, pfx);
+                println!("LEN {max_len} prefix: {pfx}");
                 for rec in recs {
                     let pa = OwnedPathAttributes::from((
                         PduParseInfo::modern(),
@@ -701,7 +700,7 @@ fn main() {
             );
         }
         Some(a) => {
-            eprintln!("Unknown persist strategy: {}", a);
+            eprintln!("Unknown persist strategy: {a}");
         }
     }
 

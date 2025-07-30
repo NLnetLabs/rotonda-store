@@ -120,7 +120,7 @@ mod tests {
             // .with_user_data("Testing".to_string());
 
             if let Err(err) = load_prefixes(&mut pfxs) {
-                println!("error running example: {}", err);
+                println!("error running example: {err}");
                 process::exit(1);
             }
 
@@ -133,7 +133,7 @@ mod tests {
                 ) {
                     Ok(_) => {}
                     Err(e) => {
-                        println!("{}", e);
+                        println!("{e}");
                         panic!("STOP TESTING I CAN'T INSERT!");
                     }
                 };
@@ -161,7 +161,7 @@ mod tests {
                 }
             }
 
-            println!("done inserting {} prefixes", inserts_num);
+            println!("done inserting {inserts_num} prefixes");
 
             let inet_max = 255;
             let len_max = 32;
@@ -215,10 +215,10 @@ mod tests {
                 });
                 inet_count += 1;
             });
-            println!("found pfx: {}", found_counter);
-            println!("not found pfx: {}", not_found_counter);
-            println!("inet counter {}", inet_count);
-            println!("len counter {}", len_count);
+            println!("found pfx: {found_counter}");
+            println!("not found pfx: {not_found_counter}");
+            println!("inet counter {inet_count}");
+            println!("len counter {len_count}");
 
             let searches_num =
                 inet_max as u128 * inet_max as u128 * len_max as u128;

@@ -30,7 +30,7 @@ fn load_prefixes(
 ) -> Result<(), Box<dyn Error>> {
     // Build the CSV reader and iterate over each record.
     let file_path = get_first_arg()?;
-    println!("file path {:?}", file_path);
+    println!("file path {file_path:?}");
     let file = File::open(file_path)?;
     let mut rdr = csv::Reader::from_reader(file);
     for result in rdr.records() {
@@ -74,7 +74,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         MuiStarCastRib::<PrefixAs, MemoryOnlyConfig>::try_default()?;
 
     if let Err(err) = load_prefixes(&mut pfxs) {
-        println!("error running example: {}", err);
+        println!("error running example: {err}");
         process::exit(1);
     }
     println!("finished loading {} prefixes...", pfxs.len());
@@ -194,15 +194,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             }
                             _ => {
                                 println!(
-                                    "Error: unknown command {:?}",
-                                    s_pref
+                                    "Error: unknown command {s_pref:?}"
                                 );
                             }
                         }
                     } else {
                         println!(
-                            "Error: can't parse prefix {:?}. Maybe add a /<LEN> part?",
-                            s_pref
+                            "Error: can't parse prefix {s_pref:?}. Maybe add a /<LEN> part?"
                         );
                     }
                     continue;
@@ -223,7 +221,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match ip {
                     Ok(ip) => {
                         rl.add_history_entry(line.as_str())?;
-                        println!("Searching for prefix: {}/{}", ip, len);
+                        println!("Searching for prefix: {ip}/{len}");
 
                         pfx = Prefix::new(ip, len);
                         match pfx {
@@ -241,7 +239,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     guard,
                                 )?;
                                 println!("start query result");
-                                println!("{}", query_result);
+                                println!("{query_result}");
                                 println!("end query result");
                                 println!(
                                     "more_specifics: {}",
