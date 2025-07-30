@@ -20,33 +20,14 @@ pub trait Nlri:
     + PartialOrd
 {
     const BITS: u8;
-
-    // fn nlri(&self) -> impl AddressFamily;
-    // fn len(&self) -> u8;
 }
 
 impl Nlri for U32<NetworkEndian> {
     const BITS: u8 = 32;
-
-    // fn nlri(&self) -> impl AddressFamily {
-    //     *self
-    // }
-
-    // fn len(&self) -> u8 {
-    //     32
-    // }
 }
 
 impl<AF: AddressFamily> Nlri for PrefixId<AF> {
-    const BITS: u8 = 32;
-
-    // fn nlri(&self) -> impl AddressFamily {
-    //     self.bits
-    // }
-
-    // fn len(&self) -> u8 {
-    //     self.len()
-    // }
+    const BITS: u8 = AF::BITS;
 }
 
 //------------ PrefixId ------------------------------------------------------
