@@ -81,7 +81,7 @@ where
                     .transpose()
             }
             _ => Ok(self.prefix_cht.get_records_for_prefix(
-                prefix_id,
+                prefix_id.into(),
                 mui,
                 include_withdrawn,
                 self.tree_bitmap.withdrawn_muis_bmin(guard),
@@ -298,7 +298,7 @@ where
         guard: &Guard,
     ) -> Option<Result<Record<MT::Key, M>, PrefixStoreError>> {
         self.prefix_cht
-            .non_recursive_retrieve_prefix(search_pfx)
+            .non_recursive_retrieve_prefix(search_pfx.into())
             .0
             .map(|p_rec| {
                 p_rec.get_path_selections(guard).best().map_or_else(
@@ -320,7 +320,7 @@ where
         guard: &Guard,
     ) -> Result<(Option<MT::Key>, Option<MT::Key>), PrefixStoreError> {
         self.prefix_cht
-            .non_recursive_retrieve_prefix(search_pfx)
+            .non_recursive_retrieve_prefix(search_pfx.into())
             .0
             .map_or(Err(PrefixStoreError::StoreNotReadyError), |p_rec| {
                 p_rec.calculate_and_store_best_backup(tbi, guard)
@@ -333,7 +333,7 @@ where
         guard: &Guard,
     ) -> Result<bool, PrefixStoreError> {
         self.prefix_cht
-            .non_recursive_retrieve_prefix(search_pfx)
+            .non_recursive_retrieve_prefix(search_pfx.into())
             .0
             .map_or(Err(PrefixStoreError::StoreNotReadyError), |p| {
                 Ok(p.is_ps_outdated(guard))

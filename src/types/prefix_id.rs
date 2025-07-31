@@ -3,12 +3,16 @@ use zerocopy::{
     U32,
 };
 
-use crate::{AddressFamily, IPv4};
+use crate::{
+    cht::{nodeset_size, prev_node_size},
+    AddressFamily, IPv4,
+};
 
 pub trait Nlri:
     Copy
     + Clone
     + std::fmt::Debug
+    + std::fmt::Display
     + Eq
     + std::hash::Hash
     + FromBytes
@@ -20,14 +24,94 @@ pub trait Nlri:
     + PartialOrd
 {
     const BITS: u8;
+    fn len(&self) -> u8;
+    fn hash_for_level(&self, level: u8) -> usize;
+    fn from_u8(value: u8) -> Self;
+    fn from_u32(value: u32) -> Self;
 }
 
 impl Nlri for U32<NetworkEndian> {
     const BITS: u8 = 32;
+    fn len(&self) -> u8 {
+        32
+    }
+
+    fn hash_for_level(&self, level: u8) -> usize {
+        let last_level = prev_node_size(self.len(), level);
+
+        // HASHING FUNCTION
+        let size = nodeset_size(self.len(), level);
+
+        // shifting left and right here should never overflow for inputs
+        // (NodeId, level) that are valid for IPv4 and IPv6. In release
+        // compiles this may NOT be noticable, because the undefined behaviour
+        // is most probably the desired behaviour (saturating). But it's UB
+        // for a reason, so we should not rely on it, and verify that we are
+        // not hitting that behaviour.
+        debug_assert!(self.checked_shl(last_level as u32).is_some());
+        debug_assert!((*self << <Self as Nlri>::from_u32(last_level as u32))
+            .checked_shr(u32::from(
+                (<Self as Nlri>::BITS - size) % <Self as Nlri>::BITS
+            ))
+            .is_some());
+
+        ((*self << <Self as Nlri>::from_u32(last_level as u32))
+            >> <Self as Nlri>::from_u8(
+                (<Self as Nlri>::BITS - size) % <Self as Nlri>::BITS,
+            ))
+        .dangerously_truncate_to_u32() as usize
+    }
+
+    fn from_u8(value: u8) -> Self {
+        Self::from([0, 0, 0, value])
+    }
+
+    fn from_u32(value: u32) -> Self {
+        Self::from(value.to_be_bytes())
+    }
 }
 
 impl<AF: AddressFamily> Nlri for PrefixId<AF> {
     const BITS: u8 = AF::BITS;
+    fn len(&self) -> u8 {
+        self.len
+    }
+
+    fn from_u8(value: u8) -> Self {
+        Self::from([0, 0, 0, value])
+    }
+
+    fn from_u32(value: u32) -> Self {
+        Self::from(value.to_be_bytes())
+    }
+
+    fn hash_for_level(&self, level: u8) -> usize {
+        let last_level = prev_node_size(self.len(), level);
+
+        // HASHING FUNCTION
+        let size = nodeset_size(self.len(), level);
+
+        // shifting left and right here should never overflow for inputs
+        // (NodeId, level) that are valid for IPv4 and IPv6. In release
+        // compiles this may NOT be noticable, because the undefined behaviour
+        // is most probably the desired behaviour (saturating). But it's UB
+        // for a reason, so we should not rely on it, and verify that we are
+        // not hitting that behaviour.
+        debug_assert!(self.bits().checked_shl(last_level as u32).is_some());
+        debug_assert!((self.bits() << AF::from_u32(last_level as u32))
+            .checked_shr(u32::from((Self::BITS - size) % Self::BITS))
+            .is_some());
+
+        ((self.bits() << AF::from_u32(last_level as u32))
+            >> AF::from_u8((Self::BITS - size) % Self::BITS))
+        .dangerously_truncate_to_u32() as usize
+    }
+}
+
+impl<AF: AddressFamily> std::fmt::Display for PrefixId<AF> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}/{}", self.bits(), self.len())
+    }
 }
 
 //------------ PrefixId ------------------------------------------------------

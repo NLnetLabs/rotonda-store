@@ -56,7 +56,7 @@ pub(crate) struct StarCastAfRib<
 > {
     pub config: C,
     pub(crate) tree_bitmap: TreeBitMap<AF, N_ROOT_SIZE>,
-    pub(crate) prefix_cht: PrefixCht<AF, M, MT, P_ROOT_SIZE, 1>,
+    pub(crate) prefix_cht: PrefixCht<N, M, MT, P_ROOT_SIZE, 1>,
     pub(crate) persist_tree: Option<LsmTree<N, MT::Key, LongKey<N, MT::Key>>>,
     pub counters: Counters,
 }
@@ -110,7 +110,7 @@ where
             tree_bitmap: TreeBitMap::<AF, N_ROOT_SIZE>::new()?,
             persist_tree,
             counters: Counters::default(),
-            prefix_cht: PrefixCht::<AF, M, MT, P_ROOT_SIZE, 1>::init(),
+            prefix_cht: PrefixCht::<N, M, MT, P_ROOT_SIZE, 1>::init(),
         };
 
         Ok(store)
@@ -167,7 +167,7 @@ where
 
                     self.prefix_cht
                         .upsert_prefix(
-                            prefix,
+                            prefix.into(),
                             record,
                             update_path_selections,
                             guard,
@@ -179,7 +179,12 @@ where
             }
             PersistStrategy::PersistHistory => self
                 .prefix_cht
-                .upsert_prefix(prefix, record, update_path_selections, guard)
+                .upsert_prefix(
+                    prefix.into(),
+                    record,
+                    update_path_selections,
+                    guard,
+                )
                 .map(|(report, old_rec)| {
                     if let Some(rec) = old_rec {
                         if let Some(persist_tree) = &self.persist_tree {
@@ -193,7 +198,12 @@ where
                 }),
             PersistStrategy::MemoryOnly => self
                 .prefix_cht
-                .upsert_prefix(prefix, record, update_path_selections, guard)
+                .upsert_prefix(
+                    prefix.into(),
+                    record,
+                    update_path_selections,
+                    guard,
+                )
                 .map(|(report, _)| report),
             PersistStrategy::PersistOnly => {
                 if let Some(persist_tree) = &self.persist_tree {
@@ -244,8 +254,9 @@ where
     ) -> Result<(), PrefixStoreError> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
-                let (stored_prefix, exists) =
-                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) = self
+                    .prefix_cht
+                    .non_recursive_retrieve_prefix_mut(prefix.into());
 
                 if !exists {
                     return Err(PrefixStoreError::PrefixNotFound);
@@ -279,8 +290,9 @@ where
             }
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
-                let (stored_prefix, exists) =
-                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) = self
+                    .prefix_cht
+                    .non_recursive_retrieve_prefix_mut(prefix.into());
 
                 if !exists {
                     return Err(PrefixStoreError::StoreNotReadyError);
@@ -317,8 +329,9 @@ where
     ) -> FatalResult<()> {
         match self.persist_strategy() {
             PersistStrategy::WriteAhead | PersistStrategy::MemoryOnly => {
-                let (stored_prefix, exists) =
-                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) = self
+                    .prefix_cht
+                    .non_recursive_retrieve_prefix_mut(prefix.into());
 
                 if !exists {
                     return Err(FatalError);
@@ -345,8 +358,9 @@ where
             }
             PersistStrategy::PersistHistory => {
                 // First do the in-memory part
-                let (stored_prefix, exists) =
-                    self.prefix_cht.non_recursive_retrieve_prefix_mut(prefix);
+                let (stored_prefix, exists) = self
+                    .prefix_cht
+                    .non_recursive_retrieve_prefix_mut(prefix.into());
 
                 if !exists {
                     return Err(FatalError);

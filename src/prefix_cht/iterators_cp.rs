@@ -36,6 +36,7 @@
 //     prefix_record::Meta,
 // };
 
+use inetnum::addr::Prefix;
 use log::trace;
 use roaring::RoaringBitmap;
 
@@ -43,7 +44,7 @@ use crate::{
     cht::{nodeset_size, Cht},
     prefix_record::Meta,
     rib::STRIDE_SIZE,
-    types::Record,
+    types::{Nlri, PrefixId, Record},
     AddressFamily,
 };
 
@@ -56,22 +57,22 @@ use super::{cht::PrefixSet, map_type::MapType};
 #[derive(Debug)]
 pub(crate) struct PrefixIter<
     'a,
-    AF: AddressFamily + 'a,
+    N: Nlri + 'a,
     M: Meta + 'a,
     MT: MapType<M> + 'a,
     const ROOT_SIZE: usize,
     const STRIDES_PER_BUCKET: usize,
 > {
     pub(crate) prefixes:
-        &'a Cht<PrefixSet<AF, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
+        &'a Cht<PrefixSet<N, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
     pub(crate) bmin: Option<&'a RoaringBitmap>,
     pub(crate) cur_len: u8,
-    pub(crate) cur_bucket: &'a PrefixSet<AF, M, MT>,
+    pub(crate) cur_bucket: &'a PrefixSet<N, M, MT>,
     pub(crate) cur_level: u8,
     // level depth of IPv4 as defined in rotonda-macros/maps.rs Option(parent,
     // cursor position at the parent) 32 is the max number of levels in IPv6,
     // which is the max number of of both IPv4 and IPv6.
-    pub(crate) parents: [Option<(&'a PrefixSet<AF, M, MT>, usize)>; 8],
+    pub(crate) parents: [Option<(&'a PrefixSet<N, M, MT>, usize)>; 8],
     pub(crate) cursor: usize,
 }
 
@@ -79,14 +80,14 @@ pub(crate) struct PrefixIter<
 #[allow(clippy::panic)]
 impl<
         'a,
-        AF: AddressFamily + 'a,
+        N: Nlri + 'a,
         M: Meta + 'a,
         MT: MapType<M> + 'a,
         const ROOT_SIZE: usize,
         const STRIDES_PER_BUCKET: usize,
-    > Iterator for PrefixIter<'a, AF, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET>
+    > Iterator for PrefixIter<'a, N, M, MT, ROOT_SIZE, STRIDES_PER_BUCKET>
 {
-    type Item = (inetnum::addr::Prefix, Vec<Record<MT::Key, M>>);
+    type Item = (N, Vec<Record<MT::Key, M>>);
 
     fn next(&mut self) -> Option<Self::Item> {
         trace!(
@@ -97,7 +98,7 @@ impl<
         );
 
         loop {
-            if self.cur_len > AF::BITS {
+            if self.cur_len > N::BITS {
                 // This is the end, my friend
                 trace!("reached max length {}, returning None", self.cur_len);
                 return None;
@@ -133,7 +134,7 @@ impl<
                     self.cursor = 0;
                     self.parents = [None; 8];
 
-                    if self.cur_len > AF::BITS {
+                    if self.cur_len > N::BITS {
                         // This is the end, my friend
                         return None;
                     }
@@ -212,13 +213,13 @@ impl<
                         let record_map = s_pfx.acquire_read_guard();
                         if let Some(bmin) = self.bmin {
                             return Some((
-                                s_pfx.get_prefix_id().into(),
+                                s_pfx.get_prefix_id(),
                                 (*record_map)
                                     .as_active_records_not_in_bmin(bmin),
                             ));
                         } else {
                             return Some((
-                                s_pfx.get_prefix_id().into(),
+                                s_pfx.get_prefix_id(),
                                 (*record_map).as_records(),
                             ));
                         }
@@ -244,13 +245,13 @@ impl<
                         let record_map = s_pfx.acquire_read_guard();
                         if let Some(bmin) = self.bmin {
                             return Some((
-                                s_pfx.get_prefix_id().into(),
+                                s_pfx.get_prefix_id(),
                                 record_map
                                     .as_active_records_not_in_bmin(bmin),
                             ));
                         } else {
                             return Some((
-                                s_pfx.get_prefix_id().into(),
+                                s_pfx.get_prefix_id(),
                                 record_map.as_records(),
                             ));
                         }

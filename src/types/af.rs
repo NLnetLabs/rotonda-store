@@ -34,10 +34,6 @@ pub trait AddressFamily:
     /// The number of bits in the byte representation of the family.
     const BITS: u8;
 
-    /// The size of the binary representation of a prefix for the family. 5 (4
-    /// address + 1 length) for IPv4, and 17 (16 address + 1 length) for IPv6.
-    // const SIZE: u8;
-
     /// The type actually holding the value, u32 for IPv4, and u128 for IPv6.
     type Inner: Into<Self> + From<u32> + From<u8>;
 
