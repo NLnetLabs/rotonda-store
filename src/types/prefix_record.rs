@@ -5,7 +5,7 @@ use crate::{
     errors::FatalError,
     prefix_cht::{
         cht::MultiMapValue,
-        map_type::{KeyExtensions, MuiRdPathId, MuiRdPathIdBlob},
+        map_type::{KeyExtensions, MuiRdPathId},
     },
     types::AddressFamily,
 };
@@ -102,20 +102,20 @@ impl<K: KeyExtensions, L: KeyExtensions, M: Meta> From<(K, &Record<L, M>)>
     }
 }
 
-impl<const BLOB_SIZE: usize, M: Meta>
-    From<Record<MuiRdPathIdBlob<BLOB_SIZE>, M>> for Record<MuiRdPathId, M>
-{
-    fn from(value: Record<MuiRdPathIdBlob<BLOB_SIZE>, M>) -> Self {
-        let multi_uniq_id = <MuiRdPathId>::from(&value.multi_uniq_id);
+// impl<const BLOB_SIZE: usize, M: Meta> From<Record<MuiRdPathId, M>>
+//     for Record<MuiRdPathId, M>
+// {
+//     fn from(value: Record<MuiRdPathId, M>) -> Self {
+//         let multi_uniq_id = <MuiRdPathId>::from(&value.multi_uniq_id);
 
-        Self {
-            multi_uniq_id,
-            ltime: value.ltime,
-            status: value.status,
-            meta: value.meta,
-        }
-    }
-}
+//         Self {
+//             multi_uniq_id,
+//             ltime: value.ltime,
+//             status: value.status,
+//             meta: value.meta,
+//         }
+//     }
+// }
 
 impl<K: Copy + std::fmt::Display, M: std::fmt::Display> std::fmt::Display
     for Record<K, M>

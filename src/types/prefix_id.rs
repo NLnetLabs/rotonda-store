@@ -1,3 +1,5 @@
+use std::mem::MaybeUninit;
+
 use zerocopy::{
     FromBytes, Immutable, IntoBytes, KnownLayout, NetworkEndian, Unaligned,
     U32,
@@ -12,7 +14,7 @@ pub trait Nlri:
     Copy
     + Clone
     + std::fmt::Debug
-    + std::fmt::Display
+    // + std::fmt::Display
     + Eq
     + std::hash::Hash
     + FromBytes
@@ -68,6 +70,72 @@ impl Nlri for U32<NetworkEndian> {
 
     fn from_u32(value: u32) -> Self {
         Self::from(value.to_be_bytes())
+    }
+}
+
+impl<const SIZE: usize> Nlri for [u8; SIZE] {
+    // We're chopping this array into [u8; 8] to calculate the hashes over, so
+    // that's 64 bits.
+    const BITS: u8 = 64;
+
+    fn len(&self) -> u8 {
+        #[allow(clippy::unwrap_used)]
+        *self.first().unwrap()
+    }
+
+    #[allow(clippy::unwrap_used)]
+    fn hash_for_level(&self, level: u8) -> usize {
+        let start = level as usize * 8;
+        #[allow(clippy::unwrap_used)]
+        let bit_array =
+            <u64>::from_be_bytes(*self[start..].first_chunk::<8>().unwrap());
+        let last_level = prev_node_size(self.len(), level);
+        // let shift = <u64>::from_be_bytes(
+        //     *<Self as Nlri>::from_u32(last_level as u32)
+        //         .first_chunk::<8>()
+        //         .unwrap(),
+        // );
+
+        // HASHING FUNCTION
+        let size = nodeset_size(self.len(), level);
+
+        // shifting left and right here should never overflow for inputs
+        // (NodeId, level) that are valid for IPv4 and IPv6. In release
+        // compiles this may NOT be noticable, because the undefined behaviour
+        // is most probably the desired behaviour (saturating). But it's UB
+        // for a reason, so we should not rely on it, and verify that we are
+        // not hitting that behaviour.
+        debug_assert!(bit_array.checked_shl(last_level as u32).is_some());
+        debug_assert!((bit_array << last_level)
+            .checked_shr(u32::from(
+                (<Self as Nlri>::BITS - size) % <Self as Nlri>::BITS
+            ))
+            .is_some());
+
+        (
+            (bit_array << last_level) >>
+            // >> <u64>::from_be_bytes(
+            //     *<Self as Nlri>::from_u8(
+                    ((<Self as Nlri>::BITS - size) % <Self as Nlri>::BITS)
+            // )
+            // .first_chunk::<8>()
+            // .unwrap(),
+        ) as usize
+        // .dangerously_truncate_to_u32() as usize
+    }
+
+    #[allow(clippy::unwrap_used)]
+    fn from_u8(value: u8) -> Self {
+        let mut b = [0; SIZE];
+        *b.last_mut().unwrap() = value;
+        b
+    }
+
+    #[allow(clippy::unwrap_used)]
+    fn from_u32(value: u32) -> Self {
+        let mut b = [0; SIZE];
+        *b.last_chunk_mut::<4>().unwrap() = value.to_be_bytes();
+        b
     }
 }
 

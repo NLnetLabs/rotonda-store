@@ -11,14 +11,11 @@ mod common {
 
 #[cfg(test)]
 mod tests {
-    
+
     use rotonda_store::{
-        prefix_cht::map_type::{KeyExtensions, MuiRdPathId},
+        prefix_cht::map_type::{KeyExtensions, Mui, MuiRdPathId},
         prefix_record::{Record, RouteStatus},
-        rib::{
-            config::PersistOnlyConfig,
-            flowspec::BlobRib,
-        },
+        rib::{config::PersistOnlyConfig, flowspec::BlobRib},
         test_types::NoMeta,
     };
 
@@ -27,44 +24,49 @@ mod tests {
     {
         crate::common::init();
 
-        let a_fs = [0x01; 7];
-        let b_fs = [0x02; 7];
-        let c_fs = [0x03; 7];
+        // total length: (nlri; 7 real len + 1 for container (8) and 1
+        // for length) 9 + (mui) 4 + (rd) 8 + (pathid) 4 + (ltime) 8 +
+        // (routestatus) 1 = 34
         let mui = <u32>::from_le_bytes([3_u8; 4]);
+        let a_fs = ([0x01; 7], mui);
+        let b_fs = ([0x02; 7], mui);
+        let c_fs = ([0x03; 7], 100);
         let path_id = <u32>::from_le_bytes([255, 0, 0, 255]);
 
         let rib = BlobRib::<NoMeta, 7, PersistOnlyConfig>::try_default()?;
 
-        let a_key = MuiRdPathId::from((mui, [99; 8], path_id.to_be_bytes()));
+        let a_key =
+            MuiRdPathId::from((a_fs.1, [99; 8], path_id.to_be_bytes()));
 
         rib.insert(
-            &a_fs,
+            &a_fs.0,
             Record::new(a_key, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         println!("inserted a");
 
-        let b_key = MuiRdPathId::from((mui, [99; 8], path_id.to_be_bytes()));
+        let b_key =
+            MuiRdPathId::from((b_fs.1, [99; 8], path_id.to_be_bytes()));
         rib.insert(
-            &b_fs,
+            &b_fs.0,
             Record::new(b_key, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         println!("inserted b");
 
         let c_key =
-            MuiRdPathId::from((100_u32, [99; 8], path_id.to_be_bytes()));
+            MuiRdPathId::from((c_fs.1, [99; 8], path_id.to_be_bytes()));
         rib.insert(
-            &c_fs,
+            &c_fs.0,
             Record::new(c_key, 0, RouteStatus::Active, NoMeta::Empty),
             None,
         )?;
         println!("inserted c");
 
         for fs in [&a_fs, &b_fs, &c_fs] {
-            let res = rib.get(fs, None, false)?;
-            // println!("result1: {:#?}", &res);
-            assert_eq!(res[0].multi_uniq_id.blob(), Some(fs.as_ref()));
+            let res = rib.get(&fs.0, None, false)?;
+            println!("result1: {:#?}", &res);
+            assert_eq!(res[0].multi_uniq_id.mui(), fs.1);
             assert_eq!(res.len(), 1);
         }
 
@@ -82,6 +84,7 @@ mod tests {
             })
             .collect::<Vec<_>>();
         assert_eq!(res.len(), 2);
+        println!("done first iteration");
 
         let all_recs = rib.records_iter(&guard).collect::<Vec<_>>();
         assert_eq!(all_recs.len(), 3);

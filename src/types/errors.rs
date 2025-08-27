@@ -30,6 +30,8 @@ pub enum PrefixStoreError {
     PrefixNotFound,
     /// The requested prefix length cannot exist.
     PrefixLengthInvalid,
+    /// An NLRI was encountered with a lenght > 4096
+    NlriTooBig,
     /// A best path was requested, but it was never calculated. Perform a best
     ///path selection first, before retrying.
     BestPathNotFound,
@@ -70,6 +72,12 @@ impl fmt::Display for PrefixStoreError {
             }
             PrefixStoreError::PrefixLengthInvalid => {
                 write!(f, "Error: The specified Prefix length is invalid.")
+            }
+            PrefixStoreError::NlriTooBig => {
+                write!(
+                    f,
+                    "Error: The encountered NLRI has a length > 4096 bytes."
+                )
             }
             PrefixStoreError::BestPathNotFound => {
                 write!(

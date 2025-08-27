@@ -1,9 +1,10 @@
 use crossbeam_epoch::{self as epoch};
 use epoch::Guard;
-use log::trace;
-use zerocopy::TryFromBytes;
+use log::{debug, trace};
+use zerocopy::{IntoBytes, TryFromBytes};
 
 use crate::errors::{FatalError, FatalResult};
+use crate::lsm_tree::ShortKey;
 use crate::match_options::{MatchOptions, MatchType, QueryResult};
 use crate::prefix_cht::map_type::{KeyExtensions, MapType};
 use crate::prefix_record::RecordSet;
@@ -43,14 +44,17 @@ where
         match self.persist_strategy() {
             PersistStrategy::PersistOnly => {
                 println!(
-                    "get value from persist_store for {prefix_id:?} with key {mui:?}"
+                    "get value from persist_store for {prefix_id:?} with mui {mui:?}"
                 );
-                self.persist_tree
+                if let Some(mui) = mui {
+                    let sk = ShortKey::from((prefix_id, mui));
+
+                    self.persist_tree
                     .as_ref()
                     .and_then(|tree| {
                         tree.records_for_prefix(
-                            prefix_id.into(),
-                            mui,
+                            sk.as_bytes(),
+                            // mui,
                             include_withdrawn,
                             self.tree_bitmap.withdrawn_muis_bmin(guard),
                         )
@@ -79,6 +83,46 @@ where
                         })
                     })
                     .transpose()
+                } else {
+                    let sk = prefix_id.as_bytes();
+                    debug!("sk {:?}", sk);
+
+                    self.persist_tree
+                    .as_ref()
+                    .and_then(|tree| {
+                        tree.records_for_prefix(
+                            sk,
+                            // mui,
+                            include_withdrawn,
+                            self.tree_bitmap.withdrawn_muis_bmin(guard),
+                        )
+                        .map(|v| {
+                            println!("v no mui {:?}", v);
+                            v.iter()
+                                .map(|bytes| {
+                                    if let Ok(b) = bytes.as_ref() {
+                                        let record: &ZeroCopyRecord<N, MT::Key> =
+                                        ZeroCopyRecord::try_ref_from_bytes(b)
+                                            .map_err(|_| FatalError)?;
+                                        Ok(Record::<MT::Key, M> {
+                                            multi_uniq_id: record
+                                                .ext_key,
+                                            ltime: record.ltime,
+                                            status: record.status,
+                                            meta: <Vec<u8>>::from(
+                                                record.meta.as_ref(),
+                                            )
+                                            .into(),
+                                        })
+                                    } else {
+                                        Err(FatalError)
+                                    }
+                                })
+                                .collect::<FatalResult<Vec<_>>>()
+                        })
+                    })
+                    .transpose()
+                }
             }
             _ => Ok(self.prefix_cht.get_records_for_prefix(
                 prefix_id.into(),

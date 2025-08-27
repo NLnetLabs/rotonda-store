@@ -3,7 +3,9 @@ use std::path::Path;
 
 use inetnum::addr::Prefix;
 use log::{info, trace};
+use zerocopy::IntoBytes;
 
+use crate::lsm_tree::ShortKey;
 use crate::prefix_cht::map_type::{KeyExtensions, MapType};
 use crate::prefix_record::Meta;
 use crate::rib::config::PersistStrategy;
@@ -266,8 +268,9 @@ where
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
+                    let sk = ShortKey::from((prefix, mui));
                     let stored_prefixes = p_tree
-                        .records_with_keys_for_prefix_mui(prefix.into(), mui);
+                        .records_with_keys_for_prefix_mui(sk.as_bytes());
 
                     for rkv in stored_prefixes {
                         if let Ok(r) = rkv {
@@ -310,8 +313,13 @@ where
                         } else {
                             return Err(PrefixStoreError::StoreNotReadyError);
                         };
-
-                    p_tree.insert_empty_record(prefix.into(), mui, ltime);
+                    let lk = LongKey::from((
+                        prefix,
+                        mui,
+                        ltime,
+                        RouteStatus::Withdrawn,
+                    ));
+                    p_tree.insert_empty_record(lk.as_bytes());
                 }
             }
         }
@@ -342,8 +350,9 @@ where
             }
             PersistStrategy::PersistOnly => {
                 if let Some(p_tree) = self.persist_tree.as_ref() {
+                    let sk = ShortKey::from((prefix, mui));
                     if let Ok(Some(record_b)) = p_tree
-                        .most_recent_record_for_prefix_mui(prefix.into(), mui)
+                        .most_recent_record_for_prefix_mui(sk.as_bytes())
                     {
                         let header = ValueHeader {
                             ltime,
@@ -383,7 +392,13 @@ where
                     // old (prefix, mui) records.
                     // We are inserting an empty record, since this is a
                     // withdrawal.
-                    p_tree.insert_empty_record(prefix.into(), mui, ltime);
+                    let lk = LongKey::from((
+                        prefix,
+                        mui,
+                        ltime,
+                        RouteStatus::Withdrawn,
+                    ));
+                    p_tree.insert_empty_record(lk.as_bytes());
                 }
             }
         }

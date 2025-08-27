@@ -248,7 +248,7 @@ pub(crate) struct PrefixCht<
     const ROOT_SIZE: usize,
     const STRIDES_PER_BUCKET: usize,
 > {
-    bush: Cht<PrefixSet<N, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
+    pub(crate) bush: Cht<PrefixSet<N, M, MT>, ROOT_SIZE, STRIDES_PER_BUCKET>,
     counters: Counters,
 }
 
@@ -451,7 +451,7 @@ impl<
                 (stored_prefix, true) => {
                     if log_enabled!(log::Level::Debug) {
                         debug!(
-                        "{} store: Found existing prefix record for {}/{}",
+                        "{} store: Found existing prefix record for {:?}/{}",
                         std::thread::current()
                             .name()
                             .unwrap_or("unnamed-thread"),
@@ -562,7 +562,7 @@ impl<
                 // it, so its PrefixRecord can be updated by the caller.
                 if log_enabled!(log::Level::Trace) {
                     trace!(
-                        "found requested prefix {search_prefix_id} ({search_prefix_id:?})"
+                        "found requested prefix {search_prefix_id:?} ({search_prefix_id:?})"
                     );
                 }
                 return stored_prefix;
@@ -610,7 +610,7 @@ impl<
                     if log_enabled!(log::Level::Trace) {
                         log::log!(
                             log::Level::Trace,
-                            "found requested prefix {id} ({id:?})",
+                            "found requested prefix {id:?}",
                         );
                     }
                     parents[level as usize] = Some((prefix_set, index));

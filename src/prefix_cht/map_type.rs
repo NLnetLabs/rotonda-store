@@ -401,15 +401,33 @@ impl From<(u32, [u8; 8], [u8; 4])> for MuiRdPathId {
     }
 }
 
-impl<const BLOB_SIZE: usize> From<&MuiRdPathIdBlob<BLOB_SIZE>>
-    for MuiRdPathId
-{
-    fn from(value: &MuiRdPathIdBlob<BLOB_SIZE>) -> Self {
-        #[allow(clippy::unwrap_used)]
-        value.as_mui_rd_path_id()
+impl From<Mui> for MuiRdPathId {
+    fn from(value: Mui) -> Self {
+        Self(value.0, [0; 8], [0; 4], false, false)
     }
 }
 
+// impl<const BLOB_SIZE: usize> From<&MuiRdPathIdBlob<BLOB_SIZE>>
+//     for MuiRdPathId
+// {
+//     fn from(value: &MuiRdPathIdBlob<BLOB_SIZE>) -> Self {
+//         #[allow(clippy::unwrap_used)]
+//         value.as_mui_rd_path_id()
+//     }
+// }
+
+impl<K: KeyExtensions> From<&K> for MuiRdPathId {
+    #[allow(clippy::unwrap_used)]
+    fn from(value: &K) -> Self {
+        Self(
+            value.mui(),
+            value.route_distuingisher().unwrap_or([0; 8]),
+            value.path_id().unwrap_or([0; 4]),
+            value.route_distuingisher().is_some(),
+            value.path_id().is_some(),
+        )
+    }
+}
 //------------ MuiPathId -----------------------------------------------------
 //
 // Used by the MuiPathIdStarCastRib to store a (mui, path_id) tuple as the key
@@ -486,145 +504,145 @@ impl From<Mui> for MuiPathId {
 // Used by the BlobRib to store a (nui, rd, path_id) tuple as
 // the key.
 
-#[repr(C)]
-#[derive(
-    Copy,
-    Clone,
-    Debug,
-    Immutable,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    TryFromBytes,
-    IntoBytes,
-    Unaligned,
-    KnownLayout,
-    Hash,
-)]
-pub struct MuiRdPathIdBlob<const BLOB_SIZE: usize>(
-    U32<NativeEndian>, // 0 mui (0 ..= 3)
-    [u8; 8],           // 1 rd (4 ..= 11)
-    [u8; 4],           // 2 path_id (12 ..= 15)
-    bool,              // 3 optional rd 16)
-    bool,              // 4 optional path_id (16)
-    bool,              // 5 optional blob (16)
-    [u8; BLOB_SIZE],   // 6 nlri blob (17 ..= 17 + BLOB_SIZE)
-);
+// #[repr(C)]
+// #[derive(
+//     Copy,
+//     Clone,
+//     Debug,
+//     Immutable,
+//     PartialEq,
+//     Eq,
+//     PartialOrd,
+//     Ord,
+//     TryFromBytes,
+//     IntoBytes,
+//     Unaligned,
+//     KnownLayout,
+//     Hash,
+// )]
+// pub struct MuiRdPathIdBlob<const BLOB_SIZE: usize>(
+//     U32<NativeEndian>, // 0 mui (0 ..= 3)
+//     [u8; 8],           // 1 rd (4 ..= 11)
+//     [u8; 4],           // 2 path_id (12 ..= 15)
+//     bool,              // 3 optional rd 16)
+//     bool,              // 4 optional path_id (16)
+//     bool,              // 5 optional blob (16)
+//     [u8; BLOB_SIZE],   // 6 nlri blob (17 ..= 17 + BLOB_SIZE)
+// );
 
-impl<const BLOB_SIZE: usize> KeyExtensions for MuiRdPathIdBlob<BLOB_SIZE> {
-    // mui (4) + rd (8 + 1) + path_id (4 + 1)
-    // const PREFIX_SIZE: usize = 18 + BLOB_SIZE;
-    fn mui(&self) -> U32<NativeEndian> {
-        self.0
-    }
+// impl<const BLOB_SIZE: usize> KeyExtensions for MuiRdPathIdBlob<BLOB_SIZE> {
+//     // mui (4) + rd (8 + 1) + path_id (4 + 1)
+//     // const PREFIX_SIZE: usize = 18 + BLOB_SIZE;
+//     fn mui(&self) -> U32<NativeEndian> {
+//         self.0
+//     }
 
-    fn route_distuingisher(&self) -> Option<[u8; 8]> {
-        if self.3 {
-            Some(self.1)
-        } else {
-            None
-        }
-    }
+//     fn route_distuingisher(&self) -> Option<[u8; 8]> {
+//         if self.3 {
+//             Some(self.1)
+//         } else {
+//             None
+//         }
+//     }
 
-    fn path_id(&self) -> Option<[u8; 4]> {
-        if self.4 {
-            Some(self.2)
-        } else {
-            None
-        }
-    }
+//     fn path_id(&self) -> Option<[u8; 4]> {
+//         if self.4 {
+//             Some(self.2)
+//         } else {
+//             None
+//         }
+//     }
 
-    fn blob(&self) -> Option<&[u8]> {
-        if self.5 {
-            Some(&self.6)
-        } else {
-            None
-        }
-    }
+//     fn blob(&self) -> Option<&[u8]> {
+//         if self.5 {
+//             Some(&self.6)
+//         } else {
+//             None
+//         }
+//     }
 
-    fn as_mui_rd_path_id(&self) -> MuiRdPathId {
-        MuiRdPathId(self.0, self.1, self.2, self.3, self.4)
-    }
-}
+//     fn as_mui_rd_path_id(&self) -> MuiRdPathId {
+//         MuiRdPathId(self.0, self.1, self.2, self.3, self.4)
+//     }
+// }
 
-impl<const BLOB_SIZE: usize> MuiRdPathIdBlob<BLOB_SIZE> {
-    pub(crate) fn mui_range(
-        mui: Mui,
-    ) -> (
-        Bound<MuiRdPathIdBlob<BLOB_SIZE>>,
-        Bound<MuiRdPathIdBlob<BLOB_SIZE>>,
-    ) {
-        (
-            std::ops::Bound::Included(MuiRdPathIdBlob(
-                mui.0,
-                [0_u8; 8],
-                [0_u8; 4],
-                false,
-                false,
-                false,
-                [0; BLOB_SIZE],
-            )),
-            std::ops::Bound::Excluded(MuiRdPathIdBlob(
-                mui.0 + 1,
-                [0_u8; 8],
-                [0_u8; 4],
-                false,
-                false,
-                false,
-                [0; BLOB_SIZE],
-            )),
-        )
-    }
-}
+// impl<const BLOB_SIZE: usize> MuiRdPathIdBlob<BLOB_SIZE> {
+//     pub(crate) fn mui_range(
+//         mui: Mui,
+//     ) -> (
+//         Bound<MuiRdPathIdBlob<BLOB_SIZE>>,
+//         Bound<MuiRdPathIdBlob<BLOB_SIZE>>,
+//     ) {
+//         (
+//             std::ops::Bound::Included(MuiRdPathIdBlob(
+//                 mui.0,
+//                 [0_u8; 8],
+//                 [0_u8; 4],
+//                 false,
+//                 false,
+//                 false,
+//                 [0; BLOB_SIZE],
+//             )),
+//             std::ops::Bound::Excluded(MuiRdPathIdBlob(
+//                 mui.0 + 1,
+//                 [0_u8; 8],
+//                 [0_u8; 4],
+//                 false,
+//                 false,
+//                 false,
+//                 [0; BLOB_SIZE],
+//             )),
+//         )
+//     }
+// }
 
-impl<const BLOB_SIZE: usize> Display for MuiRdPathIdBlob<BLOB_SIZE> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}:{}:{}",
-            self.0,
-            u64::from_be_bytes(self.1),
-            u32::from_be_bytes(self.2)
-        )
-    }
-}
+// impl<const BLOB_SIZE: usize> Display for MuiRdPathIdBlob<BLOB_SIZE> {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         write!(
+//             f,
+//             "{}:{}:{}",
+//             self.0,
+//             u64::from_be_bytes(self.1),
+//             u32::from_be_bytes(self.2)
+//         )
+//     }
+// }
 
-impl<const BLOB_SIZE: usize> From<(u32, [u8; 8], [u8; 4], [u8; BLOB_SIZE])>
-    for MuiRdPathIdBlob<BLOB_SIZE>
-{
-    fn from(value: (u32, [u8; 8], [u8; 4], [u8; BLOB_SIZE])) -> Self {
-        Self(
-            U32::<NativeEndian>::from(value.0),
-            value.1,
-            value.2,
-            true,
-            true,
-            true,
-            value.3,
-        )
-    }
-}
+// impl<const BLOB_SIZE: usize> From<(u32, [u8; 8], [u8; 4], [u8; BLOB_SIZE])>
+//     for MuiRdPathIdBlob<BLOB_SIZE>
+// {
+//     fn from(value: (u32, [u8; 8], [u8; 4], [u8; BLOB_SIZE])) -> Self {
+//         Self(
+//             U32::<NativeEndian>::from(value.0),
+//             value.1,
+//             value.2,
+//             true,
+//             true,
+//             true,
+//             value.3,
+//         )
+//     }
+// }
 
-impl<const BLOB_SIZE: usize> From<Mui> for MuiRdPathIdBlob<BLOB_SIZE> {
-    fn from(value: Mui) -> Self {
-        Self(value.0, [0; 8], [0; 4], false, false, false, [0; BLOB_SIZE])
-    }
-}
+// impl<const BLOB_SIZE: usize> From<Mui> for MuiRdPathIdBlob<BLOB_SIZE> {
+//     fn from(value: Mui) -> Self {
+//         Self(value.0, [0; 8], [0; 4], false, false, false, [0; BLOB_SIZE])
+//     }
+// }
 
-impl<const BLOB_SIZE: usize, K: KeyExtensions> From<(K, &[u8])>
-    for MuiRdPathIdBlob<BLOB_SIZE>
-{
-    #[allow(clippy::unwrap_used)]
-    fn from(value: (K, &[u8])) -> Self {
-        Self(
-            value.0.mui(),
-            value.0.route_distuingisher().unwrap_or([0; 8]),
-            value.0.path_id().unwrap_or([0; 4]),
-            value.0.route_distuingisher().is_some(),
-            value.0.path_id().is_some(),
-            true,
-            *value.1.first_chunk::<BLOB_SIZE>().unwrap(),
-        )
-    }
-}
+// impl<const BLOB_SIZE: usize, K: KeyExtensions> From<(K, &[u8])>
+//     for MuiRdPathIdBlob<BLOB_SIZE>
+// {
+//     #[allow(clippy::unwrap_used)]
+//     fn from(value: (K, &[u8])) -> Self {
+//         Self(
+//             value.0.mui(),
+//             value.0.route_distuingisher().unwrap_or([0; 8]),
+//             value.0.path_id().unwrap_or([0; 4]),
+//             value.0.route_distuingisher().is_some(),
+//             value.0.path_id().is_some(),
+//             true,
+//             *value.1.first_chunk::<BLOB_SIZE>().unwrap(),
+//         )
+//     }
+// }
