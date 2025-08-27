@@ -218,7 +218,7 @@ const fn nlri_blob_key_size<N: Nlri, K: KeyExtensions>() -> usize {
     nlri_size + size_of::<K>() + 8 + 1
 }
 
-const fn key_size<N: Nlri, KE: KeyExtensions>() -> usize {
+const fn fixed_key_size<N: Nlri, KE: KeyExtensions>() -> usize {
     size_of::<N>() + size_of::<KE>() + 8 + 1
 }
 
@@ -352,7 +352,7 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
         for kv in self.tree.prefix(prefix.as_bytes(), None, None).flatten() {
             let mut bytes = [kv.0, kv.1].concat();
             let b = &mut bytes
-                .get_mut(..const { key_size::<N, KE>() })
+                .get_mut(..const { fixed_key_size::<N, KE>() })
                 .ok_or(PrefixStoreError::FatalError)?;
             let k = K::from_header_mut(b)?;
             if k.mui() == key {
@@ -363,7 +363,6 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
         Ok(false)
     }
 
-    #[allow(clippy::indexing_slicing)]
     pub fn records_for_blob_key(
         &self,
         nlri_blob: &[u8],
@@ -375,11 +374,7 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
         let key_len = blob_w_len.len();
         trace!("0. nlri blob with length {:?}", blob_w_len);
         match include_withdrawn {
-            // Specific mui, include withdrawn routes
             true => {
-                // get the records from the persist store for the (prefix,
-                // mui) tuple only.
-                // let prefix_b = ShortKey::from((prefix, mui));
                 trace!("1. search key {nlri_blob:?}");
                 self.tree
                     .prefix(blob_w_len, None, None)
@@ -388,7 +383,7 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
                             trace!("mui i persist kv pair found: {kv:?}");
                             let mut bytes = [kv.0, kv.1].concat();
                             let key = K::long_key_from_header_mut(
-                                &mut bytes[..key_len],
+                                bytes.get_mut(..key_len).ok_or(FatalError)?,
                             )?;
                             // If mui is in the global withdrawn muis table,
                             // then rewrite the routestatus of the record
@@ -415,63 +410,34 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
                         },
                     )
             }
-            false => {
-                // get all records for this prefix
-                self.tree
-                    .prefix(blob_w_len, None, None)
-                    .filter_map(|r| {
-                        r.map(|kv| {
-                            trace!("n f persist kv pair found: {kv:?}");
-                            let bytes = [kv.0, kv.1].concat();
-                            K::long_key_from_blob_header(
-                                nlri_blob.len() + 2,
-                                &bytes,
-                                withdrawn_muis_bmin,
-                            )
-
-                            // match key_len {
-                            //     l if l <= 8 => {
-                            //         if let Ok(header) = K::long_key_from_blob_header::<8>(&bytes[..key_len]) {
-                            //         trace!(
-                            //             "status {}",
-                            //             header.status == RouteStatus::Withdrawn
-                            //         );
-                            //         if header.status == RouteStatus::Withdrawn
-                            //             || withdrawn_muis_bmin
-                            //                 .contains(header.key_ext.mui().into()) {
-                            //         return None;
-                            //     }
-                            //     Some(Ok(bytes))
-                            // } else {
-                            //         println!("key size {}", key_size::<N, KE>());
-                            //         println!(
-                            //             "bytes {:?}",
-                            //                 &bytes[..const { key_size::<N, KE>() }]
-                            //         );
-                            //         println!("no header; size {}", bytes.len());
-                            //         Some(Err(FatalError))
-                            //     }},
-                            //     _ => {
-                            //         Some(Err(FatalError))
-                            //     }
-                            // }
-                        })
-                        .transpose()
+            false => self
+                .tree
+                .prefix(blob_w_len, None, None)
+                .filter_map(|r| {
+                    r.map(|kv| {
+                        trace!("n f persist kv pair found: {kv:?}");
+                        let bytes = [kv.0, kv.1].concat();
+                        K::long_key_from_blob_header(
+                            nlri_blob.len() + 2,
+                            &bytes,
+                            withdrawn_muis_bmin,
+                        )
                     })
-                    .collect::<Vec<lsm_tree::Result<FatalResult<Vec<u8>>>>>()
-                    .into_iter()
-                    .collect::<lsm_tree::Result<Vec<FatalResult<Vec<u8>>>>>()
-                    .ok()
-                    .and_then(
-                        |recs| {
-                            if recs.is_empty() {
-                                None
-                            } else {
-                                Some(recs)
-                            }
-                        },
-                    )
-            }
+                    .transpose()
+                })
+                .collect::<Vec<lsm_tree::Result<FatalResult<Vec<u8>>>>>()
+                .into_iter()
+                .collect::<lsm_tree::Result<Vec<FatalResult<Vec<u8>>>>>()
+                .ok()
+                .and_then(
+                    |recs| {
+                        if recs.is_empty() {
+                            None
+                        } else {
+                            Some(recs)
+                        }
+                    },
+                ),
         }
     }
 
@@ -500,10 +466,10 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
                     .map(|kv| {
                         kv.map(|kv| {
                             debug!("mui i persist kv pair found: {kv:?}");
-                            debug!("key size {:?}", key_size::<N, KE>());
+                            debug!("key size {:?}", fixed_key_size::<N, KE>());
                             let mut bytes = [kv.0, kv.1].concat();
                             let key = K::long_key_from_header_mut(
-                                &mut bytes[..const { key_size::<N, KE>() }],
+                                &mut bytes[..const { fixed_key_size::<N, KE>() }],
                             )?;
                             // If mui is in the global withdrawn muis table,
                             // then rewrite the routestatus of the record
@@ -582,7 +548,7 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
                             trace!("n f persist kv pair found: {kv:?}");
                             let bytes = [kv.0, kv.1].concat();
                             if let Ok(header) = K::long_key_from_header(
-                                &bytes[..const { key_size::<N, KE>() }],
+                                &bytes[..const { fixed_key_size::<N, KE>() }],
                             ) {
                                 // If mui is in the global withdrawn muis
                                 // table, then skip this record
@@ -612,10 +578,10 @@ impl<N: Nlri, KE: KeyExtensions, K: Key<N, KE>> LsmTree<N, KE, K> {
                                 // );
                                 Some(Ok(bytes))
                             } else {
-                                println!("key size {}", key_size::<N, KE>());
+                                println!("key size {}", fixed_key_size::<N, KE>());
                                 println!(
                                     "bytes {:?}",
-                                    &bytes[..const { key_size::<N, KE>() }]
+                                    &bytes[..const { fixed_key_size::<N, KE>() }]
                                 );
                                 println!("no header; size {}", bytes.len());
                                 Some(Err(FatalError))
